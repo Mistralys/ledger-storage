@@ -1,0 +1,152 @@
+{
+  "version": "1.0.0",
+  "last_updated": "2026-07-06T16:06:32Z",
+  "next_id": 11,
+  "insights": [
+    {
+      "id": 1,
+      "scope": "repository",
+      "repository_name": "ai-insights",
+      "origin_plan": "2026-05-31-orchestrator-sidecar-gui-resume-rework",
+      "title": "LedgerStore constructor enforces YYYY-MM-DD-name planPath basename — test fixtures must comply",
+      "content": "The `LedgerStore` constructor calls `projectSlugFromPath()` → `planFolderBasename()` which enforces that the final path segment of `plan_path` matches the pattern `YYYY-MM-DD-name`. If the value fails this check, construction throws. In test fixtures, always construct `plan_path` values with a YYYY-MM-DD-prefixed basename (e.g. `'/workspace/repo/docs/agents/plans/2026-01-01-my-feature'`). Using non-conforming paths like `'/fake/{repo}/{slug}/plan.md'` causes `LedgerStore` construction to throw, and callers that catch broadly (e.g. `resolveProjectStore`) will return NOT_FOUND — giving no indication the issue is a malformed plan path rather than a missing project.",
+      "category": "testing",
+      "tags": [
+        "typescript",
+        "ledger",
+        "test-fixture",
+        "planPath",
+        "LedgerStore",
+        "mcp-server"
+      ],
+      "source": "WP-002 implementation pipeline + synthesis.md",
+      "created_at": "2026-05-31T11:52:38Z",
+      "updated_at": "2026-06-09T11:32:02Z",
+      "confidence": 0.9
+    },
+    {
+      "id": 3,
+      "scope": "repository",
+      "repository_name": "ai-insights",
+      "origin_plan": "2026-05-31-orchestrator-sidecar-gui-resume-rework-2",
+      "title": "handleGetInsights and handleListProjects derive repository_name with original casing — do not replace with deriveRepoName()",
+      "content": "In `mcp-server/gui/api.ts`, both `handleGetInsights()` (~line 259) and `handleListProjects()` (~line 456) derive `repository_name` using the inline `inferProjectRootFromPlanPath(...).split(/[\\\\/]/).filter(Boolean).pop() ?? null` pattern rather than calling `deriveRepoName()` from `ledger-root.ts`. This is intentional: `deriveRepoName()` lowercases and validates the name for use as a storage key, but `repository_name` in these API responses is a display field and must preserve the original directory casing. Using `deriveRepoName()` here would silently lowercase repo names for display, breaking case-sensitive display in the GUI. Both call sites carry inline comments explaining this invariant; if you add a third derivation site, use the same inline pattern (not `deriveRepoName()`) and add the same comment.",
+      "category": "architecture",
+      "tags": [
+        "typescript",
+        "api",
+        "repository-name",
+        "casing",
+        "display-vs-storage",
+        "ai-insights",
+        "mcp-server"
+      ],
+      "source": "synthesis §5, WP-006 code-review debt comment, WP-006 documentation pipeline",
+      "created_at": "2026-05-31T18:28:32Z",
+      "confidence": 0.85
+    },
+    {
+      "id": 4,
+      "scope": "repository",
+      "repository_name": "ai-insights",
+      "origin_plan": "2026-05-31-orchestrator-sidecar-gui-resume-rework-3",
+      "title": "_derive_repo_name() .lower() may break existing mixed-case on-disk ledger log paths",
+      "content": "The `_derive_repo_name()` helper introduced in `orchestrator/src/cli.py` applies `.lower()` to align with TypeScript's `deriveRepoName()` convention. In new environments this is correct. However, environments where the orchestrator previously wrote queue entries or ledger log directory paths with mixed-case `repo_name` values (e.g. `MyRepo/`) will have on-disk paths that no longer match the lowercase output. Before deploying this change to an environment with existing ledger data, verify whether any `logs/` or ledger storage directories contain mixed-case repo-name path components. If so, a one-time rename/migration script is required, or a note should be added to `CHANGELOG.md`. Flagged by QA in WP-003; no migration script was created as part of this plan.",
+      "category": "architecture",
+      "tags": [
+        "python",
+        "orchestrator",
+        "deployment",
+        "migration",
+        "filesystem",
+        "repo-name",
+        "ledger"
+      ],
+      "source": "synthesis Gold Nugget #2, WP-003 QA",
+      "created_at": "2026-05-31T20:42:07Z",
+      "updated_at": "2026-06-09T11:32:02Z",
+      "confidence": 0.7
+    },
+    {
+      "id": 5,
+      "scope": "repository",
+      "repository_name": "ai-insights",
+      "origin_plan": "2026-06-04-planner-project-history-access",
+      "title": "Use plain-function modules (not classes) for stateless storage helpers in mcp-server",
+      "content": "In the mcp-server storage layer, stateless I/O helpers — those with no in-memory cache, no lifecycle, and no initialization state — should be implemented as plain-function TypeScript modules, not as classes. The `LedgerStore` class is the correct shape for stateful, lifecycle-managed storage (it has initialization state). `src/storage/repository-registry.ts` is the canonical reference for the plain-function pattern. This distinction was explicitly validated by a code reviewer against `LedgerStore` and documented in `tech-stack.md` as a guiding principle. Future contributors who cargo-cult the class pattern for a new stateless registry module will introduce unnecessary lifecycle complexity.",
+      "category": "architecture",
+      "tags": [
+        "typescript",
+        "storage",
+        "architecture",
+        "mcp-server",
+        "patterns",
+        "module-design"
+      ],
+      "source": "synthesis — Gold Nugget 2; WP-003 code-review (Maintainability section); WP-003 documentation (tech-stack.md update)",
+      "created_at": "2026-06-05T10:37:11Z",
+      "confidence": 0.85
+    },
+    {
+      "id": 8,
+      "scope": "repository",
+      "repository_name": "ai-insights",
+      "origin_plan": "2026-06-02-layout-editor",
+      "title": "Orchestrator routing loop recovery: reopen cancelled WP after code-review FAIL rework cycle",
+      "content": "When a work package has a code-review FAIL followed by a rework, the orchestrator may enter a routing loop that repeatedly cycles through implementation→QA (confirming already-fixed code) rather than routing to the Reviewer. This has been observed to run 4+ cycles before the WP is incorrectly cancelled. All acceptance criteria and tests can be fully passing throughout the loop — the loop does not indicate a real regression, only a routing failure. Recovery: use `ledger_reopen_cancelled_wp` (PM-only tool) to reopen the WP from CANCELLED back to READY; the tool clears rework counts automatically. After reopening, the Reviewer has a `RUN_REVIEW` action and the workflow proceeds normally. Downstream WPs that depend on the cancelled WP are unblocked once it completes normally.",
+      "category": "workflow",
+      "tags": [
+        "orchestrator",
+        "routing-loop",
+        "work-package",
+        "recovery",
+        "pm",
+        "cancelled-wp",
+        "ledger"
+      ],
+      "source": "WP-006 orchestrator incident + project-level PM incident comment",
+      "created_at": "2026-06-09T11:29:09Z",
+      "confidence": 0.75
+    },
+    {
+      "id": 9,
+      "scope": "repository",
+      "repository_name": "ai-insights",
+      "origin_plan": "2026-07-03-ac-misfiling-fixes",
+      "title": "AC spec file must be copied from the same array passed to ledger_create_work_package — never re-transcribed from the draft",
+      "content": "The Bootstrapper's original protocol wrote spec files from the WP draft document and separately passed an `acceptance_criteria` array to `ledger_create_work_package`. Because the two were authored independently, they could diverge silently. The fix: the spec file's `## Acceptance Criteria` section must be copied directly from the same `acceptance_criteria` array passed to `ledger_create_work_package` in Step 3 — a second transcription from the WP draft is explicitly prohibited. Any future change to the Bootstrapper protocol must preserve this single-source constraint; the ledger entry and the spec file must be identical by construction, not by coincidence.",
+      "category": "workflow",
+      "tags": [
+        "bootstrapper",
+        "acceptance-criteria",
+        "single-source",
+        "ledger",
+        "spec-file",
+        "misfiling"
+      ],
+      "source": "WP-003 + synthesis",
+      "created_at": "2026-07-03T14:14:15Z",
+      "confidence": 0.9
+    },
+    {
+      "id": 10,
+      "scope": "repository",
+      "repository_name": "ai-insights",
+      "origin_plan": "2026-06-10-improved-dialogue-render",
+      "title": "Run `ctx generate` after every edit to docs/agents/project-manifest/ files",
+      "content": "Any edit to files under `docs/agents/project-manifest/` (e.g., `api-surface.md`, `file-tree.md`) must be followed by running `ctx generate` from the repo root to regenerate the corresponding `.context/` snapshot files. Without this step, `.context/mcp-server/manifest-api-surface.md`, `.context/mcp-server/manifest-file-tree.md`, and `.context/project-manifest.md` drift from their source documents and agents working from the context bundle will see stale information. The Documentation agent should delegate this step to `ctx-architect` at the end of every documentation pipeline that touches any project-manifest file. This pattern was confirmed working in WP-001 (ctx generate ran across all 35 documents successfully) and should be added as a named mandatory step in the Documentation agent's standard pipeline.",
+      "category": "workflow",
+      "tags": [
+        "documentation",
+        "ctx",
+        "context",
+        "manifest",
+        "agent-workflow",
+        "ai-insights"
+      ],
+      "source": "synthesis Gold Nugget #5; WP-001 documentation pipeline",
+      "created_at": "2026-07-06T16:06:32Z",
+      "confidence": 0.85
+    }
+  ]
+}

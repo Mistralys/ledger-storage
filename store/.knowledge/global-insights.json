@@ -1,0 +1,1570 @@
+{
+  "version": "1.0.0",
+  "last_updated": "2026-07-23T17:08:45Z",
+  "next_id": 85,
+  "insights": [
+    {
+      "id": 1,
+      "scope": "global",
+      "title": "Input validation must be applied symmetrically to every branch that accepts external input",
+      "content": "When a function contains multiple code branches that each handle the same external input (e.g., a qualified composite-key path vs. a bare-key fallback path), every branch must apply input validation before any I/O operation — not just the primary or \"obvious\" branch. A common failure is securing the main path while leaving the fallback branch unguarded on the assumption that the I/O layer will reject the bad input. In practice, filesystem operations silently absorb inputs like `..` and produce unintended results (path traversal) rather than erroring. The fix is to place the validation call as the first statement in each branch, before any readdir, stat, or join call. This was discovered in a storage resolver where the qualified-path branch was secure but the bare-slug fallback accepted `..`, which matched every namespace directory during a filesystem scan.",
+      "category": "security",
+      "tags": [
+        "input-validation",
+        "path-traversal",
+        "branch-coverage",
+        "filesystem",
+        "A04"
+      ],
+      "source": "synthesis",
+      "created_at": "2026-05-29T19:54:59Z",
+      "confidence": 0.85
+    },
+    {
+      "id": 2,
+      "scope": "global",
+      "title": "Stable-shim pattern for globally registered absolute-path CLI tools",
+      "content": "When a global configuration entry (e.g., an IDE plugin config or shell profile) requires an absolute path to a per-project build artifact, that path becomes fragile: it breaks when the repo is moved, renamed, or cloned to a different machine. A stable-shim strategy avoids this: install a small launcher script at a fixed path in the user home directory alongside a `config.json` that records the actual repo path. The global config points permanently to the fixed shim; re-running the installer updates only `config.json` — the IDE or shell config never needs editing again. This also avoids symlink fragility on Windows. The shim should validate that the resolved artifact path is contained within the recorded repo root before executing it (defence-in-depth against a tampered config.json).",
+      "category": "architecture",
+      "tags": [
+        "cli",
+        "global-registration",
+        "shim",
+        "path-stability",
+        "ide-integration",
+        "nodejs",
+        "cross-platform"
+      ],
+      "source": "WP-003",
+      "created_at": "2026-05-30T05:57:58Z",
+      "confidence": 0.85
+    },
+    {
+      "id": 3,
+      "scope": "global",
+      "title": "Enforce nullable co-constraints at the storage layer, not the schema layer",
+      "content": "When a field pair has a co-constraint — field B is required only when field A equals a specific value — resist encoding it as a discriminated union in the schema layer. Schema-level enforcement complicates partial-update patterns (callers must always supply both fields), reduces schema composability, and leaks storage semantics into the type system. Instead, keep the schema flat and enforce the co-constraint in the storage or service layer where the full request context is always available. This pattern was confirmed in a TypeScript/Zod system where enforcing `scope='repository' requires repository_name` at the schema layer would have broken partial-update callers across multiple tool handlers.",
+      "category": "architecture",
+      "tags": [
+        "typescript",
+        "zod",
+        "schema-design",
+        "validation",
+        "storage-layer",
+        "co-constraint"
+      ],
+      "source": "synthesis",
+      "created_at": "2026-05-30T13:46:04Z",
+      "confidence": 0.85
+    },
+    {
+      "id": 4,
+      "scope": "global",
+      "title": "Scope persistent knowledge entries to a stable repository identifier, not an ephemeral session slug",
+      "content": "When designing a multi-session knowledge store, choose the scoping identifier based on its lifecycle, not its availability. Session or plan slugs are ephemeral — entries stored under them become unreachable once the session ends. A repository name or equivalent stable codebase identifier is long-lived and ensures knowledge committed in one session remains discoverable by future sessions on the same codebase. The session or plan slug can still be recorded as a provenance field for traceability without becoming the storage routing key. Collapsing these two roles into a single field is the root cause of scope designs that quietly orphan stored knowledge.",
+      "category": "architecture",
+      "tags": [
+        "knowledge-management",
+        "storage-design",
+        "multi-session",
+        "identifier-design",
+        "provenance"
+      ],
+      "source": "synthesis",
+      "created_at": "2026-05-30T13:46:10Z",
+      "confidence": 0.85
+    },
+    {
+      "id": 5,
+      "scope": "global",
+      "title": "JavaScript: `|| undefined` drops legitimate falsy values in optional parameter patterns",
+      "content": "Using `value || undefined` to make a parameter optional silently discards any falsy-but-legitimate value — `'0'`, `0`, `false` — coercing it to `undefined` rather than passing it. The bug is subtle because `|| undefined` looks idiomatic for \"omit when empty\" but is only safe when the type excludes all falsy values. Replace with `value != null ? value : undefined` to guard only against `null` and `undefined`. This was a live bug in four API mutation handlers where a repository name of `'0'` would have been silently dropped.",
+      "category": "architecture",
+      "tags": [
+        "javascript",
+        "typescript",
+        "api",
+        "null-guard",
+        "optional-parameters",
+        "pitfall"
+      ],
+      "source": "synthesis / WP-003",
+      "created_at": "2026-05-30T19:38:53Z",
+      "confidence": 0.9
+    },
+    {
+      "id": 6,
+      "scope": "global",
+      "title": "HTTP API: validate inputs at the handler layer to produce HTTP 400, not 500",
+      "content": "When input validation exists only in the storage or data-access layer, a malformed value that bypasses the HTTP handler reaches the storage validator and throws a generic unhandled exception — which HTTP frameworks map to HTTP 500. Adding an explicit validation guard at the handler layer converts these to typed HTTP 400 responses with a meaningful error code. The storage-layer guard still provides defence-in-depth; the handler-layer guard ensures the API contract is visible and the response is predictable. This pattern was missing in two REST handlers that accepted a slug parameter: both passed it directly to storage, producing HTTP 500 on invalid input instead of the HTTP 400 returned by the other handlers in the same family.",
+      "category": "security",
+      "tags": [
+        "security",
+        "api",
+        "http",
+        "validation",
+        "defence-in-depth",
+        "input-validation",
+        "rest"
+      ],
+      "source": "synthesis / WP-004",
+      "created_at": "2026-05-30T19:39:01Z",
+      "confidence": 0.85
+    },
+    {
+      "id": 7,
+      "scope": "global",
+      "origin_plan": "2026-05-31-variable-escape-syntax",
+      "title": "Single-pass optional-backslash regex handles escape chaining implicitly",
+      "content": "When adding backslash-escape support to a regex-based substitution engine, capturing an optional leading backslash as the first capture group — e.g. `/(\\\\?)\\{\\{(\\w+)\\}\\}/g` — means double-backslash chaining (`\\\\{{name}}` → `\\{{name}}`) is handled correctly as an implicit property of the single-pass regex, requiring no additional logic or second-pass handling. This aligns with the de-facto convention established by Handlebars and Mustache. Because the behavior is emergent rather than deliberate, it must be explicitly documented as a contract; without documentation, future maintainers may unknowingly break it when modifying the regex.",
+      "category": "architecture",
+      "tags": [
+        "regex",
+        "template-engine",
+        "escape",
+        "backslash",
+        "substitution",
+        "single-pass"
+      ],
+      "source": "synthesis",
+      "created_at": "2026-05-31T08:22:04Z",
+      "confidence": 0.8
+    },
+    {
+      "id": 8,
+      "scope": "global",
+      "origin_plan": "2026-05-31-orchestrator-sidecar-gui-resume-rework-2",
+      "title": "Null-guard tests can be tautologically true when the test fixture path is deeper than expected on the target OS",
+      "content": "A test asserting that a path-walking inference function returns `null` for a \"shallow\" path can silently pass even when it does not, if the test fixture uses a system temp directory that is deeper than expected on the OS under test. For example, using `join(tmpdir(), slug)` as a fixture `planPath` on macOS results in a path like `/var/folders/.../T/slug` — walking back up the tree yields a real directory name (`folders`), not `null`. The assertion `value === null || typeof value === 'string'` then becomes tautologically true. The fix is to use an absolute path that is provably shallow (e.g., `join('/', 'docs', 'slug')`) and assert with `toBe(null)` directly. Always verify a null-guard test is actually falsifiable by checking the intermediate values produced by the fixture, not just the final assertion output.",
+      "category": "testing",
+      "tags": [
+        "testing",
+        "null-guard",
+        "test-fixture",
+        "path-inference",
+        "typescript",
+        "javascript",
+        "macos",
+        "tmpdir"
+      ],
+      "source": "synthesis §3, WP-006 code-review pipeline",
+      "created_at": "2026-05-31T18:28:11Z",
+      "confidence": 0.85
+    },
+    {
+      "id": 9,
+      "scope": "global",
+      "origin_plan": "2026-05-31-orchestrator-sidecar-gui-resume-rework-2",
+      "title": "In multi-file migrations, scope shared utility files explicitly in the plan or pay disproportionate coordination overhead",
+      "content": "During a migration that renames API method signatures across multiple modules, any shared utility or widget file that calls a migrated method must be explicitly scoped in the migration plan — not left to be absorbed as an afterthought. Shared files do not belong to any single module's natural scope, so they fall through every scope boundary: each validation stage independently flags them, multiplying coordination overhead (observed: 6× the tracking cost of a properly-scoped file). Remedy: when creating a migration plan, enumerate all callers of every method being renamed. Treat shared utility/widget callers as dedicated line items with explicit ownership, not as implicit side-effects of module-level work.",
+      "category": "workflow",
+      "tags": [
+        "planning",
+        "migration",
+        "api-migration",
+        "scope-creep",
+        "shared-components",
+        "work-package"
+      ],
+      "source": "synthesis §Executive Summary (WP-013), project-level Synthesis note, WP-010 code-review high-priority debt",
+      "created_at": "2026-05-31T18:28:21Z",
+      "updated_at": "2026-06-09T10:16:37Z",
+      "confidence": 0.8
+    },
+    {
+      "id": 10,
+      "scope": "global",
+      "title": "Guard path-construction call sites independently of upstream type-guards",
+      "content": "When a path-construction function accepts values that originate from external data (e.g. a queue file or API response), add a path-segment safety guard directly inside the path-construction function — do not rely solely on the upstream type-guard or normalizer that processes the data before it enters your module. A future caller may invoke the path-construction function directly, bypassing the normalizer entirely. The dual-layer pattern (normalize at intake → guard at path-join boundary) is cheap — typically a single `if` with a safe-default return — and makes the path-construction function safe regardless of call origin. Fail-safe defaults (e.g. returning `{ exists: false }`) are preferable to throwing when the input is simply invalid rather than an error.",
+      "category": "security",
+      "tags": [
+        "security",
+        "path-traversal",
+        "defense-in-depth",
+        "typescript",
+        "input-validation",
+        "filesystem"
+      ],
+      "source": "synthesis, WP-001",
+      "created_at": "2026-05-31T20:41:40Z",
+      "confidence": 0.85
+    },
+    {
+      "id": 11,
+      "scope": "global",
+      "title": "Pair filesystem path-segment allowlist regexes with a maximum length bound",
+      "content": "A character-set allowlist regex used to validate filesystem path segments (e.g. `/^[a-z0-9][a-z0-9-]*$/`) enforces format but not length. Very long strings that satisfy the character set pass through to the OS path layer, where they can cause errors or unexpected behavior. Any allowlist regex applied at a path-construction boundary should be paired with an explicit maximum-length check (e.g. 128 characters) as a complementary guard. This is a low-effort hardening step that is easy to overlook when the regex alone appears to cover all dangerous inputs.",
+      "category": "security",
+      "tags": [
+        "security",
+        "path-validation",
+        "regex",
+        "filesystem",
+        "hardening",
+        "input-validation"
+      ],
+      "source": "synthesis Gold Nugget #6, WP-001 security-audit",
+      "created_at": "2026-05-31T20:41:48Z",
+      "confidence": 0.8
+    },
+    {
+      "id": 12,
+      "scope": "global",
+      "title": "When testing vanilla-JS browser scripts with jsdom + vm.runInThisContext, stub browser globals on Node's `global`, not on `window`",
+      "content": "Browser scripts that access globals such as `localStorage` as bare names (without `window.` prefix) resolve those names against Node's `global` object when executed via `vm.runInThisContext`, not against jsdom's `window`. Installing a stub on `window` or `globalThis` in the test harness has no effect — the stub must be set directly on `global` before the script is executed. This is a non-obvious distinction that breaks test isolation for any vanilla-JS browser script that was not written with explicit `window.` qualification. The fix: `global.localStorage = makeLocalStorageStub()` before the `vm.runInThisContext(scriptSrc)` call.",
+      "category": "testing",
+      "tags": [
+        "testing",
+        "jsdom",
+        "javascript",
+        "vitest",
+        "node",
+        "vm",
+        "browser-globals",
+        "vanilla-js"
+      ],
+      "source": "WP-005 implementation",
+      "created_at": "2026-05-31T20:41:57Z",
+      "confidence": 0.85
+    },
+    {
+      "id": 13,
+      "scope": "global",
+      "title": "Unvalidated mirrored configuration parameters produce silent data loss",
+      "content": "When a configuration object requires a parameter that must exactly mirror an internal identifier owned by a separate target component (e.g. a prefix, namespace key, or enum value), and no runtime validation enforces the match, a mismatch silently writes to keys the target will never read — producing a no-op with no error raised. The fix is to eliminate the need for the consumer to know the internal identifier at all: expose a factory or builder method on the target component itself that captures the correct value and constructs the configurator pre-wired. This was discovered when a configurator class accepted a session-prefix parameter that had to match a wizard trait's internal `$settingPrefix` property; any mismatch caused preselection values to silently vanish at redirect time. The synthesis recommendation was to add a `createConfigurator()` factory method on the wizard class to close this gap entirely.",
+      "category": "architecture",
+      "tags": [
+        "api-design",
+        "configuration",
+        "silent-failure",
+        "validation",
+        "coupling",
+        "factory-method"
+      ],
+      "source": "synthesis — Gold Nugget #1 + WP-003 documentation pipeline",
+      "created_at": "2026-06-04T08:50:18Z",
+      "confidence": 0.85
+    },
+    {
+      "id": 14,
+      "scope": "global",
+      "title": "Agentic pipeline PASS does not guarantee the file was written to disk",
+      "content": "In multi-session agentic orchestration workflows, a work package pipeline completing with PASS and all acceptance criteria marked met in the ledger does not guarantee the corresponding file changes were durably written to disk. If a session terminates between the agent verifying the change and the downstream agent consuming it, the ledger reflects a completed state while the filesystem still holds the old content. The failure mode surfaces only when a later agent (e.g. QA on a dependent WP) runs tests against the actual files. Mitigation: downstream agents should verify that the physical file state matches the ledger-complete specification before trusting the upstream result — particularly for surgical single-file changes.",
+      "category": "workflow",
+      "tags": [
+        "orchestration",
+        "agentic",
+        "ledger",
+        "session",
+        "filesystem",
+        "reliability",
+        "multi-session"
+      ],
+      "source": "synthesis — Incident/Anomaly section + WP-005 QA pipeline FAIL comment",
+      "created_at": "2026-06-04T08:50:27Z",
+      "confidence": 0.8
+    },
+    {
+      "id": 16,
+      "scope": "global",
+      "origin_plan": "2026-05-11-finalize-global-content-command",
+      "title": "Exclude idempotent-skip states from validation predicates in dual-path command systems",
+      "content": "In command/action systems with two distinct response paths — an idempotent-skip (target state already achieved, produce a no-op) and a precondition-error (state is invalid for this operation) — the validation predicate must explicitly exclude states handled by the skip path. If validation rejects the already-achieved state, runtime may still be correct (skip fires before execution), but the validity query returns a false negative. Non-runtime consumers — UI previews, batch planners, pre-execution validators — then misclassify a correctly-skippable command as an error. The fix is a single guard clause, but the bug is invisible to tests that only verify runtime outcomes.",
+      "category": "architecture",
+      "tags": [
+        "command-pattern",
+        "validation",
+        "idempotent",
+        "state-machine"
+      ],
+      "source": "synthesis",
+      "created_at": "2026-06-04T11:59:25Z",
+      "confidence": 0.8
+    },
+    {
+      "id": 17,
+      "scope": "global",
+      "origin_plan": "2026-06-02-layout-editor",
+      "title": "Code generators: tighten identifier-detection regex to exclude domain value strings that match identifier syntax",
+      "content": "When a code generator classifies input values as either \"constant/identifier references\" (emitting `self::NAME`) or \"quoted literals\" (emitting `\"value\"`), a regex that matches any uppercase string (e.g. `/^[A-Z][A-Z0-9_]+$/`) will also match domain value strings that happen to use only uppercase characters — such as hex colour strings like `FFFFFF` or `ABCDEF`. The generated code is syntactically valid but fatally broken at runtime (undefined constant). The fix is to require a structural marker that is present in identifiers but absent in domain values: for PHP-style constants, require at least one underscore separator (e.g. `/^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$/`), so `COLOR_PRIMARY` matches but `FFFFFF` does not. Regression tests for this case must use domain values that are all-letter and all-uppercase — tests that only cover digit-prefixed values (e.g. `003D8F`) will never catch the bug, since those correctly escape the pattern.",
+      "category": "architecture",
+      "tags": [
+        "code-generation",
+        "php",
+        "regex",
+        "runtime-safety",
+        "code-generator"
+      ],
+      "source": "WP-006 code-review FAIL + rework",
+      "created_at": "2026-06-04T12:09:21Z",
+      "confidence": 0.9
+    },
+    {
+      "id": 18,
+      "scope": "global",
+      "origin_plan": "2026-06-02-layout-editor",
+      "title": "PHP built-in server: `return false` serves from the process CWD, not the router script's directory",
+      "content": "In a PHP built-in server router script, `return false` instructs the server to serve the requested file from its *document root*, which equals the working directory of the process that launched the server — not `__DIR__` of the router script. When the server is started from a project root (e.g. via a Composer script without a `-t` flag), `return false` will serve files relative to the project root, causing any file under a subdirectory (e.g. `tools/editor/public/`) to return HTTP 404. The document-root-independent fix is to replace `return false` with explicit `readfile()` delivery inside the router script, using a MIME-type lookup table keyed on file extension. This approach works regardless of the working directory and does not require the `-t` flag.",
+      "category": "tooling",
+      "tags": [
+        "php",
+        "built-in-server",
+        "dev-server",
+        "static-files",
+        "router",
+        "composer"
+      ],
+      "source": "WP-002 QA FAIL + rework",
+      "created_at": "2026-06-04T12:09:30Z",
+      "confidence": 0.9
+    },
+    {
+      "id": 19,
+      "scope": "global",
+      "origin_plan": "2026-06-02-layout-editor",
+      "title": "REST PUT rename handlers must mirror the POST duplicate-name guard, or risk silent resource destruction",
+      "content": "When a REST API allows renaming a resource via PUT (i.e. the body's name field differs from the URL slug), the handler must check whether the new name is already in use before writing — just as the POST create handler checks for duplicate names. Omitting this guard causes silent overwrite of the colliding resource: a single PUT request can permanently destroy an unrelated record. The pattern is easy to miss because the POST guard is added first and the PUT handler is written later, often by a different implementer; and if the backing collection documents \"callers are responsible for rename-collision checks\", that responsibility may never make it into the handler. The fix is a pre-write `getByName(newName) === null` check on rename, returning HTTP 409 Conflict on collision.",
+      "category": "security",
+      "tags": [
+        "rest-api",
+        "http",
+        "put",
+        "rename",
+        "data-integrity",
+        "409-conflict",
+        "php"
+      ],
+      "source": "WP-009 security-audit + code-review FAIL + rework",
+      "created_at": "2026-06-04T12:09:39Z",
+      "confidence": 0.85
+    },
+    {
+      "id": 21,
+      "scope": "global",
+      "origin_plan": "2026-04-07-cross-platform-agent-plugin-phase-2",
+      "title": "Use correlated test failures as migration-completeness sentinels rather than fixing them in isolation",
+      "content": "During multi-phase code migrations (e.g. replacing one integration layer with another across many modules), test failures that correlate with incomplete migration phases should not be fixed in isolation. When the migration work itself resolves them organically, that resolution provides higher confidence of genuine completeness than a targeted fix would — because it proves the new code path fully replaces the old one end-to-end. The counterintuitive discipline: identify which failures are migration-correlated early, document them as known sentinels, and let the migration close them. If they persist after the migration phase completes, that signals a gap in the migration scope.",
+      "category": "testing",
+      "tags": [
+        "testing",
+        "migration",
+        "quality-gates",
+        "refactoring"
+      ],
+      "source": "synthesis",
+      "created_at": "2026-06-04T12:28:30Z",
+      "confidence": 0.7
+    },
+    {
+      "id": 22,
+      "scope": "global",
+      "title": "PHPUnit 12: @group docblock annotations are silently ignored — migrate to #[Group()] attributes",
+      "content": "PHPUnit 12 dropped support for `@group` docblock annotations without emitting a warning or error. Running `phpunit --group my-group` (or an equivalent composer script) returns \"No tests executed\" instead of running the targeted group — silently passing CI while the intended subset of tests is never run. The fix is to replace all `@group` docblock annotations with the `#[Group('name')]` PHP attribute (requires `use PHPUnit\\Framework\\Attributes\\Group;`). The attribute can be applied at the class level to group all methods in that class, or at the method level for finer control. Projects upgrading to PHPUnit 12 should run a single-pass migration across the entire test suite; partial migration (only the class that surfaced the problem) leaves the rest of the suite in a silently broken state.",
+      "category": "testing",
+      "tags": [
+        "phpunit",
+        "phpunit-12",
+        "php",
+        "testing",
+        "attributes",
+        "group",
+        "migration",
+        "breaking-change"
+      ],
+      "source": "synthesis — Strategic Recommendations §2; WP-002, WP-004, WP-007 implementation and QA pipelines",
+      "created_at": "2026-06-04T17:06:31Z",
+      "confidence": 0.9
+    },
+    {
+      "id": 23,
+      "scope": "global",
+      "title": "Data-driven cross-validation tests catch silent drift between parallel data representations",
+      "content": "When a system maintains two parallel representations of the same data (e.g., JSON config files and PHP/code objects), a data-driven regression test that iterates all real data files and compares their values against the programmatic output is a high-ROI guard against silent drift. The pattern: load all config/data files from a known directory, instantiate the corresponding code objects, and assert that each config entry matches the object's output. This test requires zero maintenance when new data files are added and catches drift that neither unit tests nor integration tests typically reach. In practice, this pattern immediately caught a real latent production bug on its very first run — a class returning a wrong default value that had diverged from its JSON specification without any test previously failing.",
+      "category": "testing",
+      "tags": [
+        "testing",
+        "regression",
+        "cross-validation",
+        "data-driven",
+        "json",
+        "php",
+        "drift",
+        "config"
+      ],
+      "source": "synthesis — Strategic Recommendations §3; WP-007 implementation pipeline",
+      "created_at": "2026-06-04T17:06:40Z",
+      "confidence": 0.85
+    },
+    {
+      "id": 24,
+      "scope": "global",
+      "title": "Planning artefact reference mismatches cause cascading pipeline failures that are invisible until late validation stages",
+      "content": "When a planning system links acceptance criteria (ACs) to a specification document, mismatches between the AC list and the referenced spec — whether from pointing to the wrong file, conflating criteria from multiple features, or copy-pasting ACs from a different source — produce failures that are undetectable during implementation and early validation. The mismatch surfaces only in late-stage validation (documentation review, finalization): (1) Misdirected spec references load foreign ACs, causing QA to repeatedly fail an implementation that is actually correct — producing cascading rework loops (observed: 4+ implementation/QA cycles before manual cancellation). (2) Conflated ACs from multiple features create an unresolvable finalization deadlock — criteria for unimplemented work can never be met, blocking closure. (3) Foreign ACs that happen to be satisfiable pass all early stages silently, failing only when a documentation agent attempts to mark all criteria as met. Prevention: validate at creation time that every AC is drawn from and scoped to the linked specification document. Never reuse spec file paths across multiple planning entries.",
+      "category": "workflow",
+      "tags": [
+        "workflow",
+        "planning",
+        "acceptance-criteria",
+        "validation",
+        "pipeline",
+        "spec-reference",
+        "work-package"
+      ],
+      "source": "synthesis — Ledger Incidents §1; project_comments (high-priority incident 2026-06-04T16:31:54Z)",
+      "created_at": "2026-06-04T17:06:49Z",
+      "updated_at": "2026-06-09T10:16:37Z",
+      "confidence": 0.85
+    },
+    {
+      "id": 25,
+      "scope": "global",
+      "title": "HTML5 input constraints are silently suppressed by a parent form's `novalidate` attribute",
+      "content": "When a form element carries the `novalidate` attribute, all HTML5 browser-native constraint attributes on its inputs — `pattern`, `min`, `max`, `required` — are silently ignored. No browser validation message fires, and no JS error is raised. This creates a silent failure mode: a developer adds `pattern` to an input expecting native validation, but the constraint does nothing because an ancestor form carries `novalidate`. In codebases where some forms use custom JS validation (and legitimately keep `novalidate`) alongside other forms that rely on native constraints, this mismatch is non-obvious to detect from inspecting the input element alone. Before adding any HTML5 constraint attribute to an input, always audit whether the parent form carries `novalidate` — and remove it from that form if native validation is intended.",
+      "category": "architecture",
+      "tags": [
+        "html",
+        "forms",
+        "validation",
+        "novalidate",
+        "browser-native",
+        "javascript",
+        "frontend"
+      ],
+      "source": "synthesis — Strategic Recommendation 3; WP-004 QA FAIL (QA bounce cycle caused by novalidate suppressing pattern attribute on #form-create-layout in a mixed-validation SPA)",
+      "created_at": "2026-06-05T10:30:10Z",
+      "confidence": 0.9
+    },
+    {
+      "id": 26,
+      "scope": "global",
+      "title": "Run a documentation review stage on test-only work packages — tests validate behaviour that docs may have wrong",
+      "content": "Documentation pipeline stages are commonly skipped on work packages that contain only tests, on the assumption that tests do not change public APIs or user-facing docs. This project showed the opposite: a test-only WP added new assertions that validated the exact behaviour of a production method, which in turn revealed that the project's README had been documenting that method's behaviour incorrectly for some time (stating values were cast via one mechanism when they were actually handled by a different one). The documentation stage for a test-only WP is the highest-probability moment to catch this class of documentation drift — the tests have just proved what the code actually does. Teams should include a documentation review stage in test-only work packages specifically to check whether existing documentation accurately reflects the newly validated behaviour.",
+      "category": "workflow",
+      "tags": [
+        "documentation",
+        "testing",
+        "pipeline",
+        "workflow",
+        "code-review",
+        "drift",
+        "readme"
+      ],
+      "source": "synthesis — Strategic Recommendation 6; WP-006 documentation pipeline (caught active README inaccuracy about fromArray() silent-default contract vs. (string) cast)",
+      "created_at": "2026-06-05T10:30:20Z",
+      "confidence": 0.8
+    },
+    {
+      "id": 27,
+      "scope": "global",
+      "origin_plan": "2026-06-04-planner-project-history-access",
+      "title": "Dual-schema pattern: strict input validation with permissive storage schema for backward compatibility",
+      "content": "When a new field must be required and non-null at the API call site but the stored data format must remain backward-compatible with existing records that lack the field, declare two separate schemas: a strict input schema (e.g., `z.string()`) and a permissive storage schema (e.g., `z.string().nullable().optional()`). Bridge them using a key-presence check (`'fieldName' in validatedInput`) rather than a truthiness or equality check — this correctly distinguishes an explicit `null` from an absent field when propagating to cached or secondary storage. Collapsing both contracts into a single schema causes one of two failure modes: callers can submit absent/null values on creation (input schema too loose), or legacy records fail to parse (storage schema too strict). This pattern was independently applied to 3+ components before being formally documented as a named convention; the recurring discovery cost signals it should be communicated upfront to contributors rather than inferred from reading existing code.",
+      "category": "architecture",
+      "tags": [
+        "schema",
+        "validation",
+        "zod",
+        "backward-compatibility",
+        "typescript",
+        "storage",
+        "api-design"
+      ],
+      "source": "synthesis — Gold Nugget 1; WP-004 code-review comment (schema type mismatch observation); WP-004 implementation comment (key-presence semantics)",
+      "created_at": "2026-06-05T10:37:02Z",
+      "updated_at": "2026-06-09T10:16:37Z",
+      "confidence": 0.9
+    },
+    {
+      "id": 28,
+      "scope": "global",
+      "origin_plan": "2026-06-04-planner-project-history-access",
+      "title": "On list API endpoints, pre-compute derived boolean summaries instead of embedding full nested objects",
+      "content": "When a list API endpoint returns items that include a complex nested object (e.g., a vision record with multiple nullable fields), avoid embedding the full object in the list response. Instead, pre-compute derived boolean summaries on the server (e.g., `has_vision: boolean`, `has_full_vision: boolean`) and include only those on list items, returning the full object only on detail endpoints. This pattern prevents over-fetching and keeps list payloads lean. Violating it causes subtle frontend bugs: in this project, the frontend's status-badge logic read the full nested object from the list response — which was absent because the list API only returned booleans — causing all badges to display the wrong state regardless of actual data. The bug required a full rework cycle (QA fail → Developer fix → QA re-verify → code-review re-pass) to resolve.",
+      "category": "architecture",
+      "tags": [
+        "api-design",
+        "rest",
+        "list-endpoint",
+        "over-fetching",
+        "frontend",
+        "typescript"
+      ],
+      "source": "synthesis — Gold Nugget 4; WP-008 QA FAIL (visionStatus bug); WP-008 implementation rework; WP-008 code-review PASS",
+      "created_at": "2026-06-05T10:37:21Z",
+      "confidence": 0.8
+    },
+    {
+      "id": 30,
+      "scope": "global",
+      "origin_plan": "2026-06-04-planner-project-history-access-rework-1",
+      "title": "Document intentional silent degradation inline to prevent well-intentioned \"fixes\"",
+      "content": "When a function or module intentionally suppresses errors or degrades silently (e.g. to prevent partial failures in a parallel fan-out, or to tolerate invalid input gracefully), document that intent explicitly at the call site — not just in external docs. Without an inline note, future contributors encountering the silent path will treat it as an unintentional bug and attempt to fix it, potentially breaking the intended resilience behavior. Three separate components in one project exhibited this pattern and were independently flagged by reviewers before the convention was formalized. A JSDoc `@remarks` block or an inline comment explaining the suppression rationale is sufficient to prevent this class of misdirected rework.",
+      "category": "architecture",
+      "tags": [
+        "error-handling",
+        "resilience",
+        "documentation",
+        "jsdoc",
+        "code-review",
+        "typescript"
+      ],
+      "source": "synthesis — Strategic Recommendations §2; WP-001 documentation pipeline; Constraint 76",
+      "created_at": "2026-06-05T12:24:56Z",
+      "confidence": 0.8
+    },
+    {
+      "id": 31,
+      "scope": "global",
+      "origin_plan": "2026-06-05-filterable-color-selectors",
+      "title": "Reusable DOM filter utility: bind listener once, call reset() after innerHTML rebuild",
+      "content": "When wrapping a `<select>` with a live-filter input using a reusable utility that returns a `{ reset }` controller, wire the input event listener exactly once during modal setup or screen init — never inside the open/render loop. On each modal open, call `reset()` only *after* rebuilding the `<select>` innerHTML, not before: calling reset before the rebuild operates on stale options that are about to be discarded, leaving the newly built options in an incorrect hidden/disabled state. This bind-once / reset-on-open ordering was validated across three independent call sites in the same project with zero rework cycles and became an explicit integration contract documented in both code comments and README.",
+      "category": "architecture",
+      "tags": [
+        "javascript",
+        "dom",
+        "select",
+        "filter",
+        "modal",
+        "reusable-utility",
+        "ordering-constraint",
+        "frontend"
+      ],
+      "source": "synthesis — Strategic Recommendations §1; WP-004 code-review Reviewer Fix-Forward comment",
+      "created_at": "2026-06-05T12:55:56Z",
+      "confidence": 0.75
+    },
+    {
+      "id": 32,
+      "scope": "global",
+      "origin_plan": "2026-06-05-filterable-color-selectors",
+      "title": "JavaScript: native form.reset() does not restore programmatic option visibility or disabled state",
+      "content": "When `<option>` elements have been hidden and disabled programmatically (e.g. `option.style.display = 'none'` and `option.disabled = true`) by a filter utility, calling the native `HTMLFormElement.reset()` will clear input values but will NOT restore the options to their visible/enabled state. A separate explicit reset of the filter controller is therefore always required after `form.reset()` — the two operations are complementary, not redundant. This was confirmed in production code where a naive refactor that removed the filter controller's `reset()` call would have left all non-placeholder options invisibly hidden after modal close-and-reopen.",
+      "category": "architecture",
+      "tags": [
+        "javascript",
+        "dom",
+        "form-reset",
+        "select",
+        "option",
+        "filter",
+        "browser-behaviour",
+        "frontend",
+        "pitfall"
+      ],
+      "source": "WP-003 — Developer implementation comment; WP-003 QA pipeline edge-case observation",
+      "created_at": "2026-06-05T12:56:04Z",
+      "confidence": 0.85
+    },
+    {
+      "id": 33,
+      "scope": "global",
+      "origin_plan": "2026-06-04-planner-project-history-access-rework-2",
+      "title": "Catch guards that discriminate errors by message string-prefix are silently brittle",
+      "content": "Using string-prefix matching on error messages as a catch discriminator creates hidden coupling between the throw site and the catch site. When the throwing code is refactored — message reworded, reformatted, or moved — the catch guard silently stops matching, causing previously-suppressed errors to surface as unexpected exceptions (or, worse, previously-re-thrown errors to be silently swallowed). The failure mode is not caught at compile time, and test suites that mock the throwing function with hard-coded message strings will also miss the regression. The structurally correct alternative is a custom error subclass (`class FooError extends Error {}`) checked with `instanceof`, which is refactor-safe and carries no string-coupling. If introducing a custom class is out of scope, document the message strings as a formal dependency and include them in the change checklist for the throwing module.",
+      "category": "architecture",
+      "tags": [
+        "typescript",
+        "javascript",
+        "error-handling",
+        "catch",
+        "instanceof",
+        "coupling",
+        "refactoring"
+      ],
+      "source": "synthesis",
+      "created_at": "2026-06-05T15:07:31Z",
+      "confidence": 0.7
+    },
+    {
+      "id": 34,
+      "scope": "global",
+      "origin_plan": "2026-06-05-combo-select-widget",
+      "title": "JavaScript factory functions must not invoke caller-supplied callbacks synchronously during construction",
+      "content": "When a factory function (or constructor) accepts a callback in its config object and initialises state from a provided initial value, it must not invoke that callback synchronously during the construction call. If it does, the caller's `const widget = createWidget({ onChange, value })` pattern causes a TDZ ReferenceError: `onChange` fires before the assignment to `widget` is complete, so any reference to `widget` inside `onChange` crashes. The fix is to set initial state via direct property assignment rather than routing through the callback-triggering internal method. Apply this rule unconditionally: callbacks supplied at construction time are for post-construction user events only, never for state initialisation side effects.",
+      "category": "architecture",
+      "tags": [
+        "javascript",
+        "factory-function",
+        "constructor",
+        "callback",
+        "temporal-dead-zone",
+        "tdz",
+        "vanilla-js",
+        "widget"
+      ],
+      "source": "WP-004 QA pipeline (bug discovery) + WP-004 implementation rework (fix)",
+      "created_at": "2026-06-08T09:44:58Z",
+      "confidence": 0.9
+    },
+    {
+      "id": 35,
+      "scope": "global",
+      "origin_plan": "2026-06-05-combo-select-widget",
+      "title": "Async UI operations: lock interactive elements before the first await on every async code path, not just the primary one",
+      "content": "When protecting UI against reentrant callbacks during an async operation, ensure that every async code path (not just the most common one) disables interactive elements before its first `await`. If a primary path disables the UI correctly but a secondary path (e.g. a \"discover\" button handler alongside a \"save\" handler) only sets a busy flag without disabling the UI, a narrow race window remains: a user interaction during the async gap can fire an `onChange` callback while the busy flag is true, triggering a rollback that re-fires `onChange`, producing infinite recursion. The secondary path must mirror the primary path's disable/enable pattern exactly, including in its `finally` block. This omission is common because the primary path is written first and the pattern is correct there, leading developers to assume the secondary path is also safe.",
+      "category": "architecture",
+      "tags": [
+        "javascript",
+        "async",
+        "race-condition",
+        "busy-guard",
+        "infinite-recursion",
+        "event-handler",
+        "ui",
+        "vanilla-js"
+      ],
+      "source": "WP-004 QA + code-review; WP-006 project comment (flagged independently by 3 agents)",
+      "created_at": "2026-06-08T09:45:08Z",
+      "confidence": 0.8
+    },
+    {
+      "id": 37,
+      "scope": "global",
+      "origin_plan": "2026-04-23-update-comtype-sending-modes",
+      "title": "PHPStan silently produces no output when the worker process OOMs — always set memory_limit in phpstan.neon",
+      "content": "When PHPStan's worker child process runs out of memory, it exits silently — the parent process reports no errors and analysis appears to have passed. This is not a visible crash; there is no error message. The default 128 MB memory limit is insufficient for many real-world PHP codebases. Adding `memory_limit: 512M` (or higher) to `phpstan.neon` is essential to ensure analysis actually completes. Without this setting, a CI step that runs PHPStan can appear green while having analysed nothing.",
+      "category": "tooling",
+      "tags": [
+        "php",
+        "phpstan",
+        "static-analysis",
+        "ci",
+        "configuration",
+        "oom"
+      ],
+      "source": "WP-001 implementation",
+      "created_at": "2026-06-08T11:53:48Z",
+      "confidence": 0.8
+    },
+    {
+      "id": 38,
+      "scope": "global",
+      "origin_plan": "2026-04-23-update-comtype-sending-modes",
+      "title": "PHPUnit #[CoversClass] is not transitively applied to traits — each test class that exercises trait methods needs its own annotation",
+      "content": "When methods are extracted from a concrete PHP class into a trait, and that trait is subsequently consumed by multiple classes, PHPUnit's `#[CoversClass]` annotation on a test class covers only the class named in the annotation — it does not transitively attribute coverage to the trait. If test class A annotates only the consuming class, the trait methods appear uncovered in any other consumer's test report. The fix is to add `#[CoversClass(TheTrait::class)]` explicitly to each test class that exercises the trait's methods, or create a dedicated test class for the trait itself.",
+      "category": "testing",
+      "tags": [
+        "php",
+        "phpunit",
+        "traits",
+        "coverage",
+        "test-attribution",
+        "refactoring"
+      ],
+      "source": "WP-001 code-review / documentation",
+      "created_at": "2026-06-08T11:53:56Z",
+      "confidence": 0.72
+    },
+    {
+      "id": 39,
+      "scope": "global",
+      "origin_plan": "2026-04-23-add-comtype-country-rework-1",
+      "title": "PHP dual-trait use causes a silent runtime fatal when both traits define the same method",
+      "content": "When consolidating a subsidiary PHP trait into a parent trait (so the parent now provides the method that the subsidiary previously provided), classes that already use BOTH traits will compile without error but throw a PHP fatal \"cannot redeclare method\" at runtime. PHPStan does not always catch this in all configurations. The fix is to remove the subsidiary `use` statement from every class that uses the parent trait. Prevention: after any trait consolidation refactor, grep the entire codebase for classes that simultaneously import both the parent and subsidiary trait before merging. This pattern was discovered when `TenantAPITrait` was absorbed into `ComtypeAPITrait` — two classes that used both went undetected until the consolidation grep was widened beyond the originally scoped file set.",
+      "category": "architecture",
+      "tags": [
+        "php",
+        "traits",
+        "refactoring",
+        "runtime-fatal",
+        "static-analysis",
+        "code-review"
+      ],
+      "source": "synthesis + WP-005 implementation (hcp-editor / 2026-04-23-add-comtype-country-rework-1)",
+      "created_at": "2026-06-09T17:15:50Z",
+      "confidence": 0.85
+    },
+    {
+      "id": 40,
+      "scope": "global",
+      "origin_plan": "2026-06-05-gui-project-detail-auto-update",
+      "title": "Classify polling responses as none/data/structural before dispatching UI updates",
+      "content": "When a SPA polls a backend periodically, routing all responses through a pure classification function — returning `none` (no change), `data` (patchable in-place), or `structural` (full re-render required) — keeps update logic clean and prevents unnecessary DOM churn. The classification function compares a serialisable snapshot of the previous response against the new one; structural triggers (e.g. item count changes, terminal state transitions) are checked first so they win over any simultaneous data-only changes. This pattern was validated across a complete polling implementation: structural changes triggered a full page re-render while data-only changes drove targeted DOM patches, with zero regressions across 100+ new tests.",
+      "category": "architecture",
+      "tags": [
+        "polling",
+        "dom",
+        "spa",
+        "vanilla-js",
+        "diff",
+        "snapshot",
+        "performance"
+      ],
+      "source": "synthesis + WP-002 + WP-003",
+      "created_at": "2026-06-09T20:19:21Z",
+      "confidence": 0.85
+    },
+    {
+      "id": 41,
+      "scope": "global",
+      "origin_plan": "2026-06-05-gui-project-detail-auto-update",
+      "title": "Scope a polling state machine inside the render closure, not at module level",
+      "content": "When building a polling loop for a SPA view, storing the poll controller and last-snapshot reference inside the render function's closure — rather than at module scope — prevents cross-render contamination. If a structural change triggers a full re-render, the new closure naturally creates a fresh controller and snapshot, eliminating stale-state bugs. Module-scoped poll variables survive re-renders and can cause a subsequent render to inherit the previous render's state. This design was enforced as an explicit acceptance criterion after recognising the risk, and the single-interval invariant (exactly one active interval at all times) was confirmed by dedicated integration tests.",
+      "category": "architecture",
+      "tags": [
+        "polling",
+        "closure",
+        "spa",
+        "vanilla-js",
+        "state-machine",
+        "render-lifecycle"
+      ],
+      "source": "synthesis + WP-003",
+      "created_at": "2026-06-09T20:19:28Z",
+      "confidence": 0.85
+    },
+    {
+      "id": 42,
+      "scope": "global",
+      "origin_plan": "2026-06-05-gui-project-detail-auto-update",
+      "title": "DOM patch helpers must re-query the DOM per invocation and guard writes with compare-and-swap",
+      "content": "Targeted DOM patch functions in a long-lived polling loop should re-query target elements fresh on every call (no cached references stored between ticks) and guard each write with a compare-before-swap check (read current value, skip if unchanged). Cached element references become stale after a structural re-render replaces the DOM subtree, leading to silent no-ops or errors. The compare-before-swap guard prevents unnecessary DOM mutations that would otherwise reset browser-managed state (cursor position, scroll offset, IME input). Both constraints were written as explicit acceptance criteria and verified by dedicated tests that assert DOM identity preservation (strict `===` reference checks before and after a poll tick).",
+      "category": "architecture",
+      "tags": [
+        "polling",
+        "dom",
+        "spa",
+        "vanilla-js",
+        "compare-and-swap",
+        "patch",
+        "performance"
+      ],
+      "source": "synthesis + WP-001 + WP-005",
+      "created_at": "2026-06-09T20:19:37Z",
+      "confidence": 0.85
+    },
+    {
+      "id": 43,
+      "scope": "global",
+      "origin_plan": "2026-06-11-comtype-trait-composition-fix",
+      "title": "PHP: A static-analysis suppression on a copied trait method can mask interface omissions in unrelated consumer classes",
+      "content": "When a trait method is copied into an aggregate trait and a `@phpstan-ignore` (or equivalent suppression) is added to silence a resulting type error, the suppression may mask structural problems in consumer classes that are two degrees removed from the suppression itself. In one case, a suppression on a re-implemented method in an aggregate trait was hiding the fact that a consumer class of that trait had never implemented the required interface — a bug in a completely different file, invisible because the suppression silenced the only PHPStan signal that would have flagged it. When removing such a suppression, audit all consumer classes for interface alignment; the suppression may have been doing more work than it appeared to do.",
+      "category": "architecture",
+      "tags": [
+        "php",
+        "phpstan",
+        "static-analysis",
+        "traits",
+        "interface",
+        "suppression",
+        "technical-debt"
+      ],
+      "source": "synthesis",
+      "created_at": "2026-06-11T15:08:09Z",
+      "confidence": 0.8
+    },
+    {
+      "id": 44,
+      "scope": "global",
+      "origin_plan": "2026-06-11-comtype-trait-composition-fix",
+      "title": "PHP: Aggregate traits that compose sub-traits via `use` should document the composition contract in PHPDoc to prevent consumer double-inclusion",
+      "content": "When a PHP trait composes another trait internally via `use SubTrait;`, consumer classes must not add `use SubTrait;` themselves — doing so causes a method conflict that PHP will report as a fatal error (or, if methods are identical, silently pick one). An aggregate trait that composes sub-traits should carry a PHPDoc warning explicitly stating which sub-traits are already included and that consumers must not re-add them. This guard-rail is most valuable when the composition is non-obvious — e.g., when the aggregate trait's interface extends the sub-trait's interface, making the composition mandatory — and when a future developer might add `use SubTrait;` following a pattern they see in other consumer classes that do NOT use the aggregate.",
+      "category": "architecture",
+      "tags": [
+        "php",
+        "traits",
+        "phpdoc",
+        "composition",
+        "documentation",
+        "guard-rail"
+      ],
+      "source": "synthesis",
+      "created_at": "2026-06-11T15:08:18Z",
+      "confidence": 0.75
+    },
+    {
+      "id": 45,
+      "scope": "global",
+      "title": "Drain a shared cross-file array with `.length = 0`, not `= []`, in non-ESM browser globals environments",
+      "content": "When splitting a browser codebase that uses plain `<script>` tags (no module bundler) into multiple files, a mutable array shared between files must be drained in-place using `.length = 0` rather than reassigned with `= []`. If file A owns the array and promotes it to `globalThis.arr = myArr`, and file B captures a reference via `const arr = globalThis.arr`, then a subsequent `globalThis.arr = []` in file A creates a new array object — file B's binding still points to the original, silently breaking the drain. In-place mutation (`globalThis.arr.length = 0`) preserves object identity so all bindings remain consistent. The canonical ownership pattern is: main file declares and initialises the array as a local var, immediately promotes it (`globalThis.arr = localArr`), and is the sole owner; secondary files access it exclusively via `globalThis.arr` and never reassign the property.",
+      "category": "architecture",
+      "tags": [
+        "javascript",
+        "browser",
+        "non-esm",
+        "globalThis",
+        "shared-state",
+        "array",
+        "reference-identity",
+        "script-tags",
+        "module-decomposition"
+      ],
+      "source": "synthesis + WP-004 plan alternatives table + constraints.md",
+      "created_at": "2026-06-12T08:12:37Z",
+      "confidence": 0.8
+    },
+    {
+      "id": 46,
+      "scope": "global",
+      "origin_plan": "2026-06-11-comtype-search-and-lookup-integration",
+      "title": "Two-Pass ID-then-Hydrate Architecture for Richly Typed API Responses",
+      "content": "When a lightweight search/lookup engine returns only entity IDs but the API response requires rich multi-field hydration, avoid N+1 queries and bespoke lightweight queries by using a two-pass design: Pass 1 calls the lookup engine with no result limit to retrieve all matching IDs and compute `totalCount`; Pass 2 constrains the existing filter/hydration query to that ID set using an `IN(...)` clause, then applies `limit` and `offset` for pagination. This reuses all existing hydration logic so the response format is identical regardless of which path was taken. The trade-off is that Pass 1 loads all matching IDs into memory — acceptable for moderate dataset sizes but worth revisiting if ID arrays can reach tens of thousands of rows. The pattern is applicable in any system where a fast text-search index (lookup table, full-text engine, Elasticsearch) coexists with a relational query that handles hydration.",
+      "category": "architecture",
+      "tags": [
+        "api",
+        "pagination",
+        "search",
+        "hydration",
+        "performance",
+        "lookup",
+        "two-pass"
+      ],
+      "source": "synthesis, WP-004",
+      "created_at": "2026-06-17T13:50:21Z",
+      "confidence": 0.85
+    },
+    {
+      "id": 47,
+      "scope": "global",
+      "title": "Timezone normalization for display belongs at the rendering call-site, not in shared data-parsing utilities",
+      "content": "When a utility method parses raw date strings into DateTime objects, adding display-oriented timezone normalization (e.g. setTimezone()) inside that utility is unsafe if the method is also consumed by non-display code such as query-parameter builders or filter constructors. Shifting the timezone inside the shared utility silently shifts data-layer values — for example, date range query bounds — by the DST offset (typically 1–2 hours), producing incorrect results. The correct pattern is to leave the shared utility timezone-neutral and apply setTimezone() only at each rendering call-site. This means display consumers each call setTimezone() explicitly, but non-display consumers receive the original offset unchanged. Discovered when fixing UTC timestamp display bugs: centralizing setTimezone() in the parser would have corrupted Elasticsearch range query parameters built from the same parsed DateTime objects.",
+      "category": "architecture",
+      "tags": [
+        "php",
+        "datetime",
+        "timezone",
+        "architecture",
+        "rendering",
+        "display-layer"
+      ],
+      "source": "synthesis",
+      "created_at": "2026-06-18T10:10:26Z",
+      "confidence": 0.9
+    },
+    {
+      "id": 48,
+      "scope": "global",
+      "title": "PHP: clone before setTimezone() when the DateTime source is a domain object getter (not a local variable)",
+      "content": "In PHP, calling setTimezone() on a DateTime object mutates it in place and returns $this. If the DateTime was obtained from a domain object getter that returns a direct property reference (not a copy), calling setTimezone() without first cloning will permanently alter the stored data-layer object. The correct pattern is: (clone $obj)?->setTimezone(...)->format(...). Crucially, this clone is only necessary when the source is a shared reference (domain getter, array reference, etc.) — a freshly constructed local DateTime variable does not need cloning before setTimezone(). The distinction matters: developers familiar with immutable-style chaining may add clone unnecessarily, or — more dangerously — omit it when working with getters. The latent bug from omitting clone only manifests if the same DateTime object is accessed again after rendering.",
+      "category": "architecture",
+      "tags": [
+        "php",
+        "datetime",
+        "clone",
+        "mutation",
+        "timezone",
+        "domain-model"
+      ],
+      "source": "synthesis",
+      "created_at": "2026-06-18T10:10:35Z",
+      "confidence": 0.85
+    },
+    {
+      "id": 49,
+      "scope": "global",
+      "origin_plan": "2026-06-26-multi-credential-support",
+      "title": "TypeScript: Use a Pick-guard constant to enforce compile-time completeness of config defaults",
+      "content": "When a TypeScript project has a config interface (e.g. `AppConfig`) and a corresponding `DEFAULTS` object, declare a typed guard constant: `const _guard: Pick<AppConfig, keyof typeof DEFAULTS> = DEFAULTS`. TypeScript will raise a compile error at the declaration site if `DEFAULTS` is missing any key that exists in `AppConfig`, and it will also error if `DEFAULTS` contains a key not in `AppConfig`. This gives you a zero-runtime-cost, compile-time enforcement that every config field has a default — preventing silent omissions when new fields are added. Using `Partial<AppConfig>` for `DEFAULTS` instead would silently permit missing entries. The guard variable name (e.g. `_defaultsCoverageGuard`) should be prefixed with `_` to signal to readers that it exists only for its type-checking side effect.",
+      "category": "architecture",
+      "tags": [
+        "typescript",
+        "config",
+        "defaults",
+        "compile-time",
+        "type-safety",
+        "architecture"
+      ],
+      "source": "synthesis — WP-004 code reviewer observation, documented in constraints.md",
+      "created_at": "2026-06-26T14:28:12Z",
+      "confidence": 0.8
+    },
+    {
+      "id": 50,
+      "scope": "global",
+      "title": "PHP (PHPStan): Level 5 does not catch int/string mismatch when a typed constant is passed to a base-class constructor in an external file",
+      "content": "PHPStan at level 5 will not surface a fatal `TypeError` that results from passing a `string`-typed constant to a constructor parameter declared `int` in a parent class defined in a different file. The strict-type enforcement exists in the declaring file of the base class, but PHPStan's cross-file type propagation does not raise an error at the call site in the child file. The defect is caught only at runtime. When declaring validation or error-code constants that are passed to exception constructors, always check the constructor's parameter type and explicitly type the constant (`public const int`) to match — do not rely on static analysis alone to catch this class of mismatch.",
+      "category": "testing",
+      "tags": [
+        "php",
+        "phpstan",
+        "static-analysis",
+        "typed-constants",
+        "exceptions",
+        "runtime-error",
+        "type-safety"
+      ],
+      "source": "synthesis + WP-001 QA FAIL pipeline",
+      "created_at": "2026-06-29T09:22:22Z",
+      "confidence": 0.8
+    },
+    {
+      "id": 51,
+      "scope": "global",
+      "title": "PHP: Use a trait without its companion interface to deliberately restrict the public method surface of a consumer class",
+      "content": "When an interface+trait pair is designed to share behaviour across multiple classes, individual consumers can use the trait without implementing the interface to avoid inheriting method signatures that are irrelevant or misleading in their context. For example, a creation endpoint can use a shared trait to access a response-builder static method without also being forced to expose a lookup-by-ID method that the interface declares. This pattern is valid in PHP and is worth documenting explicitly in the trait's PHPDoc, because the natural assumption (use the trait → also implement the interface) is incorrect in these cases. Without the docblock clarification, a reviewer seeing the divergence will flag it as an error.",
+      "category": "architecture",
+      "tags": [
+        "php",
+        "traits",
+        "interfaces",
+        "api-design",
+        "encapsulation",
+        "documentation"
+      ],
+      "source": "synthesis + WP-002 code-review + WP-002 documentation pipeline",
+      "created_at": "2026-06-29T09:22:31Z",
+      "confidence": 0.75
+    },
+    {
+      "id": 52,
+      "scope": "global",
+      "title": "Use a Map to track timer IDs in clearTimeout test stubs — single-ID counters silently break concurrent timers",
+      "content": "A common test-stub pattern for `clearTimeout` uses a single module-level ID variable (e.g. `_timerId`) to record the most-recently-registered timer, then clears only that ID. This silently breaks whenever more than one timer is pending simultaneously: clearing an earlier timer via its ID has no effect, leaving it live. The fix is to replace the single variable with a `Map<number, Function>` keyed by timer ID, so `clearTimeout(id)` always locates and removes the correct entry regardless of how many timers are registered. This pattern produced an infinite hang in a GUI view test that registered overlapping debounce timers. Every test harness that stubs `clearTimeout` should use a Map, not a single ID counter.",
+      "category": "testing",
+      "tags": [
+        "testing",
+        "javascript",
+        "timer",
+        "stub",
+        "mock",
+        "clearTimeout",
+        "test-hang",
+        "debounce"
+      ],
+      "source": "WP-003",
+      "created_at": "2026-06-29T10:20:52Z",
+      "confidence": 0.9
+    },
+    {
+      "id": 53,
+      "scope": "global",
+      "title": "A missing async stub silently stalls Promise.all in tests — no error is thrown, the test just hangs",
+      "content": "When a `Promise.all()` call inside production code includes a promise that reads from a stub, omitting that stub causes the corresponding promise to never resolve. The test does not fail with an error; it simply hangs indefinitely. This is hard to diagnose because no timeout, error, or assertion failure is emitted. The fix is to ensure every async call invoked by the code path under test has a corresponding stub. A systematic way to catch the gap: run the test file in isolation with a short timeout and look for any hanging test rather than any failing one. This was the primary root cause of an infinite hang in a view test suite that called `Promise.all([api.config.notesDisplay.get(), ...])` without a stub for `api.config.notesDisplay.get`.",
+      "category": "testing",
+      "tags": [
+        "testing",
+        "javascript",
+        "Promise.all",
+        "stub",
+        "mock",
+        "test-hang",
+        "async"
+      ],
+      "source": "WP-003",
+      "created_at": "2026-06-29T10:21:02Z",
+      "confidence": 0.9
+    },
+    {
+      "id": 54,
+      "scope": "global",
+      "title": "Append-only error logs used as health-check state sources produce stale UI badges when no success entry is written on recovery",
+      "content": "When UI state (such as an error badge) is driven by querying an append-only log for the presence of error entries, the badge will persist indefinitely if a success or resolution entry is never written when the error condition clears. The health check sees the old error entry and continues to surface the badge even after the user has fixed the underlying issue. The fix is to write a corresponding \"success\" or \"info\" log entry whenever the error condition resolves, so the health check can determine which errors are current. For example, writing a `Source: 'X', Severity: 'info'` entry on successful resolution allows a health check to suppress any earlier `Source: 'X', Severity: 'warning'` entry for the same resource. Any system that derives live UI status from an append-only log without a resolution entry will exhibit this stale-badge pattern.",
+      "category": "architecture",
+      "tags": [
+        "architecture",
+        "health-check",
+        "UI",
+        "state",
+        "logging",
+        "badge",
+        "append-only",
+        "stale-state"
+      ],
+      "source": "WP-002 synthesis",
+      "created_at": "2026-06-29T10:21:11Z",
+      "confidence": 0.85
+    },
+    {
+      "id": 55,
+      "scope": "global",
+      "title": "Inject credentials into URLs via WHATWG URL property assignment, not string concatenation — special characters in tokens are auto-encoded",
+      "content": "When embedding an authentication token into a URL (e.g. `https://token@host/path`), using string concatenation or template literals leaves special characters in the token unencoded, potentially producing malformed URLs or broken authentication. The correct approach is to use the WHATWG URL API: parse the URL into a `URL` object, then assign `url.username = token` (and optionally `url.password`). The URL API automatically percent-encodes any special characters in the assigned value, producing a standards-compliant URL regardless of token content. String concatenation cannot provide this guarantee without a separate encoding step, which is easy to omit.",
+      "category": "security",
+      "tags": [
+        "security",
+        "URL",
+        "WHATWG",
+        "credentials",
+        "token",
+        "encoding",
+        "javascript",
+        "typescript",
+        "injection"
+      ],
+      "source": "WP-008 security-audit",
+      "created_at": "2026-06-29T10:21:19Z",
+      "confidence": 0.9
+    },
+    {
+      "id": 56,
+      "scope": "global",
+      "origin_plan": "2026-04-23-update-comtype-variable",
+      "title": "PHP trait method omitting its backing interface is physically public but outside the consumer's declared contract",
+      "content": "When a PHP trait provides a method that is not declared on the consuming class's implemented interface, the method remains physically public at the PHP level — but it is absent from the consuming class's declared contract. Static analysers (PHPStan, Psalm) cannot resolve it type-safely through the consuming class type, and callers cannot rely on it being reachable without casting or narrowing. This surfaces as a silent API surface omission rather than a compile-time error. The fix is to implement the companion interface on every consuming class that needs the method to be part of its public contract. When designing a trait intended for use across multiple consumers, make the interface mandatory rather than optional to prevent this class of mistake.",
+      "category": "architecture",
+      "tags": [
+        "php",
+        "trait",
+        "interface",
+        "static-analysis",
+        "phpstan",
+        "visibility",
+        "contract"
+      ],
+      "source": "synthesis / WP-002 code-review + documentation pipelines",
+      "created_at": "2026-06-29T12:29:02Z",
+      "confidence": 0.85
+    },
+    {
+      "id": 57,
+      "scope": "global",
+      "origin_plan": "2026-06-26-multi-credential-support-rework-2",
+      "title": "Resolve Stale Health Indicators via Event-Log State Machine (Write a Success Entry)",
+      "content": "When a subsystem writes error-state entries to an append-only log, stale indicators (e.g., persistent \"credential missing\" badges) can be resolved by writing a success-severity entry to the same log after a successful operation — no new stores, TTL logic, or deletion operations needed. The current health state is determined by reading the most recent entry per resource key using the log's existing newest-first ordering guarantee and a Set-based de-duplication pass (O(n), no sorting). This pattern keeps the state machine entirely within the existing log infrastructure: a newer success entry suppresses the stale error; a subsequent error entry re-surfaces the issue. Validated by a full QA + code-review cycle that explicitly praised the approach as preferable to TTL-based expiry or a separate success-tracking store.",
+      "category": "architecture",
+      "tags": [
+        "event-log",
+        "state-machine",
+        "health-check",
+        "append-only-log",
+        "stale-state",
+        "deduplication"
+      ],
+      "source": "synthesis + WP-007 code-review",
+      "created_at": "2026-06-29T13:14:04Z",
+      "confidence": 0.85
+    },
+    {
+      "id": 58,
+      "scope": "global",
+      "origin_plan": "2026-04-23-update-comtype-variable-rework-1",
+      "title": "Use raw DB queries — not ORM re-fetch — to assert persistence in tests",
+      "content": "When writing tests that verify a record was persisted to the database, avoid re-fetching via the ORM to assert the new value. ORM identity caches commonly return the in-memory instance rather than re-querying the database, so an assertion like `orm.find(id).field == newValue` will pass even if no `save()` call was ever made — because the in-memory object already holds the mutated value. Instead, assert persistence by querying the database directly (e.g. a raw SQL `SELECT` or equivalent low-level fetch). This pattern exposed a production bug where all field mutations were written only to the in-memory ORM record and never persisted, yet every ORM-based test assertion passed. Migrate to raw DB queries for any live-run persistence assertion wherever a test previously used an ORM re-fetch from the same identity cache.",
+      "category": "testing",
+      "tags": [
+        "orm",
+        "testing",
+        "persistence",
+        "database",
+        "identity-cache",
+        "false-positive"
+      ],
+      "source": "synthesis + WP-003 implementation pipeline",
+      "created_at": "2026-06-30T15:53:01Z",
+      "confidence": 0.85
+    },
+    {
+      "id": 59,
+      "scope": "global",
+      "origin_plan": "2026-04-23-delete-comtype-variable",
+      "title": "Use raw DB queries (not ORM-cached reads) for live-run persistence assertions in API tests",
+      "content": "In ORM frameworks that cache object state per-instance, asserting persistence by calling the same ORM object after an API invocation reads from the in-memory object cache, not the database. This means a missing `save()` or `commit()` in the API method goes undetected — the test passes silently even though the change was never persisted. A real production bug (an API method that never called `save()`) survived undetected in this codebase for multiple development cycles while all ORM-based persistence tests passed. The fix: use a raw SQL query that bypasses the ORM layer as the live-run persistence assertion. This catches missing `save()`/`commit()` calls and other persistence failures that are invisible to ORM-based assertions.",
+      "category": "testing",
+      "tags": [
+        "orm",
+        "testing",
+        "persistence",
+        "integration-testing",
+        "php",
+        "false-positive",
+        "cache"
+      ],
+      "source": "synthesis + WP-005",
+      "created_at": "2026-07-01T09:42:35Z",
+      "confidence": 0.85
+    },
+    {
+      "id": 60,
+      "scope": "global",
+      "origin_plan": "2026-04-23-delete-comtype-variable",
+      "title": "Bump AUTO_INCREMENT above sibling-table MAX at re-seed time to prevent cross-table ID collision test failures",
+      "content": "When two database tables share overlapping ID ranges and tests assert that a newly-created record in one table does not exist in the other (e.g. `assertFalse(idExists(newID))`), a stale AUTO_INCREMENT can assign an ID that already exists in the sibling table. The resulting test failure appears non-deterministic — it depends on the current AUTO_INCREMENT state rather than the code under test, making it very difficult to diagnose. In this project a pre-existing test failed on unmodified `main` for exactly this reason: the custom-variables table AUTO_INCREMENT (370) collided with a seeded global variable ID (370) in a sibling table. The fix: at the end of every seed run, read `MAX(id)` from the sibling table and set the lower table's AUTO_INCREMENT to that value plus a safety offset (e.g. +10,000). The operation is idempotent when the seeder truncates before re-inserting.",
+      "category": "testing",
+      "tags": [
+        "testing",
+        "seeding",
+        "mysql",
+        "auto-increment",
+        "id-collision",
+        "database",
+        "test-isolation"
+      ],
+      "source": "WP-004 + synthesis",
+      "created_at": "2026-07-01T09:42:44Z",
+      "confidence": 0.75
+    },
+    {
+      "id": 61,
+      "scope": "global",
+      "title": "Document non-obvious method prerequisites at every consumption surface",
+      "content": "When a method has a non-obvious prerequisite (e.g. an external resource must exist, a related entity must be configured), document the constraint at every surface where a consumer might encounter the method: in the class or function PHPDoc (for IDE and static-analysis consumers) and in any user-facing description string or generated documentation (for runtime and API consumers). Documenting at only one surface leaves the other consumers to discover the constraint via an opaque failure. This dual-surface pattern was triggered in this project when a hidden prerequisite on a read API method caused an opaque exception for callers with no countries configured, and was subsequently added to both PHPDoc and the runtime description string during the documentation pipeline stage.",
+      "category": "workflow",
+      "tags": [
+        "documentation",
+        "php",
+        "api",
+        "prerequisites",
+        "dx"
+      ],
+      "source": "synthesis (gold nugget #4), WP-001 code-review documentation-forward, WP-001 documentation pipeline",
+      "created_at": "2026-07-01T14:13:15Z",
+      "confidence": 0.75
+    },
+    {
+      "id": 62,
+      "scope": "global",
+      "title": "Use sprintf positional placeholders to bind interface constants to prose in description strings",
+      "content": "When generating documentation or description strings that reference interface constants (e.g. response key names), use sprintf with positional placeholders (%N$s) rather than string concatenation or ordered %s arguments. This makes each placeholder explicitly bound to a specific constant, so that adding, removing, or reordering constants in the format call does not silently corrupt the prose. The technique is particularly valuable in heredoc description strings where the format call and the interpolated identifiers are visually separated. This pattern was identified during code review of an API method whose description prose referenced multiple interface constants, and the reviewer noted it as the correct idiomatic form to prevent key-name drift.",
+      "category": "workflow",
+      "tags": [
+        "php",
+        "sprintf",
+        "documentation",
+        "api",
+        "constants",
+        "string-formatting"
+      ],
+      "source": "synthesis (gold nugget #3), WP-001 code-review improvement comment",
+      "created_at": "2026-07-01T14:13:34Z",
+      "confidence": 0.65
+    },
+    {
+      "id": 63,
+      "scope": "global",
+      "origin_plan": "2026-06-18-create-value-variation",
+      "title": "PHP: Give each interface its own numeric range for validation/error codes to prevent constant collisions",
+      "content": "When a PHP class can implement two or more interfaces that each define constants of the same name (e.g. `VALIDATION_NON_CUSTOM_COMTYPE`), both interfaces must assign the constant the same value — or PHP will throw a fatal error at the implementing class. Reusing numeric codes from a sibling interface is therefore unsafe: if the codes differ, any future class that implements both interfaces will fail. The safe convention is to assign each interface its own dedicated numeric range for error and validation codes, so name collisions on shared constant names are impossible even when a class implements both. This range-ownership should be treated as an interface-level invariant and documented at the point of declaration.",
+      "category": "architecture",
+      "tags": [
+        "php",
+        "interfaces",
+        "constants",
+        "validation-codes",
+        "naming-convention",
+        "fatal-error",
+        "type-safety"
+      ],
+      "source": "synthesis §4 + WP-001 implementation comment",
+      "created_at": "2026-07-03T12:12:47Z",
+      "confidence": 0.75
+    },
+    {
+      "id": 64,
+      "scope": "global",
+      "title": "Register IDs before naming artifacts — never the reverse",
+      "content": "In workflows where a registry or ledger assigns IDs at creation time, always register the entity first to obtain its ID, then name the artifact (file, record, resource) after the returned ID. The reverse order (create artifact with a provisional name, register it, then rename) requires a three-way rename step and creates a window where the artifact name, the registration record, and any referring documents can diverge. This divergence is the root cause of cross-filing and mismatch bugs in multi-step agent workflows. The fix is structural: eliminate the rename step entirely by making ID-bearing registration the first action.",
+      "category": "workflow",
+      "tags": [
+        "workflow",
+        "multi-agent",
+        "ordering",
+        "id-management",
+        "artifact-naming",
+        "bootstrapper"
+      ],
+      "source": "synthesis + WP-003",
+      "created_at": "2026-07-03T14:14:05Z",
+      "confidence": 0.85
+    },
+    {
+      "id": 65,
+      "scope": "global",
+      "title": "Warn early, self-heal at the gate — defense-in-depth for shared data in multi-agent pipelines",
+      "content": "When critical data flows between agents in a pipeline, a two-checkpoint architecture provides resilient fidelity guarantees: (1) an early upstream checkpoint that detects drift and emits a warning without blocking, and (2) an authoritative downstream gate that self-heals by correcting the artifact to match the authoritative source before handoff. The upstream agent remains stateless and reports only; the downstream gatekeeper owns the correction. This division of responsibility avoids silent drift without adding complexity in the wrong layer. The correction direction must be explicit and unambiguous — in this project: ledger is authoritative, spec file is corrected; never the reverse.",
+      "category": "architecture",
+      "tags": [
+        "architecture",
+        "multi-agent",
+        "data-fidelity",
+        "defense-in-depth",
+        "self-healing",
+        "workflow",
+        "pipeline"
+      ],
+      "source": "synthesis Gold Nuggets + WP-004 code-review",
+      "created_at": "2026-07-03T14:14:23Z",
+      "confidence": 0.85
+    },
+    {
+      "id": 66,
+      "scope": "global",
+      "title": "Fix agent behavior with verbatim-copy guidance rather than relaxing intentional tool strictness",
+      "content": "When a tool's strict matching behavior (e.g., exact `===` string comparison) is intentional and documented, the correct fix for agent mismatches is explicit verbatim-copy guidance in the agent's persona — not server-side normalization. In this project, agents were paraphrasing criterion text when calling a pipeline-completion tool; the strict exact-match silently appended unmatched items as phantom duplicate criteria instead of erroring. Adding explicit guidance to copy text verbatim from the tool's own read API eliminated the phantom duplicates without changing intentional tool semantics. This pattern applies broadly: when tool behavior is correct by design and the problem is agent usage, change the agent guidance at lower risk than relaxing the tool.",
+      "category": "workflow",
+      "tags": [
+        "agent-guidance",
+        "exact-match",
+        "verbatim-copy",
+        "tool-constraints",
+        "phantom-duplicates",
+        "multi-agent",
+        "persona"
+      ],
+      "source": "synthesis Gold Nuggets + WP-002 + plan Alternatives Considered",
+      "created_at": "2026-07-03T14:14:33Z",
+      "confidence": 0.8
+    },
+    {
+      "id": 67,
+      "scope": "global",
+      "origin_plan": "2026-07-03-phpstan-memory-limit-agent-compliance",
+      "title": "PHPStan (2.x+): enforce memory limit via bootstrapFiles ini_set, not NEON config",
+      "content": "PHPStan 2.x removed the `memoryLimit` config key from `phpstan.neon`, making it impossible to set the memory limit declaratively in the config file. The only project-scoped, invocation-agnostic solution is to add `ini_set('memory_limit', '...')` to the PHPStan bootstrap file (referenced via `bootstrapFiles` in `phpstan.neon`). This is more reliable than passing `--memory-limit` on the CLI, because PHPStan loads `bootstrapFiles` *after* processing CLI flags — meaning the `ini_set` call in the bootstrap will override any `--memory-limit` passed by the caller. If a project has no existing bootstrap file, create one and wire it in via a `bootstrapFiles` entry. The `ini_set` call should carry an inline comment explaining that the limit is set here to guarantee correct analysis regardless of invocation method (direct binary, Composer script, or CI pipeline).",
+      "category": "tooling",
+      "tags": [
+        "phpstan",
+        "php",
+        "memory-limit",
+        "bootstrap",
+        "static-analysis",
+        "ini_set",
+        "phpstan-2"
+      ],
+      "source": "synthesis",
+      "created_at": "2026-07-03T15:35:10Z",
+      "confidence": 0.8
+    },
+    {
+      "id": 68,
+      "scope": "global",
+      "title": "str_starts_with path-containment guards must include a trailing directory separator",
+      "content": "Any path-containment guard that uses `str_starts_with($resolvedPath, $sourceBase)` must append a trailing '/' to $sourceBase before the comparison. Without it, a sibling directory whose name shares a prefix with the target directory will bypass the guard (e.g., `/modules/fixture-module-foo` incorrectly matches `/modules/fixture-module-foobar/secret.md`). Always write: `$sourceBase = rtrim(...) . '/';` This is a mandatory pattern for all file-access guards in PHP using str_starts_with on directory paths.",
+      "category": "security",
+      "tags": [
+        "php",
+        "path-traversal",
+        "containment-guard",
+        "security",
+        "str_starts_with",
+        "owasp-a01"
+      ],
+      "source": "",
+      "created_at": "2026-07-06T13:50:56Z",
+      "confidence": 1
+    },
+    {
+      "id": 69,
+      "scope": "global",
+      "origin_plan": "2026-06-10-improved-dialogue-render",
+      "title": "Prefer separate functions over a mode parameter when producing distinct output formats from the same input",
+      "content": "When a module needs to render or transform the same input into two meaningfully different output shapes (e.g., verbose vs. compact, debug vs. user-facing), prefer two separate exported functions over a single function with a `mode` or `format` parameter. Separate functions have cleaner call-site signatures, fully independent test surfaces, and eliminate mode-dispatch complexity inside the function body. The mode-parameter approach appears flexible but tends to produce larger, harder-to-read functions where each branch silently diverges — and test cases for one mode accidentally cover (or fail to cover) the other. This decision was made explicitly in a renderer module that introduced a second output format; the separate-function shape kept both implementations independently verifiable and the shared accumulation logic cleanly reusable.",
+      "category": "architecture",
+      "tags": [
+        "architecture",
+        "design-decision",
+        "functions",
+        "rendering",
+        "typescript",
+        "api-design"
+      ],
+      "source": "plan.md — Considered Alternatives; synthesis Gold Nugget #3",
+      "created_at": "2026-07-06T16:06:13Z",
+      "confidence": 0.8
+    },
+    {
+      "id": 70,
+      "scope": "global",
+      "origin_plan": "2026-06-10-improved-dialogue-render",
+      "title": "Use shell commands via execute when documentation agent sandbox does not mount target files",
+      "content": "When a documentation agent's sandbox mounts only a plan subdirectory (e.g., `docs/agents/plans/`), `read_file` and `edit_file` calls to files outside that mount point will fail silently or error. The reliable workaround is to use the `execute` tool with shell commands such as `sed -i` to apply targeted text substitutions directly on the filesystem — bypassing the tool-level path restriction entirely. This incident produced a FAIL pipeline on first pass and a rework cycle; knowing the pattern upfront prevents it. Always verify target file accessibility before starting a documentation pipeline by attempting a `read_file` on a representative target; if it fails, switch to `execute`-based editing immediately.",
+      "category": "workflow",
+      "tags": [
+        "sandbox",
+        "filesystem",
+        "documentation",
+        "execute",
+        "sed",
+        "workaround",
+        "agent-workflow"
+      ],
+      "source": "WP-002 documentation FAIL pipeline; synthesis deferred item #6",
+      "created_at": "2026-07-06T16:06:22Z",
+      "confidence": 0.85
+    },
+    {
+      "id": 71,
+      "scope": "global",
+      "origin_plan": "2026-07-13-improved-dialogue-render",
+      "title": "Index-Before-Render: Pre-scan all stream namespaces to enable cross-namespace event correlation",
+      "content": "When rendering a multi-namespace event stream (e.g., a main agent and one or more sub-agents each emitting events into separate namespace channels), a naive per-namespace rendering loop silently drops correlations between events that belong to different namespaces — for instance, a tool result emitted in a sub-agent namespace that corresponds to a tool call in the main namespace. The fix is to separate index building from rendering: in a first pass, scan all namespaces to construct lookup maps (tool-call ID → tool name, tool-call ID → result content); in a second pass, render each namespace using those global indices. This pattern correctly handles any cross-namespace linkage regardless of the order namespaces are emitted. It was specifically required when a sub-agent's ToolMessage had to annotate a tool call in the parent namespace, and QA confirmed the edge case passed only after the index pass was made global.",
+      "category": "architecture",
+      "tags": [
+        "streaming",
+        "rendering",
+        "multi-namespace",
+        "event-correlation",
+        "two-pass",
+        "langgraph",
+        "typescript",
+        "indexing"
+      ],
+      "source": "synthesis Gold Nugget #1; WP-001 QA cross-namespace edge-case",
+      "created_at": "2026-07-13T14:19:15Z",
+      "confidence": 0.82
+    },
+    {
+      "id": 72,
+      "scope": "global",
+      "origin_plan": "2026-07-15-reference-doc-migration-to-hcp-editor",
+      "title": "Delete a generated file and regenerate it in the same commit/work unit, not across separate steps",
+      "content": "When a migration deletes a file that is a generated artifact already committed to VCS, that file disappears for all consumers until the generator is re-run and the output is committed. If the deletion and the regeneration land in separate work units (commits, PRs, or plan steps), there is a dead period during which any team member who cannot run the generator locally loses access to the file. Rule: delete a generated file and regenerate it atomically in the same work unit. If the generator has not yet been extended to produce the file, delay the deletion until it is.",
+      "category": "workflow",
+      "tags": [
+        "migration",
+        "generated-files",
+        "vcs",
+        "planning",
+        "work-package",
+        "atomicity"
+      ],
+      "source": "synthesis §3 — 2026-07-15-reference-doc-migration-to-hcp-editor",
+      "created_at": "2026-07-16T08:02:33Z",
+      "confidence": 0.85
+    },
+    {
+      "id": 73,
+      "scope": "global",
+      "origin_plan": "2026-07-15-reference-doc-migration-to-hcp-editor",
+      "title": "When migrating a document to a different directory depth, recalculate all relative cross-reference paths for the new location",
+      "content": "Relative cross-reference paths (`../`, `../../`, etc.) inside a document are calculated relative to that document's output location. When a migration moves a document to a different directory level, every relative path it contains becomes stale — even if the referenced target was not itself moved. This failure mode is easy to overlook because the plan may correctly identify the stale links in a checklist step that then gets skipped during implementation. Rule: for every document moved to a new directory depth, enumerate its relative cross-references and recalculate each one from the new location before committing. If multiple documents cross-reference each other and all are being migrated, resolve them together — the order of migration can otherwise produce temporarily valid paths that break when the second document moves.",
+      "category": "workflow",
+      "tags": [
+        "migration",
+        "documentation",
+        "relative-paths",
+        "cross-references",
+        "planning",
+        "stale-links"
+      ],
+      "source": "synthesis §4 — 2026-07-15-reference-doc-migration-to-hcp-editor",
+      "created_at": "2026-07-16T08:10:32Z",
+      "confidence": 0.85
+    },
+    {
+      "id": 74,
+      "scope": "global",
+      "origin_plan": "2026-07-17-set-mailing-state-api",
+      "title": "PHP API: Write methods that gate on validation should delegate to the same validation code path as the sibling read validation method",
+      "content": "When a write API method performs pre-mutation validation as a gate (e.g. before finalizing a resource), it should call the exact same validation implementation used by the corresponding standalone read validation method — not re-implement the checks inline. Using a shared static trait method for both ensures behavioral consistency: any resource that passes the read validation call will pass the write gate, and any bug found in one is automatically fixed in both. Diverging implementations silently drift over time and produce surprising discrepancies between what the preflight check accepts and what the write method accepts. This pattern was confirmed in a mailing API where `SetMailingState(finalize)` and `ValidateMail` both delegate to `MailValidationAPITrait::buildMailValidationResponse()` — the shared implementation was described by the Principal Reviewer as \"a strong, durable design choice\" that eliminates divergence risk.",
+      "category": "architecture",
+      "tags": [
+        "php",
+        "api",
+        "validation",
+        "write-gate",
+        "consistency",
+        "trait",
+        "shared-implementation"
+      ],
+      "source": "synthesis (Gold Nugget #2), WP-005 code-review",
+      "created_at": "2026-07-17T07:59:06Z",
+      "confidence": 0.85
+    },
+    {
+      "id": 75,
+      "scope": "global",
+      "origin_plan": "2026-07-17-set-mailing-state-api",
+      "title": "Multi-tenant API: integer ID entity resolution without explicit tenant-scope check creates IDOR risk when access control lives only in the auth layer",
+      "content": "When a multi-tenant API resolves resources by integer ID using a global collection query (e.g. `getByID($id)` with no tenant filter at the collection layer), and access control relies entirely on per-tenant API key authorization, a key holder for one tenant may be able to manipulate resources belonging to another tenant by guessing sequential integer IDs (Insecure Direct Object Reference). This risk is easy to miss because every sibling method in the same framework uses the same pattern — it looks consistent rather than wrong. A design review is warranted to determine whether tenant-scoping is enforced at the collection layer or solely in the authorization layer before expanding the write API surface. If it is enforced only in auth, document this explicitly as a framework-level assumption. Discovered during a security audit of a write API method; no exploitation found, but flagged as a medium-priority defence-in-depth concern across the entire write API surface.",
+      "category": "security",
+      "tags": [
+        "security",
+        "multi-tenant",
+        "IDOR",
+        "access-control",
+        "api",
+        "integer-id",
+        "defence-in-depth",
+        "php"
+      ],
+      "source": "WP-004 security-audit (medium-priority finding), synthesis (Gold Nugget #4, F-03)",
+      "created_at": "2026-07-17T07:59:06Z",
+      "confidence": 0.75
+    },
+    {
+      "id": 76,
+      "scope": "global",
+      "origin_plan": "2026-07-17-comtype-management-integration",
+      "title": "MCP tool registration: prefer z.enum() over z.string() for server-enforced string enums",
+      "content": "When an MCP tool parameter accepts only a fixed set of string values enforced server-side (e.g. `'default'|'yes'|'no'`), typing it as `z.string().optional()` with constraint documentation in `.describe()` pushes validation to the remote API layer — the MCP schema layer, which is the primary contract visible to clients, accepts any string silently. Using `z.enum(['default','yes','no']).optional()` instead surfaces the constraint as a schema-level rejection before the API call is made, making the accepted values discoverable to clients without reading source code or documentation. The tradeoff debated in this project was `.describe()` (consistent with existing string-only patterns) vs `z.enum()` (earlier error surface); the project-wide recommendation was to establish a policy in favor of `z.enum()` for all fixed-value string parameters. When using `z.enum()`, the enum values should also appear in the `.describe()` text for portability.",
+      "category": "architecture",
+      "tags": [
+        "typescript",
+        "zod",
+        "mcp",
+        "schema-design",
+        "validation",
+        "enum",
+        "api-design"
+      ],
+      "source": "synthesis deferred item #2 + WP-003 QA + synthesis strategic recommendation #3",
+      "created_at": "2026-07-17T16:39:15Z",
+      "confidence": 0.75
+    },
+    {
+      "id": 77,
+      "scope": "global",
+      "origin_plan": "2026-07-21-comtype-management-integration-rework-1",
+      "title": "Build-time codegen scripts: idempotent writes and temp-dir test isolation are mandatory design constraints",
+      "content": "When writing a build-time script that generates a derivative file from a source-of-truth (e.g. a JSON registry → a typed TypeScript wrapper), two design constraints are non-negotiable: (1) **Idempotent write** — compare the generated content against the current file on disk before writing; skip the write if they are identical. Unconditional writes create unnecessary git diff noise and can trigger downstream watchers or recompilation unnecessarily. (2) **Temp-dir test isolation** — test cases that verify the codegen produces or mutates an output file must operate against a controlled temporary directory that mirrors only the needed file structure, never against the live project root. A test that mutates the real output file cannot auto-revert in a test harness, leaving the repository in a dirty state after test runs. These two constraints were explicit acceptance criteria in a codegen implementation (WP-004) and validated by 15 dedicated codegen tests; both were required to achieve idempotent, side-effect-free build integration.",
+      "category": "tooling",
+      "tags": [
+        "codegen",
+        "build-script",
+        "typescript",
+        "idempotent",
+        "test-isolation",
+        "temp-dir",
+        "derivative-file",
+        "build-pipeline"
+      ],
+      "source": "WP-004 implementation + plan §Considered Alternatives + synthesis Gold Nugget #1",
+      "created_at": "2026-07-21T08:26:40Z",
+      "confidence": 0.85
+    },
+    {
+      "id": 78,
+      "scope": "global",
+      "origin_plan": "2026-07-21-comtype-management-integration-rework-2",
+      "title": "Zod v4: enum introspection requires explicit type casts — ZodOptional<ZodEnum<string[]>> does not infer automatically",
+      "content": "In Zod v4, introspecting whether a parameter is an enum type requires explicit casts that Zod v3 would infer automatically. For an optional enum parameter, the cast is `z.ZodOptional<z.ZodEnum<string[]>>` with `.unwrap().options`; for a required enum parameter, use `z.ZodEnum<string[]>` with `.options` directly. Using `as Record<string, unknown>` as a shortcut will compile but loses type safety and requires additional unsafe casts inside the introspection logic. This breakage surfaces specifically in test code that introspects tool schemas to validate constraint coverage — the implementation code compiles correctly in both v3 and v4, only the introspection path changes. The optional/required branching should be driven by an explicit `optional: boolean` flag in the test fixture to avoid duplicating the cast logic at each call site.",
+      "category": "testing",
+      "tags": [
+        "typescript",
+        "zod",
+        "zod-v4",
+        "enum",
+        "introspection",
+        "type-cast",
+        "testing",
+        "migration"
+      ],
+      "source": "rework-2 WP-003 implementation + documentation pipeline (testing.md Zod v4 enum introspection section)",
+      "created_at": "2026-07-21T13:59:20Z",
+      "confidence": 0.85
+    },
+    {
+      "id": 79,
+      "scope": "global",
+      "origin_plan": "2026-07-21-comtype-management-integration-rework-2",
+      "title": "Shared Zod enum constants: export raw as-const tuple, never a no-arg factory — factories silently homogenize per-operation .describe() text",
+      "content": "When multiple call sites share the same Zod enum values, extract them as a single `as const` tuple (e.g. `export const DRY_RUN_VALUES = ['true', 'false'] as const`) and have each call site construct the full schema expression inline: `z.enum(DRY_RUN_VALUES).optional().describe(...)`. Do not create a no-arg factory function that returns a pre-built `z.enum(...)` schema. A factory silently homogenizes the `.describe()` text across all call sites — if the parameter has distinct per-operation wording (e.g. \"without committing the creation\" vs. \"without committing the addition\"), the factory either forces one description on all callers or adds a parameter that negates its convenience. This was an explicit architectural decision in a 13-instance enum consolidation where five distinct trailing descriptions were confirmed in source; the factory alternative was rejected precisely for this reason. The correct split is: values live in the shared module, description lives at each call site.",
+      "category": "architecture",
+      "tags": [
+        "typescript",
+        "zod",
+        "enum",
+        "shared-constants",
+        "schema-design",
+        "mcp",
+        "factory-function",
+        "describe"
+      ],
+      "source": "rework-2 plan.md Considered Alternatives table + WP-004 implementation + synthesis Gold Nugget context",
+      "created_at": "2026-07-21T13:59:37Z",
+      "confidence": 0.8
+    },
+    {
+      "id": 80,
+      "scope": "global",
+      "origin_plan": "2026-07-21-model-settings",
+      "title": "Seed-plus-working-copy pattern for developer-local configuration files",
+      "content": "Ship a read-only seed file (e.g. `default.json`) tracked in version control alongside a gitignored working copy (e.g. `local.json`) that is auto-created from the seed on first access. At runtime, only the working copy is read — there is no concept of \"built-in\" vs. \"user\" entries; the working copy is the single source of truth after initialization. A \"Load Defaults\" operation merges seed entries into the working copy by stable ID (not name or slug), adding any seed entries whose ID is absent without overwriting existing ones. Future releases can introduce new default entries via the seed file; the merge-by-ID logic picks them up without disrupting existing user data. This pattern gives new installations sensible defaults, keeps developer preferences out of VCS, and provides a clean upgrade path for evolving defaults.",
+      "category": "architecture",
+      "tags": [
+        "configuration",
+        "gitignore",
+        "defaults",
+        "merge",
+        "developer-local",
+        "file-based-config",
+        "initialization",
+        "typescript",
+        "nodejs"
+      ],
+      "source": "synthesis §Strategic Recommendations #1; plan.md §Rationale; WP-001, WP-002",
+      "created_at": "2026-07-21T16:27:32Z",
+      "confidence": 0.85
+    },
+    {
+      "id": 81,
+      "scope": "global",
+      "origin_plan": "2026-07-21-model-settings",
+      "title": "Use deterministic zero-namespace UUIDs for shipped default registry entries to enable stable merge-by-ID",
+      "content": "When a registry ships default entries in version control and also allows user-created entries at runtime, assign deterministic (zero-namespace) UUIDs to the shipped entries (e.g. `00000000-0000-0000-0000-000000000002`) and reserve `crypto.randomUUID()` exclusively for user-created entries. Deterministic IDs allow a \"Load Defaults\" merge to match by ID across installations and releases: new default entries added in a future release can be introduced without duplicating existing ones, because their IDs are stable across installs. Random UUIDs on shipped entries would collide differently on each installation, making cross-install merge impossible. The pattern also supports a reserved-ID sentinel convention: a well-known ID (e.g. the all-zeros UUID) can represent a built-in \"no-op\" or \"inherit\" entry that downstream consumers can check for explicitly.",
+      "category": "architecture",
+      "tags": [
+        "uuid",
+        "registry",
+        "defaults",
+        "merge",
+        "deterministic",
+        "stable-id",
+        "configuration",
+        "typescript",
+        "nodejs"
+      ],
+      "source": "synthesis §Strategic Recommendations #3; plan.md §Detailed Steps Step 1; WP-001, WP-002",
+      "created_at": "2026-07-21T16:27:42Z",
+      "confidence": 0.85
+    },
+    {
+      "id": 82,
+      "scope": "global",
+      "origin_plan": "2026-07-21-model-settings",
+      "title": "Hand-rolled YAML scalar extraction: use index-based closing-quote search, not endsWith symmetry",
+      "content": "When extracting quoted scalar values from YAML lines with a hand-rolled parser (rather than a full YAML library), checking `startsWith('\"')` and `endsWith('\"')` symmetrically fails when the line has a trailing inline comment after the closing quote — e.g. `key: \"Claude Sonnet 4.6\"  # default`. The `endsWith('\"')` check sees the comment and evaluates to false, so the value is never unquoted. The correct approach: detect the opening quote, then find the index of the next matching closing quote, and extract the substring between the two indices. This latent bug was present in this codebase for months and only surfaced when new YAML fields with inline comments were added — making it a reliable regression risk in any codebase that parses YAML scalar values without a proper parser.",
+      "category": "architecture",
+      "tags": [
+        "yaml",
+        "parsing",
+        "regex",
+        "quoted-string",
+        "inline-comment",
+        "scalar",
+        "build-script",
+        "javascript",
+        "nodejs",
+        "pitfall"
+      ],
+      "source": "WP-003 implementation (parseYamlScalars bug fix in build-personas.js); WP-003 Developer handoff note",
+      "created_at": "2026-07-21T16:27:51Z",
+      "confidence": 0.8
+    },
+    {
+      "id": 83,
+      "scope": "global",
+      "origin_plan": "2026-07-23-model-settings-rework-2",
+      "title": "Declarative route tables: document and enforce load-bearing section ordering constraints",
+      "content": "When migrating a large imperative routing function (if-else chain) to a declarative route table, section ordering is often a correctness constraint — not just cosmetic grouping. In one project, a \"keyword-specific\" section had to precede a \"catch-all\" section: without this ordering, the catch-all pattern `GET /:repo/:slug` silently shadowed 8 deprecated keyword routes, matching them before the keyword-specific entries could fire. The ordering constraint was enforced in two complementary ways: (1) a prominent JSDoc comment block on the route-builder function explicitly stating that the section order is load-bearing and explaining the shadowing risk, and (2) a structural-invariant test file that runs on every CI pass to catch regressions. Rule: whenever two sections of a declarative route table must appear in a fixed order for correctness, document that invariant in code and test it automatically — treating it identically to a functional requirement.",
+      "category": "architecture",
+      "tags": [
+        "routing",
+        "declarative",
+        "route-table",
+        "ordering",
+        "shadow-routes",
+        "invariant",
+        "http",
+        "nodejs",
+        "typescript"
+      ],
+      "source": "synthesis §WP-004; WP-004 implementation + QA pipelines",
+      "created_at": "2026-07-23T17:08:34Z",
+      "confidence": 0.85
+    },
+    {
+      "id": 84,
+      "scope": "global",
+      "origin_plan": "2026-07-23-model-settings-rework-2",
+      "title": "Add a structural-invariant test harness when migrating to a declarative route table",
+      "content": "After migrating from an imperative routing function to a declarative route table, add a dedicated structural-invariant test file that guards the table's own structure on every CI pass. Useful invariants to test: (1) the table is non-empty, (2) every route's HTTP method is from the permitted set, (3) every parameterised RegExp uses only named capture groups (detectable via a regex-of-a-regex: `/\\((?!\\?)/` catches positional groups), and (4) no two routes share the same `method + path` combination. This approach was validated by stress-testing all 4 invariants with injected synthetic violations — each was correctly caught. The named-groups-only invariant is especially valuable: it enforces self-documenting patterns in handlers and makes the invariant itself testable in one line. Without this harness, a contributor adding a new route can silently introduce a duplicate, an invalid method, or a positional capture group with no compile-time or runtime error.",
+      "category": "testing",
+      "tags": [
+        "routing",
+        "route-table",
+        "structural-invariant",
+        "testing",
+        "declarative",
+        "named-capture-groups",
+        "regex",
+        "http",
+        "typescript",
+        "nodejs"
+      ],
+      "source": "synthesis §WP-005; WP-005 implementation, QA, code-review pipelines",
+      "created_at": "2026-07-23T17:08:45Z",
+      "confidence": 0.85
+    }
+  ]
+}
