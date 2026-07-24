@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-07-23T17:08:45Z",
-  "next_id": 85,
+  "last_updated": "2026-07-24T00:00:00Z",
+  "next_id": 97,
   "insights": [
     {
       "id": 1,
@@ -1565,6 +1565,260 @@
       "source": "synthesis §WP-005; WP-005 implementation, QA, code-review pipelines",
       "created_at": "2026-07-23T17:08:45Z",
       "confidence": 0.85
+    },
+    {
+      "id": 85,
+      "scope": "global",
+      "origin_plan": "2026-07-02-json-nodes",
+      "title": "Python on Windows: reserved device names bypass basename sanitization and cause silent data loss",
+      "content": "When accepting user-supplied filenames for file I/O on Windows, `os.path.basename()` does not filter Windows reserved device names (CON, NUL, COM1\u2013COM9, LPT1\u2013LPT9). For example, `os.path.basename('NUL')` returns `'NUL'`, which passes typical empty-string fallback checks. Calling `open('NUL.json', 'w')` then silently writes to the null device \u2014 the data is discarded without any error or exception. This is not a code-execution or privilege-escalation risk, but it causes silent data loss that is extremely difficult to diagnose. Remediation: after `basename()`, check the stem against a reserved-name blocklist before proceeding with the write.",
+      "category": "security",
+      "tags": [
+        "python",
+        "windows",
+        "security",
+        "file-io",
+        "data-loss",
+        "filename-sanitization"
+      ],
+      "source": "WP-004-security-audit",
+      "created_at": "2026-07-02T08:28:16Z",
+      "confidence": 0.8
+    },
+    {
+      "id": 86,
+      "scope": "global",
+      "origin_plan": "2026-07-03-load-json-node",
+      "title": "ComfyUI V3: Apply path-traversal guard in fingerprint_inputs() as well as execute()",
+      "content": "When implementing a ComfyUI V3 file-loader node with `fingerprint_inputs()`, the path-traversal guard (`os.path.realpath()` + `startswith(sandboxed_dir + os.sep)`) must be applied in both `fingerprint_inputs()` and `execute()` independently. `fingerprint_inputs()` is called by the ComfyUI caching layer before `execute()` and receives the raw user-supplied filename; if unguarded, an attacker can probe file mtimes outside the sandboxed directory via the caching subsystem even if `execute()` is correctly guarded. The correct pattern: resolve the candidate path with `os.path.realpath(os.path.join(base_dir, filename))` in both methods, verify it starts with `real_base_dir + os.sep`, and return a safe default (empty string or raise) on violation. This was validated during a security audit of a ComfyUI JSON loader node that uses mtime-based fingerprinting.",
+      "category": "security",
+      "tags": [
+        "comfyui",
+        "python",
+        "security",
+        "path-traversal",
+        "file-io",
+        "fingerprint_inputs",
+        "comfyui-v3"
+      ],
+      "source": "synthesis + WP-003 security-audit",
+      "created_at": "2026-07-03T17:14:22Z",
+      "confidence": 0.85
+    },
+    {
+      "id": 87,
+      "scope": "global",
+      "origin_plan": "2026-07-03-load-json-node",
+      "title": "ComfyUI V3: Prefer mtime-based fingerprint_inputs() over not_idempotent=True for file-loader nodes",
+      "content": "For ComfyUI V3 nodes that read files from disk, use `fingerprint_inputs()` returning `str(os.path.getmtime(filepath))` rather than `not_idempotent=True`. `not_idempotent=True` forces a disk read on every execution, wasting cycles when the file is unchanged (common for static configuration files). `fingerprint_inputs()` with mtime gives ComfyUI enough information to return the cached output when the file is unchanged, while still re-executing automatically when the file is modified on disk. The mtime string is a stable, low-cost cache key that correctly invalidates on any write to the file. Applied and validated in a JSON file-loader node used for static workflow configuration.",
+      "category": "architecture",
+      "tags": [
+        "comfyui",
+        "python",
+        "caching",
+        "fingerprint_inputs",
+        "not_idempotent",
+        "file-io",
+        "comfyui-v3",
+        "performance"
+      ],
+      "source": "synthesis (Gold Nuggets #1) + plan.md rationale",
+      "created_at": "2026-07-03T17:14:30Z",
+      "confidence": 0.85
+    },
+    {
+      "id": 88,
+      "scope": "global",
+      "origin_plan": "2026-07-03-load-json-node",
+      "title": "ComfyUI V3: Guard execute() against empty-string filename from io.Combo.Input when directory is empty",
+      "content": "When a ComfyUI V3 node uses `io.Combo.Input` populated by scanning a directory, the scanned list may be empty at startup. `io.Combo.Input` requires at least one option, so the convention is to substitute `['']` as a placeholder. However, passing this empty string to `execute()` causes a confusing error: `os.path.realpath(os.path.join(base_dir, ''))` resolves to `base_dir` itself, which fails the `startswith(base_dir + os.sep)` path-traversal guard and surfaces as a PermissionError-wrapped ValueError (on Windows, opening a directory path raises PermissionError). Add an explicit early guard in `execute()` \u2014 `if not filename: raise ValueError(\"No file selected \u2014 add .json files to the input directory and restart ComfyUI\")` \u2014 before the path-traversal check. Identified during QA, security audit, and code review of a file-loader node; the empty-directory case was independently flagged by four separate pipeline stages.",
+      "category": "architecture",
+      "tags": [
+        "comfyui",
+        "python",
+        "comfyui-v3",
+        "combo-input",
+        "file-io",
+        "ux",
+        "edge-case",
+        "windows"
+      ],
+      "source": "WP-003 (implementation, QA, security-audit, code-review comments)",
+      "created_at": "2026-07-03T17:14:40Z",
+      "confidence": 0.8
+    },
+    {
+      "id": 89,
+      "scope": "global",
+      "origin_plan": "2026-07-21-lcs-diff-pipeline",
+      "title": "Multi-step classification pipelines require end-to-end integration tests alongside the first unit tests",
+      "content": "When a pipeline has several interdependent classification steps \u2014 each consuming the output of the previous step \u2014 correctness bugs can be invisible to isolated unit tests of individual steps and only surface under integration conditions. Two bugs were found in a six-step list-diff classification pipeline only during integration testing in a second work package: (1) a running counter was incremented for two distinct event types instead of one, causing consecutive events of one type to receive incorrect aligned positions; (2) a greedy \"first causal match\" loop assigned all downstream items to the first trigger they followed, rather than distributing them across the range each trigger owned. Both bugs passed all isolated step tests because the tests did not exercise realistic interplay between steps. Mitigation: for any multi-step pipeline where step N consumes artifacts produced by step N\u22121, add end-to-end scenario tests as part of the same work package that introduces the pipeline \u2014 not deferred to a follow-on work package.",
+      "category": "testing",
+      "tags": [
+        "testing",
+        "integration-testing",
+        "unit-testing",
+        "pipeline",
+        "classification",
+        "diff",
+        "correctness"
+      ],
+      "source": "synthesis Gold Nugget #1, WP-002 implementation comments",
+      "created_at": "2026-07-21T20:59:41Z",
+      "confidence": 0.9
+    },
+    {
+      "id": 90,
+      "scope": "global",
+      "origin_plan": "2026-07-22-lcs-diff-pipeline-rework-1",
+      "title": "xUnit: IClassFixture&lt;T&gt; alone does not prevent parallel test class execution \u2014 [Collection] is also required",
+      "content": "When tests share a global mutable singleton, `IClassFixture<T>` scopes the fixture to a single test class but does NOT prevent xUnit from running multiple test classes in parallel with each other. Two test classes each using `IClassFixture<T>` can still run concurrently, causing race conditions on shared global state. The fix requires both mechanisms together: `IClassFixture<T>` for per-class fixture lifecycle, plus `[Collection(\"...\")]` on every affected class with `DisableParallelization = true` on the collection definition. This pattern was discovered after 21 test failures appeared only on non-English developer machines \u2014 parallel class execution was mutating a global localization singleton mid-test in a way that single-class isolation could not prevent. Either mechanism alone is insufficient.",
+      "category": "testing",
+      "tags": [
+        "xunit",
+        "csharp",
+        "dotnet",
+        "parallelism",
+        "test-fixture",
+        "IClassFixture",
+        "collection",
+        "global-state",
+        "singleton",
+        "localization"
+      ],
+      "source": "synthesis Gold Nugget #1, WP-001",
+      "created_at": "2026-07-22T13:45:40Z",
+      "confidence": 0.8
+    },
+    {
+      "id": 91,
+      "scope": "global",
+      "origin_plan": "2026-07-23-load-order-change-guidance",
+      "title": "C#: Adding a test-seam constructor with null! fields requires null-guarding Dispose() against those fields",
+      "content": "When a class implements `IDisposable` and its `Dispose()` method dereferences injected dependencies, adding a test-seam constructor that assigns those dependencies as `null!` silently violates the IDisposable contract for test instances \u2014 even if production instances are never affected. The defect surfaces only when a test wraps the test-seam instance in a `using` block or calls `Dispose()` directly, causing a `NullReferenceException`. The fix is a null guard at the top of `Dispose()`: `if (_dependency is null) { /* minimal cleanup e.g. unsubscribe event handlers */ return; }`. When writing a test-seam constructor, audit every `Dispose()` method in the class for dereferences of fields the seam zeroes out and add null guards proactively \u2014 the seam and the guard must be written together. This defect was caught by a code-review FAIL and required a rework cycle.",
+      "category": "testing",
+      "tags": [
+        "csharp",
+        "dotnet",
+        "IDisposable",
+        "test-seam",
+        "null-safety",
+        "ViewModel",
+        "constructor",
+        "rework"
+      ],
+      "source": "WP-004 code-review FAIL + rework, synthesis",
+      "created_at": "2026-07-23T13:47:02Z",
+      "confidence": 0.75
+    },
+    {
+      "id": 92,
+      "scope": "global",
+      "origin_plan": "2026-07-23-load-order-change-guidance",
+      "title": "C# MVVM: Add an internal test-seam constructor proactively to dependency-heavy ViewModels",
+      "content": "ViewModels that wire coordinator subscriptions, event handlers, or other heavyweight dependencies in their production constructor become untestable without introducing a test seam. The proven pattern for C# MVVM is: add an `internal` constructor that accepts only the minimal data needed for unit test assertions (e.g., an observable collection), assigns all other injected services as `null!`, and is tagged with `[EditorBrowsable(EditorBrowsableState.Never)]`. Grant test-project access via `[assembly: InternalsVisibleTo(\"...Tests\")]` on the production project. This seam should be added at the time the ViewModel is first authored \u2014 retrofitting it later requires auditing `Dispose()` (see companion insight on null! + Dispose), updating tests, and triggers a rework cycle. Stub out heavy command dependencies with `() => Task.CompletedTask` lambdas. This pattern was introduced during WP-004 and documented in the project architecture constraints as a reusable convention.",
+      "category": "testing",
+      "tags": [
+        "csharp",
+        "dotnet",
+        "MVVM",
+        "ViewModel",
+        "test-seam",
+        "InternalsVisibleTo",
+        "EditorBrowsable",
+        "unit-testing",
+        "dependency-injection"
+      ],
+      "source": "WP-004 implementation + documentation pipeline, synthesis Strategic Recommendation #2",
+      "created_at": "2026-07-23T13:47:12Z",
+      "confidence": 0.7
+    },
+    {
+      "id": 93,
+      "scope": "global",
+      "origin_plan": "2026-07-23-load-order-change-guidance",
+      "title": "AI edit_file tool silently downgrades Unicode typographic quotes to ASCII in JSON files",
+      "content": "The `edit_file` tool used by AI coding agents silently transcribes Unicode typographic quotation marks (U+201C and U+201D) as ASCII 34 (`\"`), breaking JSON when these characters appear in string values. The corruption is silent \u2014 no error is raised and the file remains syntactically valid JSON, but the intended Unicode characters are lost. This was discovered when attempting to write zh-CN locale strings containing CJK quotation marks. Approved workaround: use CJK corner brackets (U+300C / U+300D) as JSON-safe alternatives, or use Unicode escape sequences (`\\u300C`, `\\u300D`) and verify the file post-edit. Any agent editing JSON locale files or any JSON that legitimately contains non-ASCII quotation characters must be aware of this constraint and verify output after editing.",
+      "category": "tooling",
+      "tags": [
+        "edit_file",
+        "json",
+        "unicode",
+        "localization",
+        "CJK",
+        "typographic-quotes",
+        "silent-corruption",
+        "agent-tooling"
+      ],
+      "source": "synthesis Strategic Recommendation #5, WP-003 localization",
+      "created_at": "2026-07-23T13:47:22Z",
+      "confidence": 0.8
+    },
+    {
+      "id": 94,
+      "scope": "global",
+      "origin_plan": "2026-07-23-load-order-change-guidance-rework-1",
+      "title": "C# CommunityToolkit.Mvvm: Use OnPropertyChanged(string.Empty) for bulk ViewModel refresh instead of per-property lists",
+      "content": "When a ViewModel method must signal that all computed properties have changed (e.g., after a collection reload or diff refresh), replace a growing list of individual `OnPropertyChanged(nameof(...))` calls with a single `OnPropertyChanged(string.Empty)`. This is the documented CommunityToolkit.Mvvm convention for a full property-change broadcast. The result is a method that self-maintains \u2014 new computed properties are automatically covered without any developer action, eliminating the silent bug class where a newly added property is forgotten in the notification list. One documented trade-off: properties backed by `SetProperty(...)` will receive a double `PropertyChanged` notification (once from `SetProperty`, once from the bulk broadcast). WPF data bindings are idempotent so this is harmless, but if micro-optimization is needed, set the backing fields directly before calling `OnPropertyChanged(string.Empty)` once.",
+      "category": "architecture",
+      "tags": [
+        "csharp",
+        "dotnet",
+        "MVVM",
+        "CommunityToolkit",
+        "CommunityToolkit.Mvvm",
+        "OnPropertyChanged",
+        "ViewModel",
+        "WPF",
+        "INotifyPropertyChanged",
+        "bulk-refresh"
+      ],
+      "source": "WP-005 implementation + QA + code-review pipelines, synthesis Strategic Recommendation #1",
+      "created_at": "2026-07-23T15:59:11Z",
+      "confidence": 0.8
+    },
+    {
+      "id": 95,
+      "scope": "global",
+      "origin_plan": "2026-07-23-load-order-change-guidance-rework-1",
+      "title": "WPF MVVM: Gate optional panel visibility with a compound master-state + count expression to prevent stale UI",
+      "content": "When a WPF ViewModel exposes a visibility flag for an optional panel (e.g., a sidebar card or status banner), compute it as a compound expression `masterStateFlag && specificCount > 0` rather than a single derived boolean such as `hasItems`. The master-state flag (e.g., a global \"has any data loaded\" bool) acts as a sentinel: if the data source is independently cleared or replaced between `PropertyChanged` notifications, the panel collapses correctly even before the count-specific notification fires. A single derived boolean can remain stale if its own `PropertyChanged` is delayed or missed. This defensive compound guard is particularly important when the collection and master-state flag are refreshed by separate code paths.",
+      "category": "architecture",
+      "tags": [
+        "WPF",
+        "MVVM",
+        "csharp",
+        "dotnet",
+        "visibility",
+        "binding",
+        "INotifyPropertyChanged",
+        "stale-state",
+        "defensive-programming"
+      ],
+      "source": "WP-003 code-review pipeline (Reviewer), synthesis Strategic Recommendation #2",
+      "created_at": "2026-07-23T15:59:20Z",
+      "confidence": 0.75
+    },
+    {
+      "id": 96,
+      "scope": "global",
+      "origin_plan": "2026-07-23-load-order-change-guidance-rework-1",
+      "title": "Document intentional naming asymmetries in resource dictionaries inline, not in external wikis",
+      "content": "When a resource dictionary (XAML, CSS tokens, JSON config, etc.) contains an intentional naming asymmetry \u2014 where two keys for semantically similar resources follow different naming conventions for a non-obvious design reason \u2014 add an inline comment immediately above the diverging entries. The comment must explain the rule, list which keys fall into each category, and explicitly warn contributors not to \"normalize\" the asymmetry. External documentation (wikis, READMEs) is insufficient because contributors encounter the code first and will silently \"fix\" what they perceive as an inconsistency before ever checking external docs. This near-miss pattern \u2014 a reviewer catching a latent contributor trap before it caused a regression \u2014 is the strongest signal that inline documentation is the correct delivery mechanism for this class of design decision.",
+      "category": "workflow",
+      "tags": [
+        "documentation",
+        "XAML",
+        "CSS",
+        "resource-dictionary",
+        "naming-conventions",
+        "inline-comments",
+        "code-review",
+        "contributor-experience"
+      ],
+      "source": "WP-002 code-review + documentation pipelines (Reviewer, Documentation), synthesis Strategic Recommendation #4",
+      "created_at": "2026-07-23T15:59:29Z",
+      "confidence": 0.8
     }
   ]
 }
