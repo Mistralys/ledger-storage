@@ -1,0 +1,193 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "_boot() skips configureUsers() when APP_SEED_MODE is defined.",
+      "met": true
+    },
+    {
+      "criterion": "_boot() continues to call configureUsers() when APP_SEED_MODE is NOT defined (normal test runs unaffected).",
+      "met": true
+    },
+    {
+      "criterion": "No other methods in TestSuiteBootstrap are changed.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-04T07:48:44Z",
+      "completed_at": "2026-05-04T07:53:36Z",
+      "duration_ms": 292000,
+      "summary": [
+        "Guarded configureUsers() in TestSuiteBootstrap::_boot() with APP_SEED_MODE check — skips the user-existence verification when the constant is defined, resolving the chicken-and-egg seeding problem.",
+        "Added seedTests() and doSeedTests() static methods to ComposerScripts following the established public/do pattern. seedTests() defines APP_SEED_MODE before calling init(), ensuring the guard is active during bootstrap.",
+        "Added use Application\\Bootstrap\\Screen\\TestSuiteBootstrap import to ComposerScripts.php.",
+        "Updated composer.json seed-tests script from standalone PHP invocation to Application\\Composer\\ComposerScripts::seedTests.",
+        "Deleted tests/seed-test-db.php standalone script.",
+        "Updated seedSystemUsers() docblock to add @see ComposerScripts::seedTests() reference.",
+        "All ComposerScripts tests pass (3 tests, 8 assertions). PHPStan analysis clean (0 errors, 2129 files)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/classes/Application/Bootstrap/Screen/TestSuiteBootstrap.php",
+          "src/classes/Application/Composer/ComposerScripts.php",
+          "composer.json",
+          "tests/seed-test-db.php (deleted)"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 3,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-04T07:53:36Z",
+          "note": "ComposerScripts::init() uses a static $initialized flag for idempotency, which works well in the CLI context. The seedTests() method correctly defines APP_SEED_MODE before calling init(), so the constant is in place when TestSuiteBootstrap::_boot() runs. The design is clean and consistent with the existing pattern."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-05-04T07:53:36Z",
+          "note": "tests/bootstrap.php uses 'const TESTS_ROOT = __DIR__' at file scope (not guarded), which would emit an E_WARNING if TESTS_ROOT were defined before requiring the file. The now-deleted standalone script documented this as pre-existing debt. With the integration into ComposerScripts, this path no longer triggers TESTS_ROOT pre-definition, so the warning is gone in practice — but the unguarded const in bootstrap.php remains a latent issue if any future caller defines TESTS_ROOT first."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-04T07:53:54Z",
+      "completed_at": "2026-05-04T07:56:03Z",
+      "duration_ms": 129000,
+      "summary": [
+        "All three acceptance criteria verified against the source files. Build is clean: 3/3 ComposerScripts tests pass (8 assertions), PHPStan reports 0 errors across 2129 files.",
+        "AC1 confirmed: _boot() guard `if (!defined('APP_SEED_MODE'))` at line 41–43 of TestSuiteBootstrap.php correctly skips configureUsers() when the constant is defined.",
+        "AC2 confirmed: the negative guard leaves the normal test execution path unaffected — configureUsers() runs as before when APP_SEED_MODE is absent.",
+        "AC3 confirmed: all other methods in TestSuiteBootstrap (configureDatabase, configureUsers, registerTransactionCleanupHandler, configurePaths, seedSystemUsers, getDispatcher) are unchanged. Only the _boot() guard and a @see docblock addition to seedSystemUsers() were introduced.",
+        "Bootstrap chain verified: seedTests() defines APP_SEED_MODE → calls init() → init() requires tests/bootstrap.php → bootClass(TestSuiteBootstrap::class) → _boot() fires with the constant already in scope.",
+        "Standalone script deletion confirmed: tests/seed-test-db.php is absent from the filesystem.",
+        "composer.json seed-tests script confirmed: points to Application\\Composer\\ComposerScripts::seedTests."
+      ],
+      "metrics": {
+        "test_coverage": "ComposerScripts test suite (3 tests, 8 assertions)",
+        "tests_passed": 3,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-04T07:56:03Z",
+          "note": "Developer debt note flagged an unguarded `const TESTS_ROOT` in tests/bootstrap.php. Inspection of the actual file shows TESTS_ROOT is already guarded: `if(!defined('TESTS_ROOT')) { define('TESTS_ROOT', __DIR__); }` (lines 21–23). The debt note is factually incorrect — no latent issue exists. The developer was likely referencing an older version of the file."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-04T07:56:03Z",
+          "note": "Edge case: if init() were called before seedTests() (e.g., by another Composer script in the same process), the $initialized flag would cause init() to skip the bootstrap re-run, and doSeedTests() would then call seedSystemUsers() against an already-booted environment — potentially without the APP_SEED_MODE guard in effect. This is not a realistic scenario in the current Composer scripts design, but is worth noting for future multi-script invocation patterns."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-04T08:09:48Z",
+      "completed_at": "2026-05-04T08:11:12Z",
+      "duration_ms": 84000,
+      "summary": [
+        "Code review passed. Implementation is minimal, correct, and consistent with established ComposerScripts patterns. The APP_SEED_MODE guard in _boot() is precisely placed — after configureDatabase/registerTransactionCleanupHandler/configurePaths (required for seeding) but before configureUsers() (which would fail without seeded users). The seedTests()/doSeedTests() public/do split follows the pattern set by clearCaches/doClearCaches and other existing pairs. No blocking issues found."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/classes/Application/Bootstrap/Screen/TestSuiteBootstrap.php",
+          "src/classes/Application/Composer/ComposerScripts.php",
+          "composer.json"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-04T08:11:12Z",
+          "note": "ComposerScripts::seedTests() calls define('APP_SEED_MODE', true) without a defined() guard. In PHP 8.x this is benign (silent false return, no warning), and the Composer CLI context guarantees a fresh process per invocation, so the constant cannot already be set. However, _boot() guards APP_TESTS_RUNNING with if(!defined()) for consistency. Consider aligning the style: if (!defined('APP_SEED_MODE')) { define('APP_SEED_MODE', true); }. This is purely cosmetic and does NOT block passage."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-04T08:11:12Z",
+          "note": "No other issues. Architecture, naming, single-responsibility, bootstrap chain ordering, transaction safety in seedSystemUsers(), and composer.json wiring are all correct. The deletion of tests/seed-test-db.php removes dead standalone code cleanly."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-04T08:11:35Z",
+      "completed_at": "2026-05-04T08:13:08Z",
+      "duration_ms": 93000,
+      "summary": [
+        "Updated docs/agents/project-manifest/testing.md to remove the stale reference to the deleted tests/seed-test-db.php standalone script. The 'Seeding the Test Database' section now correctly describes composer seed-tests as invoking ComposerScripts::seedTests(), which defines APP_SEED_MODE before booting the framework (causing _boot() to skip configureUsers()), then calls TestSuiteBootstrap::seedSystemUsers() to perform the actual seeding. No other documentation files required changes — README.md, AGENTS.md, and the .context/ directory were all already accurate. Implementation history plans retain their original references to the deleted script as intended historical records."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "docs/agents/project-manifest/testing.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-04T08:13:08Z",
+          "note": "The Reviewer forwarded one cosmetic observation: define('APP_SEED_MODE', true) in seedTests() lacks a defined() guard (unlike the APP_TESTS_RUNNING pattern in _boot()). This is a code-level style note and not a documentation gap — no documentation change was needed for it. The forward was addressed by confirming it is benign in the CLI context."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-04T08:13:08Z",
+  "last_updated": "2026-05-04T08:13:08Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-04T07:53:36Z",
+      "notes": [
+        "All acceptance criteria met. The APP_SEED_MODE guard is a single-line conditional in _boot() that has zero impact on normal test runs — configureUsers() is only skipped when the constant is explicitly defined.",
+        "No new class files were added, so composer dump-autoload is not required.",
+        "The seedTests() method can be manually verified with 'composer seed-tests' against a fresh database to confirm end-to-end behaviour — recommended as a smoke test by QA."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-04T07:56:03Z",
+      "notes": [
+        "All three ACs verified and confirmed met. PHPStan clean. Tests passing. Implementation is correct and minimal — only _boot() was changed plus a docblock @see reference.",
+        "Note for Reviewer: the developer's debt comment about unguarded TESTS_ROOT in tests/bootstrap.php is factually incorrect — the code already guards it with if(!defined). No action needed.",
+        "The seed-tests composer workflow is now: seedTests() defines APP_SEED_MODE → init() boots the test environment → doSeedTests() calls TestSuiteBootstrap::seedSystemUsers(). The design is clean and consistent with existing ComposerScripts patterns."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-04T08:11:12Z",
+      "notes": [
+        "All three acceptance criteria confirmed met by Reviewer. Implementation is architecturally sound. One cosmetic observation: define('APP_SEED_MODE', true) in seedTests() lacks a defined() guard (unlike the APP_TESTS_RUNNING pattern in _boot()), but this is benign in the CLI context. Ready for Documentation pipeline if any doc updates are needed for the new composer seed-tests workflow."
+      ]
+    }
+  ]
+}

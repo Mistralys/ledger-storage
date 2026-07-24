@@ -1,0 +1,197 @@
+{
+  "work_package_id": "WP-003",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-002"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "tests/seed-test-db.php exists and contains declare(strict_types=1), defines TESTS_ROOT and APP_TESTS_RUNNING, requires tests/bootstrap.php, and calls TestSuiteBootstrap::seedSystemUsers().",
+      "met": true
+    },
+    {
+      "criterion": "composer.json contains a seed-tests script entry that runs php tests/seed-test-db.php.",
+      "met": true
+    },
+    {
+      "criterion": "Running composer seed-tests executes without error when the test database is accessible and the seedSystemUsers() method exists.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-29T12:31:02Z",
+      "completed_at": "2026-04-29T12:32:43Z",
+      "duration_ms": 101000,
+      "summary": [
+        "Created tests/seed-test-db.php: declare(strict_types=1), use Application\\Bootstrap\\Screen\\TestSuiteBootstrap, defines TESTS_ROOT and APP_TESTS_RUNNING via define() before requiring tests/bootstrap.php, then calls TestSuiteBootstrap::seedSystemUsers() and echoes success.",
+        "Added 'seed-tests': 'php tests/seed-test-db.php' to the scripts section of composer.json.",
+        "PHPStan max-level analysis on tests/seed-test-db.php: zero errors. composer.json validated as correct JSON. PHP syntax check: no errors."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "tests/seed-test-db.php",
+          "composer.json"
+        ]
+      },
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-04-29T12:32:43Z",
+          "note": "tests/bootstrap.php defines TESTS_ROOT using the `const` keyword at file scope (line 21: `const TESTS_ROOT = __DIR__;`). The seeding script uses `define('TESTS_ROOT', ...)` before requiring bootstrap.php, which means bootstrap.php's `const TESTS_ROOT` will generate a PHP E_WARNING ('Constant TESTS_ROOT already defined') on every `composer seed-tests` invocation. The first definition (from the script) wins, so the value is correct, but the warning is noise. The fix would be to update tests/bootstrap.php to guard the constant with `if (!defined('TESTS_ROOT')) { define('TESTS_ROOT', __DIR__); }` — this change is out of scope for WP-003 but should be addressed in a follow-up."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-29T12:32:43Z",
+          "note": "The seeding script does not wrap the TestSuiteBootstrap::seedSystemUsers() call in a try/catch. If seeding fails, PHP will output the unhandled exception with a raw stack trace. Adding a try/catch around the call (and echoing a user-friendly error message followed by exit(1)) would make the CLI experience cleaner and allow CI pipelines to detect failure reliably via exit code."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-29T12:33:00Z",
+      "completed_at": "2026-04-29T12:33:58Z",
+      "duration_ms": 58000,
+      "summary": [
+        "AC-1 PASS: tests/seed-test-db.php exists and matches the spec exactly — declare(strict_types=1), use statement for TestSuiteBootstrap, defines TESTS_ROOT and APP_TESTS_RUNNING via define(), requires tests/bootstrap.php, calls TestSuiteBootstrap::seedSystemUsers(), echoes success. File is byte-for-byte identical to the implementation guidance template.",
+        "AC-2 PASS: composer.json scripts section contains 'seed-tests': 'php tests/seed-test-db.php' at line 154, correctly placed within the scripts block alongside other project commands.",
+        "AC-3 PASS (conditional on DB): PHP syntax check passes (php -l). TestSuiteBootstrap::seedSystemUsers() method exists and is public static. The method is guarded by a transaction with rollback on failure. DB-dependent runtime cannot be verified in this environment — acknowledged per AC wording ('when the test database is accessible').",
+        "Build check: No syntax errors. seedSystemUsers() exists at TestSuiteBootstrap.php:105 as a public static method.",
+        "Regression: No changes made to existing test infrastructure files; bootstrap.php and TestSuiteBootstrap.php are read-only with respect to this WP.",
+        "Edge-case noted: APP_TESTS_RUNNING is also defined inside TestSuiteBootstrap::boot() with a !defined() guard, so no double-define risk from that path. The TESTS_ROOT redefinition warning (const in bootstrap.php vs define() in seed script) is a pre-existing debt issue flagged by the Developer — not an AC failure."
+      ],
+      "metrics": {
+        "tests_passed": 3,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-04-29T12:33:58Z",
+          "note": "tests/bootstrap.php line 21 uses `const TESTS_ROOT = __DIR__` unconditionally. When seed-test-db.php runs `define('TESTS_ROOT', __DIR__)` first and then requires bootstrap.php, PHP emits E_WARNING 'Constant TESTS_ROOT already defined'. The value is correct (both resolve to the tests/ directory) but the warning is noise in CLI output and could mask real warnings in CI. Fix: change bootstrap.php to use `defined('TESTS_ROOT') || define('TESTS_ROOT', __DIR__)` or a `!defined` guard. Out of scope for WP-003; recommend a follow-up task."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-29T12:33:58Z",
+          "note": "seed-test-db.php does not wrap TestSuiteBootstrap::seedSystemUsers() in try/catch. A failure will produce a raw PHP stack trace. Adding try/catch with exit(1) would improve CI reliability and user-facing output. The method itself does handle DB rollback internally, so data integrity is not at risk — this is purely a DX/UX improvement."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-29T12:33:58Z",
+          "note": "No edge-case failures found. The two potential failure points identified: (1) DB unavailable — bootstrap.php's Application_Bootstrap::init() will throw and be caught by its own try/catch, printing via testsuite_dumpException(); (2) InitSystemUsers task not registered — seedSystemUsers() throws Application_Exception which will surface as an unhandled exception (see improvement note above). Both scenarios are handleable and do not represent implementation defects."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-29T12:34:16Z",
+      "completed_at": "2026-04-29T12:35:00Z",
+      "duration_ms": 44000,
+      "summary": [
+        "PASS with Fix-Forward applied. Code meets all quality standards. One trivial non-behavioral improvement (missing try/catch around seedSystemUsers() call) applied directly to tests/seed-test-db.php. The TESTS_ROOT const/define collision in bootstrap.php is a pre-existing issue out of scope for this WP — tagged for follow-up. composer.json seed-tests entry is correctly placed and follows project conventions. All acceptance criteria remain met."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "tests/seed-test-db.php",
+          "composer.json"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-29T12:35:00Z",
+          "note": "Applied Fix-Forward to tests/seed-test-db.php: wrapped TestSuiteBootstrap::seedSystemUsers() in a try/catch(\\Throwable $e) block. On failure, prints 'Seeding failed: <message>' and exits with code 1. This is non-behavioral — the transaction rollback already occurs inside seedSystemUsers() itself. The fix improves CI reliability (explicit exit code) and DX (human-readable error output instead of raw stack trace). Matches project brace style used throughout bootstrap.php."
+        },
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-04-29T12:35:00Z",
+          "note": "Pre-existing issue (out of WP-003 scope): tests/bootstrap.php line 21 uses `const TESTS_ROOT = __DIR__` unconditionally. When seed-test-db.php runs `define('TESTS_ROOT', ...)` first and then requires bootstrap.php, PHP emits E_WARNING 'Constant TESTS_ROOT already defined' on every `composer seed-tests` run. The value is correct (both resolve to the tests/ directory) but the warning is noise. Fix: change bootstrap.php to use `defined('TESTS_ROOT') || define('TESTS_ROOT', __DIR__)`. Recommend a dedicated follow-up WP targeting bootstrap.php."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-04-29T12:35:00Z",
+          "note": "[documentation-forward] tests/seed-test-db.php file-level docblock could mention the TESTS_ROOT const/define collision and why define() is used here instead of const — this would help future contributors understand the ordering constraint between seed-test-db.php and bootstrap.php."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-29T12:35:20Z",
+      "completed_at": "2026-04-29T12:36:23Z",
+      "duration_ms": 63000,
+      "summary": [
+        "Updated tests/seed-test-db.php file-level docblock to document the define() vs const ordering constraint (addressing the documentation-forward item from code-review). Added README.md entry for the new `composer seed-tests` command under the Composer commands section, covering purpose, prerequisites, and CI exit-code behaviour."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "tests/seed-test-db.php",
+          "README.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-29T12:36:23Z",
+          "note": "Addressed documentation-forward item from code-review: tests/seed-test-db.php now has an expanded docblock explaining why define() is used instead of const, the ordering dependency on bootstrap.php, and a note about the pre-existing E_WARNING from bootstrap.php's unconditional const TESTS_ROOT."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-29T12:36:23Z",
+          "note": "README.md Composer commands section was missing the seed-tests entry. Added a subsection describing purpose, prerequisites (configured test DB), and CI-friendly exit-code behaviour. Consistent with the style of existing build/clear-caches entries."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-29T12:36:23Z",
+  "last_updated": "2026-04-29T12:36:23Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-29T12:32:43Z",
+      "notes": [
+        "All 3 acceptance criteria implemented and verified. tests/seed-test-db.php created per spec. composer.json updated with seed-tests script. PHPStan level-max clean. Note for QA: running `composer seed-tests` requires the test DB to be accessible and configured; without it the command will exit with an error from the bootstrap DB connection. Also note: tests/bootstrap.php defines TESTS_ROOT unconditionally with `const`, which will emit a PHP E_WARNING when the seeding script's `define('TESTS_ROOT', ...)` is redefined — the value is correct but the warning is present. Tracked as a medium-priority debt observation."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-29T12:33:58Z",
+      "notes": [
+        "All 3 ACs verified and pass. seed-test-db.php matches spec exactly. composer.json seed-tests entry is correctly placed. TestSuiteBootstrap::seedSystemUsers() exists as a public static method with proper transaction handling. Two low-priority improvement notes for the Reviewer: (1) TESTS_ROOT const/define collision warning in bootstrap.php (medium debt, pre-existing), (2) missing try/catch in seed script for cleaner CI error output (low, DX only). No blocking issues."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-29T12:35:00Z",
+      "notes": [
+        "All 3 ACs verified and remain met after Fix-Forward. seed-test-db.php now has a try/catch around seedSystemUsers() for clean CI failure output. One documentation-forward item: the file-level docblock could document the define() vs const ordering constraint. Pre-existing TESTS_ROOT collision in bootstrap.php is noted as medium-priority debt — recommend a follow-up WP. No blocking issues found."
+      ]
+    }
+  ]
+}

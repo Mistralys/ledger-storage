@@ -1,0 +1,229 @@
+{
+  "work_package_id": "WP-003",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "getInstance() returns the same instance on repeated calls.",
+      "met": true
+    },
+    {
+      "criterion": "getAll() returns IconInfo[] sorted alphabetically by ID.",
+      "met": true
+    },
+    {
+      "criterion": "getCustomIcons() returns only icons where isCustom() is true.",
+      "met": true
+    },
+    {
+      "criterion": "getStandardIcons() returns only icons where isStandard() is true.",
+      "met": true
+    },
+    {
+      "criterion": "getByID() returns the correct IconInfo for a known icon ID.",
+      "met": true
+    },
+    {
+      "criterion": "idExists() returns false for non-existent IDs.",
+      "met": true
+    },
+    {
+      "criterion": "When a custom icon has the same ID as a standard icon, the custom icon replaces it.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-17T09:30:26Z",
+      "completed_at": "2026-04-17T09:35:19Z",
+      "duration_ms": 293000,
+      "summary": [
+        "Created src/classes/UI/Icons/IconCollection.php — a singleton registry in the UI\\\\Icons namespace. The constructor calls a private loadIcons() method that parses APP_INSTALL_FOLDER/themes/default/icons.json via JSONFile::factory(), then optionally loads APP_ROOT/themes/custom-icons.json if it exists. Each icon ID is normalised (hyphens/spaces → underscores) via a private normaliseID() method. Custom icons with the same ID as a standard icon replace the standard entry (array key overwrite). All icons are sorted alphabetically by ID via ksort(). Provides getAll() (array_values of the sorted map), getStandardIcons() and getCustomIcons() (filter loops), getByID() (array lookup with RuntimeException on miss), idExists() (isset check), and countIcons(). PHPStan clean — only pre-existing DBHelper/FetchMany.php error present. composer dump-autoload completed. Existing 2 IconsTests pass with no regressions."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/classes/UI/Icons/IconCollection.php"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-17T09:35:19Z",
+          "note": "getByID() throws a plain RuntimeException for unknown IDs rather than a domain-specific exception. This is acceptable given the current absence of a UI\\\\Icons exception class, but a dedicated IconCollectionException would make error handling more granular for callers in a future WP."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-17T09:35:19Z",
+          "note": "The singleton instance (self::$instance) is never reset, which is standard for production use but makes unit-testing the load path harder (no way to force a reload after injecting a different APP_ROOT/APP_INSTALL_FOLDER constant value). A package-scoped or test-only reset hook (e.g. a static resetInstance() marked @internal) could ease test isolation. Not required for current scope."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-04-17T09:35:19Z",
+          "note": "IconCollection::loadFromFile() silently skips a missing file (returns void after !$file->exists() check). This is intentional for custom-icons.json (optional), but if the framework icons.json were missing the collection would silently be empty. A log warning or a more explicit error on missing required JSON would improve observability."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-17T09:51:38Z",
+      "completed_at": "2026-04-17T09:55:35Z",
+      "duration_ms": 237000,
+      "summary": [
+        "All 7 ACs verified. ACs 1–6 confirmed by live bootstrap execution. AC 7 (custom overrides standard) verified by code-path inspection — loadFromFile() for custom icons overwrites the same key in $this->icons, and getByID('planet')->isCustom() returns true confirming the custom load path works. Existing 2 icon tests pass; full suite shows 7 pre-existing LDAP environment failures unrelated to this WP. No regressions introduced."
+      ],
+      "metrics": {
+        "tests_passed": 1005,
+        "tests_failed": 7
+      },
+      "comments": [
+        {
+          "type": "coverage-gap",
+          "priority": "medium",
+          "timestamp": "2026-04-17T09:55:35Z",
+          "note": "No IconCollectionTest.php was created. All 7 ACs were verified by bootstrap execution and code inspection, but there is no persistent automated test for the IconCollection class. Future regressions in getInstance(), getByID(), normalizeID(), or the custom-override logic would go undetected. Recommend adding a dedicated test file in tests/AppFrameworkTests/UI/."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-04-17T09:55:35Z",
+          "note": "getByID() does not normalize the caller's input ID before lookup. Callers must pass the underscore form (e.g. 'time_tracker') not the raw JSON key ('time-tracker'). This is not an AC violation but could be a foot-gun. Consider documenting this in the method docblock or adding input normalization."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-04-17T09:55:35Z",
+          "note": "AC 7 (custom replaces standard) was verified by code-path inspection only. The test environment's custom-icons.json contains only new IDs ('planet', 'revisionable') — not an override of any standard icon. The override code path ($this->icons[$id] overwrite) is correct, but no end-to-end test fixture exercises the actual replacement scenario."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-17T09:59:21Z",
+      "completed_at": "2026-04-17T10:01:04Z",
+      "duration_ms": 103000,
+      "summary": [
+        "Code review PASS. IconCollection.php is clean, well-structured, and follows all project conventions (array() syntax, explicit property assignment, no constructor promotion, strict_types, correct namespace). All 7 ACs confirmed met by QA. One Fix-Forward applied: expanded getByID() docblock to document the ID normalisation precondition (callers must pass underscore form, not hyphens). No blocking issues found."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/classes/UI/Icons/IconCollection.php",
+          "src/classes/UI/Icons/IconInfo.php"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-17T10:01:04Z",
+          "note": "Expanded getByID() docblock to document the ID normalisation precondition. The original docblock omitted any mention that the $iconID parameter must be in normalised form (underscores, not hyphens/spaces). Callers passing 'time-tracker' instead of 'time_tracker' would receive a RuntimeException with no hint as to why. Added @note, updated @param description, and added @throws annotation. Non-behavioral change; QA validation remains intact."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-17T10:01:04Z",
+          "note": "The file_exists($customPath) guard in loadIcons() is redundant — loadFromFile() already handles missing files via !$file->exists(). Could be simplified to call loadFromFile($customPath, true) unconditionally. Not applied (structural change belongs to a future cleanup WP) but worth noting for maintainability."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-17T10:01:04Z",
+          "note": "getByID() does not normalise its input. Callers passing raw JSON keys (e.g. 'time-tracker') will receive a RuntimeException rather than the expected icon. Input normalisation in getByID() would make the API more forgiving but that is a behavioral change — deferred to a future WP. Docblock now documents the precondition."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-17T10:01:04Z",
+          "note": "loadFromFile() silently swallows a missing standard icons.json (the required framework data source). If APP_INSTALL_FOLDER/themes/default/icons.json were absent, the collection would be silently empty. A warning log or explicit error for the non-optional path would improve observability. Flagged as low-priority technical debt by Developer; no change needed now."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "high",
+          "timestamp": "2026-04-17T10:01:04Z",
+          "note": "[documentation-forward] No IconCollectionTest.php exists. All ACs were verified by bootstrap execution and code-path inspection, but there is no persistent automated regression test for IconCollection. A dedicated test file at tests/AppFrameworkTests/UI/IconCollectionTest.php should be created covering: getInstance() identity, getAll() sort order, getByID() happy path, getByID() throw on unknown, idExists() negative case, getCustomIcons()/getStandardIcons() partition, and the custom-overrides-standard scenario with a real fixture."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-17T10:04:04Z",
+      "completed_at": "2026-04-17T10:05:25Z",
+      "duration_ms": 81000,
+      "summary": [
+        "Created src/classes/UI/Icons/README.md — a new module README documenting IconCollection (singleton registry, API, JSON sources, key behaviours, getByID normalisation precondition) and IconInfo (full method table). Added a cross-reference section explaining the runtime/build-time layer split and the prefix vs iconType naming asymmetry. Added the Icons submodule to src/classes/UI/README.md Submodules table. Flagged the missing IconCollectionTest.php as a follow-up coverage gap in the README."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/classes/UI/Icons/README.md",
+          "src/classes/UI/README.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-17T10:05:25Z",
+          "note": "Created src/classes/UI/Icons/README.md documenting both IconCollection (API table, JSON sources, key behaviours, getByID() normalisation precondition, test coverage gap note) and IconInfo (full method table). Includes a cross-reference section linking the runtime UI\\Icons layer to the build-time Application\\Composer\\IconBuilder layer and explaining the prefix vs iconType naming asymmetry."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-17T10:05:25Z",
+          "note": "Added Icons row to src/classes/UI/README.md Submodules table pointing to Icons/README.md."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "high",
+          "timestamp": "2026-04-17T10:05:25Z",
+          "note": "Flagged test coverage gap: no IconCollectionTest.php exists. Documented in Icons/README.md with a note recommending tests/AppFrameworkTests/UI/IconCollectionTest.php be created in a future WP."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-17T10:05:25Z",
+  "last_updated": "2026-04-17T10:05:25Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-17T09:35:19Z",
+      "notes": [
+        "IconCollection singleton created at src/classes/UI/Icons/IconCollection.php. PHPStan clean, classmap refreshed. QA should verify: (1) getInstance() returns the same object reference on repeated calls; (2) getAll() returns 214 standard IconInfo objects sorted alphabetically by ID (verify 'actioncode' < 'activate' < 'activity'); (3) getByID('time_tracker') resolves the hyphenated JSON key 'time-tracker' correctly via ID normalisation; (4) idExists() returns false for a non-existent ID; (5) getCustomIcons() returns an empty array (no custom-icons.json in the test environment) and getStandardIcons() returns all 214; (6) if a custom icon with an existing standard ID is injected, it replaces the standard entry. Note: the class depends on APP_INSTALL_FOLDER and APP_ROOT constants — tests must bootstrap the application or mock those constants."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-17T09:55:35Z",
+      "notes": [
+        "IconCollection verified PASS. Live counts: 214 standard + 2 custom = 216 total. Alphabetical sort confirmed (actioncode → activate → activity). Time-tracker hyphen normalization works correctly. 7 pre-existing LDAP config failures in full suite are unrelated to this WP. Coverage gap: no IconCollectionTest.php exists — the code-review agent may wish to flag this as a follow-up item."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-17T10:01:04Z",
+      "notes": [
+        "All 7 ACs met. One Fix-Forward applied: getByID() docblock now documents the ID normalisation precondition. Key open item for Documentation agent: no IconCollectionTest.php exists — flag this as a follow-up test-coverage gap in the documentation output, and consider recommending a dedicated WP to add it."
+      ]
+    }
+  ]
+}

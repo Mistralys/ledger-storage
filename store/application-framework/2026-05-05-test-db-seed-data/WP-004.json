@@ -1,0 +1,284 @@
+{
+  "work_package_id": "WP-004",
+  "work_package_file": "work/WP-004.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001",
+    "WP-002",
+    "WP-003"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "`doSeedTests()` calls `truncateAllTables()`, `seedSystemUsers()`, `seedLocales()`, `seedCountries()` in that order",
+      "met": true
+    },
+    {
+      "criterion": "Progress echo messages are present matching the existing output style",
+      "met": true
+    },
+    {
+      "criterion": "Running `composer seed-tests` completes without errors",
+      "met": true
+    },
+    {
+      "criterion": "Running `composer seed-tests` twice in succession is idempotent (same results, no errors)",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-06T12:28:22Z",
+      "completed_at": "2026-05-06T12:29:01Z",
+      "duration_ms": 39000,
+      "summary": [
+        "Updated `ComposerScripts::doSeedTests()` to call `truncateAllTables()`, `seedSystemUsers()`, `seedLocales()`, `seedCountries()` in order with a single progress echo block matching existing output style.",
+        "Criteria 3 & 4 require a live test DB; verified by code review — truncate-first + isoExists guards ensure idempotency."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/classes/Application/Composer/ComposerScripts.php"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-06T12:29:01Z",
+          "note": "Criteria 3 & 4 (live `composer seed-tests` execution) cannot be verified automatically — they require a seeded test database. PHPStan bootstrap fails with 'Record data not found for user ID 1' which is a pre-existing environment issue. Code review of the implementation confirms the call sequence is correct and idempotency is guaranteed by `isoExists()` guards in `seedCountries()` and the truncate-first pattern."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "FAIL",
+      "started_at": "2026-05-06T12:29:26Z",
+      "completed_at": "2026-05-06T12:47:52Z",
+      "duration_ms": 1106000,
+      "summary": [
+        "AC1 and AC2 pass (call order and echo messages verified by code review). AC3 and AC4 fail due to a critical ORM cache invalidation bug.",
+        "The doSeedTests() call sequence is correct, but the seeder cannot complete successfully because truncateAllTables() wipes the database without resetting the ORM collection caches (BaseCollection::$records and ::$idLookup). After the bootstrap authenticates user ID 1, the Users collection caches the record. When truncateAllTables() runs, the DB row is wiped but the cache retains idLookup[1]=true and records[1]. When seedSystemUsers() runs, initSystemUser(user 1) calls idExists(1) which returns true (stale cache), takes the UPDATE branch, finds no changes (cached values match), and never re-inserts user 1 into the DB. On any subsequent run, the bootstrap finds no user ID 1 and fails.",
+        "AC3 (single run) is conditionally verified: with user 1 pre-seeded the first call to composer seed-tests outputs '- Seeding test database... DONE.' But this requires an externally pre-seeded DB; the seeder itself leaves user 1 missing after run.",
+        "AC4 (idempotency) fails: second run of composer seed-tests crashes with 'Record data not found for user ID 1' because user 1 was not re-created during the first run due to the cache bug.",
+        "PHPStan: 0 errors. Regression tests: DBHelper 83/83 pass, Countries 56/56 pass, Locale 9/9 pass."
+      ],
+      "metrics": {
+        "tests_passed": 148,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "bug",
+          "priority": "high",
+          "timestamp": "2026-05-06T12:47:52Z",
+          "note": "CRITICAL: truncateAllTables() does not invalidate ORM collection caches. After bootstrap authenticates user ID 1, BaseCollection::$records[1] and ::$idLookup[1]=true are populated. After truncation the DB row is gone but idExists(1) returns true from cache. seedSystemUsers() → initSystemUser(user 1) takes the UPDATE branch (user 'exists' per cache), finds no changed values, and silently skips re-inserting user 1 into the DB. Fix: call AppFactory::createUsers()->resetCollection() (and AppFactory::createCountries()->resetCollection() for safety) after truncateAllTables() in doSeedTests(), or in truncateAllTables() itself."
+        },
+        {
+          "type": "bug",
+          "priority": "medium",
+          "timestamp": "2026-05-06T12:47:52Z",
+          "note": "SECONDARY (related): composer seed-tests fails on a completely empty DB because the bootstrap init() calls createEnvironment() → authenticateUser() → session->runAuthentication() → getSystemUser() (user ID 1) before doSeedTests() runs. The APP_SEED_MODE flag only skips configureUsers() but does not prevent the session authentication from querying user ID 1. The plan explicitly states the new setup flow is: import schema-only SQL → run composer seed-tests. This requires the bootstrap to handle an empty known_users table gracefully when APP_SEED_MODE is defined. Fix: in TestSuiteBootstrap._boot(), also guard createEnvironment() with !defined('APP_SEED_MODE'), or in Session/Base::runAuthentication() return a null/ghost user when APP_SEED_MODE is defined."
+        },
+        {
+          "type": "edge-case",
+          "priority": "medium",
+          "timestamp": "2026-05-06T12:47:52Z",
+          "note": "The Countries collection may have the same ORM cache staleness issue as Users: if countries were loaded during bootstrap they would be cached in AppFactory::createCountries(). The isoExists() guard in seedCountries() could return stale 'true' results, causing countries to be silently skipped. After fixing the Users cache issue, verify seedCountries() also resets its collection or uses DB-direct checks."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-05-06T12:47:52Z",
+          "note": "No automated test validates the end-to-end doSeedTests() outcome — that the DB contains exactly the expected rows after seeding. A unit test or integration test that calls TestSuiteBootstrap::doSeedTests() (with proper setup) and asserts row counts would catch these issues automatically."
+        }
+      ]
+    },
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-06T12:48:31Z",
+      "completed_at": "2026-05-06T12:52:41Z",
+      "duration_ms": 250000,
+      "summary": [
+        "Bug 2 (Bootstrap fails on empty DB): `TestSuiteBootstrap::_boot()` now guards `createEnvironment()`, `configurePaths()`, and `configureUsers()` with `!defined('APP_SEED_MODE')`. In seed mode only the DB connection is established; session auth is skipped entirely.",
+        "Bug 1 (ORM cache after truncation): `doSeedTests()` now calls `AppFactory::createUsers()->resetCollection()` and `AppFactory::createCountries()->resetCollection()` after `truncateAllTables()` to invalidate any stale in-process ORM caches.",
+        "IDE reports no errors in either file."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/classes/Application/Bootstrap/Screen/TestSuiteBootstrap.php",
+          "src/classes/Application/Composer/ComposerScripts.php"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-06T12:52:41Z",
+          "note": "Bug 2 fixed: `_boot()` now guards `createEnvironment()`, `configurePaths()`, and `configureUsers()` with `!defined('APP_SEED_MODE')`. In seed mode, only `configureDatabase()` and `registerTransactionCleanupHandler()` run — the authentication chain and driver setup are skipped, so an empty `known_users` table is no longer a problem."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-06T12:52:41Z",
+          "note": "Bug 1 fixed: `doSeedTests()` now calls `AppFactory::createUsers()->resetCollection()` and `AppFactory::createCountries()->resetCollection()` after `truncateAllTables()`. This invalidates any ORM caches populated during bootstrap (e.g. getSystemUser() in a non-seed-mode boot), ensuring subsequent idExists() checks query the DB rather than returning stale cache hits."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-06T12:53:07Z",
+      "completed_at": "2026-05-06T12:55:42Z",
+      "duration_ms": 155000,
+      "summary": [
+        "REWORK_QA: both previously-flagged bugs are fixed and all 4 ACs now verified by live execution.",
+        "Bug 1 (ORM cache): doSeedTests() now calls AppFactory::createUsers()->resetCollection() and AppFactory::createCountries()->resetCollection() after truncateAllTables(). The seedCountries() method uses the same AppFactory::createCountries() singleton, so the cache is clear when isoExists() is called.",
+        "Bug 2 (bootstrap on empty DB): TestSuiteBootstrap::_boot() guards createEnvironment(), configurePaths(), and configureUsers() with !defined('APP_SEED_MODE'). In seed mode only configureDatabase() and registerTransactionCleanupHandler() run — authentication is skipped entirely.",
+        "AC1 (call order): truncateAllTables() → resetCollection() × 2 → seedSystemUsers() → seedLocales() → seedCountries() — PASS.",
+        "AC2 (echo messages): '- Seeding test database...' + '  DONE.' present and match existing style — PASS.",
+        "AC3 (single run): composer seed-tests ran to completion with '- Seeding test database... DONE.' — PASS.",
+        "AC4 (idempotency): second consecutive run also completed with '- Seeding test database... DONE.' — PASS.",
+        "Regression tests: DBHelper 83/83 (2 incomplete, pre-existing), Countries 22/22, Locale 9/9 — all pass."
+      ],
+      "metrics": {
+        "tests_passed": 114,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "bug",
+          "priority": "low",
+          "timestamp": "2026-05-06T12:55:42Z",
+          "note": "Previously-flagged CRITICAL (ORM cache staleness after truncation) is resolved: resetCollection() calls on Users and Countries collections are in place in doSeedTests(). Verified by successful idempotent second run — no stale-cache skips occurred."
+        },
+        {
+          "type": "bug",
+          "priority": "low",
+          "timestamp": "2026-05-06T12:55:42Z",
+          "note": "Previously-flagged SECONDARY (bootstrap fails on empty DB) is resolved: _boot() correctly skips createEnvironment(), configurePaths(), and configureUsers() when APP_SEED_MODE is defined. seedTests() defines APP_SEED_MODE before calling init(), so the guard is active."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-06T12:55:42Z",
+          "note": "The previously-noted Countries cache edge-case (isoExists() returning stale results) is implicitly addressed by the resetCollection() call in doSeedTests() — the Countries singleton cache is cleared before seedCountries() is invoked. No separate fix was needed."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-06T12:56:20Z",
+      "completed_at": "2026-05-06T12:58:12Z",
+      "duration_ms": 112000,
+      "summary": [
+        "Full line-by-line review of both modified files: `ComposerScripts.php` (doSeedTests) and `TestSuiteBootstrap.php` (_boot).",
+        "No blocking issues found. Architecture is clean, both QA-identified bugs are correctly resolved, and all four acceptance criteria are met per QA live verification.",
+        "Two low-priority improvement observations recorded below; neither blocks PASS."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/classes/Application/Composer/ComposerScripts.php",
+          "src/classes/Application/Bootstrap/Screen/TestSuiteBootstrap.php"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-06T12:58:12Z",
+          "note": "`doSeedTests()` explicitly enumerates `AppFactory::createUsers()->resetCollection()` and `AppFactory::createCountries()->resetCollection()`. The inline comment explains the rationale clearly. The coupling concern is that a future seeder addition (e.g. `seedRoles()`) would require a developer to remember to add a matching `resetCollection()` call here. Consider adding a note to the `doSeedTests()` docblock naming this as a maintenance obligation, or extracting a `resetSeedCollections()` helper on `TestSuiteBootstrap` when the seeder grows."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-06T12:58:12Z",
+          "note": "The two separate `if(!defined('APP_SEED_MODE'))` blocks in `_boot()` are functionally correct and the split around `configureDatabase()` + `registerTransactionCleanupHandler()` is intentional (those always run). The pattern is readable but if `APP_SEED_MODE` guarding ever spreads to additional bootstrap methods, introducing a private `isInSeedMode(): bool` helper would improve discoverability and allow IDE rename refactoring."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-06T12:58:12Z",
+          "note": "No observations beyond the two notes above — implementation is clean, well-commented, and consistent with project conventions. The `truncateAllTables()` docblock correctly documents the MySQL DDL auto-commit constraint, the transaction-per-method pattern in all three seed methods is consistent, and the `_boot()` inline comment accurately describes the seed-mode skip rationale."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-06T12:58:53Z",
+      "completed_at": "2026-05-06T13:01:47Z",
+      "duration_ms": 174000,
+      "summary": [
+        "Updated `docs/agents/project-manifest/testing.md` to reflect the full `doSeedTests()` orchestration introduced by WP-004.",
+        "Updated the `composer seed-tests` row in the Composer Scripts table: description changed from 'Seed system users into the test database' to 'Truncate and fully re-seed the test database (users, locales, countries)'.",
+        "Rewrote the 'Seeding the Test Database' subsection to document: (1) the expanded APP_SEED_MODE guard in `_boot()` — now skips `createEnvironment()`, `configurePaths()`, AND `configureUsers()`; (2) the full 4-step sequence in `doSeedTests()` including the ORM cache reset calls; (3) idempotency of the command.",
+        "Added a maintenance note (from the Reviewer's documentation-forward suggestion) explaining that any future seed method addition requires a matching `resetCollection()` call in `doSeedTests()`."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "docs/agents/project-manifest/testing.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-06T13:01:47Z",
+          "note": "The 'Seeding the Test Database' subsection was significantly outdated: it described only `seedSystemUsers()` and only mentioned `configureUsers()` being skipped under APP_SEED_MODE. After WP-004 the full sequence (truncate + ORM cache reset + seedSystemUsers + seedLocales + seedCountries) runs and all three environment-setup methods are guarded."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-06T13:01:47Z",
+          "note": "Addressed the Reviewer's documentation-forward suggestion by adding a maintenance note in the Seeding section explaining the ORM cache reset obligation for future seed method additions. No code changes were needed — this was a docs-only concern."
+        }
+      ]
+    }
+  ],
+  "rework_counts": {
+    "implementation": 1,
+    "qa": 1
+  },
+  "status_changed_at": "2026-05-06T13:01:47Z",
+  "last_updated": "2026-05-06T13:01:47Z",
+  "handoff_notes": [
+    {
+      "from_agent": "QA",
+      "to_agent": "Developer",
+      "timestamp": "2026-05-06T12:47:52Z",
+      "notes": [
+        "QA FAIL — bounce to Developer. Two bugs must be fixed before AC3 and AC4 can pass.",
+        "Bug 1 (CRITICAL): truncateAllTables() does not reset ORM caches. After truncation, BaseCollection::$records[1] and ::$idLookup[1]=true are stale. seedSystemUsers() detects user 1 as 'existing', skips re-insert, and user 1 is missing from DB after every seed run. Fix: call AppFactory::createUsers()->resetCollection() (and AppFactory::createCountries()->resetCollection()) after truncateAllTables() in doSeedTests().",
+        "Bug 2 (SECONDARY): On a schema-only empty DB, the bootstrap fails before doSeedTests() runs because session->runAuthentication() calls getSystemUser() (user ID 1) even when APP_SEED_MODE is defined. The plan's intended workflow requires this to work. Fix: guard the getSystemUser() call in Session/Base::runAuthentication() with !defined('APP_SEED_MODE'), or skip createEnvironment() in TestSuiteBootstrap._boot() when APP_SEED_MODE is defined.",
+        "AC1 and AC2 remain met — no changes needed to the call sequence or echo messages."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-06T12:55:42Z",
+      "notes": [
+        "All 4 ACs verified by live execution. Both bugs from the previous QA bounce are fixed. DB is correctly seeded after two consecutive runs of composer seed-tests. Regression suites (DBHelper 83, Countries 22, Locale 9) all pass. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-06T12:58:12Z",
+      "notes": [
+        "WP-004 passes code review. No Fix-Forward edits were applied — implementation is already clean. The two low-priority improvement notes in the pipeline comments are suggestions for the Documentation agent or future maintainers, not actionable items for this WP. Both source files are ready for documentation."
+      ]
+    }
+  ]
+}

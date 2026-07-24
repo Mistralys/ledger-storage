@@ -1,0 +1,118 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-002.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "composer test-file -- tests/AppFrameworkTests/Application/Admin/RecordTieInTest.php exits 0",
+      "met": true
+    },
+    {
+      "criterion": "test_ancestryHandling passes (not skipped, not marked incomplete)",
+      "met": true
+    },
+    {
+      "criterion": "Fix addresses the actual root cause",
+      "met": true
+    },
+    {
+      "criterion": "No temporary debug statements remain in the codebase",
+      "met": true
+    }
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-19T14:17:47Z",
+      "completed_at": "2026-03-19T14:25:40Z",
+      "summary": [
+        "Diagnosed and fixed test_ancestryHandling failure. Root cause: $_REQUEST state pollution between tests. test_hiddenVariablesArePresent sets $_REQUEST[MythologyRecordCollection::REQUEST_VAR_NAME] to a valid in-memory mythology record ID (e.g., 'Athena') which persists to test_ancestryHandling. childTieIn->isRecordSelected() finds a valid mythology record already selected, making isEnabled() return false instead of true. Fix: added tearDown() to RecordTieInTest that unsets all $_REQUEST keys used by the tests before calling parent::tearDown(). All 8 tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "tests/AppFrameworkTests/Application/Admin/RecordTieInTest.php"
+        ]
+      },
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-03-19T14:25:40Z",
+          "note": "ApplicationTestCase::tearDown() does not reset $_REQUEST superglobal, making all test subclasses that write to $_REQUEST susceptible to inter-test pollution. BaseRecordSelectionTieIn::getRecord() caches its result, which amplifies the problem because once a stale $_REQUEST value causes a null cache, the tie-in behaves as if no record is selected for the remainder of the test. A global tearDown() reset of $_REQUEST in ApplicationTestCase would prevent this class of bug from recurring in other test classes."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-19T14:25:40Z",
+          "note": "The test passed in isolation (composer test-filter) but failed in the full file run, which is a classic inter-test pollution signature. Adding a note to RecordTieInTest or to the test-authoring guidelines about resetting $_REQUEST would aid future maintainers."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-19T14:40:45Z",
+      "completed_at": "2026-03-19T14:41:08Z",
+      "summary": [
+        "RecordTieInTest verified. All 8 tests pass with 22 assertions (exit 0). test_ancestryHandling passes without skip or incomplete marker — confirmed both in isolation and in full-file run. The tearDown() fix correctly unsets MythologyRecordCollection::REQUEST_VAR_NAME, TestDBCollection::REQUEST_PRIMARY_NAME, and 'inherit' from $_REQUEST before calling parent::tearDown(), eliminating the inter-test pollution that caused the failure. No debug statements present in the file."
+      ],
+      "metrics": {
+        "tests_passed": 8,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-19T14:41:08Z",
+          "note": "The testdox output explicitly confirms test_ancestryHandling is listed as a passing test, not skipped or marked incomplete. Edge-case confirmed: test runs correctly after test_hiddenVariablesArePresent which sets the same $_REQUEST key — tearDown prevents pollution."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-19T14:47:15Z",
+      "completed_at": "2026-03-19T14:47:38Z",
+      "summary": [
+        "WP-002: The tearDown() fix is architecturally correct and targets the actual root cause. Three keys are unset in a single unset() call before parent::tearDown() is invoked — the correct order. The unset list covers every $_REQUEST key written across the 8 tests: REQUEST_VAR_NAME (set by test_hiddenVariablesArePresent), REQUEST_PRIMARY_NAME (set by test_getSelectedRecord, test_primaryValueIsAddedToTheURL, test_primaryValueCanBeCombinedWithInheritVar, test_ancestryHandling), and 'inherit' (set by test_inheritRequestVars and test_primaryValueCanBeCombinedWithInheritVar). The comment accurately documents why this is necessary — the caching behavior of BaseRecordSelectionTieIn::getRecord() and its sensitivity to stale $_REQUEST state. Minimal change principle followed — no production code touched, no test logic altered."
+      ],
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-03-19T14:47:38Z",
+          "note": "As flagged by the Developer: ApplicationTestCase::tearDown() does not reset $_REQUEST, making all subclasses that write to it susceptible to the same class of inter-test pollution. This is a systemic gap that should be addressed at the base class level in a dedicated WP, rather than requiring each test class to maintain its own unset list. Raising this as a cross-cutting concern to be recorded at the project level."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-19T14:51:36Z",
+      "completed_at": "2026-03-19T14:51:45Z",
+      "summary": [
+        "Added 'Superglobal Teardown' section to docs/agents/project-manifest/testing.md documenting the $_REQUEST inter-test pollution hazard, the required tearDown() pattern, and a tracking note about the ApplicationTestCase base class gap. This preserves the architectural concern raised by both the Developer and Reviewer pipelines. Changelog entry in v7.2.1 covers the RecordTieInTest fix."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "docs/agents/project-manifest/testing.md",
+          "changelog.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-03-19T14:51:45Z",
+          "note": "The 'Superglobal Teardown' section in testing.md converts the per-WP debt comment (ApplicationTestCase does not reset $_REQUEST) into durable guidance visible to all future agents and developers. The tracking note calls out the open base-class fix without requiring immediate action."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-03-19T14:51:45Z"
+}

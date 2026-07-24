@@ -1,0 +1,218 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "configureUsers() performs only SELECT queries (no INSERT, UPDATE, or transaction start/commit) — it reads system user IDs via Application::getSystemUserIDs() and checks existence via AppFactory::createUsers()->idExists().",
+      "met": true
+    },
+    {
+      "criterion": "When any system user ID is missing from the test database, configureUsers() throws a BootException with error code 175001 and a message containing both the missing user IDs and the text 'composer seed-tests'.",
+      "met": true
+    },
+    {
+      "criterion": "seedSystemUsers() is public static, starts a transaction, runs the InitSystemUsers installer task, commits on success, and rolls back via DBHelper::rollbackConditional() on any \\Throwable before re-throwing.",
+      "met": true
+    },
+    {
+      "criterion": "registerTransactionCleanupHandler() registers a shutdown function (via register_shutdown_function) that calls DBHelper::rollbackConditional().",
+      "met": true
+    },
+    {
+      "criterion": "_boot() calls registerTransactionCleanupHandler() between configureDatabase() and configurePaths().",
+      "met": true
+    },
+    {
+      "criterion": "The class constant ERROR_TEST_DB_NOT_SEEDED has an explicit int type declaration and value 175001.",
+      "met": true
+    },
+    {
+      "criterion": "All new code uses array() syntax (not []).",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-29T12:22:01Z",
+      "completed_at": "2026-04-29T12:25:47Z",
+      "duration_ms": 226000,
+      "summary": [
+        "Added two new use imports: Application\\AppFactory and Application\\Bootstrap\\BootException.",
+        "Added class constant: public const int ERROR_TEST_DB_NOT_SEEDED = 175001.",
+        "Refactored _boot() to call registerTransactionCleanupHandler() between configureDatabase() and configurePaths().",
+        "Replaced write-heavy configureUsers() with a verify-only implementation: iterates Application::getSystemUserIDs(), checks each via AppFactory::createUsers()->idExists(), throws BootException(175001) listing missing IDs with 'composer seed-tests' hint if any are absent.",
+        "Added public static seedSystemUsers(): starts transaction, runs InitSystemUsers installer task, commits on success, rolls back via DBHelper::rollbackConditional() and re-throws on any Throwable.",
+        "Added private registerTransactionCleanupHandler(): registers a shutdown function that calls DBHelper::rollbackConditional().",
+        "All new code uses array() syntax (not []).",
+        "PHPStan --level=max: no errors. Test suite: 1098 tests, 7 pre-existing LDAP failures (missing config file), no regressions."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/classes/Application/Bootstrap/Screen/TestSuiteBootstrap.php"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-29T12:25:47Z",
+          "note": "configurePaths() uses die() on line 119 for a missing tests folder rather than throwing an exception. This is inconsistent with the rest of the bootstrap, which uses BootException. A low-priority improvement would be to replace die() with a BootException throw to allow callers (or shutdown handlers) to react gracefully."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-04-29T12:25:47Z",
+          "note": "The configureDatabase() method uses direct constant references (APP_DB_TESTS_NAME, APP_DB_TESTS_USER, etc.) without null-check guards. If those constants are undefined (misconfigured environment), PHP emits notices/deprecations in PHP 8+. Low risk in a controlled test bootstrap, but worth noting."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-29T12:25:47Z",
+          "note": "The existing configureDatabase() and configurePaths() methods use space-after-control-flow style (e.g., 'if ('), while the new configureUsers() follows the project's Allman brace style. Both are present in the file; the new code correctly matches the surrounding Allman style used in the class methods — no action needed."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-29T12:26:05Z",
+      "completed_at": "2026-04-29T12:27:41Z",
+      "duration_ms": 96000,
+      "summary": [
+        "All 7 acceptance criteria verified by code inspection and test execution. PHPStan --level=max reports zero errors on the modified file. Test suite: 1098 tests, 7 pre-existing LDAP failures (missing test-cas-config.php, pre-existing), no regressions introduced. Two edge cases examined: (1) rollbackConditional() on shutdown is safely guarded by isTransactionStarted() — no risk of spurious rollback on a committed transaction; (2) configureUsers() silently passes when getSystemUserIDs() returns empty — acceptable per spec but noted as an observation."
+      ],
+      "metrics": {
+        "test_coverage": "N/A — PHPStan max-level clean",
+        "tests_passed": 1091,
+        "tests_failed": 7
+      },
+      "comments": [
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-04-29T12:27:41Z",
+          "note": "configureUsers() silently passes (logs 'System users verified.') when Application::getSystemUserIDs() returns an empty array. No users are checked, no exception is thrown. This is not a bug per the AC, but could mask a misconfigured system user list in future. Worth considering a guard like 'at least one system user ID must exist'."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-04-29T12:27:41Z",
+          "note": "DBHelper::rollbackConditional() in the shutdown handler is safely guarded by isTransactionStarted() — confirmed by reading DBHelper.php line 921. There is no risk of a spurious rollback after seedSystemUsers() commits successfully or when no transaction was ever started."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-29T12:27:41Z",
+          "note": "No new issues found — all 7 ACs fully met, PHPStan clean, no regressions. The 7 test failures are pre-existing LDAP ConfigTest failures due to missing test-cas-config.php, unrelated to this WP."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-29T12:28:01Z",
+      "completed_at": "2026-04-29T12:29:47Z",
+      "duration_ms": 106000,
+      "summary": [
+        "Code review PASS. All 7 acceptance criteria are fully met. The implementation is clean, well-structured, and architecturally sound. The separation of the read-only verify path (configureUsers) from the write/transactional path (seedSystemUsers) is correct and intentional. The shutdown handler registration correctly guards against orphaned transactions without risk of spurious rollbacks after a successful commit. No blocking issues found. Two documentation-forward items tagged for the Documentation agent."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/classes/Application/Bootstrap/Screen/TestSuiteBootstrap.php"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-29T12:29:47Z",
+          "note": "No blocking issues found — code is clean, consistent, and architecturally well-designed."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-29T12:29:47Z",
+          "note": "[documentation-forward] The new public static seedSystemUsers() method lacks a PHPDoc block. Add at minimum: description ('Seeds system users into the test database within a transaction'), @throws annotation for Application_Exception (from getTaskByID on unknown task ID) and \\Throwable (re-thrown from process()), and a usage note pointing to the 'composer seed-tests' command."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-04-29T12:29:47Z",
+          "note": "[documentation-forward] The class constant ERROR_TEST_DB_NOT_SEEDED = 175001 has no inline doc comment. Add a brief comment explaining the error code context (e.g., '// Thrown when system users are missing from the test database; run composer seed-tests') to aid future maintainers searching for this error code."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-04-29T12:29:47Z",
+          "note": "[documentation-forward] The private registerTransactionCleanupHandler() method has no docstring. A one-liner comment explaining its role ('Registers a PHP shutdown handler to roll back any open transaction if the process exits unexpectedly') would clarify why this is called before configurePaths() rather than at the end of _boot()."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-29T12:30:08Z",
+      "completed_at": "2026-04-29T12:30:47Z",
+      "duration_ms": 39000,
+      "summary": [
+        "Addressed all three documentation-forward items from the code-review pipeline.",
+        "Added inline comment on ERROR_TEST_DB_NOT_SEEDED constant explaining the error code context and directing maintainers to 'composer seed-tests'.",
+        "Added full PHPDoc block to seedSystemUsers(): description, @throws \\Application_Exception (task ID not found), @throws \\Throwable (re-thrown from process()), and a usage note with the 'composer seed-tests' command.",
+        "Added PHPDoc block to registerTransactionCleanupHandler() explaining its role as a shutdown-based safety net and why it is positioned before configurePaths() in _boot()."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/classes/Application/Bootstrap/Screen/TestSuiteBootstrap.php"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-29T12:30:47Z",
+          "note": "All three documentation-forward items from code-review addressed: (1) seedSystemUsers() PHPDoc added with description, @throws annotations for \\Application_Exception and \\Throwable, and composer seed-tests usage note; (2) ERROR_TEST_DB_NOT_SEEDED constant got an inline comment explaining the error context; (3) registerTransactionCleanupHandler() got a PHPDoc block explaining its shutdown-handler role and the rationale for early placement in _boot()."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-29T12:30:47Z",
+  "last_updated": "2026-04-29T12:30:47Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-29T12:25:47Z",
+      "notes": [
+        "All 7 acceptance criteria implemented and verified. configureUsers() is now a pure read/verify method. seedSystemUsers() is the new write path (public static, transactional). The shutdown handler guards against orphaned transactions. PHPStan max-level clean. Pre-existing LDAP test failures (missing test-cas-config.php) are unrelated to this WP."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-29T12:27:41Z",
+      "notes": [
+        "All 7 ACs verified PASS. PHPStan max-level clean. No regressions. Two low-priority observations recorded (empty-ID silent pass and confirmed rollbackConditional safety). Code is ready for code-review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-29T12:29:47Z",
+      "notes": [
+        "Code review PASS. All 7 ACs confirmed. Three documentation-forward items recorded: (1) seedSystemUsers() needs a PHPDoc block with @throws annotations, (2) ERROR_TEST_DB_NOT_SEEDED constant needs an inline doc comment, (3) registerTransactionCleanupHandler() needs a one-liner explaining its placement before configurePaths()."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,452 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-002.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "UserScopedCacheInterface extends CacheableAPIMethodInterface and declares getUserCacheIdentifier(): string and getUserScopedCacheKeyParameters(): array",
+      "met": true
+    },
+    {
+      "criterion": "UserScopedCacheTrait uses CacheableAPIMethodTrait and overrides getCacheKeyParameters()",
+      "met": true
+    },
+    {
+      "criterion": "getCacheKeyParameters() in the trait automatically injects _userScope key with the user identifier",
+      "met": true
+    },
+    {
+      "criterion": "An empty user identifier causes APICacheException to be thrown with ERROR_EMPTY_USER_CACHE_IDENTIFIER",
+      "met": true
+    },
+    {
+      "criterion": "UserScopedCacheTrait docblock includes @phpstan-require-implements UserScopedCacheInterface",
+      "met": true
+    },
+    {
+      "criterion": "composer dump-autoload runs successfully",
+      "met": true
+    },
+    {
+      "criterion": "composer analyze reports no new errors",
+      "met": true
+    }
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-17T10:25:53Z",
+      "completed_at": "2026-03-17T10:33:25Z",
+      "summary": [
+        "Created UserScopedCacheInterface extending CacheableAPIMethodInterface with getUserCacheIdentifier(): string and getUserScopedCacheKeyParameters(): array methods.",
+        "Created UserScopedCacheTrait using CacheableAPIMethodTrait, overriding getCacheKeyParameters() to inject _userScope key and throwing APICacheException (ERROR_EMPTY_USER_CACHE_IDENTIFIER) on empty identifier.",
+        "Added @phpstan-require-implements UserScopedCacheInterface to trait docblock.",
+        "Added phpstan.neon ignoreErrors entry for trait.unused on UserScopedCacheTrait.php (library code not yet consumed; consistent with pre-existing CountryRequestTrait pattern).",
+        "composer dump-autoload: passed. composer analyze: 7 errors (all pre-existing). APICacheIntegrationTest: 6/6 passed."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T10:33:25Z",
+          "note": "Pre-existing CountryRequestTrait trait.unused warning is not suppressed. A project-wide policy for library-only traits (glob suppress pattern) would be cleaner than per-file entries. The new UserScopedCacheTrait entry is narrowly scoped and should be removed when the trait gains its first consumer (expected in WP-004 or WP-005)."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T10:33:25Z",
+          "note": "array_merge() places _userScope first; if getUserScopedCacheKeyParameters() returns a key named _userScope it would be silently overwritten. Extremely unlikely in practice, but a brief inline comment or an array union operator approach (+) would make the intentional precedence explicit."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-17T10:34:18Z",
+      "completed_at": "2026-03-17T10:38:39Z",
+      "summary": [
+        "All 7 acceptance criteria verified by code inspection and test execution.",
+        "APICacheIntegrationTest: 6/6 PASS. APICacheStrategyTest: 13/13 PASS.",
+        "PHP syntax clean on both new files. PHPStan: 7 errors — all pre-existing, no new errors introduced. phpstan.neon trait.unused suppression correctly scoped to UserScopedCacheTrait.php.",
+        "UserScopedCacheInterface correctly extends CacheableAPIMethodInterface and declares both required methods.",
+        "UserScopedCacheTrait correctly uses CacheableAPIMethodTrait, overrides getCacheKeyParameters(), injects _userScope key, and throws APICacheException(ERROR_EMPTY_USER_CACHE_IDENTIFIER) on empty identifier.",
+        "@phpstan-require-implements annotation confirmed present in trait docblock."
+      ],
+      "metrics": {
+        "tests_passed": 19,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-03-17T10:38:39Z",
+          "note": "The empty-identifier guard uses `=== ''` (strict empty check). A whitespace-only string (e.g. '   ') would pass the guard and become a technically-valid but meaningless cache scope key. If user identifiers can originate from untrusted input, a `trim()` + empty check would be safer. Low risk in practice since this is an internal library interface."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-03-17T10:38:39Z",
+          "note": "array_merge() key collision: if getUserScopedCacheKeyParameters() returns a '_userScope' key, it silently overwrites the injected user identifier. Developer already flagged this in the implementation comments. Worth documenting in the interface's @see or method docblock that '_userScope' is a reserved parameter name."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "medium",
+          "timestamp": "2026-03-17T10:38:39Z",
+          "note": "No dedicated test for UserScopedCacheTrait unit behavior exists — specifically: (1) empty identifier throws APICacheException, (2) _userScope is injected into merged key parameters, (3) non-empty identifier passes through correctly. AC does not require tests for WP-002, but a test file (e.g. UserScopedCacheTraitTest.php) would be valuable before WP-004 consumers land."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "FAIL",
+      "started_at": "2026-03-17T10:39:23Z",
+      "completed_at": "2026-03-17T10:43:51Z",
+      "summary": [
+        "Both files are well-structured and the overall implementation is of high quality. One blocking issue identified: array_merge() key-collision allows getUserScopedCacheKeyParameters() to silently overwrite the injected _userScope key, undermining the structural security guarantee that is the stated purpose of this WP. Fix: switch to array union operator (+) so _userScope always takes precedence. See blocking comment for the exact replacement."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "high",
+          "timestamp": "2026-03-17T10:43:51Z",
+          "note": "BLOCKING — array_merge() key-collision in UserScopedCacheTrait::getCacheKeyParameters(). PHP's array_merge() gives precedence to the right operand for duplicate string keys. The current code:\n\n  return array_merge(\n      array('_userScope' => $identifier),\n      $this->getUserScopedCacheKeyParameters()\n  );\n\n...allows a consumer's getUserScopedCacheKeyParameters() return value to silently overwrite the security-critical _userScope injection if it accidentally contains a '_userScope' key. This undermines the structural guarantee ('impossible to omit user identity') that is this WP's sole purpose.\n\nFix — switch to the PHP array union operator, which gives precedence to the LEFT operand:\n\n  return array('_userScope' => $identifier) + $this->getUserScopedCacheKeyParameters();\n\nThe union operator ensures _userScope is always the value provided by the trait, regardless of what the consumer returns. Note: the union operator is safe here because getCacheKey() performs ksort() before hashing, so insertion order in the returned array is irrelevant. All parameters are expected to be string-keyed associative entries."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T10:43:51Z",
+          "note": "NON-BLOCKING — The _userScope reservation should be stated explicitly in the getUserScopedCacheKeyParameters() method docblock, not only in prose. A @throws or @note line like '* Note: the key name _userScope is reserved; returning it here has no effect (it is always overwritten by the trait).' would surface the contract to IDE users without requiring them to read the trait."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T10:43:51Z",
+          "note": "NON-BLOCKING — Empty-identifier guard uses === '' (strict). Whitespace-only strings (e.g. '   ') pass the guard. Acceptable for an internal library where getUserCacheIdentifier() implementations are under developer control, but worth an inline comment clarifying that trimming is the consumer's responsibility."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T10:43:51Z",
+          "note": "NON-BLOCKING — phpstan.neon trait.unused suppression for UserScopedCacheTrait.php must be removed by the WP that introduces the first consumer (expected WP-004 or WP-005). Recommend adding a // TODO: remove after WP-004 comment next to the ignoreErrors block so it does not become stale noise."
+        }
+      ]
+    },
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-17T13:07:30Z",
+      "completed_at": "2026-03-17T13:09:14Z",
+      "summary": [
+        "Rework: fixed blocking code-review issue in UserScopedCacheTrait::getCacheKeyParameters().",
+        "Changed array_merge(array('_userScope' => $identifier), getUserScopedCacheKeyParameters()) to array union operator: array('_userScope' => $identifier) + getUserScopedCacheKeyParameters(). Union operator gives precedence to the left operand, ensuring _userScope is always the trait-injected value regardless of what getUserScopedCacheKeyParameters() returns.",
+        "Non-blocking: added a '_userScope is reserved' note to the getUserScopedCacheKeyParameters() docblock in UserScopedCacheInterface.php, surfacing the contract to IDE users.",
+        "composer analyze: 7 errors (all pre-existing, no new errors). APICacheIntegrationTest: 6/6 PASS. APICacheStrategyTest: 13/13 PASS."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/classes/Application/API/Cache/UserScopedCacheTrait.php",
+          "src/classes/Application/API/Cache/UserScopedCacheInterface.php"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T13:09:14Z",
+          "note": "The fix (union operator) is correct and minimal. No further structural concerns in the two touched files. The phpstan.neon trait.unused suppression for UserScopedCacheTrait.php remains and should be removed by the WP that introduces the first consumer (WP-004/WP-005)."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-17T13:16:07Z",
+      "completed_at": "2026-03-17T13:18:19Z",
+      "summary": [
+        "Rework QA PASS. Blocking code-review issue resolved: array_merge() replaced with array union operator (+) in UserScopedCacheTrait::getCacheKeyParameters() — _userScope left operand always takes precedence.",
+        "Non-blocking fix confirmed: getUserScopedCacheKeyParameters() docblock in UserScopedCacheInterface now explicitly documents _userScope as a reserved key.",
+        "APICacheIntegrationTest: 6/6 PASS. APICacheStrategyTest: 13/13 PASS. PHPStan: 7 errors, all pre-existing, no new errors introduced.",
+        "All 7 AC remain met. phpstan.neon trait.unused suppression correctly scoped to UserScopedCacheTrait.php."
+      ],
+      "metrics": {
+        "tests_passed": 19,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T13:18:19Z",
+          "note": "Empty-identifier guard still uses === '' (strict). Whitespace-only strings (e.g. '   ') pass through. Acceptable for an internal library where getUserCacheIdentifier() implementations are developer-controlled. Noted for awareness only."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "medium",
+          "timestamp": "2026-03-17T13:18:19Z",
+          "note": "No dedicated unit test for UserScopedCacheTrait behavior exists (empty identifier throws, _userScope injection, non-empty passthrough). Remains a gap — a UserScopedCacheTraitTest.php would be valuable before WP-004 consumers land."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T13:18:19Z",
+          "note": "phpstan.neon trait.unused suppression for UserScopedCacheTrait.php must be removed by the WP that introduces the first consumer (expected WP-004 or WP-005). Suppression is correctly scoped and non-harmful in the interim."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "FAIL",
+      "started_at": "2026-03-17T13:19:01Z",
+      "completed_at": "2026-03-17T13:27:24Z",
+      "summary": [
+        "Blocking issue found in UserScopedCacheTrait::getCacheKeyParameters(): the APICacheException constructor is called with only 2 arguments, passing the int error-code constant as the second argument (string $developerInfo). This means: (a) with strict_types=1 declared in UserScopedCacheTrait.php, PHP 8.4 will throw a TypeError instead of APICacheException at runtime; (b) even without strict_types, the exception code would be 0 — not ERROR_EMPTY_USER_CACHE_IDENTIFIER — violating AC #4. This bug was not caught by PHPStan because the trait.unused suppression prevents analysis of the trait's method bodies when there is no consumer class. Fix: add an explicit empty-string (or useful developer detail string) as the second argument, and pass the error code as the third argument. The union-operator fix from the previous rework is correctly implemented and confirmed. All other aspects of the implementation are high quality.",
+        "Non-blocking items carried forward: (1) whitespace-only identifier passes the guard — acceptable for internal library code, (2) phpstan.neon trait.unused suppression must be removed by WP-004/WP-005 when the first consumer is added, (3) a UserScopedCacheTraitTest.php covering empty-identifier throwing, _userScope injection, and union-operator precedence would be valuable before consumer WPs close."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "high",
+          "timestamp": "2026-03-17T13:27:24Z",
+          "note": "BLOCKING — APICacheException constructor called with wrong argument positions in UserScopedCacheTrait::getCacheKeyParameters() (UserScopedCacheTrait.php line 55).\n\nCurrent (broken):\n  throw new APICacheException(\n      'User-scoped cache method returned an empty user identifier.',\n      APICacheException::ERROR_EMPTY_USER_CACHE_IDENTIFIER\n  );\n\nApplication_Exception.__construct signature:\n  (string $message, string $developerInfo = '', int $code = 0, ?Throwable $previous = null)\n\nThe int constant 59213009 is passed as arg #2 ($developerInfo: string). Two consequences:\n  1. With declare(strict_types=1) present in UserScopedCacheTrait.php: PHP 8.4 throws TypeError instead of APICacheException — the wrong exception type is raised entirely.\n  2. Without strict_types coercion: APICacheException IS thrown, but getCode() returns 0, not ERROR_EMPTY_USER_CACHE_IDENTIFIER — directly violating AC #4.\n\nAdditional context: the trait.unused PHPStan suppression prevents analysis of the trait's method bodies when no consumer exists, so this was silently missed by the static analysis pass.\n\nFix — use the standard 3-argument form, consistent with APICacheManager.php:\n  throw new APICacheException(\n      'User-scoped cache method returned an empty user identifier.',\n      sprintf('Class [%s] returned an empty identifier from getUserCacheIdentifier().', get_class($this)),\n      APICacheException::ERROR_EMPTY_USER_CACHE_IDENTIFIER\n  );\n\nNote: get_class($this) is safe inside a trait method and provides actionable developer diagnostics."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T13:27:24Z",
+          "note": "NON-BLOCKING — phpstan.neon trait.unused suppression for UserScopedCacheTrait.php must be removed by the WP that introduces the first consumer (expected WP-004/WP-005). It should be noted that this suppression has the side-effect of preventing PHPStan from analyzing the trait's method bodies entirely — an important limitation to document or mitigate (e.g. add a UserScopedCacheTraitTest.php that provides an integration-level safety net for the suppressed analysis window)."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T13:27:24Z",
+          "note": "NON-BLOCKING — Empty-identifier guard uses === '' (strict). Whitespace-only strings pass through. Acceptable for an internal library where getUserCacheIdentifier() implementations are developer-controlled. No change required."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "medium",
+          "timestamp": "2026-03-17T13:27:24Z",
+          "note": "NON-BLOCKING — Still no dedicated unit test for UserScopedCacheTrait behavior (empty identifier throws, _userScope injection, union-operator precedence). Given that the trait.unused PHPStan suppression disables static analysis of the method bodies until a consumer exists, a test file (UserScopedCacheTraitTest.php) using a minimal anonymous-class fixture would be the only automated safety net for this period. Strongly recommended before WP-004 consumers land."
+        }
+      ]
+    },
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-17T13:29:04Z",
+      "completed_at": "2026-03-17T13:32:08Z",
+      "summary": [
+        "Rework #2: fixed APICacheException constructor argument order in UserScopedCacheTrait::getCacheKeyParameters(). The int error-code constant was being passed as arg #2 (string $developerInfo) instead of arg #3 (int $code). With declare(strict_types=1) present in the file this would throw a TypeError at runtime instead of an APICacheException. Fixed to the standard 3-argument form: new APICacheException('message', sprintf('Class [%s] returned an empty identifier from getUserCacheIdentifier().', get_class($this)), APICacheException::ERROR_EMPTY_USER_CACHE_IDENTIFIER). Pattern is consistent with APICacheManager.php.",
+        "Union-operator fix from rework #1 is unchanged and correct.",
+        "composer analyze: 7 errors (all pre-existing, no new errors). APICacheIntegrationTest: 6/6 PASS. APICacheStrategyTest: 13/13 PASS."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/classes/Application/API/Cache/UserScopedCacheTrait.php"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 19,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T13:32:08Z",
+          "note": "The trait.unused PHPStan suppression prevented analysis of the method body on both rework cycles — two distinct bugs (array_merge key-collision, wrong constructor arg order) were both missed by static analysis as a direct consequence. A UserScopedCacheTraitTest.php using an anonymous-class fixture would be the only automated safety net during this window. Strongly recommended before WP-004 closes."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-17T13:32:48Z",
+      "completed_at": "2026-03-17T13:43:40Z",
+      "summary": [
+        "Rework QA #2 PASS. Blocking constructor-argument issue fully resolved in UserScopedCacheTrait::getCacheKeyParameters().",
+        "APICacheException is now correctly called with 3 arguments: (string message, string developerInfo via sprintf/get_class(), int ERROR_EMPTY_USER_CACHE_IDENTIFIER). With declare(strict_types=1) present, the prior 2-argument form would have raised a TypeError instead of APICacheException — now eliminated.",
+        "Application_Exception constructor signature confirmed: (string $message, string $developerInfo='', int $code=0, ?Throwable $previous=null). Arg positions verified correct.",
+        "Rework #1 union-operator fix confirmed unchanged: array('_userScope' => $identifier) + $this->getUserScopedCacheKeyParameters() — _userScope left-operand precedence intact.",
+        "PHP syntax clean on both files. APICacheIntegrationTest: 6/6 PASS. APICacheStrategyTest: 13/13 PASS. PHPStan: 7 errors — all pre-existing, no new errors.",
+        "All 7 AC remain met."
+      ],
+      "metrics": {
+        "tests_passed": 19,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T13:43:40Z",
+          "note": "Empty-identifier guard uses === '' (strict). Whitespace-only strings pass through. Acceptable for internal library code where getUserCacheIdentifier() implementations are developer-controlled. No change required."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "medium",
+          "timestamp": "2026-03-17T13:43:40Z",
+          "note": "Still no dedicated unit test for UserScopedCacheTrait behavior (empty-identifier throws APICacheException, _userScope injection, union-operator key precedence). The trait.unused PHPStan suppression disables static analysis of the method bodies until a consumer exists — a UserScopedCacheTraitTest.php using an anonymous-class fixture would be the only automated safety net for this window. Strongly recommended before WP-004 consumers land."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T13:43:40Z",
+          "note": "phpstan.neon trait.unused suppression for UserScopedCacheTrait.php must be removed by the WP that introduces the first consumer (expected WP-004/WP-005). Suppression is correctly scoped and non-harmful in the interim."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-17T13:44:25Z",
+      "completed_at": "2026-03-17T13:47:26Z",
+      "summary": [
+        "Both blocking issues from prior review cycles are fully resolved. (1) Union operator (+) ensures _userScope left-operand precedence — a consumer's getUserScopedCacheKeyParameters() can never silently overwrite the user-scope injection. (2) APICacheException constructor now uses the correct 3-argument form: (message, sprintf(...get_class($this)...), ERROR_EMPTY_USER_CACHE_IDENTIFIER) — consistent with Application_Exception signature and with declare(strict_types=1) in place a TypeError is no longer possible.",
+        "Both files are minimal, single-responsibility, and correctly structured. All technical constraints met: declare(strict_types=1) in both files, array() syntax throughout, no enums or readonly properties. Namespace Application\\API\\Cache is correct. Interface docblock explains the two-tier design rationale. Trait docblock includes @phpstan-require-implements UserScopedCacheInterface. The _userScope reservation is documented in the interface method docblock.",
+        "Non-blocking items carried forward to downstream WPs: (1) phpstan.neon trait.unused suppression for UserScopedCacheTrait.php must be removed when WP-004/WP-005 introduces the first consumer; (2) whitespace-only identifier passes the === '' guard — acceptable for internal library code where getUserCacheIdentifier() is developer-controlled; (3) a UserScopedCacheTraitTest.php covering empty-identifier throw, _userScope injection, and union-operator precedence would be the only automated safety net during the trait.unused PHPStan suppression window — strongly recommended before WP-004 consumers close."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T13:47:26Z",
+          "note": "NON-BLOCKING — phpstan.neon trait.unused suppression for UserScopedCacheTrait.php must be removed by the WP that introduces the first consumer (expected WP-004/WP-005). Important caveat: this suppression has the side-effect of disabling PHPStan analysis of the trait's method bodies entirely — both prior blocking issues (array_merge key-collision and wrong APICacheException arg order) were missed by static analysis precisely because of this suppression. A UserScopedCacheTraitTest.php using an anonymous-class fixture is the only automated safety net for the trait during this window. Strongly recommended before WP-004 consumers close."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T13:47:26Z",
+          "note": "NON-BLOCKING — Empty-identifier guard uses === '' (strict). Whitespace-only strings (e.g. '   ') pass through and become technically-valid but meaningless cache scope keys. Acceptable for internal library code where getUserCacheIdentifier() implementations are developer-controlled. No change required."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T13:47:26Z",
+          "note": "NON-BLOCKING — No dedicated unit tests exist for UserScopedCacheTrait behavior (empty-identifier throws APICacheException, _userScope injection, union-operator key precedence). Given the PHPStan suppression window, a UserScopedCacheTraitTest.php with a minimal anonymous-class fixture covering these three scenarios would provide meaningful regression protection before WP-004 consumers land."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-17T13:48:06Z",
+      "completed_at": "2026-03-17T13:53:42Z",
+      "summary": [
+        "Updated API/Cache module documentation to reflect the UserScopedCacheInterface and UserScopedCacheTrait added in WP-002.",
+        "src/classes/Application/API/Cache/README.md: Added both new classes to the Classes table; added a new '2. User-scoped caching' usage section with a full code example, reserved-key contract, empty-identifier failure behaviour, and a note that BaseAPIMethod requires no changes; added a 'Two-Tier Design: Stateless vs. User-Scoped Methods' section explaining when each tier applies.",
+        "src/classes/Application/API/Cache/module-context.yaml: Updated module description to mention the two-tier design; added keyword entries for UserScopedCacheInterface, UserScopedCacheTrait, getUserCacheIdentifier, and getUserScopedCacheKeyParameters.",
+        "changelog.md: Added v7.0.12 entry documenting the new user-scoped caching type system."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/classes/Application/API/Cache/README.md",
+          "src/classes/Application/API/Cache/module-context.yaml",
+          "changelog.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T13:53:42Z",
+          "note": "The README.md Purpose paragraph still references only CacheableAPIMethodInterface/CacheableAPIMethodTrait. Consider updating the opening sentence on the next documentation pass to mention the two-tier design (stateless vs. user-scoped). A minor clarity improvement, not a blocker."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-03-17T13:53:42Z",
+          "note": "The phpstan.neon trait.unused suppression for UserScopedCacheTrait.php must be removed by the WP that introduces the first consumer (WP-004 or WP-005). This suppression disables PHPStan analysis of the trait method bodies entirely — two bugs (array_merge key-collision and wrong APICacheException constructor arg order) were missed due to it on prior rework cycles. The README should note this limitation in the PHPStan section when one is added."
+        }
+      ]
+    }
+  ],
+  "rework_counts": {
+    "implementation": 2,
+    "qa": 2,
+    "code-review": 2
+  },
+  "status_changed_at": "2026-03-17T13:53:42Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-03-17T10:33:25Z",
+      "notes": [
+        "WP-002 complete. UserScopedCacheInterface and UserScopedCacheTrait now exist in src/classes/Application/API/Cache/. WP-004 (depends on WP-001, WP-002, WP-003) is now eligible to become READY. phpstan.neon has a new ignoreErrors entry for UserScopedCacheTrait trait.unused - the consuming WP should remove it once the trait has an actual implementor."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-17T10:38:39Z",
+      "notes": [
+        "WP-002 QA PASS. UserScopedCacheInterface and UserScopedCacheTrait are correctly implemented and all AC verified. Key reminder for WP-004/WP-005: (1) remove phpstan.neon trait.unused suppression once UserScopedCacheTrait gains its first consumer, (2) '_userScope' is a reserved cache parameter name — document this in consumer onboarding, (3) consider adding a UserScopedCacheTraitTest.php for the empty-identifier and key-injection behaviours before those WPs close."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Developer",
+      "timestamp": "2026-03-17T10:43:51Z",
+      "notes": [
+        "WP-002 code-review FAIL — one blocking issue: array_merge() key-collision in UserScopedCacheTrait allows _userScope to be overwritten by getUserScopedCacheKeyParameters(). Fix is one line: change array_merge(array('_userScope' => $identifier), ...) to array('_userScope' => $identifier) + ... (union operator, left operand wins). All acceptance criteria and documentation are otherwise correct and the code is clean."
+      ]
+    },
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-03-17T13:09:14Z",
+      "notes": [
+        "WP-002 rework complete. Blocking issue resolved: UserScopedCacheTrait now uses the array union operator to guarantee _userScope always takes precedence. Interface docblock updated to document the reserved key. PHPStan: 7 errors (all pre-existing). Tests: 19/19 PASS. Ready for re-review."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-17T13:18:19Z",
+      "notes": [
+        "WP-002 QA PASS (rework). The blocking array_merge() key-collision is fixed via union operator — _userScope is now structurally guaranteed to take precedence. All 7 AC met. Reminders for downstream WPs: (1) remove phpstan.neon trait.unused suppression on UserScopedCacheTrait.php once the trait has its first consumer (WP-004/WP-005), (2) '_userScope' is a reserved cache parameter name — now documented in the interface docblock, (3) consider adding UserScopedCacheTraitTest.php for empty-identifier and key-injection unit coverage before those WPs close."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Developer",
+      "timestamp": "2026-03-17T13:27:24Z",
+      "notes": [
+        "WP-002 code-review FAIL (second pass) — new blocking issue: APICacheException constructor called with wrong argument positions in UserScopedCacheTrait::getCacheKeyParameters(). The int error code constant is passed as arg #2 (string $developerInfo) instead of arg #3 (int $code). This causes either a TypeError (with strict_types=1) or an exception with code=0 (without strict) — both violate AC #4. Fix: use the 3-argument form: new APICacheException('message', sprintf('Class [%s] returned an empty identifier.', get_class($this)), APICacheException::ERROR_EMPTY_USER_CACHE_IDENTIFIER). The union-operator fix from rework #1 is confirmed correct — do not revert. All other aspects of both files are clean. After the fix, PHPStan and the existing tests should still pass; strongly recommend adding a UserScopedCacheTraitTest.php test that triggers the empty-identifier path to catch this class of issue in the future."
+      ]
+    },
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-03-17T13:32:08Z",
+      "notes": [
+        "WP-002 rework #2 complete. APICacheException constructor is now correctly called with 3 arguments: (message, developerInfo, code). Both the union-operator fix (rework #1) and the constructor-arg fix (rework #2) are in place. PHPStan: 7 errors (all pre-existing). Tests: 19/19 PASS. Ready for QA re-verification. Reminder: phpstan.neon trait.unused suppression for UserScopedCacheTrait.php must be removed by the WP that introduces the first consumer (WP-004/WP-005)."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-17T13:43:40Z",
+      "notes": [
+        "WP-002 QA PASS (rework #2). All 3 rework cycles now resolved: (1) array_merge() key-collision → union operator, (2) APICacheException constructor arg order → 3-argument form. Both fixes are correct and verified. All 7 AC met, 19/19 tests pass, PHPStan clean (7 pre-existing errors only).",
+        "Reminders for downstream WPs: (1) remove phpstan.neon trait.unused suppression for UserScopedCacheTrait.php when its first consumer is added (WP-004/WP-005); (2) '_userScope' is a reserved cache parameter name — documented in UserScopedCacheInterface.getUserScopedCacheKeyParameters() docblock; (3) add UserScopedCacheTraitTest.php for empty-identifier throw, _userScope injection, and union-operator precedence before WP-004 consumers close."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-03-17T13:47:26Z",
+      "notes": [
+        "WP-002 code-review PASS (third pass). Both blocking issues are fully resolved: (1) union operator ensures _userScope structural guarantee; (2) APICacheException 3-argument constructor is correct and strict_types-safe. All 7 AC confirmed met. Implementation is clean and conventions-compliant.",
+        "Reminders for downstream WPs (WP-004/WP-005): (1) REMOVE the phpstan.neon trait.unused ignoreErrors entry for UserScopedCacheTrait.php when the first consumer is added — failure to do so leaves a PHPStan blind spot in the trait method bodies indefinitely; (2) STRONGLY RECOMMENDED — add UserScopedCacheTraitTest.php (anonymous-class fixture) covering empty-identifier throw, _userScope injection, and union-operator key precedence BEFORE or AS PART OF the WP that introduces the first consumer; (3) '_userScope' is a reserved cache parameter name — documented in the getUserScopedCacheKeyParameters() interface docblock."
+      ]
+    }
+  ]
+}

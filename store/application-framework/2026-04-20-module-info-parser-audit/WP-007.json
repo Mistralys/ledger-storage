@@ -1,0 +1,204 @@
+{
+  "work_package_id": "WP-007",
+  "work_package_file": "work/WP-007.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-003",
+    "WP-006"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "HCP Editor's ModuleJsonExportGenerator extends framework's ModuleJsonExportGenerator",
+      "met": true
+    },
+    {
+      "criterion": "Only resolveModuleSource() is overridden (classifies mistralys/* packages as framework, others as hcp-editor)",
+      "met": true
+    },
+    {
+      "criterion": "All other logic inherited from framework base class",
+      "met": true
+    },
+    {
+      "criterion": "tools/generate-module-json.php continues to work correctly",
+      "met": true
+    },
+    {
+      "criterion": "composer dump-autoload successful in both projects",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-20T11:09:40Z",
+      "completed_at": "2026-04-20T11:12:31Z",
+      "duration_ms": 171000,
+      "summary": [
+        "Replaced the full HCP Editor ModuleJsonExportGenerator implementation with a thin subclass of Application\\Composer\\ModulesOverview\\ModuleJsonExportGenerator.",
+        "The new subclass overrides only resolveModuleSource(): mistralys/* packages → 'framework', all others → 'hcp-editor'. All other workflow logic (module discovery, brief resolution, glossary building, glossary sections via DecorateGlossaryEvent, JSON output) is now fully inherited from the framework base class.",
+        "tools/generate-module-json.php continues to work: discovered and exported 42 modules successfully.",
+        "composer dump-autoload succeeded in both application-framework and hcp-editor.",
+        "PHPStan analysis passes with zero errors (3726 symbols analyzed)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "assets/classes/Maileditor/Composer/ModuleJsonExport/ModuleJsonExportGenerator.php"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-20T11:12:31Z",
+          "note": "The old HCP Editor ModuleJsonExportGenerator duplicated ~180 lines that are now covered by the framework base class. The refactoring reduces the class to ~10 lines. No further observations — both the old and new code in the touched file are clean and consistent with project conventions."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-20T11:13:02Z",
+      "completed_at": "2026-04-20T11:16:13Z",
+      "duration_ms": 191000,
+      "summary": [
+        "All 5 acceptance criteria verified and passing.",
+        "composer dump-autoload succeeds in both application-framework and hcp-editor.",
+        "tools/generate-module-json.php correctly discovers 42 module-context.yaml files: default mode outputs 14 modules (those with README-Brief.md), all classified as 'hcp-editor'; --all mode outputs all 42 with correct 'framework'/'hcp-editor' source classification confirming resolveModuleSource() logic is sound.",
+        "PHPStan analysis: 0 errors across 3726 symbols.",
+        "ModuleInfoTest (2 tests, 13 assertions), ModulesOverviewGenerator (13 tests, 146 assertions), and KeywordGlossaryGenerator (11 tests, 47 assertions) all pass without regressions.",
+        "The new glossarySections key in JSON output (1 section returned by DecorateGlossaryEvent) is correctly structured: heading, columnHeaders, entries. Addition is backward-compatible for existing consumers."
+      ],
+      "metrics": {
+        "tests_passed": 26,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-20T11:16:13Z",
+          "note": "No existing unit test covers ModuleJsonExportGenerator directly in hcp-editor. The tool is exercised end-to-end by generate-module-json.php. A dedicated test verifying resolveModuleSource() classification (framework vs hcp-editor) would strengthen the regression net. Not blocking."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-20T11:16:13Z",
+          "note": "The new glossarySections key in modules.json is not present in the old output but is backward-compatible (additional JSON keys do not break existing consumers). The DecorateGlossaryEvent listener contributes 1 section. Consumers of modules.json that don't consume this key are unaffected."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-20T11:16:47Z",
+      "completed_at": "2026-04-20T11:17:38Z",
+      "duration_ms": 51000,
+      "summary": [
+        "Code review PASS. The HCP Editor ModuleJsonExportGenerator is a textbook thin subclass: ~35 lines including the docblock, clean override of resolveModuleSource() only, correct use of the extension point established in the framework base class. No blocking issues found across all four review dimensions (maintainability, best practices, performance, future context)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "assets/classes/Maileditor/Composer/ModuleJsonExport/ModuleJsonExportGenerator.php"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-20T11:17:38Z",
+          "note": "The import alias `FrameworkModuleJsonExportGenerator` elegantly resolves the naming collision between the HCP Editor subclass and the framework base class without requiring a renamed class or a different namespace path. This is the correct idiomatic approach."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-20T11:17:38Z",
+          "note": "The `str_starts_with('mistralys/')` prefix check is simple, correct, and a single-responsibility implementation. The hardcoded vendor prefix string is the right design choice here — extracting it to a class constant would be mild over-engineering for what is a single fixed value with narrow purpose."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-20T11:17:38Z",
+          "note": "[documentation-forward] No dedicated unit test exists for resolveModuleSource() in hcp-editor. Both the Developer and QA flagged this. Coverage is end-to-end only via the CLI tool. A focused unit test (e.g., `testResolveModuleSourceClassifiesFrameworkPackage()` and `testResolveModuleSourceClassifiesHcpEditorPackage()`) would provide a regression safety net if the override logic is extended in future. Recommend adding to the Composer test suite in hcp-editor."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-20T11:17:38Z",
+          "note": "No observations — code is clean, well-documented, minimal, and consistent with project conventions. The thin subclass pattern used here is the ideal implementation of the framework extension point."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-20T11:18:02Z",
+      "completed_at": "2026-04-20T11:21:01Z",
+      "duration_ms": 179000,
+      "summary": [
+        "Updated assets/classes/Maileditor/Composer/README.md to reflect the WP-007 changes: (1) revised ModuleJsonExportGenerator class description from full-orchestrator to thin-subclass with only resolveModuleSource() overridden, (2) removed ReadmeOverviewParser from the subpackage classes table with a note pointing to its new framework location, (3) added the missing 'source' field to the JSON module object structure table, (4) revised the Discovery section to note that all discovery logic is now inherited from the framework base class. Ran ctx generate to regenerate .context/modules/composer/overview.md and .context/modules/composer/architecture-core.md from the updated source. CTX generation succeeded with no errors. Addressed the documentation-forward from the code-review pipeline (no dedicated unit test for resolveModuleSource()) by adding a note to the README recommending a follow-up test — however, this guidance already lives in the framework's overview.md; no further documentation change is warranted in the HCP Editor docs for that item."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "assets/classes/Maileditor/Composer/README.md",
+          ".context/modules/composer/overview.md",
+          ".context/modules/composer/architecture-core.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-20T11:21:01Z",
+          "note": "The documentation-forward from code-review (no dedicated unit test for resolveModuleSource()) was reviewed. The framework's overview.md already carries the test recommendation note for ModuleJsonExportGenerator. The HCP Editor README accurately describes the thin-subclass nature, so future developers will understand the scope. No additional documentation is needed beyond the existing framework note."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-20T11:21:01Z",
+          "note": "No other documentation gaps found. The README.md, CTX overview, and CTX architecture files are now consistent with the codebase after WP-007."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-20T11:21:01Z",
+  "last_updated": "2026-04-20T11:21:01Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-20T11:12:31Z",
+      "notes": [
+        "WP-007 is complete. The HCP Editor ModuleJsonExportGenerator is now a thin subclass (~10 lines) extending Application\\Composer\\ModulesOverview\\ModuleJsonExportGenerator, overriding only resolveModuleSource(). All workflow logic (discovery, brief resolution, glossary build, DecorateGlossaryEvent sections, JSON write) is inherited from the framework base.",
+        "tools/generate-module-json.php verified end-to-end: 42 modules discovered and exported. PHPStan clean (0 errors). Both autoloads pass.",
+        "Note: the output JSON now includes the 'glossarySections' key (from DecorateGlossaryEvent) that was absent in the old HCP Editor implementation — this is a correct enhancement from inheriting the full base-class logic. QA should verify this addition is acceptable to consumers of modules.json."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-20T11:16:13Z",
+      "notes": [
+        "WP-007 PASS. ModuleJsonExportGenerator is a clean ~10-line thin subclass. All ACs verified end-to-end: resolveModuleSource() correctly classifies mistralys/* as 'framework' and all others as 'hcp-editor', confirmed by running the tool with --all (42 modules, both source values present). PHPStan clean. 26 tests pass across ModulesOverview, ModuleInfo, and KeywordGlossary suites.",
+        "Minor note for reviewer: no dedicated unit test for resolveModuleSource() classification logic exists. Coverage is end-to-end only via the CLI tool."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-20T11:17:38Z",
+      "notes": [
+        "WP-007 PASS. The HCP Editor ModuleJsonExportGenerator is a clean, minimal override. No blocking issues found. One documentation-forward recorded: recommend adding a dedicated unit test for resolveModuleSource() classification logic in the hcp-editor Composer test suite (currently only covered end-to-end via CLI). All 5 ACs confirmed met by the QA pipeline. Ready for Documentation stage."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,352 @@
+{
+  "work_package_id": "WP-007",
+  "work_package_file": "work/WP-007.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-004",
+    "WP-006"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "Given valid JSON, PHP, and JS files with markers, build() replaces marker content and returns a successful OperationResult.",
+      "met": true
+    },
+    {
+      "criterion": "When PHP target file is missing, returns an OperationResult error with ERROR_PHP_ICON_FILE_NOT_FOUND.",
+      "met": true
+    },
+    {
+      "criterion": "When JS target file is missing, returns an OperationResult error with ERROR_JS_ICON_FILE_NOT_FOUND.",
+      "met": true
+    },
+    {
+      "criterion": "When markers are missing in a target file, returns an OperationResult error with ERROR_START_MARKER_NOT_FOUND.",
+      "met": true
+    },
+    {
+      "criterion": "No dependency on LocalFrameworkClone or t() function.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-17T10:24:31Z",
+      "completed_at": "2026-04-17T10:30:30Z",
+      "duration_ms": 359000,
+      "summary": [
+        "Created IconBuilder orchestrator class at src/classes/Application/Composer/IconBuilder/IconBuilder.php.",
+        "IconBuilder reads icons from JSON via IconsReader, renders PHP/JS methods using PHPRenderer and JSRenderer, and replaces content between /* START METHODS */ and /* END METHODS */ markers in target files.",
+        "Error constants ERROR_PHP_ICON_FILE_NOT_FOUND (82301), ERROR_JS_ICON_FILE_NOT_FOUND (82302), ERROR_START_MARKER_NOT_FOUND (82303) ported from the original Migrator class.",
+        "No dependency on LocalFrameworkClone or t() function.",
+        "Created 10 unit tests covering all acceptance criteria in tests/AppFrameworkTests/Composer/IconBuilder/IconBuilderTest.php.",
+        "All 10 tests pass. Pre-existing PHPStan error in FetchMany.php (unrelated) is the only analysis finding."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/classes/Application/Composer/IconBuilder/IconBuilder.php",
+          "tests/AppFrameworkTests/Composer/IconBuilder/IconBuilderTest.php"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-17T10:30:30Z",
+          "note": "IconBuilder.insertIconCode() passes the shared OperationResult instance for error reporting. This is correct and consistent with AppUtils patterns, but callers should note that any makeError() call on the returned result modifies the same object. The design is intentional and appropriate for this use case."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-17T10:30:30Z",
+          "note": "file_put_contents() is used directly for writing rather than AppUtils FileInfo::factory()->putContents(). Both are functionally equivalent here; the native call is simpler and avoids a dependency for a build-time class that must operate outside the full app bootstrap."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-17T10:31:11Z",
+      "completed_at": "2026-04-17T10:33:09Z",
+      "duration_ms": 118000,
+      "summary": [
+        "All 5 acceptance criteria verified through manual code review and test execution.",
+        "10/10 unit tests pass with 30 assertions (IconBuilderTest).",
+        "79 Composer module tests pass — no regressions.",
+        "AC5 (no LocalFrameworkClone / t() dependency) confirmed by grep: only mention is in a negative-assertion docblock.",
+        "END marker ordering relative to START marker is not validated (endPos < startPos would produce malformed output), but this is an extremely unlikely scenario with deliberately corrupted files and is not covered by any AC."
+      ],
+      "metrics": {
+        "test_coverage": "10 dedicated unit tests; 79 regression tests (Composer module)",
+        "tests_passed": 10,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-04-17T10:33:09Z",
+          "note": "insertIconCode() does not check the return value of file_put_contents(). A silent write failure (e.g. read-only file) would cause build() to return a valid OperationResult while the target file is unchanged. Low risk for a build-time tool operating on tracked source files, but could be hardened in a follow-up."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-04-17T10:33:09Z",
+          "note": "No validation that MARKER_END position is strictly after MARKER_START in insertIconCode(). If the end marker appears before the start marker in the file, substr() arithmetic produces malformed content. Requires deliberately corrupted target files and is outside any AC scope."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-17T10:33:09Z",
+          "note": "ERROR_START_MARKER_NOT_FOUND (82303) is reused for a missing end marker. The error message string correctly identifies which marker is absent, but the constant name is slightly misleading. Acceptable as-is since the tests explicitly assert this behavior."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "FAIL",
+      "started_at": "2026-04-17T10:33:50Z",
+      "completed_at": "2026-04-17T10:35:40Z",
+      "duration_ms": 110000,
+      "summary": [
+        "FAIL — one blocking issue: file_put_contents() return value is discarded in insertIconCode(). A write failure (permissions, disk full) silently returns a successful OperationResult while the target file is unchanged. This is a logic defect: build() can report success for an operation that did not occur.",
+        "All other dimensions PASS: clean architecture, correct OperationResult usage, typed constants, proper error constants, no t()/LocalFrameworkClone dependencies, well-structured tests with temp-file teardown."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/classes/Application/Composer/IconBuilder/IconBuilder.php",
+          "tests/AppFrameworkTests/Composer/IconBuilder/IconBuilderTest.php"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "high",
+          "timestamp": "2026-04-17T10:35:40Z",
+          "note": "BLOCKING — insertIconCode() at line 189 discards the return value of file_put_contents(). The function returns false on failure (read-only file, full disk, etc.), but this is never checked. As a result, build() proceeds to return OperationResult::makeSuccess() even when neither target file was written. Fix: add ERROR_WRITE_FAILED = 82304, check the return value, and call $result->makeError() if it is false. A corresponding unit test (e.g. test_build_writeFailure_returnsError) using a chmod(0444) temp file should be added."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-17T10:35:40Z",
+          "note": "ERROR_START_MARKER_NOT_FOUND (82303) is reused for a missing end marker. The error message correctly names the absent marker, so this is not a runtime problem, but the constant name is misleading. Consider renaming to ERROR_MARKER_NOT_FOUND in a follow-up — this is a public API change and requires a test update, so out of scope for the current fix."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-17T10:35:40Z",
+          "note": "No validation that MARKER_END position is strictly after MARKER_START. If a file is manually corrupted with reversed marker order, the substr() arithmetic in insertIconCode() produces malformed output without any error signal. A guard (if $endPos <= $afterStart) should be added in a follow-up; outside current AC scope."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-17T10:35:40Z",
+          "note": "[documentation-forward] The build() docblock lists three error cases (missing PHP file, missing JS file, missing marker) but will need a fourth entry once ERROR_WRITE_FAILED is added. Update the @return and error-list prose in the docblock to cover write failure after the developer fix is applied."
+        }
+      ]
+    },
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-17T10:36:11Z",
+      "completed_at": "2026-04-17T10:38:26Z",
+      "duration_ms": 135000,
+      "summary": [
+        "Fixed blocking code-review issue: file_put_contents() return value is now checked in insertIconCode().",
+        "Added public const int ERROR_WRITE_FAILED = 82304.",
+        "insertIconCode() now captures $written = @file_put_contents(...); returns makeError(ERROR_WRITE_FAILED) if $written === false. The @ suppresses the native PHP warning since failure is handled via return value.",
+        "Updated build() docblock to list the new write-failure error case.",
+        "Added test_build_writeFailure_returnsError: creates a chmod(0444) temp file, asserts build() returns isValid()=false with code ERROR_WRITE_FAILED, then restores chmod(0644) for tearDown cleanup.",
+        "11/11 tests pass cleanly (33 assertions, no warnings)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/classes/Application/Composer/IconBuilder/IconBuilder.php",
+          "tests/AppFrameworkTests/Composer/IconBuilder/IconBuilderTest.php"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-17T10:38:26Z",
+          "note": "Used @ error suppression on file_put_contents() to prevent a spurious PHP warning from appearing in build output when a write fails. This is appropriate here: the return value is the authoritative signal, and the native warning adds no value for build-time tooling. A comment could be added to the source line to explain the intent, but it is not strictly necessary for such a well-understood pattern."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-17T10:39:09Z",
+      "completed_at": "2026-04-17T10:40:41Z",
+      "duration_ms": 92000,
+      "summary": [
+        "Rework verification PASS. The one blocking issue from code review (silent write failure) is fully resolved.",
+        "ERROR_WRITE_FAILED = 82304 constant added at line 33 of IconBuilder.php.",
+        "insertIconCode() now captures @file_put_contents() return value and calls makeError(ERROR_WRITE_FAILED) when false.",
+        "build() docblock updated to list the new write-failure error case.",
+        "New test test_build_writeFailure_returnsError passes: chmod(0444) temp file correctly triggers ERROR_WRITE_FAILED.",
+        "11/11 unit tests pass (33 assertions). 80/80 Composer module regression tests pass (199 assertions) — no regressions."
+      ],
+      "metrics": {
+        "test_coverage": "11 dedicated unit tests; 80 Composer module regression tests",
+        "tests_passed": 11,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-17T10:40:41Z",
+          "note": "Rework narrowly scoped and correct: only the blocking write-failure path was changed. @ error suppression on file_put_contents() is appropriate for build-time tooling where the return value is the authoritative failure signal."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-17T10:40:41Z",
+          "note": "The two low-priority out-of-scope items from the previous QA (end-marker ordering guard and ERROR_START_MARKER_NOT_FOUND naming) remain unchanged and are already tracked in the ledger. No new concerns identified."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-17T10:41:05Z",
+      "completed_at": "2026-04-17T10:42:14Z",
+      "duration_ms": 69000,
+      "summary": [
+        "PASS (re-review). The one blocking issue from the previous review — discarded file_put_contents() return value — is fully and correctly resolved.",
+        "ERROR_WRITE_FAILED = 82304 constant added. insertIconCode() captures @file_put_contents() and returns makeError(ERROR_WRITE_FAILED) when false. build() docblock updated. New test test_build_writeFailure_returnsError passes using chmod(0444) fixture.",
+        "Fix-Forward applied: added inline comment on the @file_put_contents line explaining why error suppression is used. Non-behavioral.",
+        "All other review dimensions remain clean from first review. Architecture, error propagation, constant typing, test teardown — all correct."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/classes/Application/Composer/IconBuilder/IconBuilder.php",
+          "tests/AppFrameworkTests/Composer/IconBuilder/IconBuilderTest.php"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-17T10:42:14Z",
+          "note": "Added inline comment on the @file_put_contents() call in insertIconCode() to explain why error suppression is used: '// @ suppresses the native PHP warning; the return value is the authoritative failure signal.' Non-behavioral — QA validation remains intact."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-17T10:42:14Z",
+          "note": "test_build_writeFailure_returnsError restores chmod(0644) outside a try/finally block. Since build() is OperationResult-based and does not throw, this is safe in practice. A try/finally would be more defensive but is not required given the current API contract."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-17T10:42:14Z",
+          "note": "ERROR_START_MARKER_NOT_FOUND (82303) is reused for a missing end marker — the constant name is misleading. Tracked from first review. No change in scope for this WP; consider renaming to ERROR_MARKER_NOT_FOUND in a follow-up as a public API change."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-17T10:42:14Z",
+          "note": "[documentation-forward] The build() docblock now lists all four error cases including ERROR_WRITE_FAILED. The module-level or class-level documentation (if any) should be updated to mention the write-failure path and the rationale for @ suppression on file_put_contents()."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-17T10:42:34Z",
+      "completed_at": "2026-04-17T10:43:12Z",
+      "duration_ms": 38000,
+      "summary": [
+        "Updated src/classes/Application/Composer/README.md: added IconBuilder.php to the file tree, and added an 'Orchestrator: IconBuilder' subsection documenting its usage example, all four error constants (including ERROR_WRITE_FAILED = 82304), the write-failure path explanation (@file_put_contents suppression rationale), and a reference to its test file."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/classes/Application/Composer/README.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-17T10:43:12Z",
+          "note": "Added IconBuilder.php to the IconBuilder file tree. Added an 'Orchestrator: IconBuilder' subsection with usage example, complete error constants table (all four: PHP/JS file not found, marker not found, write failed), write-failure path explanation (@ suppression rationale), and reference to the test file."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-04-17T10:43:12Z",
+          "note": "Addressed documentation-forward: write-failure path and ERROR_WRITE_FAILED are explicitly documented in the error constants table and the 'Write-failure path' paragraph."
+        }
+      ]
+    }
+  ],
+  "rework_counts": {
+    "implementation": 1,
+    "qa": 1,
+    "code-review": 1
+  },
+  "status_changed_at": "2026-04-17T10:43:12Z",
+  "last_updated": "2026-04-17T10:43:12Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-17T10:30:30Z",
+      "notes": [
+        "IconBuilder is complete and all ACs are met. The class is in Application\\\\Composer\\\\IconBuilder\\\\IconBuilder. Next step (WP-008) should wire it into ComposerScripts::rebuildIcons() and update composer.json to add the rebuild-icons script."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-17T10:33:09Z",
+      "notes": [
+        "WP-007 PASS. IconBuilder orchestrator fully verified: all 5 ACs met, 10/10 unit tests green, 79 Composer module regression tests clean. Ready for code review. Note for Reviewer: check insertIconCode() silent write-failure and end-marker ordering edge cases (both low priority, no AC failures)."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Developer",
+      "timestamp": "2026-04-17T10:35:40Z",
+      "notes": [
+        "Bounce to Developer for one blocking fix: add ERROR_WRITE_FAILED = 82304, check file_put_contents() return value in insertIconCode(), return makeError() on false, add a unit test covering write failure. All other code is clean — re-review after fix will be fast."
+      ]
+    },
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-17T10:38:26Z",
+      "notes": [
+        "Rework complete. One blocking fix applied: insertIconCode() now checks file_put_contents() return value and returns ERROR_WRITE_FAILED (82304) on false. @ suppresses the native PHP warning since failure is handled via return value. All 11 tests pass cleanly. The only other items noted by QA (end-marker ordering, ERROR_START_MARKER_NOT_FOUND naming) are low-priority, out-of-scope, and already tracked in the ledger."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-17T10:40:41Z",
+      "notes": [
+        "WP-007 QA PASS (rework). All 5 ACs met. The blocking write-failure issue from code review is resolved. 11/11 unit tests green, 80 Composer regression tests clean. Code is ready for final code review — the Reviewer previously said the re-review would be fast since only the write-failure fix needed verification."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-17T10:42:14Z",
+      "notes": [
+        "WP-007 PASS. All 5 ACs met. Code is clean: correct error propagation, typed constants, no forbidden dependencies, 11/11 tests green. Fix-Forward applied (inline comment on @ suppression). Open low-priority items: (1) ERROR_START_MARKER_NOT_FOUND naming — consider follow-up rename; (2) test chmod restore not in try/finally — safe as-is given no-throw API. Documentation agent: update class/module docs to cover write-failure path if module documentation is generated for IconBuilder."
+      ]
+    }
+  ]
+}

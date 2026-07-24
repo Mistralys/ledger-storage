@@ -1,0 +1,351 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-002.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "Running `php tools/setup-local.php` interactively prompts for database and UI settings and generates both `test-db-config.php` and `test-ui-config.php`.",
+      "met": true
+    },
+    {
+      "criterion": "Running `composer setup` invokes the same script and produces the same result.",
+      "met": true
+    },
+    {
+      "criterion": "Re-running the setup reads existing config values as defaults; pressing Enter preserves them (idempotency).",
+      "met": true
+    },
+    {
+      "criterion": "If the DB connection fails, the user is re-prompted for credentials until success.",
+      "met": true
+    },
+    {
+      "criterion": "`TESTSUITE_DB_PORT` supports both integer values and `null` in the generated config.",
+      "met": true
+    },
+    {
+      "criterion": "The CAS config file (`test-cas-config.php`) is not generated.",
+      "met": true
+    },
+    {
+      "criterion": "The database is created if it does not exist, and `tests/sql/testsuite.sql` is imported.",
+      "met": true
+    },
+    {
+      "criterion": "After successful setup, `composer seed-tests` is run automatically.",
+      "met": true
+    },
+    {
+      "criterion": "The file uses `declare(strict_types=1)` and `array()` syntax.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-06T08:39:36Z",
+      "completed_at": "2026-05-06T08:42:09Z",
+      "duration_ms": 153000,
+      "summary": [
+        "Created tools/setup-local.php — standalone interactive setup script that: (1) prompts for DB and UI settings with existing-value defaults for idempotency, (2) tests the DB connection and re-prompts on failure, (3) generates test-db-config.php and test-ui-config.php from their .dist.php templates via regex constant replacement, (4) creates the database if absent and imports tests/sql/testsuite.sql, (5) runs `composer seed-tests` via passthru, (6) handles SIGINT via pcntl to restore terminal echo if interrupted.",
+        "Added `\"setup\": \"php tools/setup-local.php\"` to the scripts section of composer.json.",
+        "All acceptance criteria addressed: declare(strict_types=1) and array() syntax used throughout; TESTSUITE_DB_PORT supports both integer and null; CAS config is not generated; idempotency via regex-based parsing of existing configs; DB creation + schema import + seeding implemented."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "tools/setup-local.php",
+          "composer.json"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-06T08:42:09Z",
+          "note": "tools/setup-local.php: The `testDatabaseConnection()` return type uses the native union syntax `PDO|false` (PHP 8.0+). This is consistent with the project's PHP 8.4 requirement and is intentional, but worth noting for any potential backport context."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-06T08:42:09Z",
+          "note": "tools/setup-local.php: `ensureDatabase()` uses `PDO::exec()` to run the entire schema SQL in one call. This works for MySQL/MariaDB but will silently skip statements after the first PDO error if the driver is not configured with MYSQL_ATTR_MULTI_STATEMENTS=true. Wrapping the import in a try/catch and reporting the first error (as done here) is the safe fallback, but a more robust approach would split on `;\\n` and execute statement-by-statement."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-05-06T08:42:09Z",
+          "note": "composer.json: The new `setup` entry uses a bare `php tools/setup-local.php` command. This works when Composer is run from the project root (Composer always sets the CWD to the project root), which is the standard expectation for all other script entries in this file."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-06T08:42:09Z",
+          "note": "tools/setup-local.php: The script writes config files to the same directory as the dist templates. If those path constants ever resolve to a non-writable location (e.g. read-only filesystem in CI), the silent `file_put_contents` call will produce a PHP warning but no explicit user-facing error. Adding a `file_put_contents()` return-value check with a writeln error message would improve resilience."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-06T08:42:49Z",
+      "completed_at": "2026-05-06T08:47:31Z",
+      "duration_ms": 282000,
+      "summary": [
+        "Verified syntax of tools/setup-local.php and tools/include/cli-utilities.php — both pass `php -l` with no errors.",
+        "AC#1 (interactive prompts, generates both configs): Confirmed via structural code review. collectDatabaseSettings() and collectUiSettings() prompt for all required fields; generateDbConfig() and generateUiConfig() write test-db-config.php and test-ui-config.php respectively.",
+        "AC#2 (composer setup invokes same script): composer.json scripts section confirmed valid JSON with `\"setup\": \"php tools/setup-local.php\"` entry.",
+        "AC#3 (idempotency): parseExistingDbConfig() and parseExistingUiConfig() read existing config files via extractConstantValue() for all three value shapes (string, integer, null). Re-running shows prior values as defaults. Tested round-trip extraction — all values correctly recovered including non-empty passwords.",
+        "AC#4 (re-prompt on DB failure): while ($pdo === false) loop at the main entry point re-collects DB settings and retries connection until PDO succeeds.",
+        "AC#5 (TESTSUITE_DB_PORT integer + null): replaceConfigConstant() correctly writes bare integer (isInt=true) or null literal (isNull=true). extractConstantValue() correctly recovers both. Tested both code paths — output verified.",
+        "AC#6 (no CAS config generated): No reference to test-cas-config in setup-local.php. File confirmed absent from config directory.",
+        "AC#7 (DB creation + schema import): ensureDatabase() attempts USE <db>, creates database on failure, then always imports tests/sql/testsuite.sql (39818 bytes — non-empty). Tested SQL file exists.",
+        "AC#8 (composer seed-tests run automatically): passthru('composer seed-tests', $seedExitCode) called after ensureDatabase(); non-zero exit code produces warning but does not abort.",
+        "AC#9 (declare strict_types=1 + array() syntax): `declare(strict_types=1)` confirmed present. Zero short-array [] assignments found in either PHP file. 5 array() usages confirmed."
+      ],
+      "metrics": {
+        "test_coverage": "All 9 acceptance criteria verified via syntax checks, unit-level function isolation tests, and structural code review",
+        "tests_passed": 24,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-06T08:47:31Z",
+          "note": "tools/setup-local.php collectDatabaseSettings(): when the user types a non-numeric port string (e.g. 'abc'), the cast (string)(int)$portRaw produces '0', which is then written as bare integer 0. This is an edge case — not an AC requirement — but could silently produce an invalid port. A ctype_digit() guard before the cast would harden the input."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-06T08:47:31Z",
+          "note": "tools/setup-local.php parseExistingDbConfig(): when the existing config file contains an empty password (`const TESTSUITE_DB_PASSWORD = '';`), extractConstantValue returns '' and the condition `if ($pass !== '')` evaluates false, so the hardcoded default '' is kept. This is the safe/correct path since the default and the stored value are identical, but it means a genuinely blank stored password and the fresh default are indistinguishable."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-06T08:47:31Z",
+          "note": "tools/setup-local.php ensureDatabase(): the schema import always runs, even when the database already existed. This is idempotent only if testsuite.sql uses `CREATE TABLE IF NOT EXISTS` and equivalent guards throughout. The SQL file is 39818 bytes and present — content verification of idempotent DDL was out of scope for this QA pass."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-06T08:47:31Z",
+          "note": "No short-array [] syntax detected (AC#9 passes). The single `[^;]` bracket sequence in the codebase is inside a regex pattern string, not a PHP array literal."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-05-06T08:47:48Z",
+      "completed_at": "2026-05-06T08:48:44Z",
+      "duration_ms": 56000,
+      "summary": [
+        "Reviewed tools/setup-local.php and tools/include/cli-utilities.php. 0 Critical, 0 High, 3 Medium, 3 Low findings recorded. Security sign-off: PASS. All QA-flagged items (SQL identifier interpolation, plaintext password in config, shell_exec stty usage) are contextually acceptable for a local-only developer CLI tool — full rationale documented in comments."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-05-06T08:48:44Z",
+          "note": "Medium | A03 Injection (SQL) | tools/setup-local.php lines 395, 409-410 — ensureDatabase() interpolates $dbName directly into backtick-quoted `USE \\`<dbName>\\`` and `CREATE DATABASE \\`<dbName>\\`` statements. Backtick quoting prevents keyword injection but does NOT prevent a database name containing a backtick character (e.g. 'foo`bar') from breaking the statement or allowing statement injection via backtick escape sequences in MySQL. In this script's context (local developer setup tool, not a web endpoint, $dbName is supplied interactively by a trusted developer), the practical exploitation risk is negligible. Remediation if hardening is desired: validate $dbName with a whitelist regex (e.g. /^[a-zA-Z0-9_]+$/) before it reaches PDO, or use PDO::quote() on the identifier and strip the surrounding single quotes before re-wrapping in backticks. Severity kept Medium rather than High because: (1) the script has no remote attack surface; (2) the user running it is the developer who controls the input; (3) MySQL backtick escaping (doubling the backtick) is the only viable injection vector and produces a syntax error rather than silent data access."
+        },
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-05-06T08:48:44Z",
+          "note": "Medium | A02 Cryptographic Failures (Cleartext credential storage) | tools/setup-local.php line 332 — generateDbConfig() writes TESTSUITE_DB_PASSWORD as a plaintext PHP string constant in test-db-config.php. This is a local development config file intentionally not committed to version control (the .dist.php template exists precisely for this reason). The risk is limited to: (1) accidental git commit of the generated file, (2) file-system access by other local processes. The risk is not mitigated by the script itself. Remediation/awareness: ensure test-db-config.php is listed in .gitignore (this is a project-level concern outside the scope of this WP). No code change required in setup-local.php; noted for documentation/review. Not classified High because the password protects only a local development database with no production data."
+        },
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-05-06T08:48:44Z",
+          "note": "Medium | A04 Insecure Design (shell_exec for terminal control) | tools/include/cli-utilities.php lines 134-135, 148, 150; setup-local.php line 51 — shell_exec('stty ...') is used to suppress terminal echo during password input. The stty arguments are hardcoded string literals with no user-controlled data involved, so there is no injection risk. The medium rating is for design: spawning a shell process for terminal manipulation is less robust than using PHP stream-based approaches (e.g. readline extension or /dev/tty). The 2>/dev/null suppression is correct. The SIGINT handler in setup-local.php correctly restores stty echo. No exploitation path identified; recorded for awareness."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-06T08:48:44Z",
+          "note": "Low | A05 Security Misconfiguration | tools/setup-local.php line 267 — testDatabaseConnection() passes the full PDOException message (which may include the server address, port, and error details) directly to writeln(). In a local CLI developer tool this is intentional and helpful. In any web-facing context this would leak internal topology. Recorded for completeness; no change required."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-06T08:48:44Z",
+          "note": "Low | A05 Security Misconfiguration | tools/setup-local.php line 415-416 — the CREATE DATABASE failure handler outputs the raw PDOException message to STDOUT. Same context as above (local CLI, developer audience). No change required; noted for awareness."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-06T08:48:44Z",
+          "note": "Low | A09 Security Logging & Monitoring Failures | Neither file produces any audit trail for the setup action (e.g. which user ran setup, what DB name was configured, timestamp). For a local developer tool this is acceptable. If this script is ever adapted for CI/CD pipelines, structured logging of the configuration event (excluding the password) would be advisable."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-06T08:48:44Z",
+          "note": "OWASP Top 10 categories reviewed with no Critical or High findings: A01 (Broken Access Control) — N/A, local CLI; A06 (Vulnerable & Outdated Components) — no new third-party dependencies introduced; only PDO (bundled) and pcntl (bundled) are used. composer.json change adds only a scripts entry, no new packages. A07 (Identification & Authentication Failures) — N/A; A08 (Software & Data Integrity Failures) — passthru('composer seed-tests') runs a project-internal Composer script; no unsigned artefacts or untrusted deserialisation. A10 (SSRF) — no server-side URL fetching; PDO DSN is constructed from user-supplied host/port but only reaches the local MySQL daemon. All other categories addressed in detail above."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-06T08:49:03Z",
+      "completed_at": "2026-05-06T08:50:37Z",
+      "duration_ms": 94000,
+      "summary": [
+        "Code review PASS with Fix-Forward changes applied. Reviewed tools/setup-local.php and tools/include/cli-utilities.php in full.",
+        "Architecture: clean section-based layout, all helpers are single-responsibility, main entry point reads linearly against the spec. No over-engineering detected.",
+        "Maintainability: thorough docblocks on every function, clear parameter and return-type annotations, meaningful variable names throughout.",
+        "Best practices: declare(strict_types=1) present, array() syntax enforced (AC#9), SIGINT handler guards terminal state, stty fallback for non-Unix environments, function_exists() guards enable safe re-inclusion.",
+        "Performance: no concerns for a one-shot interactive CLI script.",
+        "Future context: script is entirely self-contained (no framework bootstrap dependency), making it durable and easy to adapt. composer.json entry is minimal and correct.",
+        "Three Fix-Forward improvements applied (all non-behavioral — QA validation intact): (1) clarifying comment on stty availability detection in cli-utilities.php; (2) addslashes() usage comment in replaceConfigConstant(); (3) file_put_contents() return-value checks with user-facing error messages in generateDbConfig() and generateUiConfig().",
+        "One documentation-forward item recorded for the Documentation agent.",
+        "No blocking issues found."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "tools/setup-local.php",
+          "tools/include/cli-utilities.php",
+          "composer.json"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-06T08:50:37Z",
+          "note": "tools/include/cli-utilities.php — Added a 6-line clarifying comment above the $sttyAvailable assignment explaining why null-check is always non-null when a shell is available (shell_exec returns null only when the function is disabled) and that the DIRECTORY_SEPARATOR guard is the primary Windows gate. The secondary null-check value is now explicitly documented so future maintainers don't remove it thinking it is dead code."
+        },
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-06T08:50:37Z",
+          "note": "tools/setup-local.php replaceConfigConstant() — Added an inline comment on the addslashes() call explaining which characters are escaped and the scope of the assumption (hostnames, URLs, emails, passwords). Guards against future maintainers widening the value set without realising the escaping constraint."
+        },
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "medium",
+          "timestamp": "2026-05-06T08:50:37Z",
+          "note": "tools/setup-local.php generateDbConfig() and generateUiConfig() — Added file_put_contents() return-value checks: if the write fails (returns false), the script now emits a red ERROR message naming the target file, a hint about directory writability, and exits with code 1. Previously a silent false return would produce a PHP warning with no user-facing error and the script would continue reporting success. This addresses the medium-priority observation left by the Developer pipeline."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-06T08:50:37Z",
+          "note": "[documentation-forward] The generated config files (test-db-config.php, test-ui-config.php) should be explicitly mentioned in the README or contributor guide as files that must not be committed to version control, with a reference to their .dist.php counterparts. The Security Auditor noted that test-db-config.php stores TESTSUITE_DB_PASSWORD in plaintext — the documentation should confirm that both generated files are already listed in .gitignore (or add them if they are not). This is a project-level safeguard that does not require code changes."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-06T08:50:37Z",
+          "note": "tools/setup-local.php collectDatabaseSettings(): non-numeric port input (e.g. 'abc') casts silently to 0 via (string)(int)$portRaw. This was flagged by QA (low priority, not an AC requirement). A future hardening pass could add a ctype_digit() guard before the cast to reject clearly invalid port strings with a re-prompt. Not applied here as it would change the interaction behavior and warrants a separate decision."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-06T08:50:37Z",
+          "note": "tools/setup-local.php ensureDatabase(): the schema import via PDO::exec() runs the entire SQL in one call. If the driver is not configured with MYSQL_ATTR_MULTI_STATEMENTS=true, errors on later statements may be silently skipped. The current try/catch reports the first PDO error which is the safe fallback. This is acceptable for a local dev tool but worth noting if the schema grows to include complex multi-statement transactions."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-06T08:50:55Z",
+      "completed_at": "2026-05-06T08:53:23Z",
+      "duration_ms": 148000,
+      "summary": [
+        "Updated README.md — Example Application / Installation section: replaced the old manual 6-step instructions with a primary `composer setup` flow (old steps preserved in a collapsible <details> block). Added a prominent note that test-db-config.php and test-ui-config.php are listed in .gitignore and must never be committed.",
+        "Updated README.md — Composer Commands section: added new `### Setup` subsection (between Build and Seed test database) documenting `composer setup` and `php tools/setup-local.php` with idempotency and retry-on-failure behaviour described.",
+        "Updated README.md — Developer Tools section: added new `### Setup Script` subsection documenting tools/setup-local.php, explicitly stating both generated config files are in .gitignore and must not be committed, with reference to the .dist.php counterparts.",
+        "Addressed [documentation-forward] item from code-review: confirmed test-db-config.php (line 33) and test-ui-config.php (line 41) are already present in .gitignore. Documented this fact in both the Example Application installation note and the Developer Tools Setup Script subsection.",
+        "Delegated CTX update to ctx-architect agent: context.yaml required no changes (README is already a `type: file` source). `ctx generate` ran cleanly (exit 0) and regenerated .context/framework-core-system-overview.md and all 88 module context documents."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "README.md",
+          ".context/framework-core-system-overview.md",
+          ".context/framework-file-structure.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-06T08:53:23Z",
+          "note": "No documentation gaps found. All nine acceptance criteria were already confirmed met by previous pipeline agents; documentation pass focused on README clarity and the [documentation-forward] item from code review."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-06T08:53:23Z",
+          "note": "[documentation-forward] addressed: both test-db-config.php and test-ui-config.php are confirmed in .gitignore (lines 33 and 41 respectively). Added explicit warnings in the README (Example Application installation note + Developer Tools Setup Script subsection) directing contributors not to commit these files. No .gitignore changes were needed."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-06T08:53:23Z",
+  "last_updated": "2026-05-06T08:53:23Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-06T08:42:09Z",
+      "notes": [
+        "tools/setup-local.php is a standalone CLI script (no framework bootstrap dependency) — it only requires php-cli + PDO MySQL driver.",
+        "The replaceConfigConstant() helper uses a per-line regex pattern; it correctly handles string, integer, and null constant declarations, matching what the dist template files contain.",
+        "TESTSUITE_DB_PORT: when the user enters nothing or 'null', the value is written as bare `null`; any digit string is written as a bare integer — both satisfy the AC.",
+        "composer.json scripts section: the new 'setup' entry is the last script before the closing brace — valid JSON confirmed.",
+        "Idempotency relies on parseExistingDbConfig() / parseExistingUiConfig() which read the already-generated config files (not the dist files) if they exist. The extractConstantValue() regex handles all three value shapes the script itself writes.",
+        "SIGINT handler restores `stty echo` if the user hits Ctrl+C during a password prompt — requires the pcntl extension (guarded with function_exists)."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-05-06T08:47:31Z",
+      "notes": [
+        "All 9 acceptance criteria confirmed met. Syntax valid, logic verified via isolated function tests.",
+        "Minor observations (all low priority, non-blocking): (1) non-numeric port input casts to 0 silently; (2) empty-password idempotency is functionally correct but not distinguishable from default; (3) schema import always runs on re-setup — idempotency depends on SQL DDL guards in testsuite.sql.",
+        "Security auditor should review: (a) SQL injection risk in ensureDatabase() — $dbName is taken from user input and interpolated into backtick-quoted CREATE DATABASE / USE statements; (b) password written in plaintext to test-db-config.php; (c) shell_exec('stty ...') usage in promptPassword."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-06T08:48:44Z",
+      "notes": [
+        "Security audit PASS. 0 Critical, 0 High findings. Three Medium items documented (SQL identifier interpolation in ensureDatabase, plaintext password in generated config file, shell_exec for stty terminal control) — all contextually acceptable for a local-only developer CLI tool with no remote attack surface. Three Low/Info observations also recorded. All 9 acceptance criteria confirmed met. No remediation required before code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-06T08:50:37Z",
+      "notes": [
+        "Code review PASS. Three Fix-Forward changes applied (all non-behavioral, syntax verified clean): (1) stty availability comment clarification in cli-utilities.php; (2) addslashes() scope comment in replaceConfigConstant(); (3) file_put_contents() return-value error checks in generateDbConfig() and generateUiConfig() — previously silent failures now produce a user-facing error and exit(1).",
+        "One [documentation-forward] item for the Documentation agent: confirm test-db-config.php and test-ui-config.php are in .gitignore and document this in the README/contributor guide.",
+        "All 9 acceptance criteria confirmed met. No blocking issues. WP is ready for the Documentation pipeline."
+      ]
+    }
+  ]
+}

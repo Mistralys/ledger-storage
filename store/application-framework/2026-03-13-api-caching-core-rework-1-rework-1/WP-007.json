@@ -1,0 +1,210 @@
+{
+  "work_package_id": "WP-007",
+  "work_package_file": "work/WP-007.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001",
+    "WP-002",
+    "WP-003",
+    "WP-004",
+    "WP-005",
+    "WP-006"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "composer test-suite -- api-cache passes.",
+      "met": true
+    },
+    {
+      "criterion": "composer test-filter -- CountryRequest passes (or confirms no tests exist to break).",
+      "met": true
+    },
+    {
+      "criterion": "composer analyze produces no new errors related to the changes.",
+      "met": true
+    },
+    {
+      "criterion": "composer build completes successfully.",
+      "met": true
+    }
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-18T08:32:46Z",
+      "completed_at": "2026-03-18T08:36:11Z",
+      "summary": [
+        "All verification steps completed successfully.",
+        "composer dump-autoload: completed with no errors.",
+        "API Cache tests (tests/AppFrameworkTests/API/Cache/): 40 tests, 61 assertions, all PASS.",
+        "composer test-filter -- CountryRequest: no tests found matching 'CountryRequest' (confirmed no tests exist to break).",
+        "composer analyze: 6 errors found — all are pre-existing baseline errors in DBHelper/FetchMany, DBHelper/Admin, UI/PropertiesGrid, _deprecated/Screens, frame.footer.php, and DBHelper/DisposingTest; zero new errors introduced by WP-001–WP-006 changes.",
+        "composer build: completed successfully; .context/ regenerated including updated API Cache module docs (overview.md, architecture-core.md, architecture-strategies.md)."
+      ],
+      "artifacts": {
+        "files_modified": []
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-18T08:36:11Z",
+          "note": "The WP spec referenced 'composer test-suite -- api-cache', but phpunit.xml defines only a single suite ('Framework Tests'). The correct command for targeting cache tests is 'composer test-file -- tests/AppFrameworkTests/API/Cache/'. The test-suite script passes --testsuite to PHPUnit, so an unrecognised suite name silently produces 'No tests executed' instead of an error — this could be misleading. Consider either adding named suites to phpunit.xml or updating the WP template to use test-file/test-filter for path-based test targeting."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-03-18T08:36:11Z",
+          "note": "19+ test class files emit 'Class X cannot be found' warnings when running test-filter with any pattern. These are pre-existing autoload/classmap issues in the test directory (e.g. tests/AppFrameworkTests/Application/Messagelogs.php, tests/AppFrameworkTests/Collection/IntegerRecord.php). The PHPUnit exit code becomes 1 even when no actual test failures occur, making CI harder to interpret. Root cause: test classes use short, non-namespaced names that clash with PHPUnit's class-finder heuristics."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-18T08:37:06Z",
+      "completed_at": "2026-03-18T08:41:14Z",
+      "summary": [
+        "All 4 acceptance criteria independently verified and met.",
+        "AC1 (API cache tests): composer test-file -- tests/AppFrameworkTests/API/Cache/ → 40 tests, 61 assertions, all PASS. Note: phpunit.xml defines no 'api-cache' named suite; path-based test-file is the correct targeting command (pre-existing infrastructure observation from Developer pipeline).",
+        "AC2 (CountryRequest tests): composer test-filter -- CountryRequest → 0 tests executed (no CountryRequest test classes exist); exit-code 1 is caused by 19 pre-existing class-discovery warnings, not test failures. AC met.",
+        "AC3 (composer analyze): 6 errors found, all confirmed pre-existing baseline: DBHelper/FetchMany, DBHelper/Admin, UI/PropertiesGrid, _deprecated/Screens, frame.footer.php, DBHelper/DisposingTest. CountryRequestTrait trait.unused notice is GONE — consumer in WP-005 resolved it. Zero new errors from any WP-001–WP-006 changes.",
+        "AC4 (composer build): Completed successfully. .context/ regenerated including updated API Cache module docs (overview.md, architecture-core.md, architecture-strategies.md).",
+        "Code inspection of all 6 WP changes confirmed correct implementation: WP-001 logError() call present with file path, exception message, and ERROR_CACHE_FILE_CORRUPT constant; WP-002 filemtime() guard pattern mirrors API counterpart correctly; WP-003 @throws annotation present on invalidateMethod(); WP-004 YAML colon+space section with examples added to module-context-reference.md; WP-005 CountryRequestScreen implements CountryRequestInterface, uses CountryRequestTrait, registered in sitemap; WP-006 Trait Consumer Policy section added to constraints.md with procedure and reference example.",
+        "Broader cache regression (composer test-filter -- Cache): 44 tests, 69 assertions, all PASS (covers both API and AI cache, confirming WP-002 fix does not break AI cache behaviour).",
+        "Edge cases assessed: (1) logError() call in corrupt-cache catch block is not itself wrapped in a defensive try/catch — if the framework logger throws, the exception escapes readFromCache(). Unlikely in practice; non-blocking. (2) filemtime() returning 0 (epoch) correctly yields 'expired' in WP-002 guard. (3) CountryRequestScreen type-correctness confirmed by zero PHPStan errors."
+      ],
+      "metrics": {
+        "test_coverage": "API/Cache (40 tests), broader Cache filter (44 tests incl. AI cache)",
+        "tests_passed": 44,
+        "tests_failed": 0,
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-18T08:41:14Z",
+          "note": "CacheableAPIMethodTrait::readFromCache() — If AppFactory::createLogger()->logError() itself throws (e.g. logger initialisation failure), the exception would escape readFromCache() rather than falling through to 'return null'. The logError() call is not wrapped in the inner defensive try/catch that guards the delete. In practice the framework logger is stable, so this is an unlikely path, but for maximum resilience the log call could be moved inside the inner try/catch or wrapped in its own. Non-blocking."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-18T08:41:14Z",
+          "note": "No AI cache unit tests exist that directly exercise FixedDurationStrategy. The broader 'Cache' filter picks up 44 tests total; the delta between API-only (40) and broader (44) is 4 tests, likely covering AI cache infrastructure. A dedicated test for the filemtime=false edge path (WP-002) would formalise the regression coverage. Non-blocking — the static analysis confirms the guard is correct."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-18T08:41:14Z",
+          "note": "The pre-existing 19 PHPUnit class-discovery warnings cause test-filter commands to return exit code 1 even when all tests pass. This makes CI interpretation ambiguous. Root cause (non-namespaced test class names clashing with PHPUnit's class-finder heuristics) pre-dates this rework but is worth tracking. Carry forward from Developer pipeline observation."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-18T08:42:04Z",
+      "completed_at": "2026-03-18T08:45:16Z",
+      "summary": [
+        "All six implementation changes reviewed against all four Review Dimensions. No blocking issues found.",
+        "WP-001 (CacheableAPIMethodTrait): logError() placed correctly before delete-retry. sprintf with %d for error code is type-safe. ERROR_CACHE_FILE_CORRUPT constant is now live (no longer dead code). AppFactory import was already present. Recovery behaviour unchanged.",
+        "WP-002 (AI FixedDurationStrategy): isCacheFileValid() exactly mirrors the API counterpart pattern. Protected visibility is intentional and correct (strategy inheritance hierarchy vs. interface). PHPDoc matches API counterpart. strict === false guard is sound.",
+        "WP-003 (APICacheManager::invalidateMethod): @throws APICacheException annotation present and correctly documents the propagated exception from the delegated getMethodCacheFolder() call.",
+        "WP-004 (module-context-reference.md): Keyword Syntax Constraints section is placed immediately after the keywords subsection for maximum discoverability. Warning callout, correct/incorrect examples, and consequence all present.",
+        "WP-005 (CountryRequestScreen): Placed at TestDriver\\\\Area\\\\TestingScreen\\\\ — correctly following actual test-app conventions rather than the WP's preliminary path suggestion. Registered in sitemap. PHPDoc clearly states the class exists as a PHPStan consumer. _renderContent() calls getCountryRequest() so PHPStan analyses the method body too, not just the interface signature.",
+        "WP-006 (constraints.md Trait Consumer Policy): Section present with clear rule, rationale (PHPStan blind spot), procedure, and a concrete reference example (CountryRequestScreen). Well aligned with the project's shift away from suppression-based workarounds."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-18T08:45:16Z",
+          "note": "CacheableAPIMethodTrait::readFromCache() — The logError() call is not itself wrapped in a defensive try/catch. If AppFactory::createLogger() were to throw (e.g. during framework bootstrap failure), the exception would escape the outer catch block rather than falling through to `return null`. In practice the framework logger is a stable singleton and this path is unreachable in production, but for maximum resilience the log call could be enclosed in its own try/catch. Carry-forward from QA pipeline. Non-blocking."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-18T08:45:16Z",
+          "note": "AI FixedDurationStrategy::isCacheFileValid() — No dedicated unit test exercises the filemtime()===false edge path added in WP-002. The broader 44-test 'Cache' filter confirms no regressions, and PHPStan validates the guard's type correctness. A dedicated test that stubs a JSONFile whose path does not exist would formalise the regression spec. Non-blocking."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-18T08:45:16Z",
+          "note": "CountryRequestTrait uses if(!isset($this->countryRequest)) as its lazy-init guard. For a nullable typed property, isset() returns false both when null and when uninitialised, so the guard is correct. An explicit === null check would be more expressive, but this is stylistic and fully consistent with existing project patterns. Non-blocking."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-03-18T08:45:16Z",
+          "note": "Pre-existing: 19 test class files emit PHPUnit class-discovery warnings (non-namespaced short names clashing with PHPUnit classloader heuristics), causing test-filter to return exit code 1 even when all tests pass. Carry-forward observation from Developer and QA pipelines. This makes CI interpretation ambiguous. No action required for this WP."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-18T08:46:01Z",
+      "completed_at": "2026-03-18T08:53:14Z",
+      "summary": [
+        "All documentation verified in sync with codebase. WP-004 and WP-006 changes confirmed present: 'Keyword Value Syntax Constraints' section in module-context-reference.md (line 108) and 'Trait Consumer Policy' section in constraints.md (line 245) are correctly written, complete, and accurate.",
+        "The API Cache README.md (src/classes/Application/API/Cache/README.md) already fully documents WP-001 (Error Handling section details corrupt-file logging behavior), WP-002 (Cache Strategies table mentions filemtime=false guard for FixedDurationStrategy), and WP-003 (APICacheException table shows ERROR_INVALID_METHOD_NAME throws from invalidateMethod()).",
+        "The .context/modules/api-cache/ files (overview.md, architecture-core.md, architecture-strategies.md) were regenerated during WP-007's composer build step. Content verified: architecture-core.md shows @throws APICacheException on invalidateMethod(); architecture-strategies.md shows correct filemtime=false PHPDoc; overview.md mirrors the README content accurately.",
+        "The AI Cache module has no README.md or module-context.yaml — this pre-dates the rework and is not a new gap introduced by WP-002.",
+        "Added v7.0.13 entry to changelog.md documenting the API Cache corrupt-file logging, AI Cache filemtime guard, @throws annotation, and the two documentation additions (keyword syntax, trait consumer policy)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "changelog.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-18T08:53:14Z",
+          "note": "The PHPDoc of CacheableAPIMethodTrait::readFromCache() does not mention the corrupt-cache logging behavior in its docblock (it only states 'Returns null if the cache file does not exist or is no longer valid'). The behavior is fully documented in the README Error Handling section and propagated to .context/ overview.md. Updating the PHPDoc would improve self-contained discoverability of the method's full behavior but was outside the Documentation agent's scope (source code modification). No action taken."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-03-18T08:53:14Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-03-18T08:36:11Z",
+      "notes": [
+        "All 7 WPs are now complete. WP-001 through WP-006 implement the rework; WP-007 verifies no regressions. The API cache rework is ready for QA/Reviewer pipeline."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-18T08:41:14Z",
+      "notes": [
+        "All 4 ACs verified independently. 44 tests pass (API + AI cache regression). PHPStan: 0 new errors, CountryRequestTrait.unused resolved. composer build clean. Code inspection confirms all 6 WP-001–WP-006 changes are correctly implemented. One low-priority resilience note: logError() in the corrupt-cache catch is not itself defensively wrapped — if the logger throws, the exception escapes readFromCache(). Non-blocking for code review but worth noting as a future hardening opportunity."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-03-18T08:45:16Z",
+      "notes": [
+        "All 4 acceptance criteria verified and met. No blocking issues across all six implementation WPs. The rework is clean, targeted, and follows established patterns. Carry-forward non-blocking items: (1) logError() not defensively wrapped in corrupt-cache catch; (2) no dedicated filemtime=false unit test for AI strategy; (3) pre-existing PHPUnit class-discovery warnings. No rework required — safe to proceed to Documentation pipeline."
+      ]
+    },
+    {
+      "from_agent": "Documentation",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-03-18T08:53:14Z",
+      "notes": [
+        "All documentation verified in sync. New v7.0.13 changelog entry added to changelog.md covering all six WP behavioral changes and documentation additions. The AI Cache module still has no README.md or module-context.yaml — this is a pre-existing gap, not introduced by this rework. Ready for synthesis."
+      ]
+    }
+  ]
+}

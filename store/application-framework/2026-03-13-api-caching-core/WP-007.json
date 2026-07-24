@@ -1,0 +1,200 @@
+{
+  "work_package_id": "WP-007",
+  "work_package_file": "work/WP-007.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-006"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "composer analyze passes with no new errors attributable to the API caching code",
+      "met": true
+    },
+    {
+      "criterion": "Any pre-existing errors are documented but not introduced by this change",
+      "met": true
+    }
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-13T15:33:12Z",
+      "completed_at": "2026-03-13T15:34:37Z",
+      "summary": [
+        "Ran `composer analyze` — found 8 errors on the first pass.",
+        "One new error was in the API caching test file (APICacheStrategyTest.php:23): `$tempFolder` property declared and written in setUp() but never read in any test. Removed the property declaration and its setUp() assignment.",
+        "Re-ran `composer analyze` — 7 errors remain, all pre-existing in unrelated files (CountryRequestTrait.php, BaseDBRecordRequestType.php, FetchMany.php, PropertiesGrid.php, Submode.php, frame.footer.php, DisposingTest.php). None are attributable to the API caching implementation."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "tests/AppFrameworkTests/API/Cache/APICacheStrategyTest.php"
+        ]
+      },
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-03-13T15:34:37Z",
+          "note": "7 pre-existing PHPStan errors exist in the codebase across unrelated files: CountryRequestTrait.php (unused trait), BaseDBRecordRequestType.php (@implements without interface), FetchMany.php (incompatible return type), PropertiesGrid.php (is_int() with mixed), Submode.php (return type unusedType), frame.footer.php (isset.offset), DisposingTest.php (unreachable statement). None were introduced by this change but they should be addressed in a dedicated cleanup pass."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-13T15:34:37Z",
+          "note": "tests/AppFrameworkTests/API/Cache/APICacheStrategyTest.php: the removed $tempFolder property was likely planned for APICacheManager folder-based tests but was superseded by the use of APICacheManager::getMethodCacheFolder(). The tearDown() method also had no cleanup for it, confirming it was dead code from the start."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-13T15:35:16Z",
+      "completed_at": "2026-03-13T15:38:59Z",
+      "summary": [
+        "Ran `composer analyze` independently — confirmed exactly 7 errors, all in pre-existing unrelated files. Zero errors in the 10 new API caching files or the BaseAPIMethod.php modification.",
+        "Unit tests (APICacheStrategyTest.php): 13 tests, 15 assertions — all PASS.",
+        "Integration tests (APICacheIntegrationTest.php): 6 tests, 12 assertions — all PASS.",
+        "Regression sweep via `composer test-filter -- API`: 2 pre-existing failures in HtaccessGeneratorTest (OpenAPI htaccess generation feature — unrelated branch work). Confirmed pre-existing by git log: last touch was commit 727bc18d, before any caching work. All caching-path tests clean.",
+        "Reviewed BaseAPIMethod.php diff: cache-check hook inserted correctly after getActiveVersion() and before collectRequestData(); cache-write hook inserted correctly before final sendSuccessResponse(). Logic matches plan specification exactly.",
+        "Reviewed CacheableAPIMethodTrait: MD5 key construction is deterministic, ksort ensures parameter order is stable, serialize() is used only as hash input (no unsafe unserialize). Design is sound."
+      ],
+      "metrics": {
+        "tests_passed": 19,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-13T15:38:59Z",
+          "note": "APICacheManager::getMethodCacheFolder() docblock states 'The folder is not created automatically', but JSONFile::putData() creates parent directories as needed — confirmed by integration tests passing. The docblock is slightly misleading and could be clarified to say 'The folder is created on first write via JSONFile::putData()'. Minor documentation gap only."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-13T15:38:59Z",
+          "note": "No file-level lock is used during writeToCache(). Two concurrent requests for the identical method name + version + parameters could race to write the same JSON file. For file-based caches this is generally benign (last writer wins, same data), but it is worth noting as a known limitation. A future hardening pass could use flock() if race conditions are observed in production."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-13T15:38:59Z",
+          "note": "Pre-existing regression: HtaccessGeneratorTest::test_generatedContent and test_defaultRewriteBaseConstant are failing (expect '/api/', get ''). These failures predate the API caching work (last commit to that file is 727bc18d, feature-openapi-specs branch). Not introduced by this WP, but should be addressed in that feature branch."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-13T15:39:43Z",
+      "completed_at": "2026-03-13T15:43:27Z",
+      "summary": [
+        "Reviewed all 8 new source files, 1 modified file (BaseAPIMethod.php), and 3 test files (APICacheStrategyTest.php, APICacheIntegrationTest.php, TestCacheableMethod.php). No blocking issues found.",
+        "Architecture: Interface+Trait pattern mirrors DryRunAPIInterface/DryRunAPITrait — zero new patterns introduced, excellent consistency with the existing API extensibility mechanism.",
+        "BaseAPIMethod._process() modification: cache check is correctly positioned after validate() (parameters available) and before collectRequestData() (short-circuits unnecessary work on hit). Cache write is correctly positioned after collectResponseData() but before sendSuccessResponse(), ensuring only successful responses are cached.",
+        "CacheableAPIMethodTrait: getCacheKey() uses ksort() for stable parameter ordering; serialize() is used only as hash input (no unserialize of untrusted data). getCacheFile() is protected — correct encapsulation, not leaked via interface.",
+        "APICacheManager: all three mutating operations (invalidateMethod, clearAll) guard against non-existent folders before deletion — correct defensive pattern. Static class is consistent with plan specification.",
+        "FixedDurationStrategy: typed constants (public const int) require PHP 8.3+ — compatible with the project's PHP 8.4+ baseline. Default 1-hour TTL is a sensible choice.",
+        "TestCacheableMethod stub: getCollectCount() is a clean, zero-mock observability mechanism — first call computes and increments, cache hit leaves count unchanged. Test design is excellent.",
+        "Security: no path injection risk in practice (getMethodName() returns a class constant, never user input). serialize() usage is hash-only — no deserialization of external data. MD5 is appropriate for file naming, not cryptographic use."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-03-13T15:43:27Z",
+          "note": "CacheableAPIMethodInterface and CacheableAPIMethodTrait docblocks should warn that collectRequestData() is bypassed on a cache hit. If a method performs per-user authorization or row-level access checks there, those checks will be skipped. Methods returning user-scoped data MUST include user-identifying parameters in getCacheKeyParameters() to maintain cache isolation. This is an architectural responsibility that should be explicitly documented in the interface to prevent future misuse."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-13T15:43:27Z",
+          "note": "FixedDurationStrategy::isCacheFileValid() calls filemtime($cacheFile->getPath()) without checking for a false return. On a stat failure (e.g., a race condition during parallel deletion), filemtime() returns false; time() - false = time(), which is a large number and will always exceed $durationInSeconds — the cache entry would be treated as expired/invalid, which is a safe fallback. However, the behavior is unintentional. A guard returning false explicitly on filemtime() === false would make the intent clear."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-13T15:43:27Z",
+          "note": "APICacheManager::getMethodCacheFolder() concatenates $methodName directly into a filesystem path without sanitization. Today this is safe because getMethodName() returns a class constant. A precondition comment (e.g., @param string $methodName Must be a trusted, framework-internal method name) would harden this contract against future refactors that might pass a user-derived value."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-13T15:43:27Z",
+          "note": "APICacheManager::getCacheFolder() docblock says 'creating it if it does not exist' but the implementation delegates to Application::getStorageSubfolderPath() which may or may not create the folder. The docblock claim should be verified and corrected to match actual behavior, especially since getMethodCacheFolder() docblock already accurately says 'The folder is not created automatically'."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-13T15:43:27Z",
+          "note": "Gold nugget: TestCacheableMethod::getCollectCount() is an excellent zero-mock observability pattern — records whether collectResponseData() was invoked or bypassed by the cache. This technique is worth reusing in future API method tests that need to verify execution paths without mocking."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-13T15:44:43Z",
+      "completed_at": "2026-03-13T15:48:43Z",
+      "summary": [
+        "Reviewed all code review and QA handoff notes. Inline source documentation (README.md inside API/Cache/) was already complete and accurate at implementation time. Made five targeted updates:",
+        "1. changelog.md: Added v7.0.11 entry documenting the new API caching feature, its files, and opt-in mechanism.",
+        "2. README.md (root): Added API response caching to the features overview list.",
+        "3. CacheableAPIMethodInterface.php: Added a Security note in the class docblock warning that collectRequestData() is bypassed on cache hits, and that user-scoped methods must include user-identifying values in getCacheKeyParameters() to prevent cross-user cache leakage.",
+        "4. APICacheManager::getMethodCacheFolder() docblock: Improved @param for $methodName to document it must be a trusted framework-internal value, never user-supplied input. Clarified folder creation behaviour.",
+        "5. FixedDurationStrategy::isCacheFileValid() docblock: Added explanation of the filemtime() === false edge case and why the expired-entry fallback is intentionally safe."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "changelog.md",
+          "README.md",
+          "src/classes/Application/API/Cache/CacheableAPIMethodInterface.php",
+          "src/classes/Application/API/Cache/APICacheManager.php",
+          "src/classes/Application/API/Cache/Strategies/FixedDurationStrategy.php"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-13T15:48:43Z",
+          "note": "APICacheManager::getCacheFolder() docblock ('creating it if it does not exist') was verified accurate: getStorageSubfolderPath() calls FileHelper::createFolder() unconditionally. No change needed."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-13T15:48:43Z",
+          "note": "docs/agents/projects/api-caching-system.md already had ✅ statuses for all Phase 1 steps and was accurate. No update needed."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-03-13T15:48:43Z",
+  "handoff_notes": [
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-13T15:38:59Z",
+      "notes": [
+        "WP-007 static analysis verified independently: 7 pre-existing errors, zero new errors from API caching code.",
+        "All 19 API cache tests pass (13 unit + 6 integration).",
+        "2 pre-existing HtaccessGeneratorTest failures exist (feature-openapi-specs branch, unrelated to caching)."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-03-13T15:43:27Z",
+      "notes": [
+        "All 8 new files and 1 modified file PASS code review. No blocking issues. The implementation correctly follows the Interface+Trait extensibility pattern already established in the codebase.",
+        "Non-blocking: CacheableAPIMethodInterface docblock should warn that collectRequestData() is skipped on cache hits — user-scoped methods must include user identifiers in getCacheKeyParameters().",
+        "Non-blocking: APICacheManager::getMethodCacheFolder() path concatenation relies on the caller guaranteeing $methodName is framework-internal (never user input). A precondition comment is recommended.",
+        "Pre-existing PHPStan errors (7) remain in unrelated files — not introduced by this change, should be addressed in a dedicated cleanup pass.",
+        "Pre-existing HtaccessGeneratorTest failures remain on feature-openapi-specs branch — unrelated."
+      ]
+    }
+  ]
+}

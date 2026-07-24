@@ -1,0 +1,259 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-002.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "AppCountryIDsValidation validates each ID individually with per-ID error messages identifying invalid IDs",
+      "met": true
+    },
+    {
+      "criterion": "AppCountriesParamInterface declares getCountries(): array returning Application_Countries_Country[]",
+      "met": true
+    },
+    {
+      "criterion": "AppCountryIDsParam extends IDListParameter and uses PARAM_COUNTRY_IDS constant name",
+      "met": true
+    },
+    {
+      "criterion": "AppCountryIDsHandler provides type-narrowed register() and getParam() overrides returning AppCountryIDsParam",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-28T09:09:25Z",
+      "completed_at": "2026-04-28T09:13:11Z",
+      "duration_ms": 226000,
+      "summary": [
+        "Created AppCountryIDsValidation — custom BaseParamValidation that iterates each ID and produces a per-ID error message (VALIDATION_COUNTRY_ID_NOT_EXISTS = 184801) for any IDs that do not exist via AppFactory::createCountries()->idExists().",
+        "Created AppCountriesParamInterface — extends APIParameterInterface with getCountries(): Application_Countries_Country[], mirrors AppCountryParamInterface (singular) for pattern consistency.",
+        "Created AppCountryIDsParam — extends IDListParameter, implements AppCountriesParamInterface. Declares PARAM_COUNTRY_IDS = 'countryIDs' as its own constant (mirrors the soon-to-be-created AppCountriesAPIInterface constant). Constructor registers AppCountryIDsValidation. getCountries() guards against null getValue() and reuses a single createCountries() call.",
+        "Created AppCountryIDsHandler — extends BaseParamHandler with type-narrowed register() (ClassHelper::requireObjectInstanceOf), getParam() (instanceof guard), and createParam() overrides. resolveValueFromSubject() delegates to getParam()?->getCountries() ?? [].",
+        "All four files pass PHP syntax check. composer dump-autoload succeeded (exit 0). PHPStan and full test suite blocked by missing MySQL connection — same pre-existing constraint documented in WP-001."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/classes/Application/Countries/API/Params/AppCountryIDsValidation.php",
+          "src/classes/Application/Countries/API/Params/AppCountriesParamInterface.php",
+          "src/classes/Application/Countries/API/Params/AppCountryIDsParam.php",
+          "src/classes/Application/Countries/API/Params/AppCountryIDsHandler.php"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-04-28T09:13:11Z",
+          "note": "AppCountryIDsParam::getCountries() caches the AppFactory::createCountries() collection in a local variable and guards against null/empty getValue() before iterating. This avoids a repeated factory call per ID and prevents a TypeError on null. The plan's draft code called createCountries() inside the loop — the fix is low-effort but improves performance for large ID lists."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-04-28T09:13:11Z",
+          "note": "AppCountryIDsParam declares PARAM_COUNTRY_IDS = 'countryIDs' as its own constant rather than referencing AppCountriesAPIInterface::PARAM_COUNTRY_IDS (which doesn't exist until WP-003). Once WP-003 creates the interface, AppCountryIDsParam should be updated to remove the duplicate constant and reference the interface instead — or the param can remain self-contained and the interface can reference the param constant."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-28T09:13:11Z",
+          "note": "AppCountriesParamInterface references AppCountryISOsParam in its @see tag, but that class doesn't exist until WP-003. The @see annotation is forward-looking documentation and safe to leave; it should be verified once WP-003 is implemented."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-28T09:13:29Z",
+      "completed_at": "2026-04-28T09:17:11Z",
+      "duration_ms": 222000,
+      "summary": [
+        "All four WP-002 files pass PHP syntax check (php -l).",
+        "AC1 PASS: AppCountryIDsValidation extends BaseParamValidation, declares VALIDATION_COUNTRY_ID_NOT_EXISTS=184801, guards against empty/null input, iterates per-ID, includes param name and invalid ID list in error message.",
+        "AC2 PASS: AppCountriesParamInterface extends APIParameterInterface and declares getCountries(): Application_Countries_Country[] — confirmed via reflection.",
+        "AC3 PASS: AppCountryIDsParam extends IDListParameter, implements AppCountriesParamInterface, declares PARAM_COUNTRY_IDS='countryIDs'. Constructor registers AppCountryIDsValidation. getCountries() guards null/empty getValue(), calls createCountries() once before the loop (not inside it).",
+        "AC4 PASS: AppCountryIDsHandler provides type-narrowed register() (returns AppCountryIDsParam via ClassHelper::requireObjectInstanceOf), getParam() (nullable AppCountryIDsParam with instanceof guard), protected createParam() and resolveValueFromSubject(). All visibility modifiers and return types verified via reflection.",
+        "Edge-case analysis: getCountries() correctly returns [] for null getValue(). getCountryByID() is non-nullable and will throw for invalid IDs, but this is safe because AppCountryIDsValidation runs before any getCountries() call and rejects non-existent IDs. validate() short-circuits on empty or null value, avoiding any DB call.",
+        "Integration tests (with live DB) blocked by missing MySQL connection — pre-existing constraint. Composer dump-autoload succeeded (exit 0). No Countries-specific test files exist in the suite."
+      ],
+      "metrics": {
+        "tests_passed": 22,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-28T09:17:11Z",
+          "note": "AppCountryIDsParam::getCountries() correctly calls AppFactory::createCountries() once before the foreach loop — improving on the plan's draft which called it inside the loop. This avoids repeated factory instantiation for large ID lists."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-04-28T09:17:11Z",
+          "note": "getCountries() calls Countries::getCountryByID() (non-nullable, throws on unknown ID). This is safe because AppCountryIDsValidation runs first and rejects any non-existent IDs — the ordering of validate-then-get is correct. However, if getCountries() were ever called manually (bypassing validation), it would throw. Acceptable given the intended usage contract."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-04-28T09:17:11Z",
+          "note": "PARAM_COUNTRY_IDS='countryIDs' is declared locally on AppCountryIDsParam rather than referencing AppCountriesAPIInterface (which does not exist until WP-003). Once WP-003 is implemented, the duplicate constant should be resolved — either AppCountryIDsParam references the interface constant, or the interface references the param constant."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-28T09:17:11Z",
+          "note": "No unit test files exist for any Countries API param classes. The singular analogues (AppCountryIDParam, AppCountryISOParam) also lack tests. Full integration coverage requires a live DB environment. Consider adding offline unit tests using a mock Countries collection once the integration environment is available."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-28T09:17:28Z",
+      "completed_at": "2026-04-28T09:18:18Z",
+      "duration_ms": 50000,
+      "summary": [
+        "Reviewed all four WP-002 files line-by-line against maintainability, best practices, performance, and architectural alignment.",
+        "AppCountryIDsValidation: Clean, focused single-responsibility class. Short-circuits correctly on empty/null input before hitting the DB. Collects all invalid IDs before issuing one error (good UX — surfaces all failures at once rather than stopping at the first). The VALIDATION_COUNTRY_ID_NOT_EXISTS = 184801 constant is well-named and consistent with project conventions.",
+        "AppCountriesParamInterface: Minimal and correct. Correctly extends APIParameterInterface. The @see AppCountryISOsParam forward-reference is intentional (WP-003) and harmless — noted as documentation-forward for post-WP-003 verification.",
+        "AppCountryIDsParam: Correctly extends IDListParameter and implements AppCountriesParamInterface. The getCountries() guard (null || empty) is correct — IDListParameter.getValue() returns int[], not null, but the null guard is defensive and correct. The single AppFactory::createCountries() call before the loop is a meaningful performance improvement over the plan's draft. PARAM_COUNTRY_IDS constant duplication is by design (WP-003 will resolve it).",
+        "AppCountryIDsHandler: Faithfully follows and improves upon the AppCountryIDHandler (singular) pattern. The added PHPDoc on register(), getParam(), and resolveValueFromSubject() are a net improvement over the undocumented singular counterpart. The instanceof guard in getParam() is the correct narrowing idiom. createParam() is correct and minimal.",
+        "No blocking issues found. No Fix-Forward changes required. Two documentation-forward items recorded for the Documentation agent."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/classes/Application/Countries/API/Params/AppCountryIDsValidation.php",
+          "src/classes/Application/Countries/API/Params/AppCountriesParamInterface.php",
+          "src/classes/Application/Countries/API/Params/AppCountryIDsParam.php",
+          "src/classes/Application/Countries/API/Params/AppCountryIDsHandler.php"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-28T09:18:18Z",
+          "note": "AppCountryIDsHandler adds PHPDoc to resolveValueFromSubject(), register(), and getParam() — the singular AppCountryIDHandler has no docblocks on any of its methods. This is a measurable improvement to maintainability and sets a better pattern going forward."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-28T09:18:18Z",
+          "note": "AppCountryIDsValidation collects ALL invalid IDs into $invalid before issuing a single error. This is strictly better than failing on the first bad ID — consumers receive a complete list of what to fix in one round-trip. Good API design."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-04-28T09:18:18Z",
+          "note": "PARAM_COUNTRY_IDS = 'countryIDs' is declared on AppCountryIDsParam itself, as AppCountriesAPIInterface does not exist until WP-003. Once WP-003 is implemented, one of two resolutions should be applied: (a) AppCountryIDsParam removes its own constant and references AppCountriesAPIInterface::PARAM_COUNTRY_IDS, or (b) AppCountriesAPIInterface references AppCountryIDsParam::PARAM_COUNTRY_IDS to avoid circular dependency. Option (b) is preferable if the param class is the canonical owner. Track this in WP-003 scope."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-04-28T09:18:18Z",
+          "note": "[documentation-forward] AppCountriesParamInterface has a @see AppCountryISOsParam forward-reference that does not resolve until WP-003 is implemented. Verify the @see tag is accurate and points to the correct class once WP-003 is complete."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-28T09:18:18Z",
+          "note": "[documentation-forward] AppCountryIDsValidation PHPDoc explains why a custom validation class is needed over ValueExistsCallbackValidation (per-ID iteration). Consider adding a short note to the module-level README or API docs summarising validation strategy for multi-value parameters, so future contributors understand when to reach for BaseParamValidation vs the callback variant."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-28T09:18:41Z",
+      "completed_at": "2026-04-28T09:22:09Z",
+      "duration_ms": 208000,
+      "summary": [
+        "Created src/classes/Application/Countries/API/README.md — documents the Countries API subsystem: singular (AppCountryAPITrait) and plural (AppCountriesAPITrait, in-progress) patterns, key concepts, folder structure, usage example for the singular path, and a validation strategy section explaining BaseParamValidation vs ValueExistsCallbackValidation for list params (addresses reviewer documentation-forward #2).",
+        "Created src/classes/Application/Countries/API/Params/README.md — documents all Params sub-folder classes in tables (interfaces, single-value params, multi-value params, handlers, validation), with dedicated design notes for AppCountryIDsValidation (why BaseParamValidation), the PARAM_COUNTRY_IDS constant duplication (WP-003 resolution path), and the AppCountriesParamInterface @see forward reference (reviewer documentation-forward #1 — noted for post-WP-003 verification).",
+        "Created src/classes/Application/Countries/API/module-context.yaml — registers the new 'countries-api' module with CTX and declares four output documents (overview, core architecture, params, paramsets).",
+        "Ran ctx generate (exit 0) — four new context files generated: modules/countries-api/overview.md, architecture-core.md, architecture-params.md, architecture-paramsets.md. framework-file-structure.md and framework-core-system-overview.md also regenerated."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/classes/Application/Countries/API/README.md",
+          "src/classes/Application/Countries/API/Params/README.md",
+          "src/classes/Application/Countries/API/module-context.yaml",
+          ".context/modules/countries-api/overview.md",
+          ".context/modules/countries-api/architecture-core.md",
+          ".context/modules/countries-api/architecture-params.md",
+          ".context/modules/countries-api/architecture-paramsets.md",
+          ".context/framework-file-structure.md",
+          ".context/framework-core-system-overview.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-04-28T09:22:09Z",
+          "note": "Addressed reviewer documentation-forward #2: created a 'Validation Strategy' section in Countries/API/README.md and a design note in Params/README.md explaining why AppCountryIDsValidation uses BaseParamValidation rather than ValueExistsCallbackValidation. The rule of thumb (scalar → callback, list → custom class) is now documented for future contributors."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-28T09:22:09Z",
+          "note": "Reviewer documentation-forward #1 (verify AppCountriesParamInterface @see AppCountryISOsParam post-WP-003): the forward reference is already present in the PHPDoc and noted as a post-WP-003 verification task in Params/README.md. No code change needed at this stage."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-28T09:22:09Z",
+          "note": "No Countries/API module was previously registered in CTX. The new module-context.yaml adds it to the context system, making AppCountryIDsValidation, AppCountriesParamInterface, AppCountryIDsParam, and AppCountryIDsHandler discoverable by agents and IDE tooling via the generated context files."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-28T09:22:09Z",
+  "last_updated": "2026-04-28T09:22:09Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-28T09:13:11Z",
+      "notes": [
+        "All four WP-002 classes are implemented and pass PHP syntax validation. The PARAM_COUNTRY_IDS constant is declared on AppCountryIDsParam itself ('countryIDs') — this duplicates what AppCountriesAPIInterface will declare in WP-003. QA should verify: (1) AppCountryIDsValidation produces per-ID error messages when one or more IDs do not exist; (2) AppCountriesParamInterface is correctly extended by AppCountryIDsParam; (3) AppCountryIDsHandler register() returns AppCountryIDsParam via ClassHelper; (4) getCountries() returns an empty array for null getValue(). Full integration test (with live DB) is required in a configured environment."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-28T09:17:11Z",
+      "notes": [
+        "All four WP-002 classes pass static analysis, reflection-based AC verification (22 checks), and structural review. No issues found. Key notes for code review: (1) PARAM_COUNTRY_IDS constant duplication is by design until WP-003 creates AppCountriesAPIInterface — low-risk tech debt; (2) getCountries() safely avoids the repeated-factory-call anti-pattern from the plan's draft; (3) validate() correctly short-circuits on empty/null input. Integration tests require a live MySQL connection (pre-existing constraint)."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-28T09:18:18Z",
+      "notes": [
+        "All four WP-002 classes pass code review. Architecture is clean and consistent with the singular analogues (AppCountryIDHandler/AppCountryIDParam). Two documentation-forward items are recorded: (1) verify AppCountriesParamInterface @see AppCountryISOsParam after WP-003; (2) consider a note in module docs explaining the BaseParamValidation vs ValueExistsCallbackValidation choice for multi-value params. The PARAM_COUNTRY_IDS constant duplication should be resolved in WP-003 scope."
+      ]
+    },
+    {
+      "from_agent": "Documentation",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-04-28T09:22:09Z",
+      "notes": [
+        "Documentation PASS. Created Countries/API/README.md (Countries API subsystem overview, singular usage, validation strategy note), Countries/API/Params/README.md (full class reference table, AppCountryIDsValidation design note, PARAM_COUNTRY_IDS constant resolution note, @see forward reference note), and Countries/API/module-context.yaml (CTX registration). ctx generate run successfully — four new context files generated under .context/modules/countries-api/. Reviewer documentation-forward #1 (@see AppCountryISOsParam) deferred to post-WP-003 verification as documented in Params/README.md."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,201 @@
+{
+  "work_package_id": "WP-004",
+  "work_package_file": "work/WP-004.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-003"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "_process() contains cache check block after getActiveVersion()",
+      "met": true
+    },
+    {
+      "criterion": "_process() contains cache write block before sendSuccessResponse()",
+      "met": true
+    },
+    {
+      "criterion": "CacheableAPIMethodInterface import is added",
+      "met": true
+    },
+    {
+      "criterion": "Non-cacheable API methods are unaffected (instanceof check gates both blocks)",
+      "met": true
+    },
+    {
+      "criterion": "Cache hit short-circuits correctly via sendSuccessResponse() (typed never)",
+      "met": true
+    }
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-13T14:36:41Z",
+      "completed_at": "2026-03-13T14:38:45Z",
+      "summary": [
+        "Modified BaseAPIMethod::_process() to integrate CacheableAPIMethodInterface cache check and write blocks.",
+        "Added 'use Application\\API\\Cache\\CacheableAPIMethodInterface;' import to the file.",
+        "Inserted cache check block immediately after getActiveVersion(): reads from cache, and on hit calls sendSuccessResponse(ArrayDataCollection::create($cached)) which short-circuits execution via the 'never' return type.",
+        "Inserted cache write block immediately before the final sendSuccessResponse(): writes response->getData() to cache if the method implements CacheableAPIMethodInterface.",
+        "Both blocks are guarded by 'instanceof CacheableAPIMethodInterface' — non-cacheable methods are completely unaffected.",
+        "Verified ArrayDataCollection::create() accepts an array argument (signature: ArrayDataCollection|array|null $data=null).",
+        "PHP syntax check passed. PHPStan unavailable (vendor not installed — pre-existing environment incident, logged in project comments)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/classes/Application/API/BaseMethods/BaseAPIMethod.php"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-13T14:38:45Z",
+          "note": "The import block in BaseAPIMethod.php is not strictly alphabetically sorted after the new CacheableAPIMethodInterface import was inserted between APIMethodInterface and APIResponseDataException. This is a minor style inconsistency — the existing imports were already sorted alphabetically and the new one slots correctly, but a future pass with a code style tool (e.g., php-cs-fixer) would enforce this automatically."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-03-13T14:38:45Z",
+          "note": "BaseAPIMethod._process() is a private method that now handles three distinct responsibilities: request data collection, response data collection, and cache I/O. As more cross-cutting concerns are added via instanceof guards (DryRunAPIInterface, CacheableAPIMethodInterface, etc.), this method will grow. A template-method or middleware-pipeline pattern could be considered long-term to reduce the fan-out."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-13T14:39:26Z",
+      "completed_at": "2026-03-13T14:44:25Z",
+      "summary": [
+        "All 5 acceptance criteria verified through manual code review and PHP syntax analysis. Execution flow in _process() matches the spec design exactly.",
+        "PHP syntax check: PASS — no errors in BaseAPIMethod.php.",
+        "Import verified: 'use Application\\API\\Cache\\CacheableAPIMethodInterface;' added at line 10.",
+        "Cache check block: correctly positioned after getActiveVersion(), calls readFromCache($version), and on non-null result calls sendSuccessResponse(ArrayDataCollection::create($cached)) which halts execution via 'never' return type.",
+        "Cache write block: correctly positioned before the final sendSuccessResponse($response), calls writeToCache($version, $response->getData()). ArrayDataCollection::getData() returns array — type-compatible with writeToCache(string, array).",
+        "Both blocks guarded by instanceof CacheableAPIMethodInterface — non-cacheable methods are completely unaffected.",
+        "Regression tests: BLOCKED by pre-existing environment incident (vendor not installed, composer update fails with application bootstrap errors). PHP syntax check substituted as partial build check. No new issues introduced — the modification is two targeted insertions with no logic changes to existing code paths.",
+        "Edge case analysis: (1) Cache I/O exceptions are not caught — acceptable given WP scope; (2) concurrent writes are last-write-wins — not an issue for JSON file caching; (3) empty response arrays are validly cached; (4) minor import sort order deviation (cosmetic only, noted by Developer)."
+      ],
+      "metrics": {
+        "tests_passed": 0,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "coverage-gap",
+          "priority": "medium",
+          "timestamp": "2026-03-13T14:44:25Z",
+          "note": "Test execution was blocked by a pre-existing environment incident: the framework's vendor directory is not installed and composer update fails with application bootstrap errors. PHP syntax check (php -l) was run as a substitute build check. This is not a new issue — it was already logged by the Developer in the implementation pipeline. The structural simplicity of the change (two guarded insertions with no existing logic modified) reduces the regression risk substantially, but automated test coverage should be established once the environment is restored."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-03-13T14:44:25Z",
+          "note": "Cache I/O methods (readFromCache, writeToCache) are called outside any try/catch block in _process(). A corrupt JSON cache file or a disk permission error would propagate as an unhandled exception to the caller. This is outside the WP-004 scope but worth noting for production resilience."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-13T14:44:25Z",
+          "note": "Import sort order: 'use Application\\API\\Cache\\CacheableAPIMethodInterface' was inserted between APIMethodInterface (line 9) and APIResponseDataException (line 11). Alphabetically, APIResponseDataException (APIR) should precede Cache\\... (C). Cosmetic only — no functional impact."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-13T14:45:20Z",
+      "completed_at": "2026-03-13T14:47:34Z",
+      "summary": [
+        "WP-004 code review PASS. The BaseAPIMethod._process() cache integration is minimal, correct, and architecturally sound. No blocking issues found.",
+        "Cache check placement: correctly positioned after getActiveVersion() — all validated parameter values are available for cache key computation at this point.",
+        "Cache hit short-circuit: sendSuccessResponse(ArrayDataCollection::create($cached)) is verified never-typed; it either throws APIResponseDataException (return mode, caught by processReturn()) or calls processExit() (process mode) — in both paths execution is terminated before collectRequestData/collectResponseData run.",
+        "Cache write placement: correctly positioned after both collectResponseData try/catch blocks, before the final sendSuccessResponse($response). Data in $response is fully assembled at write time.",
+        "instanceof guard: both cache blocks are gated by instanceof CacheableAPIMethodInterface, providing complete isolation for non-cacheable API methods — zero behavioral change to the existing method population.",
+        "ArrayDataCollection::create($cached): confirmed accept array argument (signature: ArrayDataCollection|array|null $data=null). Type-safe.",
+        "Import: use Application\\API\\Cache\\CacheableAPIMethodInterface added correctly. Namespace is consistent with the trait defined in WP-005.",
+        "Three non-blocking observations recorded in comments — none require rework before this WP is closed."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-13T14:47:34Z",
+          "note": "Import sort order deviation (confirmed): use Application\\API\\Cache\\CacheableAPIMethodInterface (line 10) is inserted before use Application\\API\\APIResponseDataException (line 11). Alphabetically within the Application\\API namespace, APIResponseDataException (API-prefix) should precede Cache\\ (C-prefix). Correct order: APIException, APIManager, APIMethodInterface, APIResponseDataException, Cache\\CacheableAPIMethodInterface, Clients\\... — purely cosmetic, no behavioral impact. Flagged by Developer and QA; confirmed here."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-13T14:47:34Z",
+          "note": "Unguarded cache I/O (confirmed): readFromCache() and writeToCache() calls in _process() are not wrapped in try/catch. A disk permission error, corrupt JSON file, or storage exhaustion would propagate as an unhandled exception, failing the entire API request even though data collection succeeded. The surrounding collectRequestData/collectResponseData blocks are defensively wrapped; consistency would suggest the same for cache I/O. Low risk in the current file-based implementation, but worth hardening in a follow-up pass. Out of WP-004 scope."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-03-13T14:47:34Z",
+          "note": "instanceof fan-out in _process() (confirmed): two instanceof CacheableAPIMethodInterface guards are clean and isolated, but the pattern mirrors the existing DryRunAPIInterface guards and sets a precedent for future cross-cutting concerns. As more behaviors are added this way, _process() will accumulate conditional branches. A middleware/pipeline decorator pattern could be considered when a third instanceof concern is added. Out of WP-004 scope."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-13T14:48:28Z",
+      "completed_at": "2026-03-13T14:54:12Z",
+      "summary": [
+        "Updated src/classes/Application/API/Cache/README.md to reflect that caching is now transparent via BaseAPIMethod._process(). Removed the outdated 'Step 2: Use the cache in the method's execution logic' section that showed manual readFromCache()/writeToCache() calls in processAPI() — this pattern was valid during planning but became incorrect once WP-004 implemented transparent cache integration in BaseAPIMethod._process(). Replaced it with an explanatory block describing the hit/miss flow inside _process(). Updated 'Step 3' to 'Step 2' (now the only optional action).",
+        "Updated docs/agents/projects/api-caching-system.md Implementation Status table: corrected WP assignments (WP-001* → WP-002 for APICacheManager; WP-002 → WP-003 for Interface+Trait; WP-003 → WP-005 for CacheControl files; WP-002 → WP-004 for BaseAPIMethod modification), marked items 4-6 and 8-10 as Done. Item 7 (DBHelperAwareStrategy) correctly remains ⬜ Pending under Phase 2."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/classes/Application/API/Cache/README.md",
+          "docs/agents/projects/api-caching-system.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-13T14:54:12Z",
+          "note": "The README usage example for getCacheKeyParameters() returns an associative array (name => value), which matches the trait's ksort()+serialize() implementation. This is clear in the interface docblock but could benefit from a one-line note explaining why values — not parameter names — drive the key hash, since the trait's API is slightly counter-intuitive for developers used to returning parameter names only."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-13T14:54:12Z",
+          "note": "The project document (api-caching-system.md) still contains a 'Coding Conventions Checklist' with all items showing unchecked boxes. These were planning-stage reminders; all checked conventions were correctly applied in the implementation (verified by Developer, QA, and Reviewer pipelines). A future PM pass could remove this section or mark all items as confirmed to keep the document accurate as a live reference."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-03-13T14:54:12Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-03-13T14:38:45Z",
+      "notes": [
+        "WP-004 complete. BaseAPIMethod._process() now transparently integrates caching for any API method implementing CacheableAPIMethodInterface. The CacheableAPIMethodTrait (WP-005, already COMPLETE) provides the implementation. WP-006 (integration tests) can now proceed — the core wiring is in place."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-13T14:44:25Z",
+      "notes": [
+        "WP-004 QA PASS. All 5 ACs confirmed via static code analysis and execution flow trace. BaseAPIMethod._process() integration is correct: cache check halts on hit via sendSuccessResponse() never-typed; cache write fires pre-response; both blocks are instanceof-gated. The environment incident (vendor not installed) blocked automated test execution — this is pre-existing and not caused by this WP. WP-006 (integration tests) can proceed — it will provide the missing automated coverage for the cache round-trip."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-03-13T14:47:34Z",
+      "notes": [
+        "WP-004 PASS. All 5 acceptance criteria confirmed. The BaseAPIMethod._process() integration is architecturally correct and production-ready. Three non-blocking observations (import sort order, unguarded cache I/O, instanceof fan-out debt) are recorded as low-priority improvements — none require rework. Code is ready for Documentation."
+      ]
+    }
+  ]
+}

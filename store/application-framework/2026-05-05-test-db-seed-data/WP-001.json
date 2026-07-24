@@ -1,0 +1,185 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "Public static method `truncateAllTables()` exists on `TestSuiteBootstrap`",
+      "met": true
+    },
+    {
+      "criterion": "Method disables FK checks before truncation and re-enables in a `finally` block",
+      "met": true
+    },
+    {
+      "criterion": "Method fetches table list via `SHOW FULL TABLES WHERE Table_type = 'BASE TABLE'`",
+      "met": true
+    },
+    {
+      "criterion": "Method calls `DBHelper::truncate()` for each table",
+      "met": true
+    },
+    {
+      "criterion": "Method does NOT use a transaction (TRUNCATE is DDL)",
+      "met": true
+    },
+    {
+      "criterion": "FK checks are guaranteed re-enabled even if truncation fails mid-loop",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-06T12:10:55Z",
+      "completed_at": "2026-05-06T12:13:41Z",
+      "duration_ms": 166000,
+      "summary": [
+        "Implemented `TestSuiteBootstrap::truncateAllTables()` in `src/classes/Application/Bootstrap/Screen/TestSuiteBootstrap.php`.",
+        "Added `use DBHelper_OperationTypes;` import.",
+        "Method disables FK checks via `DBHelper::execute(TYPE_UPDATE, 'SET FOREIGN_KEY_CHECKS=0')`, fetches base tables with `SHOW FULL TABLES WHERE Table_type = 'BASE TABLE'`, truncates each via `DBHelper::truncate()`, and re-enables FK checks in a `finally` block.",
+        "No transaction used (TRUNCATE is DDL/auto-commits).",
+        "IDE reports no errors. PHPStan bootstrap failure is pre-existing (test DB not seeded) and unrelated to this change."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/classes/Application/Bootstrap/Screen/TestSuiteBootstrap.php"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-06T12:13:41Z",
+          "note": "In `getTablesList()`, results are cached in `self::$tablesList`. After `truncateAllTables()` clears the database, any subsequent call to `getTablesList()` would return stale cached data. This is not a problem in the seed flow since `truncateAllTables()` bypasses that cache by calling `fetchAll()` directly, but could mislead code calling `getTablesList()` post-truncation in the same request."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-06T12:16:43Z",
+      "completed_at": "2026-05-06T12:18:19Z",
+      "duration_ms": 96000,
+      "summary": [
+        "All 6 acceptance criteria verified against the implementation in TestSuiteBootstrap.php.",
+        "PHPStan static analysis exits 0 — no new errors introduced.",
+        "DBHelper-related test filter exits 0 — pre-existing bootstrap failure (test DB not seeded) is unrelated to this change.",
+        "Method signature, FK-guard pattern, SQL query, and truncation loop all match the AC exactly.",
+        "Edge cases analysed: empty DB (no-op loop, FK guards still fire), mid-loop failure (finally re-enables FK checks), DB connection failure on execute before try (finally never entered, FK was never disabled — correct)."
+      ],
+      "metrics": {
+        "tests_passed": 0,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-06T12:18:19Z",
+          "note": "No new issues found. The Developer's pre-existing observation about `self::$tablesList` cache staleness post-truncation is acknowledged but is out of scope for this WP. Implementation is clean and idiomatic."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-06T12:18:19Z",
+          "note": "Edge case verified: if `DBHelper::execute('SET FOREIGN_KEY_CHECKS=0')` itself throws, the try/finally block is never entered, so the finally re-enable is not called — this is correct because FK checks were never disabled."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-06T12:18:19Z",
+          "note": "Edge case verified: empty database (no BASE TABLE rows) — the foreach loop is a no-op, FK checks are still properly disabled then re-enabled via finally."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-06T12:20:17Z",
+      "completed_at": "2026-05-06T12:22:23Z",
+      "duration_ms": 126000,
+      "summary": [
+        "Code review complete. Implementation is clean, correct, and idiomatic. One Fix-Forward applied (SQL string quoting). All 6 acceptance criteria confirmed met. No blocking issues."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/classes/Application/Bootstrap/Screen/TestSuiteBootstrap.php"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-06T12:22:23Z",
+          "note": "In `truncateAllTables()`, changed the SQL string from single-quoted with escaped inner quotes (`'SHOW FULL TABLES WHERE Table_type = \\'BASE TABLE\\''`) to a double-quoted outer string (`\"SHOW FULL TABLES WHERE Table_type = 'BASE TABLE'\"`). This is a non-behavioral readability improvement — the standard PHP idiom for SQL strings that contain single quotes. No runtime difference."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-06T12:22:23Z",
+          "note": "The Developer's pipeline observation about `DBHelper::$tablesList` cache staleness after `truncateAllTables()` is a false positive. `TRUNCATE TABLE` empties rows but does NOT drop tables — the table schema remains. Therefore, `DBHelper::getTablesList()` (which returns table names) stays accurate after truncation. No code change required."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-06T12:22:23Z",
+          "note": "The `$entry[key($entry)]` pattern used to extract the table name from each `SHOW FULL TABLES` row is the established codebase idiom. `DBHelper::getTablesList()` (line 788 of `DBHelper.php`) uses the identical expression. No change needed."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-06T12:24:33Z",
+      "completed_at": "2026-05-06T12:25:48Z",
+      "duration_ms": 75000,
+      "summary": [
+        "Added a 'Resetting the Test Database' subsection to docs/agents/project-manifest/testing.md documenting TestSuiteBootstrap::truncateAllTables(). The new section explains the method's purpose, how it works (FK guards, BASE TABLE filter, no-transaction rationale), and clarifies that TRUNCATE does not invalidate the table-names cache. No other documentation gaps found; existing README and testing docs accurately reflect the implementation."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "docs/agents/project-manifest/testing.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-06T12:25:48Z",
+          "note": "No documentation-forwards were present in the code-review pipeline. All implementation details were documented clearly in the source docblock; the testing.md update mirrors that information at the project-manifest level."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-06T12:25:48Z",
+  "last_updated": "2026-05-06T12:25:48Z",
+  "handoff_notes": [
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-06T12:18:19Z",
+      "notes": [
+        "Implementation is clean. All AC met. No issues to address. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-06T12:22:23Z",
+      "notes": [
+        "PASS with one minor Fix-Forward applied (SQL string quoting). All AC confirmed met. Implementation is idiomatic and consistent with the codebase. Developer's cache-staleness concern confirmed to be a false positive — TRUNCATE does not affect the table-names cache. Ready for documentation."
+      ]
+    }
+  ]
+}
