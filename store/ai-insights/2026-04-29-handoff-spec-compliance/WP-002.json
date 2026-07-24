@@ -1,0 +1,247 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-002.md",
+  "status": "COMPLETE",
+  "assigned_to": "Reviewer",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "Each branch in getDocumentationHandoff is mapped to a numbered condition in handoff.md and documented",
+      "met": true
+    },
+    {
+      "criterion": "If drift is found and refactored, every branch maps 1:1 to the spec",
+      "met": true
+    },
+    {
+      "criterion": "npm run build in mcp-server/ succeeds",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-29T08:32:32Z",
+      "completed_at": "2026-04-29T08:40:08Z",
+      "duration_ms": 456000,
+      "summary": [
+        "Audited getDocumentationHandoff against the spec (§5.4). Confirmed drift: (1) two READY_FOR_DEVELOPER branches for wpsNotYetReviewed removed per spec v2.0.0 upstream-catch-all removal; (2) all-terminal early exit over all wpDetails added; (3) final fallthrough changed from READY_FOR_SYNTHESIS to WAIT; (4) hasPassedEffectiveUpstream local closure replaced with hasPassedDynamicUpstream from WP-001; (5) wpsWithDocFail filter now also gates on hasPassedDynamicUpstream. 5 tests updated to assert spec-correct behavior. Build: clean. Tests: 1871 pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/tools/workflow-handoff.ts",
+          "mcp-server/tests/tools/workflow-handoff.test.ts",
+          "mcp-server/tests/integration/auto-handoff.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-04-29T08:40:08Z",
+          "note": "getDocumentationHandoff had two READY_FOR_DEVELOPER branches for `wpsNotYetReviewed` that spec v2.0.0 explicitly removed. The original code was added before the spec clarification and drifted. The all-terminal early exit was also missing — the function had scattered READY_FOR_SYNTHESIS returns that conflated 'all docWps passed' with 'all WPs are terminal', which are only equivalent after completePipeline has run."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "FAIL",
+      "started_at": "2026-04-29T08:44:12Z",
+      "completed_at": "2026-04-29T08:47:16Z",
+      "duration_ms": 184000,
+      "summary": [
+        "AC1 and AC3 pass. AC2 FAIL: wpsWithDocFail filter adds hasPassedDynamicUpstream gate not present in the spec, causing divergent behavior when upstream regresses after a documentation FAIL. Spec returns IN_PROGRESS (documentation self-reworks); implementation falls through to WAIT. Fix or spec-update required before proceeding."
+      ],
+      "metrics": {
+        "tests_passed": 1871,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "bug",
+          "priority": "medium",
+          "timestamp": "2026-04-29T08:47:16Z",
+          "note": "AC2 FAIL: wpsWithDocFail filter (workflow-handoff.ts ~line 1300) adds hasPassedDynamicUpstream(wp, 'documentation') as an extra gate not present in the spec. Spec (handoff.md §5.4 / Documentation Handoff) says: 'if any non-terminal, non-dependency-blocked WP with documentation in activeStages has FAIL documentation pipeline → return IN_PROGRESS'. No upstream-PASS gate is specified. The extra guard causes divergence when upstream regresses AFTER a documentation FAIL (code-review PASS → doc FAIL → code-review FAIL): spec returns IN_PROGRESS, implementation falls through to WAIT. Fix: remove the hasPassedDynamicUpstream guard from wpsWithDocFail OR update the spec first if the guard is intentional design."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "medium",
+          "timestamp": "2026-04-29T08:47:16Z",
+          "note": "No test covers the edge case: code-review PASS → documentation FAIL → code-review FAIL. The existing test at line 1581 only verifies the happy path (upstream still PASS when docs FAIL'd). Add a test for this scenario to lock in the correct behavior once the spec question is resolved."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-29T08:47:16Z",
+          "note": "AC1 met: all 5 spec branches correctly mapped and commented (all-terminal, readyForDocs, FAIL self-rework, upstream-in-progress WAIT, fallthrough WAIT). Old READY_FOR_DEVELOPER catch-all and wrong READY_FOR_SYNTHESIS fallthrough correctly removed."
+        }
+      ]
+    },
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-29T08:48:11Z",
+      "completed_at": "2026-04-29T08:49:29Z",
+      "duration_ms": 78000,
+      "summary": [
+        "Rework: removed hasPassedDynamicUpstream(wp, 'documentation') gate from wpsWithDocFail filter in getDocumentationHandoff — spec §5.4 Condition 2 requires only non-terminal, non-dep-blocked, most-recent-doc-FAIL with no upstream-PASS prerequisite. Added inline comment explaining the spec rationale. Added regression test R4.4b: code-review:PASS → documentation:FAIL → code-review:FAIL → must return IN_PROGRESS (FAIL self-rework, no upstream gate). Build: clean. Tests: 1872 pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/tools/workflow-handoff.ts",
+          "mcp-server/tests/tools/workflow-handoff.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-29T08:49:29Z",
+          "note": "No observations beyond the already-recorded debt note from implementation-1. Rework scope was narrow (single line removal + comment clarification)."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-29T08:50:32Z",
+      "completed_at": "2026-04-29T08:52:32Z",
+      "duration_ms": 120000,
+      "summary": [
+        "Build clean (tsc), 1872/1872 tests pass across 62 files. All three ACs verified. AC1: all §5.4 branches are annotated with Step/Condition references (lines 1250, 1266, 1295, 1318, 1322). AC2: wpsWithDocFail filter no longer has the extra hasPassedDynamicUpstream gate — the filter is now spec-identical to §5.4 Condition 2 (non-terminal, non-dep-blocked, most-recent-doc-FAIL, no upstream-PASS prerequisite). The inline comment at lines 1297–1301 correctly explains the ordering rationale. AC3: tsc exits clean. Regression test R4.4b (line 2061) correctly covers the cr:PASS → doc:FAIL → cr:FAIL edge case and asserts IN_PROGRESS."
+      ],
+      "metrics": {
+        "tests_passed": 1872,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-29T08:52:32Z",
+          "note": "The inline comment at line 1297–1301 explicitly calls out why the upstream-PASS gate was absent from Condition 2 — this is clear and correctly references the Step 1 ordering as the reason upstream state is irrelevant by the time Condition 2 fires. Good self-documenting code."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-29T08:52:32Z",
+          "note": "No observations — rework was narrow (single line removal + comment). Code is clean and consistent with the spec."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-29T10:06:46Z",
+      "completed_at": "2026-04-29T10:08:23Z",
+      "duration_ms": 97000,
+      "summary": [
+        "Reviewed 3 files (workflow-handoff.ts, workflow-handoff.test.ts, auto-handoff.test.ts). 0 Critical, 0 High, 0 Medium findings. All OWASP Top 10 categories reviewed. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-29T10:08:23Z",
+          "note": "No security findings — all OWASP Top 10 categories reviewed; no Critical or High issues identified. The change is a single-predicate removal (hasPassedDynamicUpstream gate) from the wpsWithDocFail filter, with an inline comment and a regression test. All inputs are TypeScript-typed WorkPackageDetail objects pre-validated by the schema layer; no user-controlled strings reach any interpreter; no new dependencies, cryptographic operations, or access-control paths introduced."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-29T10:11:51Z",
+      "completed_at": "2026-04-29T10:15:35Z",
+      "duration_ms": 224000,
+      "summary": [
+        "Code review PASS with one reviewer-applied fix (Fix-Forward). The getDocumentationHandoff implementation correctly maps all four §5.4 branches. wpsWithDocFail filter is now spec-identical — no extraneous hasPassedDynamicUpstream gate. Regression test R4.4b correctly covers the cr:PASS → doc:FAIL → cr:FAIL → IN_PROGRESS edge case. Fix-Forward: corrected a logically-inverted inline comment that said 'If upstream has since regressed, Step 1 would have fired first' — Step 1 fires on upstream RE-PASS, not regression; updated comment to accurately describe both paths and cross-reference R4.4b."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/tools/workflow-handoff.ts",
+          "mcp-server/tests/tools/workflow-handoff.test.ts",
+          "mcp-server/tests/integration/auto-handoff.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-29T10:15:35Z",
+          "note": "Fixed logically-inverted comment in getDocumentationHandoff Step 2 block (workflow-handoff.ts ~line 1204). Original: 'If upstream has since regressed, the re-engagement path in Step 1 would have fired first' — incorrect because Step 1 fires on upstream RE-PASS (via hasNewUpstreamPassSince), not on regression. Updated to: 'If upstream has since re-passed... Step 1 catches that case first... Condition 2 remains correct for all other upstream states, including when upstream has since regressed to FAIL (see R4.4b).' Non-behavioral change — no logic altered."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-29T10:15:35Z",
+          "note": "The four-branch structure of getDocumentationHandoff (all-terminal, ready-for-docs/re-engagement, FAIL self-rework, WAIT fallthrough) is clean and well-organized. Each branch is annotated with its spec §5.4 condition reference. The inline comment at Condition 2 explaining the absence of the upstream-PASS gate is a good self-documenting pattern — now corrected to be logically accurate."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-29T10:15:35Z",
+          "note": "Test R4.4b is well-constructed: the scenario is clearly described in the test name and body comments, the pipeline sequence (cr:PASS → doc:FAIL → cr:FAIL) accurately targets the intended edge case, and the assertion is minimal and precise. The regression test adds meaningful coverage for a non-obvious spec behavior."
+        }
+      ]
+    }
+  ],
+  "rework_counts": {
+    "implementation": 1,
+    "qa": 1
+  },
+  "status_changed_at": "2026-04-29T10:15:35Z",
+  "last_updated": "2026-04-29T10:15:35Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-29T08:40:08Z",
+      "notes": [
+        "WP-002 complete. Drift confirmed and corrected in getDocumentationHandoff: READY_FOR_DEVELOPER catch-all removed (spec v2.0.0), all-terminal early exit added, final fallthrough changed to WAIT, hasPassedDynamicUpstream helper from WP-001 substituted for the local closure. 5 tests updated (2 unit, 3 integration) to reflect spec-correct behavior. All 1871 tests pass."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Developer",
+      "timestamp": "2026-04-29T08:47:16Z",
+      "notes": [
+        "WP-002 QA FAIL. The AC1 refactoring is correct (removed READY_FOR_DEVELOPER branches, fixed fallthrough to WAIT, all-terminal check moved to top). But AC2 is not met: the wpsWithDocFail filter adds hasPassedDynamicUpstream as an extra gate absent from the spec. Remove it (or update the spec to include it) and add a test for the upstream-regresses-after-doc-fail edge case. Build is clean and 1871 tests pass.\""
+      ]
+    },
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-29T08:49:29Z",
+      "notes": [
+        "Rework complete. Removed extra hasPassedDynamicUpstream gate from wpsWithDocFail (not in spec §5.4). Added regression test R4.4b for the cr:PASS → doc:FAIL → cr:FAIL edge case. All 1872 tests pass, build clean."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-04-29T08:52:32Z",
+      "notes": [
+        "WP-002 QA PASS. Build clean, 1872 tests pass. All ACs met. Rework correctly removed the hasPassedDynamicUpstream gate from wpsWithDocFail; implementation now maps 1:1 to spec §5.4 Condition 2. R4.4b regression test locks in the cr:PASS → doc:FAIL → cr:FAIL → IN_PROGRESS edge case."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-04-29T10:15:35Z",
+      "notes": [
+        "WP-002 code review PASS. One reviewer-applied fix: inline comment in Step 2 of getDocumentationHandoff had a logically-inverted explanation (said 'regressed' where 're-passed' was the correct trigger for Step 1). Non-behavioral — no logic changed. All three ACs confirmed met. Ready for documentation pipeline."
+      ]
+    }
+  ]
+}
