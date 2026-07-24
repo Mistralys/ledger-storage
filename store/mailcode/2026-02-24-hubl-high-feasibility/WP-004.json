@@ -1,0 +1,161 @@
+{
+  "work_package_id": "WP-004",
+  "work_package_file": "work/WP-004.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "'{showdate: $VAR \"d/m/Y\"}' translates to '{{ var|format_datetime(\"dd/MM/yyyy\") }}'",
+      "met": true
+    },
+    {
+      "criterion": "PHP-to-LDML character conversion is accurate using ApacheVelocity ShowDateTranslation::$charTable",
+      "met": true
+    },
+    {
+      "criterion": "Timezone string literal passed as second argument to format_datetime",
+      "met": true
+    },
+    {
+      "criterion": "Timezone variable token interpolated correctly as third format_datetime argument",
+      "met": true
+    },
+    {
+      "criterion": "No-variable case uses 'local_dt' as the source variable",
+      "met": true
+    },
+    {
+      "criterion": "URL encoding wrapped correctly via renderEncodings()",
+      "met": true
+    }
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-04T15:44:49Z",
+      "completed_at": "2026-03-04T15:45:09Z",
+      "summary": [
+        "Rewrote ShowDateTranslation.translate() to produce {{ var|format_datetime(\"ldml\") }} using HubL's format_datetime filter.",
+        "PHP-to-LDML conversion reuses ApacheVelocity ShowDateTranslation::$charTable directly (public static array, no duplication).",
+        "Timezone explicitly detected via params inspection; omitted from output when not provided, included as string or variable arg when set.",
+        "No-variable case (dateNow) uses 'local_dt' as HubL's built-in current datetime variable.",
+        "renderEncodings() applied to inner expression before wrapping in {{ }}.",
+        "Tests in ShowDateTests.php cover all 7 scenarios; all acceptance criteria met; full test suite and PHPStan level 9 pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/Mailcode/Translator/Syntax/HubL/ShowDateTranslation.php",
+          "tests/testsuites/Translator/HubL/ShowDateTests.php"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-03-04T15:45:10Z",
+          "note": "Timezone detection design decision: TimezoneInterface has no hasTimezone() method, and getTimezoneToken() creates a default token on demand (mutating the command's params). To detect whether a timezone was EXPLICITLY specified, the implementation inspects the params directly via $command->getParams()->getInfo()->getTokenByParamName(TimezoneInterface::PARAMETER_NAME) before calling getTimezoneToken(). This is a known gap in TimezoneInterface — adding a hasExplicitTimezone() method to the interface would be cleaner and avoid the implicit-state detection pattern."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-03-04T15:45:10Z",
+          "note": "Encoding rendering pattern: applied correctly following the ShowVariableTranslation pattern — renderEncodings() is called on the INNER expression (without {{ }}) and the result is wrapped in {{ }}. Initial naive implementation wrapped the full {{ ... }} expression, which would have produced invalid HubL syntax ({{ ... }}|urlencode). This pattern should be documented in a code comment or base-class docblock."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-04T15:48:52Z",
+      "completed_at": "2026-03-04T15:49:19Z",
+      "summary": [
+        "All 6 acceptance criteria verified via ShowDateTests. PHP-to-LDML conversion (shared charTable), format_datetime filter, timezone string/variable/absent paths, local_dt fallback, and URL encoding all confirmed correct.",
+        "Full regression suite (309 tests, 1352 assertions) passes with no failures.",
+        "PHPStan level 9: no new violations in the modified files."
+      ],
+      "metrics": {
+        "tests_passed": 309,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-04T16:08:00Z",
+          "note": "All 6 AC confirmed via ShowDateTests (7 test cases, 15 filter-matched tests, 112 assertions). PHP-to-LDML conversion verified for Y/m/d, d/m/Y, Y-m-d H:i:s format strings. Timezone string, timezone variable, no-timezone, no-variable, and URL encoding paths all tested."
+        },
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-04T16:08:00Z",
+          "note": "The timezone detection approach (inspecting raw params rather than calling getTimezoneToken()) is an internal workaround for a TimezoneInterface design gap. The implementation comment documents this rationale clearly."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-04T15:53:06Z",
+      "completed_at": "2026-03-04T15:53:47Z",
+      "summary": [
+        "All six acceptance criteria are met.",
+        "Implementation correctly handles all timezone paths, local_dt fallback, LDML conversion, and encoding wrapping.",
+        "No blocking issues. Two non-blocking improvement suggestions recorded (TimezoneInterface gap, renderEncodings docblock)."
+      ],
+      "comments": [
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-04T16:10:00Z",
+          "note": "Reuse of ApacheVelocity ShowDateTranslation::$charTable is clean and non-duplicating. The 'use' alias (ApacheVelocityShowDateTranslation) makes the cross-syntax dependency explicit. str_split() is safe for ASCII-only PHP date format strings. Exception thrown for unknown format characters with a dedicated error code."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-03-04T16:10:00Z",
+          "note": "Timezone detection pattern (inspecting getInfo()->getTokenByParamName() instead of calling getTimezoneToken()) is the correct workaround for a TimezoneInterface design gap where getTimezoneToken() creates a default token on demand. The inline comment documents the rationale clearly. Recommend a follow-up ticket to add hasExplicitTimezone() to TimezoneInterface."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-04T16:10:00Z",
+          "note": "renderEncodings() is correctly applied to the inner expression (without {{ }}) before wrapping in sprintf('{{ %s }}', ...). This pattern matches ShowVariableTranslation and avoids the {{ ... }}|urlencode trap. Consider adding a docblock note to BaseHubLCommandTranslation.renderEncodings() to document this contract, preventing future implementers from making the naive wrapping mistake."
+        },
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-04T16:10:00Z",
+          "note": "All type paths (StringLiteral, Variable, absent) are handled via explicit instanceof checks with no implicit fallthrough. PHPStan level 9 confirmed clean."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-04T15:56:43Z",
+      "completed_at": "2026-03-04T15:57:11Z",
+      "summary": [
+        "Updated docs/user-guide/translate-hubl.md: moved {showdate} from 'Not supported' to 'Fully supported', added notes block documenting the format_datetime filter, PHP-to-LDML date format conversion, all three timezone argument paths (string, variable, absent), local_dt fallback for the no-variable case, and the renderEncodings inner-expression wrapping rule.",
+        "Updated docs/agents/project-manifest/constraints.md: added 'showdate' to the HubL partial coverage list."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "docs/user-guide/translate-hubl.md",
+          "docs/agents/project-manifest/constraints.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-04T16:12:00Z",
+          "note": "Moved {showdate} from 'Not supported' to 'Fully supported' in translate-hubl.md. Added a notes block covering the format_datetime filter, PHP-to-LDML conversion, timezone string/variable/absent paths, local_dt fallback for the no-variable case, and the renderEncodings wrapping contract. Updated constraints.md to include 'showdate' in the HubL partial coverage list. The TimezoneInterface hasExplicitTimezone() improvement suggestion is a code-level design debt, not a documentation gap."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-03-04T15:57:11Z"
+}
