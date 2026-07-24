@@ -1,0 +1,173 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "After calling initializeStorage(), the storage folder, projects subfolder, and projects folder all exist.",
+      "met": true
+    },
+    {
+      "criterion": "repositories.json is created with an empty Repositories array and SchemaVersion: 1 when it doesn't exist.",
+      "met": true
+    },
+    {
+      "criterion": "projects-index.json is created with an empty Projects array and SchemaVersion: 1 when it doesn't exist.",
+      "met": true
+    },
+    {
+      "criterion": "Calling initializeStorage() a second time does not overwrite or modify existing files.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-03T12:08:47Z",
+      "completed_at": "2026-04-03T12:10:36Z",
+      "duration_ms": 109000,
+      "summary": [
+        "Added initializeStorage(config: AppConfig) to src/storage/json-storage.ts. The function creates storageFolder, storageFolder/projects, and projectsFolder directories (idempotent), and seeds repositories.json and projects-index.json with empty arrays and SchemaVersion: 1 only when the files do not already exist. Added import for AppConfig from config.types.ts. Added 8 new tests in src/tests/json-storage.test.ts covering all acceptance criteria. All 64 tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/storage/json-storage.ts",
+          "src/tests/json-storage.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-03T12:10:36Z",
+          "note": "src/storage/json-storage.ts uses fs.existsSync() as a guard before writeJsonFile(). This is a minor TOCTOU (time-of-check/time-of-use) race: on a multi-process system a file could be created between the check and the write. For a single-developer local tool this is acceptable, but a safer approach would be to attempt a write with an exclusive open flag (O_EXCL via fs.openSync) and swallow the EEXIST error. Not a concern in current usage context."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-03T12:11:52Z",
+      "completed_at": "2026-04-03T12:13:04Z",
+      "duration_ms": 72000,
+      "summary": [
+        "Reviewed src/storage/json-storage.ts and src/tests/json-storage.test.ts. 0 Critical, 0 High findings. 3 Low findings recorded (path validation, unchecked type cast, TOCTOU — all pre-existing and acceptable for a single-user local tool). No new runtime dependencies introduced. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-04-03T12:13:04Z",
+          "note": "Low | A01 Broken Access Control / A04 Insecure Design — src/storage/json-storage.ts, initializeStorage(): The config.storageFolder and config.projectsFolder path values are passed directly into fs.mkdirSync without sanitization or path-traversal validation (e.g. rejecting '..' components). For this local single-user tool whose config is loaded from a local file, exploitation requires local access and the user is trusted. Remediation (defence-in-depth): validate both paths with path.resolve() and assert they are absolute paths, or check for '..' segments before use."
+        },
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-04-03T12:13:04Z",
+          "note": "Low | A04 Insecure Design — src/storage/json-storage.ts, readJsonFile<T>(): The function performs an unchecked cast to T with no runtime schema validation. A hand-edited or corrupted JSON file could cause downstream logic errors. The risk is acknowledged in the JSDoc. Remediation: consider adding a validator or type-guard callback parameter for callers that read security-sensitive data."
+        },
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-04-03T12:13:04Z",
+          "note": "Low | A04 Insecure Design — src/storage/json-storage.ts, initializeStorage(): TOCTOU (time-of-check/time-of-use) race: existsSync() is called before writeJsonFile(), so a concurrent process could create the file in the window between the check and the write, resulting in an overwrite. For a single-developer local tool this is acceptable. Remediation (if multi-process use ever arises): use an O_EXCL / wx flag open and swallow EEXIST. Already noted by Developer in implementation pipeline."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-03T12:13:28Z",
+      "completed_at": "2026-04-03T12:14:46Z",
+      "duration_ms": 78000,
+      "summary": [
+        "Reviewed src/storage/json-storage.ts and src/tests/json-storage.test.ts. No blocking issues found. Code is clean, idiomatic, and well-documented. All four acceptance criteria are met and covered by passing tests. No Fix-Forward edits required. One Documentation-Forward item tagged for the Documentation agent regarding future schema-type alignment in initializeStorage seed calls."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/storage/json-storage.ts",
+          "src/tests/json-storage.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-03T12:14:46Z",
+          "note": "No observations — code is clean and consistent. initializeStorage is well-structured, FileNotFoundError is correctly implemented with cross-boundary instanceof safety (Object.setPrototypeOf), and error narrowing uses the idiomatic NodeJS.ErrnoException pattern throughout."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-03T12:14:46Z",
+          "note": "[documentation-forward] The seed objects in initializeStorage() — { Repositories: [], SchemaVersion: 1 } and { Projects: [], SchemaVersion: 1 } — are currently untyped plain objects because the storage schema interfaces (RepositoriesStore, ProjectsIndex) do not exist yet. When those types are defined in subsequent WPs, the writeJsonFile calls in initializeStorage should be typed against them (e.g., writeJsonFile<RepositoriesStore>(...)) and the JSDoc should cross-reference the relevant type definitions so future callers know the exact shape of the seeded files."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-03T12:15:55Z",
+      "completed_at": "2026-04-03T12:17:30Z",
+      "duration_ms": 95000,
+      "summary": [
+        "Updated README.md to reflect the initializeStorage() implementation: (1) updated the storageFolder config table description to name the actual files created; (2) added a new 'Storage structure' subsection documenting the directory tree and seed file shapes, with a note that the function is idempotent.",
+        "Reviewer documentation-forward item noted: once RepositoriesStore and ProjectsIndex types are defined in subsequent WPs, the writeJsonFile calls in initializeStorage should be typed against them and the JSDoc cross-referenced accordingly. No action taken here as those types do not exist yet."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "README.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-03T12:17:30Z",
+          "note": "The reviewer's documentation-forward item (type initializeStorage seed calls against RepositoriesStore / ProjectsIndex) cannot be addressed in this WP because those interfaces are not yet defined. A note has been included in the pipeline summary for future reference. When WP-002 or a subsequent WP defines storage.types.ts, the Documentation agent for that WP should update the json-storage.ts JSDoc to cross-reference the new types."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-03T12:17:30Z",
+  "last_updated": "2026-04-03T12:17:30Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-04-03T12:10:36Z",
+      "notes": [
+        "WP-001 implementation is complete. initializeStorage() is exported from json-storage.ts and covered by 8 passing tests. All acceptance criteria met. Ready for security audit."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-03T12:13:04Z",
+      "notes": [
+        "WP-001 security audit complete. 0 Critical/High findings. 3 Low risks recorded (path validation, unchecked cast, TOCTOU) — all acceptable in context. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-03T12:14:46Z",
+      "notes": [
+        "WP-001 code review: PASS. No blocking issues. Code quality is high — clean structure, good JSDoc, correct error types, idiomatic Node.js error narrowing. All 4 acceptance criteria confirmed met. One documentation-forward item logged: when storage schema types (RepositoriesStore, ProjectsIndex) are defined in future WPs, initializeStorage seed calls should be typed against them and the JSDoc updated accordingly."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,295 @@
+{
+  "work_package_id": "WP-012",
+  "work_package_file": "work/WP-008.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "Running the compiled CLI entry point (node dist/index.js) with a valid config.json starts the HTTP server and logs a success message including the port number.",
+      "met": true
+    },
+    {
+      "criterion": "The staticDir is correctly resolved to gui/public/ relative to the project root using path.resolve(__dirname, '..', 'gui', 'public').",
+      "met": true
+    },
+    {
+      "criterion": "Opening http://localhost:<serverPort> in a browser serves index.html and the full GUI loads.",
+      "met": true
+    },
+    {
+      "criterion": "If the server fails to start (e.g., port in use), an error message is written to stderr and the process exits with code 1.",
+      "met": true
+    },
+    {
+      "criterion": "The existing --verbose flag continues to print configuration details before server startup.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-07T19:04:35Z",
+      "completed_at": "2026-04-07T19:06:11Z",
+      "duration_ms": 96000,
+      "summary": [
+        "Modified src/index.ts to wire the HTTP server startup into the CLI entry point. Added imports for node:path and startServer from ./server/index.js. After config loading and verbose logging, staticDir is resolved using CJS-native __dirname (project has no \"type\":\"module\" in package.json — module:Node16 + no type=module → CJS output, so __dirname is natively available). startServer is called with appConfig, staticDir, serverPort, and pollIntervalSeconds. On success, logs the server URL including the port. On failure, writes to stderr and exits with code 1. The existing --verbose flag and synchronous config error handling are preserved unchanged. All 517 tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/index.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T19:06:11Z",
+          "note": "src/index.ts: The project uses module:Node16 but has no \"type\":\"module\" in package.json, making all .ts files compile to CommonJS. The WP spec mentioned using fileURLToPath(import.meta.url) for ESM __dirname compatibility, but that would fail compilation in CJS mode. CJS __dirname is used instead, which is correct given the actual module system in use. Consider adding a comment near the __dirname usage to explain why import.meta.url is not used here, to prevent future confusion."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-07T19:13:25Z",
+      "completed_at": "2026-04-07T19:15:16Z",
+      "duration_ms": 111000,
+      "summary": [
+        "All 5 acceptance criteria verified via live end-to-end smoke tests against the compiled dist/index.js. Build compiles cleanly (CJS output, __dirname native). Full regression suite: 517/517 tests pass. staticDir resolves correctly to gui/public/ from dist/__dirname. Server starts, serves index.html with correct Content-Type at GET /, logs success including port. Port-in-use scenario writes to stderr and exits with code 1. --verbose flag prints all config fields before startup. AC3 (browser load) verified by live HTTP requests returning HTML content of index.html."
+      ],
+      "metrics": {
+        "test_coverage": "517/517 regression tests pass",
+        "tests_passed": 517,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T19:15:16Z",
+          "note": "dist/index.js uses CJS __dirname natively (no ESM fileURLToPath needed) — this is correct because package.json has no 'type:module' and tsconfig module:Node16 produces CJS output. The WP spec mentioned fileURLToPath, but the Developer's deviation is correct and the Developer left a note. Consider adding an inline comment in src/index.ts explaining why import.meta.url is not used, to prevent future developer confusion."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T19:15:16Z",
+          "note": "AC4 error path: when EADDRINUSE fires, the server emits a helpful human-readable stderr message '[repo-parallelizer] ERROR: Port X is already in use.' before the raw error, which is excellent UX. No action needed."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-07T19:21:38Z",
+      "completed_at": "2026-04-07T19:23:00Z",
+      "duration_ms": 82000,
+      "summary": [
+        "Reviewed 8 files across src/index.ts, src/server/index.ts, src/server/staticServer.ts, src/server/router.ts, src/server/requestUtils.ts, src/server/routes/* (branches, status, repositories), src/config/config.ts. 0 Critical, 0 High, 2 Medium (noted), 3 Low (noted). Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T19:23:00Z",
+          "note": "OWASP REVIEW SUMMARY — All 10 categories reviewed. No Critical or High issues identified. Blocking issue count: 0."
+        },
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-04-07T19:23:00Z",
+          "note": "A01 — Broken Access Control / A05 — Security Misconfiguration (MEDIUM): src/server/index.ts — The HTTP server binds to all interfaces (0.0.0.0) by default via Node.js http.Server. For a local developer tool this is commonly intentional, but any other machine on the same network can reach the API endpoints, which expose potentially sensitive filesystem paths, repository names, workspace IDs, and branch-switch operations. The API has no authentication layer. Recommendation: Restrict the bind address to 127.0.0.1 (loopback) by passing it as the second argument to server.listen(port, '127.0.0.1', ...) unless LAN access is an explicit product requirement. If LAN access is intended, document it clearly and consider adding a simple token or shared-secret check to the API routes."
+        },
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-04-07T19:23:00Z",
+          "note": "A05 — Security Misconfiguration (MEDIUM): src/server/index.ts & src/server/staticServer.ts — No security-relevant HTTP response headers are set (e.g. X-Content-Type-Options, X-Frame-Options, Content-Security-Policy). For a tool serving a local GUI this is a low-exploitation risk, but a CSP header on the static server would prevent a class of injection attacks if the GUI ever renders user-supplied content. Recommendation: Add at minimum X-Content-Type-Options: nosniff and X-Frame-Options: DENY to both static and API responses. A restrictive default-src CSP on HTML responses is also advisable."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T19:23:00Z",
+          "note": "A01 — Broken Access Control (LOW / INFO): src/server/staticServer.ts lines 66–75 — The path-traversal guard is well-implemented: decodeURIComponent is called before path.resolve, and the resolved path is checked against baseDir + path.sep. Double-encoded sequences (%252e%252e) would decode to literal '%2e%2e' (not '../') because decodeURIComponent only decodes one layer; path.resolve would then treat the literal percent signs as normal filename characters and the file would not exist, so it would return false harmlessly. No traversal bypass found."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T19:23:00Z",
+          "note": "A03 — Injection (LOW / INFO): src/server/requestUtils.ts lines 41–46 — Raw request body is truncated to 120 characters and included in the error message returned to the client ('Invalid JSON body: <raw>'). This is a minor information-leakage risk — a large non-JSON payload's first 120 bytes are echoed back. In a local-only tool the risk is negligible, but replacing the echo with a static 'Request body is not valid JSON.' message would be cleaner. No injection risk in the direction of server execution."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T19:23:00Z",
+          "note": "A09 — Security Logging & Monitoring Failures (LOW): src/server/index.ts — No audit logging is present for mutating API calls (repository add/remove/update, workspace creation, branch-switch). For a local developer tool this is acceptable, but if the tool is ever exposed over a network, a structured audit log of destructive operations would be valuable for incident investigation."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T19:23:00Z",
+          "note": "A04 — Insecure Design (INFO): src/index.ts line 31 — staticDir is resolved using path.resolve(__dirname, '..', 'gui', 'public'). This path is fixed at startup and cannot be influenced by user input, so there is no user-controlled path injection risk. The usage is correct and safe."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T19:23:00Z",
+          "note": "A02 — Cryptographic Failures (INFO): No secrets, tokens, or credentials are stored or transmitted. config.json holds filesystem paths and port numbers only. HTTP (not HTTPS) is used, which is appropriate for a localhost dev tool; no sensitive session tokens are transmitted. No cryptographic weaknesses found."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T19:23:00Z",
+          "note": "A06 — Vulnerable & Outdated Components (INFO): WP-012 introduces no new third-party dependencies — all changes are in TypeScript source files using only Node.js built-in modules (node:http, node:fs, node:path). No CVE exposure from this work package."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T19:23:00Z",
+          "note": "A07 — Identification & Authentication Failures (INFO): No authentication or session management mechanism exists. Given the tool's stated use case as a local developer utility, this is by design. The absence of auth is noted as a systemic property, not a defect introduced by this WP."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T19:23:00Z",
+          "note": "A08 — Software & Data Integrity Failures (INFO): No deserialization of untrusted data beyond JSON request bodies, which are capped at 1 MB and validated with isPlainObject checks before use. No unsafe eval or dynamic require. No pipeline artifact concerns introduced by this WP."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T19:23:00Z",
+          "note": "A10 — Server-Side Request Forgery (INFO): No outbound HTTP requests are made from the server based on user-supplied URLs in this WP. Repository URL values accepted via POST /api/repositories are stored as data and passed to git tooling — SSRF via git URL is a separate pre-existing concern outside the scope of this WP's changes."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-07T19:23:59Z",
+      "completed_at": "2026-04-07T19:25:18Z",
+      "duration_ms": 79000,
+      "summary": [
+        "Code review PASS. Implementation is correct, minimal, and well-structured. Two Fix-Forward edits applied directly to src/index.ts: (1) removed the dead `?? 4200` fallback on the success log line — AppConfig.serverPort is typed as non-optional `number` so the fallback was unreachable; (2) added a 4-line comment above the __dirname usage explaining why import.meta.url is not used (CJS output, not ESM), resolving the open note flagged by both Developer and QA. Build verified clean after both edits (tsc exit 0). One documentation-forward item tagged for the Documentation agent. No blocking issues found."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/index.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-07T19:25:18Z",
+          "note": "src/index.ts line 39 (pre-edit): removed dead `?? 4200` fallback from the success log. AppConfig.serverPort is typed as `number` (non-optional) in config.types.ts, so the nullish coalescing fallback was unreachable dead code. Simplified to `config.serverPort` directly. Build still passes."
+        },
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-07T19:25:18Z",
+          "note": "src/index.ts line 31 (pre-edit): added a 4-line explanatory comment above the `__dirname` usage clarifying that import.meta.url is intentionally NOT used because the project compiles to CJS (no 'type:module' in package.json + module:Node16 → CJS output). This resolves the open note flagged by both Developer and QA pipelines and prevents future developer confusion."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-07T19:25:18Z",
+          "note": "[documentation-forward] src/index.ts module-level JSDoc block mentions 'config.json is missing required fields (`projectsFolder`, `storageFolder`)' but does not mention `serverPort` or `gitPollingIntervalSeconds`. The config.types.ts shows all five fields are required. The error comment should enumerate all required fields, or link to config.dist.json, so operators know exactly what to provide."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T19:25:18Z",
+          "note": "src/server/index.ts: The module-level `_server` and `_pollingManager` singletons mean only one server instance can run per process. This is correct for the CLI use case but worth documenting explicitly in the module-level JSDoc so test authors know to call stopServer() between test runs. No change required — already handled correctly in existing tests."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-07T19:27:00Z",
+      "completed_at": "2026-04-07T19:28:37Z",
+      "duration_ms": 97000,
+      "summary": [
+        "Resolved Reviewer documentation-forward item in src/index.ts: expanded the module-level JSDoc 'missing required fields' bullet to enumerate all five AppConfig required fields (projectsFolder, storageFolder, serverPort, gitPollingIntervalSeconds, cloneDepth) with a one-line description each, and added a cross-reference to config.dist.json for defaults.",
+        "Added a singleton-pattern documentation block in src/server/index.ts above the _server/_pollingManager declarations, explaining that only one server instance can run per process and explicitly directing test authors to call stopServer() in afterEach/afterAll to prevent port-collision issues between test runs.",
+        "All five acceptance criteria were confirmed met by prior pipelines. No code logic was changed — documentation only."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/index.ts",
+          "src/server/index.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-04-07T19:28:37Z",
+          "note": "src/index.ts: JSDoc now enumerates all five AppConfig required fields with descriptions, resolving the Reviewer's documentation-forward item. Operators who encounter 'missing required fields' errors will now see exactly which keys to supply."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T19:28:37Z",
+          "note": "src/server/index.ts: Added module-level comment documenting the singleton design constraint (_server/_pollingManager hold at most one instance). The 'Test authors: call stopServer() in afterEach' note turns a tacit convention into explicit documentation, reducing the risk of flaky tests from port-collision."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T19:28:37Z",
+          "note": "No other documentation gaps found in the WP-012 scope (src/index.ts, src/server/index.ts). All JSDoc, inline comments, and error messages are accurate and complete. No spec-vs-implementation discrepancies identified."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-07T19:28:37Z",
+  "last_updated": "2026-04-07T19:28:37Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-07T19:06:11Z",
+      "notes": [
+        "AC #3 (browser serving index.html) cannot be mechanically verified in the automated test environment — it requires a built GUI in gui/public/ and a live browser. The implementation is correct: staticDir resolves to <root>/gui/public/ and startServer wires the static file server. QA should verify this AC with an end-to-end smoke test once the GUI assets are built."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-04-07T19:15:16Z",
+      "notes": [
+        "All 5 ACs met. Implementation is clean CJS with native __dirname. Static file server correctly serves gui/public/index.html at GET /. Port-conflict error handling is robust with actionable user messaging. 517 regression tests pass. Ready for security audit."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-07T19:23:00Z",
+      "notes": [
+        "Security audit PASS. 0 Critical, 0 High. Two Medium observations noted (localhost bind-address hardening; missing security response headers) — neither blocks approval. All 5 ACs confirmed met. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-07T19:25:18Z",
+      "notes": [
+        "Code review PASS. Two Fix-Forward edits applied to src/index.ts (dead code removal + explanatory comment for __dirname). Build verified clean. One documentation-forward item: the module-level JSDoc error list in src/index.ts omits serverPort and gitPollingIntervalSeconds from the 'missing required fields' bullet — update to enumerate all five required AppConfig fields or reference config.dist.json. All 5 ACs confirmed met."
+      ]
+    }
+  ]
+}

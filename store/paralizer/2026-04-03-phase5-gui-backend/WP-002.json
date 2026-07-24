@@ -1,0 +1,196 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-002.md",
+  "status": "COMPLETE",
+  "assigned_to": "Reviewer",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "start() schedules repeated calls to fetchAndGetStatus for all workspace repositories at the configured interval in seconds",
+      "met": true
+    },
+    {
+      "criterion": "stop() prevents any further polling callbacks from firing after it is called",
+      "met": true
+    },
+    {
+      "criterion": "getStatus(repoPath) returns the most recently cached GitStatusInfo for a repo path, or null before the first poll",
+      "met": true
+    },
+    {
+      "criterion": "refreshWorkspace(projectId, workspaceId) fetches live status for all repos in the workspace, updates the cache, and resolves on completion",
+      "met": true
+    },
+    {
+      "criterion": "Fetches are staggered (not all repos triggered simultaneously) to avoid network spikes",
+      "met": true
+    },
+    {
+      "criterion": "All public methods are covered by unit tests using mocked workspace manager and git operation dependencies",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-07T14:16:18Z",
+      "completed_at": "2026-04-07T14:18:58Z",
+      "duration_ms": 160000,
+      "summary": [
+        "Created src/server/pollingManager.ts with PollingManager class",
+        "start(intervalSeconds) schedules a setInterval sweep; interval handle is unref'd so it does not block Node.js exit; concurrent sweeps are skipped via a sweepInProgress guard",
+        "stop() clears the interval and sets handle to null; calling stop() when not started is a no-op",
+        "getStatus(repoPath) is an O(1) Map lookup returning null for uncached paths",
+        "refreshWorkspace(projectId, workspaceId) validates both project and workspace exist, collects repo paths via projectsFolder/{projectId}/{workspaceId}/{repoId} convention, then calls fetchWithStagger",
+        "fetchWithStagger applies a 150 ms per-repo delay between successive fetchStatusFn calls to avoid thundering-herd network spikes; individual fetch errors are silently swallowed",
+        "FetchStatusFn is a constructor-injectable type alias defaulting to fetchAndGetStatus, enabling test mocks without patching modules",
+        "Created src/server/__tests__/pollingManager.test.ts with 14 unit tests covering all public methods via in-memory mocks",
+        "All 383 tests pass (0 fail)"
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/server/pollingManager.ts",
+          "src/server/__tests__/pollingManager.test.ts"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 383,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:18:58Z",
+          "note": "The sweepInProgress guard in start() prevents overlapping poll sweeps. If a sweep takes longer than intervalSeconds (e.g. very slow network), the next tick is silently skipped. This is intentional and preferred over queuing up sweeps."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:18:58Z",
+          "note": "STAGGER_MS is a module-level constant (150 ms). If callers need dynamic stagger control in future (e.g. per-project tuning), it could be moved to a constructor option."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-07T14:22:28Z",
+      "completed_at": "2026-04-07T14:23:55Z",
+      "duration_ms": 87000,
+      "summary": [
+        "Reviewed src/server/pollingManager.ts and src/server/__tests__/pollingManager.test.ts in full",
+        "Ran full test suite: 383 tests pass, 0 fail (includes 14 pollingManager unit tests)",
+        "All 6 acceptance criteria verified against live behaviour",
+        "Edge-case probe: empty Repositories array — fetchWithStagger resolves immediately without error",
+        "Edge-case probe: single-repo refresh completes in <5ms (no stagger applied to first repo, correct)",
+        "Edge-case probe: sweepInProgress guard confirmed — slow 200ms fetch + 50ms interval yields only 2 sweeps in 400ms, preventing overlap",
+        "Edge-case probe: start(0) (0 ms interval) starts without crashing; stop() cleans up normally",
+        "stagger timing verified: 150ms delay between successive fetches observed in real execution (timestamps differ ≥100ms)",
+        "TypeScript compilation remains clean (tsc --noEmit exits 0)"
+      ],
+      "metrics": {
+        "test_coverage": "14 pollingManager unit tests covering getStatus, refreshWorkspace (valid + error paths), stagger, start/stop lifecycle, double-start guard",
+        "tests_passed": 383,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:23:55Z",
+          "note": "sweepInProgress guard confirmed: with a 50ms interval and a 200ms-per-fetch function, only 2 sweeps completed in 400ms. This is the correct and intended behaviour — no bug."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:23:55Z",
+          "note": "start(0) (zero-second interval) does not crash but creates a 0ms setInterval, which fires on every event-loop tick. This is an unrealistic caller error; no validation is required by the WP spec, but a future guard (intervalSeconds > 0) would be reasonable."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:23:55Z",
+          "note": "No regression introduced: entire test suite still at 383/383 pass. TypeScript clean."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-07T14:24:48Z",
+      "completed_at": "2026-04-07T14:25:49Z",
+      "duration_ms": 61000,
+      "summary": [
+        "Reviewed src/server/pollingManager.ts (228 lines) and src/server/__tests__/pollingManager.test.ts (395 lines) in full",
+        "Verified TypeScript compilation: tsc --noEmit exits 0, no type errors",
+        "Verified full test suite: 383/383 pass, 0 fail",
+        "Architecture: clean single-responsibility class, DI via constructor for testability, no hidden module-level state",
+        "sweepInProgress guard is correct: flag is set synchronously before the async runSweep() call, preventing race conditions",
+        "unref() guard (typeof check) is safe for non-Node runtimes (browsers, workers) that don't expose the method",
+        "fetchWithStagger: sequential loop with leading-edge skip (i > 0) is correct — no pre-delay before the first repo",
+        "refreshWorkspace correctly delegates path construction to getRepoPaths, which validates project + workspace before building paths",
+        "getAllRepoPaths correctly iterates project.Workspaces keys (not a hard-coded STABLE assumption) — generalises correctly",
+        "Error handling: individual fetch failures are silently swallowed (correct per spec), but project/workspace-not-found errors do propagate (correct)",
+        "No secrets, no hardcoded credentials, no unsafe eval/exec usage",
+        "Module imports are typed and scoped appropriately; no unnecessary peer-surface exposure",
+        "Test suite covers all public methods, error paths, stagger timing, start/stop lifecycle, and double-start guard",
+        "withTimeout helper in tests prevents hanging test runs — good defensive practice",
+        "stagger timing assertion uses 100ms floor (vs 150ms STAGGER_MS) to tolerate CI timer jitter — appropriate tolerance"
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:25:49Z",
+          "note": "pollingManager.ts: STAGGER_MS is a module-level constant (150ms). If per-project tuning is needed in future, promote to a constructor option with a default. Low urgency — current design is simple and sufficient for the spec."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:25:49Z",
+          "note": "pollingManager.ts start(): no guard against intervalSeconds <= 0. A start(0) creates a 0ms setInterval (fires every event-loop tick). Consider: if (intervalSeconds <= 0) throw new RangeError('intervalSeconds must be > 0'). Low urgency as the spec does not require it, but a future hardening pass would be worthwhile."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:25:49Z",
+          "note": "pollingManager.ts refreshWorkspace(): the JSDoc says @throws if project or workspace does not exist, but the error is thrown from the synchronous getRepoPaths() helper inside an async method, so callers must handle rejection (not a try/catch around the await). This is fine in practice — Promise rejection is the correct async error channel — but a comment noting that the throws manifest as rejections would clarify intent for future maintainers."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:25:49Z",
+          "note": "No observations beyond minor low-priority suggestions — code is clean, well-documented, and consistent with the rest of the codebase style."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-07T14:25:49Z",
+  "last_updated": "2026-04-07T14:25:49Z",
+  "handoff_notes": [
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-07T14:23:55Z",
+      "notes": [
+        "All 6 acceptance criteria verified and met. 383/383 tests pass, TypeScript clean. sweepInProgress guard, stagger logic, and lifecycle methods all behave correctly under edge conditions. Ready for code-review pipeline (no security-audit stage in WP-002's active_pipeline_stages)."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-04-07T14:25:49Z",
+      "notes": [
+        "All 6 acceptance criteria confirmed met. Code is clean, well-structured, and production-ready. Minor low-priority suggestions logged (intervalSeconds guard, STAGGER_MS as constructor option, JSDoc clarification for async throws) — none are blockers. Ready for documentation pipeline."
+      ]
+    }
+  ]
+}

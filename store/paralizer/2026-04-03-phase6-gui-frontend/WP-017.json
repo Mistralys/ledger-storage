@@ -1,0 +1,252 @@
+{
+  "work_package_id": "WP-017",
+  "work_package_file": "work/WP-007.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-016"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "Step 1 renders a text input for branch name and a selectable list of branch suggestions fetched from the branches.list() API endpoint.",
+      "met": true
+    },
+    {
+      "criterion": "Selecting a suggestion or typing a branch name and clicking 'Next' advances to Step 2 with a table showing one row per repository, each pre-filled with the chosen branch.",
+      "met": true
+    },
+    {
+      "criterion": "Each repo row in Step 2 has a select dropdown populated from branches[repoId] with the Step 1 branch in a separate option group; selecting copies the value into the text input.",
+      "met": true
+    },
+    {
+      "criterion": "Clicking 'Confirm' calls POST /api/projects/:id/workspaces/:wid/branches/switch with { assignments } and renders Step 3 with per-repo results.",
+      "met": true
+    },
+    {
+      "criterion": "Conflict results (conflict === true) display a message instructing the user to resolve conflicts manually.",
+      "met": true
+    },
+    {
+      "criterion": "The 'Done' button in Step 3 navigates back to #/projects/:id/workspaces/:wid.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-07T21:28:04Z",
+      "completed_at": "2026-04-07T21:32:05Z",
+      "duration_ms": 241000,
+      "summary": [
+        "Implemented gui/public/js/views/branch-switch.js — a new 3-step wizard view exported as renderBranchSwitch(container, params).",
+        "Step 1 (Choose Branch): fetches api.branches.list(), renders a text input with <datalist> for autocomplete, plus clickable pill buttons for each suggestion. Shows loading state and handles fetch errors with retry.",
+        "Step 2 (Assign Per-Repo Branches): renders a table with one row per repoId from branchMap. Each row has a text input pre-filled with the Step 1 branch and a <select> dropdown with the chosen branch in a separate 'Selected' <optgroup> at top; selecting copies the value into the text input. 'Back' returns to Step 1 preserving the branch name.",
+        "Step 3 (Results): calls api.branches.switch() with assignments, shows a loading indicator during the call, then renders a results table. Conflict rows display 'Merge conflicts detected. Please resolve conflicts manually in your editor.' 'Done' navigates back to #/projects/:id/workspaces/:wid.",
+        "Updated gui/public/js/app.js: replaced the placeholderView('Branch Switch') stub with a real import of renderBranchSwitch and setBranchSwitchRouter; injected router before router.start().",
+        "All 517 backend tests continue to pass (GUI is not compiled by tsc)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "gui/public/js/views/branch-switch.js",
+          "gui/public/js/app.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T21:32:05Z",
+          "note": "branch-switch.js: The TOTAL_STEPS constant (value 3) is defined but never used outside of a JSDoc comment — it can be removed or repurposed to make the step indicator loop data-driven."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T21:32:05Z",
+          "note": "app.js: The placeholderView factory function is now unused (all routes are real views). It could be removed in a clean-up pass, or retained as scaffolding for future WPs."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-07T21:32:05Z",
+          "note": "branch-switch.js: The wizard preserves branchData across Back navigations via closure variables (savedBranchName / savedBranchData). This avoids a redundant API call on Back, which is good UX, but the caching is implicit. Adding a brief comment explaining the intent would improve maintainability."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-07T21:32:42Z",
+      "completed_at": "2026-04-07T21:34:06Z",
+      "duration_ms": 84000,
+      "summary": [
+        "Build & Runtime: 517 backend tests pass (exit 0). GUI layer is not TypeScript-compiled; no build step to fail.",
+        "AC-1 PASS: Step 1 renders a text input (#branch-switch-name) with a <datalist id='branch-suggestions'> populated from api.branches.list() suggestions array. Pill buttons also rendered for each suggestion.",
+        "AC-2 PASS: Clicking a pill or typing and pressing 'Next' (with non-empty trimmed value) calls onNext(branchName, data) which stores savedBranchName/savedBranchData and calls showStep2(). Step 2 table rows are built from Object.keys(branchMap), each pre-filled with chosenBranch.",
+        "AC-3 PASS: buildAssignmentRow() places the Step 1 branch in a separate <optgroup label='Selected'> at the top of each <select>. The 'change' event listener copies select.value into the corresponding branchInput.value.",
+        "AC-4 PASS: confirmBtn click collects assignments from all .branch-assignment-input elements via data-repo-id, then calls api.branches.switch(projectId, wid, assignments) which issues POST /api/projects/:id/workspaces/:wid/branches/switch with { assignments }. On response, renderResultsTable() is called with response.results.",
+        "AC-5 PASS: buildResultRow() checks conflict===true and appends a <span class='conflict-message'> with the exact text 'Merge conflicts detected. Please resolve conflicts manually in your editor.' A summary banner is also rendered when any repo has conflicts.",
+        "AC-6 PASS: doneBtn navigates to #/projects/${encodeURIComponent(projectId)}/workspaces/${encodeURIComponent(wid)} via _router.navigate (or location.hash fallback). Both the normal path (line 681) and the error-fallback path (line 735) are correctly implemented.",
+        "Regression: All 517 backend tests continue to pass. No changes to server-side code.",
+        "Edge cases reviewed: (1) Empty branchMap from API — renderStep2() handles repoIds.length===0 with a graceful 'No repository branch data' message. (2) Network failure on branches.list() — catch block renders retry button. (3) Network failure on branches.switch() — catch block renders error state with back-to-workspace button and calls showToast(). (4) Empty input on 'Next' — validation fires with aria-invalid and error span visible. (5) Confirm with empty text inputs — falls back to chosenBranch (inp.value.trim() || chosenBranch)."
+      ],
+      "metrics": {
+        "tests_passed": 517,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T21:34:06Z",
+          "note": "TOTAL_STEPS constant (value 3, line 66) is declared but never referenced in logic — step indicator loops over STEP_LABELS.length. This is dead code; either use it to drive the loop or remove it. (Pre-existing Developer observation, confirmed.)"
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T21:34:06Z",
+          "note": "placeholderView() factory in app.js is now unreachable — all routes have real view implementations. Safe to remove in a future clean-up pass. (Pre-existing Developer observation, confirmed.)"
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-04-07T21:34:06Z",
+          "note": "Step 2 'Confirm' fallback: when a branch text input is cleared by the user, the assignment silently reverts to chosenBranch (inp.value.trim() || chosenBranch). This avoids submitting empty strings but may surprise users who intentionally cleared a field. Consider showing a validation warning for empty per-repo inputs in a future iteration."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-04-07T21:34:06Z",
+          "note": "renderResultsTable() with an empty results object (API returns {}) renders 'No results returned.' rather than an error state. This is defensively handled, but a real API should always return at least one result entry; backend contract should be documented."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-07T21:34:59Z",
+      "completed_at": "2026-04-07T21:36:29Z",
+      "duration_ms": 90000,
+      "summary": [
+        "PASS with Fix-Forward. Code quality is high across all four review dimensions. Three minor non-behavioral fixes applied directly. No blocking issues found. All 6 acceptance criteria confirmed met. Ready for Documentation pipeline."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "gui/public/js/views/branch-switch.js",
+          "gui/public/js/app.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-07T21:36:29Z",
+          "note": "Removed dead `TOTAL_STEPS = 3` constant from branch-switch.js (line 66). It was defined but never referenced in logic — the step indicator loop uses `STEP_LABELS.length`. The three active step index constants (STEP_CHOOSE, STEP_ASSIGN, STEP_RESULTS) are preserved as they are used in goToStep() calls."
+        },
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-07T21:36:29Z",
+          "note": "Added an explanatory comment above `savedBranchName` / `savedBranchData` in renderWizard() clarifying that these closure variables cache the Step 1 API result so Back navigation avoids a redundant api.branches.list() call. Makes the caching intent explicit for future maintainers."
+        },
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-07T21:36:29Z",
+          "note": "Removed the now-dead `placeholderView()` factory function and its associated comment block from app.js. All five registered routes now have real view implementations. The dead code and stale scaffolding comment ('Remove the stub and import the real view when the corresponding WP ships.') would mislead future contributors — removing both keeps app.js concise and accurate."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T21:36:29Z",
+          "note": "outcomeClass() and outcomeLabel() both return 'text-danger' / 'Error' for the non-conflict, non-success case (line 538/551). Both branches are correct, but the intent is slightly obscure — these helpers would benefit from a one-liner JSDoc clarifying the precedence rule (conflict beats success). Not a blocker; Documentation-forward candidate."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-07T21:36:29Z",
+          "note": "[documentation-forward] renderResultsTable() with an empty results object renders 'No results returned.' The backend contract for POST /api/projects/:id/workspaces/:wid/branches/switch — specifically that the response must always contain a non-empty `results` object — should be documented in the API reference or the module JSDoc so future contributors understand this is a defensive guard for an abnormal server response, not a normal code path."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-04-07T21:36:29Z",
+          "note": "[documentation-forward] The Step 2 'Confirm' silent fallback (inp.value.trim() || chosenBranch) that reverts an empty text input to the Step 1 branch should be documented in the module JSDoc or inline. It is intentional UX behaviour that is not obvious from the code alone and could be mistakenly 'fixed' by a future developer who sees an empty value bypassing validation."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-07T21:39:17Z",
+      "completed_at": "2026-04-07T21:41:38Z",
+      "duration_ms": 141000,
+      "summary": [
+        "Updated README.md: added branch-switch.js to the GUI architecture file tree (views/ listing).",
+        "Updated README.md: replaced the '(stub — WP-017)' placeholder in the route registry table with the real view module reference.",
+        "Added a full 'Branch Switch Wizard (views/branch-switch.js)' section to README.md after the Workspace Detail section: covers the 3-step flow, navigation behaviour (including the Step 2 Back caching and Confirm empty-input fallback), results table outcomes, backend contract note for empty results, error handling per step, router injection, and breadcrumb.",
+        "Added JSDoc to outcomeClass() and outcomeLabel() in branch-switch.js clarifying the conflict-beats-success precedence rule (documentation-forward item #1 from Reviewer).",
+        "Added inline comment to the renderStep2() Confirm handler documenting the intentional inp.value.trim() || chosenBranch silent fallback (documentation-forward item #2 from Reviewer)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "README.md",
+          "gui/public/js/views/branch-switch.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-04-07T21:41:38Z",
+          "note": "README: Both documentation-forward items from the Reviewer have been addressed — outcomeClass/outcomeLabel precedence is now captured in JSDoc, and the Step 2 silent empty-input fallback now has an explicit comment warning future developers not to remove it without coordinating with QA."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T21:41:38Z",
+          "note": "README: The backend contract for POST .../branches/switch — that it must always return a non-empty results object — is documented under the new Branch Switch Wizard section. The existing API reference table for api.branches.switch() already documented the response shape; the new section adds context explaining why the empty-results guard in renderResultsTable() is defensive-only."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-07T21:41:38Z",
+  "last_updated": "2026-04-07T21:41:38Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-07T21:32:05Z",
+      "notes": [
+        "New file: gui/public/js/views/branch-switch.js — full 3-step wizard.",
+        "Modified: gui/public/js/app.js — removed placeholder stub, wired real import and router injection for branch-switch route.",
+        "All 6 acceptance criteria are met and marked as such.",
+        "No test suite exists for the GUI layer; QA should exercise the wizard in a browser against a running backend to validate the full flow."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-07T21:34:06Z",
+      "notes": [
+        "All 6 ACs verified via static code analysis and runtime backend test suite (517/517 pass). Branch-switch.js implements the full 3-step wizard with correct API wiring, error handling, and navigation. Two low-priority clean-up items exist (TOTAL_STEPS dead constant, placeholderView unused function) — neither is a blocker. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-07T21:36:29Z",
+      "notes": [
+        "All 6 ACs confirmed met. Three non-behavioral Fix-Forward edits applied directly (TOTAL_STEPS constant removed, closure cache comment added, dead placeholderView factory removed from app.js). Two documentation-forward items logged: (1) backend contract for empty results response, (2) Step 2 silent empty-input fallback to chosenBranch. No blocking issues — code is clean, well-structured, and consistent with project patterns."
+      ]
+    }
+  ]
+}

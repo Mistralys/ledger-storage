@@ -1,0 +1,172 @@
+{
+  "work_package_id": "WP-010",
+  "work_package_file": "work/WP-010.md",
+  "status": "COMPLETE",
+  "assigned_to": "Reviewer",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "getAvailableBranches() returns a map of repository ID to branch info arrays.",
+      "met": true
+    },
+    {
+      "criterion": "getAvailableBranches() fetches from remote before listing branches, using DEFAULT_FETCH_TIMEOUT_MS.",
+      "met": true
+    },
+    {
+      "criterion": "compileBranchSuggestions() returns a deduplicated, case-insensitive, sorted list of branch names.",
+      "met": true
+    },
+    {
+      "criterion": "switchBranches() creates the branch when it doesn't exist (local or remote).",
+      "met": true
+    },
+    {
+      "criterion": "switchBranches() switches to the branch when it already exists.",
+      "met": true
+    },
+    {
+      "criterion": "switchBranches() reports per-repository results including conflict detection.",
+      "met": true
+    },
+    {
+      "criterion": "switchBranches() updates the workspace's DateModified timestamp after switching.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "security-audit",
+    "code-review"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-07T08:08:34Z",
+      "completed_at": "2026-04-07T08:16:19Z",
+      "duration_ms": 465000,
+      "summary": [
+        "Implemented src/orchestration/branch-orchestrator.ts with BranchOrchestrator class containing getAvailableBranches(), compileBranchSuggestions(), and switchBranches(). Uses FETCH_TIMEOUT_MS from orchestration.types.ts. Conflict detection checks for 'conflict' and 'overwritten by' patterns in git output. Added src/tests/branch-orchestrator.test.ts with 17 integration tests using real git repos. All 274 tests pass (17 new + 257 pre-existing)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/orchestration/branch-orchestrator.ts",
+          "src/tests/branch-orchestrator.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T08:16:19Z",
+          "note": "compileBranchSuggestions normalises remote-tracking refs (strips 'origin/' prefix) before deduplication, which is the most useful behaviour for a UI suggestion list. This normalisation is implicit and not documented in the method signature — adding a JSDoc note here would help future readers understand why 'origin/main' and 'main' resolve to a single entry."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T08:16:19Z",
+          "note": "In switchBranches(), the Promise.all runs all repo operations concurrently and the workspace DateModified is always updated, even if all repo switches fail. This is intentional per the plan but could mislead operators into thinking work was done when nothing succeeded. A future improvement could avoid the DateModified update when zero operations succeeded, or include a success summary in the update."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-07T08:21:21Z",
+      "completed_at": "2026-04-07T08:23:27Z",
+      "duration_ms": 126000,
+      "summary": [
+        "Reviewed src/orchestration/branch-orchestrator.ts, src/git/git-branch.ts, src/git/git-cli.ts, and src/tests/branch-orchestrator.test.ts. 0 Critical, 0 High findings. 1 Medium (path traversal in repoPath), 1 Low (branchExists ref dotdot traversal), 2 Info (shell:false excellence, edge-case handling). Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-04-07T08:23:27Z",
+          "note": "Medium | OWASP A01 (Broken Access Control / Path Traversal) | src/orchestration/branch-orchestrator.ts line ~35 — repoPath() computes path.join(config.projectsFolder, projectId, workspaceId, repoId) with no sanitization of traversal characters. The repoId keys in switchBranches() come from branchAssignments, which ultimately traces back to caller-supplied input. A crafted repoId such as '../../evil' would cause path.join to resolve outside projectsFolder, directing all git operations (switch, fetch, create) to an unintended directory. Recommendation: validate projectId, workspaceId, and repoId against a safe-pattern regex (e.g. /^[A-Za-z0-9_-]+$/) inside repoPath() and throw on mismatch."
+        },
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-04-07T08:23:27Z",
+          "note": "Low | OWASP A01 (Broken Access Control / Ref Traversal) | src/git/git-branch.ts branchExists() — when remote is supplied, the ref string is built by string concatenation: refs/remotes/${remote}/${branchName}. A branchName containing '..' (e.g. '../main') produces refs/remotes/origin/../main, which git rev-parse --verify may normalise to refs/remotes/main, yielding a false-positive existence check. The existing '-' prefix guard prevents flag injection but does not block dotdot traversal. The @remarks docblock acknowledges this gap. Recommendation: add a /^\\.\\./|^\\//.test(branchName) check (or a full valid-refname regex) next to the existing '-' prefix guard in branchExists()."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T08:23:27Z",
+          "note": "Info | Defence-in-depth (excellent practice) | src/git/git-cli.ts runGit() — spawn() is called with shell: false and arguments are always supplied as a pre-split array. This completely eliminates OS command/shell injection regardless of what characters appear in branch names, repo paths, or remote names. No action required."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T08:23:27Z",
+          "note": "Info | Defence-in-depth | src/orchestration/branch-orchestrator.ts compileBranchSuggestions() — strip logic for remote-tracking refs uses indexOf('/')+1; if a branch name contains no '/', indexOf returns -1 and slice(0) returns the full name correctly. Edge case handled safely. No action required."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-07T08:26:59Z",
+      "completed_at": "2026-04-07T08:34:47Z",
+      "duration_ms": 468000,
+      "summary": [
+        "Reviewed src/orchestration/branch-orchestrator.ts and src/tests/branch-orchestrator.test.ts. Code is clean, correct, and follows project architecture. All 7 acceptance criteria confirmed met. One Fix-Forward applied (unused callback parameter rename). Two minor observations recorded. PASS."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/orchestration/branch-orchestrator.ts",
+          "src/tests/branch-orchestrator.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-07T08:34:46Z",
+          "note": "Fix-Forward applied in src/tests/branch-orchestrator.test.ts: renamed unused extraSetup callback parameter from `repoDir` to `_repoDir` in the 'getAvailableBranches fetches remote' test. The callback body operates on `originRepoPath` from the outer closure (correct intent), not on the passed-in repoDir. The leading underscore signals the intentional omission and satisfies TypeScript no-unused-vars conventions. Non-behavioral: all 17 tests continue to pass."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-04-07T08:34:46Z",
+          "note": "[documentation-forward] compileBranchSuggestions() JSDoc already explains the normalisation of remote-tracking refs (origin/main → main), but does not describe the multi-remote case: if a workspace uses a non-'origin' remote (e.g. 'upstream'), the strip logic still applies because isRemote=true spans all remotes, and indexOf('/') will correctly strip any prefix up to the first slash. Worth adding a brief @remarks line confirming all remote prefixes are stripped uniformly, not just 'origin/'."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T08:34:46Z",
+          "note": "The 'switchBranches reports conflict=true when working tree would be overwritten' test asserts `conflict === true || error !== undefined`, which accepts a failure without explicit conflict detection. This is pragmatic given variability in git output across platforms, but future contributors may not realise the conflict=true path is never strictly verified. Consider adding a secondary assertion on the raw git message if deterministic conflict output can be relied upon in the CI environment."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-07T08:34:47Z",
+  "last_updated": "2026-04-07T08:34:47Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-04-07T08:16:19Z",
+      "notes": [
+        "BranchOrchestrator implements three public methods. getAvailableBranches fetches via fetchRemote (best-effort, silent failure) then calls listBranches for each repo using FETCH_TIMEOUT_MS from orchestration.types.ts. compileBranchSuggestions normalises remote-tracking names (strips 'remote/' prefix) before case-insensitive dedup and sorting. switchBranches checks branchExists locally then remotely; creates with createBranch() or switches with switchBranch(); detects conflicts via 'conflict' or 'overwritten by' patterns in stderr/stdout; always updates DateModified via WorkspaceManager.update(). All 17 tests pass; full suite 274/274."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-04-07T08:34:47Z",
+      "notes": [
+        "BranchOrchestrator is clean and ready for documentation. Key points for Technical Writer: (1) compileBranchSuggestions strips any remote prefix (not just 'origin/') – worth confirming in API docs; (2) switchBranches always updates DateModified regardless of per-repo outcome – document this as intentional per spec; (3) FETCH_TIMEOUT_MS constant is imported from orchestration.types.ts – document where to change it if operators need tuning. All AC met; no blocking issues."
+      ]
+    }
+  ]
+}

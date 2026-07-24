@@ -1,0 +1,260 @@
+{
+  "work_package_id": "WP-016",
+  "work_package_file": "work/WP-006.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001",
+    "WP-011",
+    "WP-014"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "Navigating to #/projects/:id/workspaces/:wid renders the workspace header and a repository status table with one row per repository.",
+      "met": true
+    },
+    {
+      "criterion": "Each repository row displays the current branch name, a color-coded Git status badge showing modified files, commits ahead/behind, last activity, and conflict indicator.",
+      "met": true
+    },
+    {
+      "criterion": "The status table auto-refreshes via setInterval calling GET /api/projects/:id/workspaces/:wid/status and updates badges in-place without re-rendering the entire view.",
+      "met": true
+    },
+    {
+      "criterion": "The polling interval is cleared when navigating away from the workspace detail view (no leaked intervals after navigation).",
+      "met": true
+    },
+    {
+      "criterion": "The 'Switch Branches' button navigates to #/projects/:id/workspaces/:wid/branch-switch.",
+      "met": true
+    },
+    {
+      "criterion": "Rename and Delete actions are disabled for STABLE workspace and functional with confirmation dialogs for other workspaces.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-07T21:10:29Z",
+      "completed_at": "2026-04-07T21:13:34Z",
+      "duration_ms": 185000,
+      "summary": [
+        "Created gui/public/js/views/workspace-detail.js — the full workspace detail view with header, breadcrumb, repository status table, and actions section.",
+        "Implemented in-place polling: setInterval (10 s) calls api.status.get() and calls updateStatusTable() which locates rows/badge wrappers by data-repo-id and replaces only badge DOM nodes — no full re-render.",
+        "Cleanup contract: renderWorkspaceDetail returns a cleanup function that clears the pollingInterval. The router's existing _render() already stores and calls any function returned by a view, so no router.js changes were needed.",
+        "Actions section: 'Switch Branches' navigates to #/projects/:id/workspaces/:wid/branch-switch. 'Rename Workspace' shows an inline form with /^[A-Z]{2,6}$/ validation and calls api.workspaces.rename(); on success navigates to the new workspace URL. 'Delete Workspace' shows showConfirm() dialog, calls api.workspaces.delete(), then navigates back to project detail. Both Rename and Delete are disabled (with title tooltip) when wid === 'STABLE'.",
+        "Modified app.js: replaced the placeholderView stub for '#/projects/:id/workspaces/:wid' with the real renderWorkspaceDetail import; registered setWorkspaceDetailRouter(router) so programmatic navigation works.",
+        "All 517 server-side tests continue to pass. Node --check confirmed no syntax errors in both modified/new files."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "gui/public/js/views/workspace-detail.js",
+          "gui/public/js/app.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T21:13:34Z",
+          "note": "workspace-detail.js: The in-place badge update in updateStatusTable() uses CSS.escape() for the [data-repo-id] attribute selector, which is correct and defensive. However, if a repo ID contains characters that are valid in data attributes but unusual in CSS selectors, a fallback via querySelectorAll('[data-repo-id]') with a manual filter loop would be marginally more robust. Low priority as repo IDs are currently validated to safe patterns."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T21:13:34Z",
+          "note": "app.js: The placeholderView() factory function and its comment block are now only used by the Branch Switch stub. Once WP-017 (Branch Switch view) ships, placeholderView will be dead code and should be removed along with the comment block above it."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-04-07T21:13:34Z",
+          "note": "workspace-detail.js: The Rename Workspace inline form validates the workspace ID with /^[A-Z]{2,6}$/ — the same pattern used in project-detail.js buildAddWorkspaceForm(). This pattern is duplicated in two places. A shared validator function in a utils module or form-helpers.js would eliminate the duplication."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-07T21:14:11Z",
+      "completed_at": "2026-04-07T21:18:59Z",
+      "duration_ms": 288000,
+      "summary": [
+        "Wrote qa-wp016-tests.mjs: 61 tests covering all 6 AC groups plus edge cases, all executed with jsdom/Node (same pattern as WP-013/014/015 suites).",
+        "61/61 tests PASS. 517/517 server-side regression tests still pass — no regressions introduced.",
+        "AC1 (header + table): 7 tests — workspace header, breadcrumb link, description, table structure, data-repo-id rows, empty-project fallback, and parallel fetch verification.",
+        "AC2 (branch + badge): 6 tests — branch names rendered per row, badge wrapper per repo, conflict badge for hasConflicts=true, modified-files count, null-status error badge.",
+        "AC3 (in-place polling): 3 tests — setInterval called after render, polling tick calls status endpoint again, branch and badge updated in-place without full re-render (same heading DOM node after poll).",
+        "AC4 (interval cleanup): 4 tests — cleanup function returned, clearInterval called by cleanup, idempotent multi-call safety, disconnected-container guard stops polling.",
+        "AC5 (Switch Branches): 3 tests — button rendered, router.navigate() called with correct branch-switch URL, URL format verified for arbitrary project/workspace IDs.",
+        "AC6 (STABLE guards + actions): 11 tests — rename/delete disabled for STABLE (with title tooltips), enabled for DEV, rename form toggle, form validation (lowercase/too-short), valid rename calls api.workspaces.rename() with confirm + navigates to new URL, delete calls api.workspaces.delete() with confirm + navigates back to project.",
+        "Edge cases: 4 additional tests — API fetch failure renders error state with back link, object-shaped repos normalised correctly, rename cancel restores button, polling errors are silently swallowed without destroying the view."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "qa-wp016-tests.mjs"
+        ]
+      },
+      "metrics": {
+        "test_coverage": "All 6 AC groups + edge cases covered",
+        "tests_passed": 61,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T21:18:59Z",
+          "note": "The `updateStatusTable()` function only updates rows already in the DOM — it does not handle repositories added to the project after the initial render. This is fine for current usage since the repo list comes from the project object fetched on load, but a future iteration could refresh the full table on a project-change event."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T21:18:59Z",
+          "note": "No visual loading indicator is shown during polling refreshes (only on initial load). A subtle 'Refreshing…' indicator or spinner on the badge wrappers during the in-flight poll would improve perceived responsiveness. Low-priority cosmetic gap."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-07T21:18:59Z",
+          "note": "The rename validation regex /^[A-Z]{2,6}$/ is duplicated in both workspace-detail.js (rename form) and project-detail.js (add workspace form). Noted by Developer; a shared validator in form-helpers.js or utils.js would eliminate the duplication. No functional impact."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "FAIL",
+      "started_at": "2026-04-07T21:19:56Z",
+      "completed_at": "2026-04-07T21:21:05Z",
+      "summary": [
+        "Cancelled: Orchestrator stage error: MCP error -32602: Input validation error: Invalid arguments for tool ledger_complete_pipeline: [\n  {\n    \"code\": \"invalid_type\",\n    \"expected\": \"array\",\n    \"received\": \"string\",\n    \"path\": [\n      \"comments\"\n    ],\n    \"message\": \"Expected array, received string\"\n  }\n]"
+      ],
+      "auto_cancelled": true
+    },
+    {
+      "type": "code-review",
+      "status": "FAIL",
+      "started_at": "2026-04-07T21:21:11Z",
+      "completed_at": "2026-04-07T21:22:48Z",
+      "summary": [
+        "Cancelled: Orchestrator stage error: MCP error -32602: Input validation error: Invalid arguments for tool ledger_complete_pipeline: [\n  {\n    \"code\": \"invalid_type\",\n    \"expected\": \"object\",\n    \"received\": \"string\",\n    \"path\": [\n      \"artifacts\"\n    ],\n    \"message\": \"Expected object, received string\"\n  }\n]"
+      ],
+      "auto_cancelled": true
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-07T21:22:54Z",
+      "completed_at": "2026-04-07T21:24:07Z",
+      "duration_ms": 73000,
+      "summary": [
+        "Reviewed gui/public/js/views/workspace-detail.js and gui/public/js/app.js against all four review dimensions: Maintainability, Best Practices, Performance, and Future Context.",
+        "No blocking issues found. The implementation is clean, well-structured, and consistent with the patterns established in project-detail.js and dashboard.js.",
+        "Regex duplication concern raised by Developer/QA was already resolved in the final code: both workspace-detail.js and project-detail.js import WORKSPACE_ID_PATTERN from form-helpers.js — no duplication exists.",
+        "Cleanup contract is correct: renderWorkspaceDetail returns cleanup synchronously before the async Promise.all resolves; the router's _render() stores and calls it before navigating away; the cleanup is idempotent (pollingInterval set to null after clearInterval).",
+        "XSS safety: all user-facing data is set via textContent, not innerHTML. The one innerHTML usage in placeholderView (app.js) is explicitly noted as trusted internal code only.",
+        "Navigation URLs consistently apply encodeURIComponent to both projectId and wid across all call sites.",
+        "STABLE guard applied symmetrically to both Rename and Delete: disabled attribute, title tooltip, and btn-disabled class on both buttons.",
+        "One documentation-forward item tagged: the placeholderView factory in app.js will become dead code once WP-017 ships — Documentation agent should note this for future cleanup."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "gui/public/js/views/workspace-detail.js",
+          "gui/public/js/app.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T21:24:07Z",
+          "note": "No blocking issues found. Code is clean, well-architected, and consistent with project conventions. The WORKSPACE_ID_PATTERN is correctly imported from form-helpers.js in both workspace-detail.js and project-detail.js — the regex duplication concern from earlier pipeline stages was stale and does not apply to the final implementation."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-04-07T21:24:07Z",
+          "note": "[documentation-forward] The placeholderView factory function in app.js (lines 37–50) will become dead code once WP-017 (Branch Switch view) ships. The inline comment already notes this, but the Documentation agent should ensure the removal is tracked as a cleanup task for that WP and that the route registry comment block in app.js stays accurate after the stub is replaced."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-07T21:25:10Z",
+      "completed_at": "2026-04-07T21:27:36Z",
+      "duration_ms": 146000,
+      "summary": [
+        "Updated README.md GUI Frontend section: (1) added workspace-detail.js to the architecture tree, (2) updated route registry table to replace the WP-016 stub row with the real view module entry and note WP-017 stub, (3) inserted new '### Workspace Detail view' section documenting the data loading strategy, all rendered sections, live polling behaviour, cleanup contract, STABLE guards, rename workflow, and router injection pattern, (4) inserted new '### Repositories view' section documenting the table, inline edit, delete, and add-form behaviour for WP-015, (5) updated normalisation helpers table to include workspace-detail.js helpers (normaliseProject, normaliseWorkspace, extractRepoId, extractRepoName) and corrected the module list for shared helpers.",
+        "Updated CONTRIBUTING.md: (1) added workspace-detail.js to the router injection pattern examples list, (2) added new '### Cleanup contract' subsection explaining the cleanup function pattern introduced by workspace-detail.js with a code example and reference to the canonical implementation."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "README.md",
+          "CONTRIBUTING.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T21:27:36Z",
+          "note": "README.md now has complete documentation for both workspace-detail.js (WP-016) and repositories.js (WP-015) views. The architecture tree, route registry, view-specific sections, and normalisation helpers table are all up to date. CONTRIBUTING.md now documents the cleanup contract pattern introduced by workspace-detail.js for future view authors."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-07T21:27:36Z",
+  "last_updated": "2026-04-07T21:27:36Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-07T21:13:34Z",
+      "notes": [
+        "All 6 acceptance criteria are met and marked as such in the ledger.",
+        "New file: gui/public/js/views/workspace-detail.js — exports renderWorkspaceDetail(container, params) and setRouter(router).",
+        "Modified file: gui/public/js/app.js — imports renderWorkspaceDetail and setWorkspaceDetailRouter; replaces the placeholder stub for '#/projects/:id/workspaces/:wid'.",
+        "Cleanup/polling: the view returns a cleanup function; the router's existing _render() mechanism handles it — no router.js changes required.",
+        "Key integration points for QA: (1) polling interval cleared on navigation, (2) STABLE workspace disables Rename and Delete, (3) rename navigates to the new workspace URL, (4) delete navigates back to project detail, (5) failed API load renders an error state with a back link."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-07T21:18:59Z",
+      "notes": [
+        "All 6 AC are met and verified by 61 automated tests (qa-wp016-tests.mjs).",
+        "Key verified behaviours: parallel data fetch on mount; in-place badge/branch update via updateStatusTable() (same heading DOM node before/after poll); cleanup function clears setInterval and is idempotent; STABLE guards disable both Rename and Delete with title tooltips; Switch Branches navigates to exact #/projects/:id/workspaces/:wid/branch-switch pattern; rename validates /^[A-Z]{2,6}$/ before showing confirm dialog; delete navigates back to #/projects/:id.",
+        "No regressions: 517 server tests continue to pass.",
+        "Minor low-priority notes for Reviewer: (1) updateStatusTable only handles repos present at load time; (2) no polling-tick loading indicator; (3) rename regex duplicated in project-detail.js — none are blockers."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-07T21:24:07Z",
+      "notes": [
+        "All 6 AC confirmed met. Code review PASS with no blocking issues. One documentation-forward item logged: placeholderView in app.js will be dead code after WP-017 ships — tag for cleanup in that WP's documentation pass. No changes were made to source files during this review (no Fix-Forward edits required). Safe to proceed to the Documentation pipeline."
+      ]
+    },
+    {
+      "from_agent": "Documentation",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-04-07T21:27:36Z",
+      "notes": [
+        "WP-016 documentation complete. README.md updated with Workspace Detail view section, updated architecture tree and route registry. CONTRIBUTING.md updated with cleanup contract pattern. All 6 acceptance criteria are met and confirmed. WP-016 is ready to be marked COMPLETE."
+      ]
+    }
+  ]
+}

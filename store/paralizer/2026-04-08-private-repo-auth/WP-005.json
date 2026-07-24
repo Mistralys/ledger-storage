@@ -1,0 +1,195 @@
+{
+  "work_package_id": "WP-005",
+  "work_package_file": "work/WP-007.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "When a clone fails during workspace setup, the toast message includes the git stderr text (e.g., \"Authentication failed for …\").",
+      "met": true
+    },
+    {
+      "criterion": "When multiple repos fail, each repo's error is shown.",
+      "met": true
+    },
+    {
+      "criterion": "Successful setup flows are unaffected.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-10T10:32:53Z",
+      "completed_at": "2026-04-10T10:35:15Z",
+      "duration_ms": 142000,
+      "summary": [
+        "Updated the Setup button click handler in project-detail.js to show one toast per failing repo, including the full error text from OrchestrationRepoResult.error (which contains git stderr).",
+        "Replaced the single concatenated-names toast with a per-failure loop: `Failed to clone \"<id>\": <error>`.",
+        "Successful setup flow (else branch) is unchanged. All 426 tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "gui/public/js/views/project-detail.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T10:35:15Z",
+          "note": "project-detail.js: The failure loop calls showToast() once per failing repo (instead of concatenating names). This is a UX improvement: each error is independently dismissable and readable. With many failures the toast area could be crowded, but for typical usage (1-3 repos per workspace) this is acceptable."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-04-10T10:35:15Z",
+          "note": "project-detail.js: OrchestrationRepoResult.error already contained full git stderr since initial implementation. The frontend was simply ignoring it. No backend changes were needed."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-10T13:19:38Z",
+      "completed_at": "2026-04-10T13:20:41Z",
+      "duration_ms": 63000,
+      "summary": [
+        "All 3 ACs verified by code inspection of project-detail.js. AC1: `Failed to clone \"${failure.repositoryId}\": ${failure.error}` passes the git stderr in the toast message. AC2: `for (const failure of failures)` loop calls showToast() per failing repo. AC3: else branch (success path) is unchanged. Frontend is vanilla JS without automated unit tests. Backend regression: 507/507 pass."
+      ],
+      "metrics": {
+        "tests_passed": 507,
+        "tests_failed": 0
+      }
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-10T13:29:03Z",
+      "completed_at": "2026-04-10T13:31:32Z",
+      "duration_ms": 149000,
+      "summary": [
+        "Reviewed 2 files (project-detail.js, toast.js). 0 Critical, 0 High active, 1 High latent (must be fixed in credential injection WP: stripEmbeddedCredentials() on gitResult.stderr before API serialization), 0 Low, 1 Info. Security sign-off: PASS. XSS-safe (textContent). Credential sanitization is a mandatory prerequisite for the credential injection WP."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T13:31:32Z",
+          "note": "A03 — XSS Negative (SAFE) | gui/public/js/components/toast.js (showToast). The toast component sets message content via text.textContent = message, NOT innerHTML. Server-controlled strings in failure.error and failure.repositoryId are therefore rendered as plain text, not parsed as HTML. No XSS risk."
+        },
+        {
+          "type": "risk",
+          "priority": "high",
+          "timestamp": "2026-04-10T13:31:32Z",
+          "note": "A02 / A09 — Credential Exposure via Toast (HIGH risk, active in upcoming credential injection WP) | src/orchestration/workspace-orchestrator.ts:127 and gui/public/js/views/project-detail.js:477. The current data flow is: gitResult.stderr -> OrchestrationRepoResult.error -> API JSON response -> browser toast textContent. This is safe today because credentials are not yet injected into URLs. HOWEVER: once the credential injection WP wires injectCredentials() into createWorkspace(), git may echo the credentialed URL in stderr (e.g., 'fatal: repository https://ghp_token@github.com/...' not found). Without sanitization, the PAT would be: (1) embedded in the API JSON response body, (2) displayed in the browser toast UI, (3) visible in browser Developer Tools NetworkTab, and (4) potentially captured by browser extensions or screen recorders. MANDATORY FIX for the credential injection WP: apply stripEmbeddedCredentials() to gitResult.stderr BEFORE assigning it to OrchestrationRepoResult.error in workspace-orchestrator.ts (line 127) and repository-orchestrator.ts (same pattern). The stripEmbeddedCredentials() utility is already implemented in src/git/git-credentials.ts. This is a blocking security prerequisite for the credential injection WP to go live."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-10T13:38:20Z",
+      "completed_at": "2026-04-10T13:39:18Z",
+      "duration_ms": 58000,
+      "summary": [
+        "Reviewed project-detail.js and toast.js. No blocking issues. The per-failure loop is clean: each repo failure triggers a separate toast with the full git stderr, 8s timeout gives users time to read the error, and the success path is unaffected. Applied Fix-Forward to toast.js: added textContent XSS safety note to showToast() JSDoc so future maintainers cannot inadvertently switch to innerHTML."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "gui/public/js/views/project-detail.js",
+          "gui/public/js/components/toast.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "medium",
+          "timestamp": "2026-04-10T13:39:18Z",
+          "note": "gui/public/js/components/toast.js showToast() JSDoc: Added an explicit note that message is rendered via textContent (NOT innerHTML), so server-controlled strings including git error output are safe to pass. Security Auditor specifically directed the Reviewer to confirm this is noted for maintainers. Without this comment, a future developer could 'upgrade' to innerHTML for styled messages and inadvertently introduce XSS."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T13:39:18Z",
+          "note": "gui/public/js/views/project-detail.js: The per-failure loop (lines 476-479) is clean. failure.error is guarded (ternary before inclusion), timeout is 8000 ms which is appropriate for error messages requiring user attention. The template literal `Failed to clone \"${failure.repositoryId}\"${detail}` flows through textContent so HTML special chars are benign."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "high",
+          "timestamp": "2026-04-10T13:39:18Z",
+          "note": "[documentation-forward] The data-flows.md should document the error propagation path: gitResult.stderr → OrchestrationRepoResult.error → API response → toast. It must include the mandatory stripEmbeddedCredentials() call that the credential injection WP must add at the workspace-orchestrator level. This is a blocking prerequisite rule that must be captured as a standing constraint, not left implicitly in Security Auditor comments."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-10T13:45:22Z",
+      "completed_at": "2026-04-10T13:46:49Z",
+      "duration_ms": 87000,
+      "summary": [
+        "Updated docs/agents/project-manifest/data-flows.md: added section 10 'Workspace Setup — Clone Failure Error Propagation' with an annotated flow showing the full error path (gitResult.stderr → OrchestrationRepoResult.error → API response → browser toast), mandatory stripEmbeddedCredentials() annotation at the workspace-orchestrator call site, and a standing security rule block marking this as a blocking prerequisite for the credential injection WP. Previous section 10 (Storage) renumbered to 11.",
+        "Updated docs/agents/project-manifest/gui-frontend.md: Toast component row now explicitly documents that showToast() uses textContent (not innerHTML), making server-controlled strings including git error output XSS-safe to pass directly. Addresses Security Auditor + Reviewer Fix-Forward on toast.js.",
+        "Ran ctx generate — all 21 CTX output files regenerated cleanly."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "docs/agents/project-manifest/data-flows.md",
+          "docs/agents/project-manifest/gui-frontend.md",
+          ".context/project-overview.md",
+          ".context/project-manifest.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T13:46:49Z",
+          "note": "Critical documentation-forward item fully addressed. data-flows.md section 10 (new) documents the complete error propagation path: gitResult.stderr → OrchestrationRepoResult.error → API JSON response → browser toast via textContent. Includes an annotated flow, the FUTURE WP mandatory stripEmbeddedCredentials() call site, and the standing security rule as a blocking prerequisite for the credential injection WP."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-10T13:46:49Z",
+  "last_updated": "2026-04-10T13:46:49Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-10T13:31:32Z",
+      "notes": [
+        "PASS for WP-005 itself. MANDATORY prerequisite for credential injection WP: apply stripEmbeddedCredentials(gitResult.stderr) in workspace-orchestrator.ts (line ~127) and repository-orchestrator.ts before assigning to OrchestrationRepoResult.error / WorkspaceCloneResult.error. Without this, the credential injection WP will cause PATs to appear in the browser toast UI and API responses. The credential injection WP security audit MUST verify this sanitization is in place before passing. Reviewer: confirm toast.js XSS-safety is noted for future maintainers (textContent not innerHTML)."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-10T13:39:18Z",
+      "notes": [
+        "All 3 AC met. Frontend change is clean: per-failure loop with 8s timeout, correct error text propagation. Applied Fix-Forward to toast.js JSDoc documenting textContent XSS safety (Security Auditor directive). Documentation agent: CRITICAL — data-flows.md must capture the stripEmbeddedCredentials() requirement as a standing constraint for the error propagation path before the credential injection WP goes live."
+      ]
+    },
+    {
+      "from_agent": "Documentation",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-04-10T13:46:49Z",
+      "notes": [
+        "Documentation complete for WP-005. data-flows.md has a new section 10 documenting the clone failure error propagation path end-to-end, with explicit mandatory stripEmbeddedCredentials() call site annotation for the future credential injection WP. gui-frontend.md Toast component row now documents the textContent XSS safety guarantee. CTX regenerated cleanly."
+      ]
+    }
+  ]
+}

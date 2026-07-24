@@ -1,0 +1,191 @@
+{
+  "work_package_id": "WP-003",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Reviewer",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "Registered handlers are invoked when both the request method and URL pattern match",
+      "met": true
+    },
+    {
+      "criterion": "A 404 JSON response is returned when no registered pattern matches the request path",
+      "met": true
+    },
+    {
+      "criterion": "A 405 JSON response is returned (with a correct Allow header) when the path matches but the HTTP method does not",
+      "met": true
+    },
+    {
+      "criterion": "Named path segment extraction (:param syntax) is correctly resolved and passed to the handler as a params object",
+      "met": true
+    },
+    {
+      "criterion": "Router is covered by unit tests for match, 404, and 405 scenarios",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-07T14:30:31Z",
+      "completed_at": "2026-04-07T14:33:49Z",
+      "duration_ms": 198000,
+      "summary": [
+        "Implemented Router class in src/server/router.ts and the full unit test suite in src/server/__tests__/router.test.ts. All 17 tests pass; existing requestUtils tests (25) are unaffected.\""
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/server/router.ts",
+          "src/server/__tests__/router.test.ts"
+        ]
+      },
+      "metrics": {
+        "test_coverage": "All acceptance criteria paths covered",
+        "tests_passed": 17,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:33:49Z",
+          "note": "router.ts is dependency-free and delegates all param extraction to extractParams() from requestUtils — no duplication. The 405 Allow header deduplication is handled via Array.includes() on a small array, which is fine for the expected number of registered methods per route."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:33:49Z",
+          "note": "Handler async errors are swallowed via void Promise.resolve().catch() to prevent unhandledRejection crashes; handlers are expected to write their own error responses, consistent with the minimal-dependency philosophy of the module."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-07T14:36:37Z",
+      "completed_at": "2026-04-07T14:38:09Z",
+      "duration_ms": 92000,
+      "summary": [
+        "Full test suite run: 419 tests, 0 failures (tsc compile + node:test runner). All 17 Router-specific tests pass.",
+        "AC1 verified: GET, POST, PUT, DELETE handlers correctly dispatched on method+pattern match.",
+        "AC2 verified: 3 tests confirm 404 JSON body with 'error' key on no-path-match.",
+        "AC3 verified: 5 tests confirm 405 status, JSON error body, Allow header content (single method, multi-method, no duplicates), and case-insensitive method normalisation.",
+        "AC4 verified: 4 tests confirm :param extraction — single param, multiple params, empty params for static patterns, query-string stripping.",
+        "AC5 verified: 17 unit tests cover all required scenarios (match, 404, 405, param extraction, method normalisation).",
+        "Edge cases reviewed: undefined req.url/req.method guards present; first-match semantics correct; async handler errors safely swallowed; duplicate route registrations produce correct deduplicated Allow header."
+      ],
+      "metrics": {
+        "test_coverage": "All 5 AC paths and 17 router-specific tests pass",
+        "tests_passed": 419,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:38:09Z",
+          "note": "The 405 response path (router.ts:102-107) uses inline res.writeHead/res.end rather than sendError/sendJson. As a result it does not set a Content-Length header, unlike 404 which goes through sendError→sendJson. Functionally correct and not a bug, but a cosmetic inconsistency worth noting for the code-review pass."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:38:09Z",
+          "note": "Async handler errors are intentionally swallowed via void Promise.resolve().catch(). This is by design (handlers own their error responses) and is safe — no unhandledRejection will leak. Consistent with project philosophy."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:38:09Z",
+          "note": "req.url and req.method undefined guards (?? '/' and ?? 'GET') are present and correct. Method is uppercased before matching so lowercase HTTP methods (e.g. 'get') are normalised — covered by a dedicated test."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:38:09Z",
+          "note": "No test exercises a route registered after handle() is first called (dynamic route registration at runtime). Not part of the spec, but worth mentioning if the Router is ever extended to support runtime registration."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-07T14:42:00Z",
+      "completed_at": "2026-04-07T14:42:47Z",
+      "duration_ms": 47000,
+      "summary": [
+        "WP-003 code review PASS. router.ts is clean, well-typed, and dependency-free beyond its deliberate reuse of extractParams/sendError from requestUtils. Logic is correct and readable; test suite is comprehensive (17 tests, all AC paths covered). One low-priority improvement noted: the 405 path uses inline res.writeHead/res.end instead of sendError, omitting Content-Length. This is a cosmetic inconsistency with the 404 path and does not affect correctness. No blocking issues."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:42:47Z",
+          "note": "router.ts:102-106 — the 405 response writes headers with inline res.writeHead/res.end, bypassing sendError→sendJson. This means Content-Length is not set on 405 responses, whereas 404 goes through sendJson and always sets Content-Length. Functionally fine for HTTP/1.1 chunked responses, but inconsistent with the rest of the module's response handling style. Consider routing 405 through sendError in a future pass for uniform behaviour."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:42:47Z",
+          "note": "void Promise.resolve(entry.handler(...)).catch(() => {}) at router.ts:92-95 is the correct pattern for async-safe fire-and-forget. Well commented. No issue."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:42:47Z",
+          "note": "The private register() helper is clean and keeps the four HTTP verb methods DRY. Returning `this` enables fluent chaining — a nice touch, although not exercised in tests. Consider adding a chaining test in a future iteration for completeness."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:42:47Z",
+          "note": "No public method to register arbitrary HTTP verbs (e.g. PATCH, HEAD, OPTIONS). This is in-scope for the current WP and fine, but worth a note if the server ever needs to handle PATCH or HEAD requests."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:42:47Z",
+          "note": "No issues found — code is clean, consistent, and well-structured overall."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-07T14:42:47Z",
+  "last_updated": "2026-04-07T14:42:47Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-07T14:33:49Z",
+      "notes": [
+        "Router implementation complete. 17 unit tests pass (all AC paths covered). Files: src/server/router.ts, src/server/__tests__/router.test.ts. Tests use the same mock patterns as requestUtils.test.ts for consistency. Ready for QA review."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-07T14:38:09Z",
+      "notes": [
+        "QA PASS. 419/419 tests pass. All 5 ACs confirmed met. One low-priority cosmetic observation: 405 path does not set Content-Length (unlike 404 which uses sendError→sendJson). No rework required — safe to proceed to code-review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-04-07T14:42:47Z",
+      "notes": [
+        "Code review PASS. All 5 ACs confirmed met. One low-priority cosmetic note: 405 path does not use sendError/sendJson so Content-Length is absent (unlike 404). No rework required — safe to proceed to documentation."
+      ]
+    }
+  ]
+}

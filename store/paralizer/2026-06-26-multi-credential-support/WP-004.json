@@ -1,0 +1,338 @@
+{
+  "work_package_id": "WP-004",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "parseGitCredentials() correctly migrates an old Record<string, string> config to GitCredentialEntry[], preserving all host-token pairs.",
+      "met": true
+    },
+    {
+      "criterion": "Migrated entries have id derived from the hostname in kebab-case, label set to the hostname value.",
+      "met": true
+    },
+    {
+      "criterion": "Migration is idempotent — re-parsing an already-migrated array produces the same result.",
+      "met": true
+    },
+    {
+      "criterion": "parseGitCredentials() rejects arrays with duplicate id values.",
+      "met": true
+    },
+    {
+      "criterion": "parseGitCredentials() rejects entries with empty id, label, host, or token fields.",
+      "met": true
+    },
+    {
+      "criterion": "When two old-format entries would produce the same kebab-case ID, a numeric suffix is appended to disambiguate.",
+      "met": true
+    },
+    {
+      "criterion": "config.dist.json contains \"gitCredentials\": [].",
+      "met": true
+    },
+    {
+      "criterion": "All unit tests in src/tests/config.test.ts for migration and validation pass.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-06-26T09:53:15Z",
+      "completed_at": "2026-06-26T09:58:08Z",
+      "duration_ms": 293000,
+      "summary": [
+        "Rewrote parseGitCredentials() in src/config/config.ts to accept both old Record<string,string> (auto-migrated) and new GitCredentialEntry[] (validated) formats.",
+        "Migration logic converts hostname keys to kebab-case IDs via toKebabCase(), sets label to hostname, preserves host/token. Numeric suffix disambiguation (-2, -3, ...) handles ID collisions.",
+        "Validation rejects: duplicate id values, empty id/label/host/token fields, non-object array elements, and non-object/non-array values.",
+        "Empty {} legacy config returns undefined (no credentials); [] array returns [] (empty credentials set).",
+        "Updated src/tests/config.test.ts: removed 8 outdated tests (old Record format expectations), added comprehensive tests covering migration, idempotency, duplicate ID rejection, empty-field rejection, and disambiguation.",
+        "config.dist.json already contains \"gitCredentials\": [] — no change needed.",
+        "All 62 tests in config.test.ts pass. No type errors in modified files. Pre-existing type errors in downstream files (server/routes/config.ts, orchestrators) are intentional per WP-001 design — they will be fixed in WP-005 and WP-007."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/config/config.ts",
+          "src/tests/config.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-26T09:58:08Z",
+          "note": "parseGitCredentials() in config.ts now imports toKebabCase from utils/slug.ts for hostname-to-ID conversion. This is a clean reuse of the existing utility and is consistent with how slug generation works elsewhere in the codebase."
+        },
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-06-26T09:58:08Z",
+          "note": "The downstream files (src/orchestration/repository-orchestrator.ts, src/orchestration/workspace-orchestrator.ts, src/server/routes/config.ts) still use the old Record<string,string> format via 'this.config.gitCredentials ?? {}', causing type errors that block the full tsc build. These are intentional per the WP-001 design but should be addressed promptly in WP-005 and WP-007 to restore a clean build."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-26T09:58:08Z",
+          "note": "The empty legacy object {} returns undefined (no credentials), while an empty array [] returns [] (credentials explicitly set to empty). This asymmetry is intentional and documented in the JSDoc, but could surprise developers — a comment in the code makes this explicit."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-06-26T09:58:36Z",
+      "completed_at": "2026-06-26T10:00:37Z",
+      "duration_ms": 121000,
+      "summary": [
+        "All 8 acceptance criteria verified through code review, unit test execution, and targeted edge-case stress testing. 62/62 tests in config.test.ts pass. No regressions introduced. The parseGitCredentials() implementation is correct and robust."
+      ],
+      "metrics": {
+        "test_coverage": "62 tests covering all branches: null/undefined, empty array, valid array, duplicate id rejection, empty field rejection, non-object element, legacy migration, kebab-case derivation, label preservation, host preservation, disambiguation with numeric suffix, idempotency, plain string rejection, legacy number/empty-string token rejection",
+        "tests_passed": 62,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-26T10:00:37Z",
+          "note": "Whitespace-only strings (e.g. '   ') are correctly rejected for id, label, host, and token — the trim() check before emptiness validation works as expected."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-26T10:00:37Z",
+          "note": "Triple (and higher) ID collisions work correctly: 'github.com', 'github-com', 'github_com' all resolve to 'github-com' base slug but emerge as 'github-com', 'github-com-2', 'github-com-3' with full uniqueness."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-26T10:00:37Z",
+          "note": "The {} empty legacy case returning undefined vs [] returning [] is intentional and documented in JSDoc. The asymmetry is behaviorally sound — {} means no credentials were ever configured (legacy absent state), whereas [] means credentials were explicitly cleared."
+        },
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-06-26T10:00:37Z",
+          "note": "The full tsc build is broken due to pre-existing type errors in repository-orchestrator.ts, workspace-orchestrator.ts, server/routes/config.ts and their tests. These errors are from WP-001's type change and will be resolved in WP-005 and WP-007. The npm test script cannot be run end-to-end until those WPs land. QA ran config.test.js directly from the pre-compiled dist/ output."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-06-26T10:00:57Z",
+      "completed_at": "2026-06-26T10:02:11Z",
+      "duration_ms": 74000,
+      "summary": [
+        "Reviewed 2 modified files (src/config/config.ts, src/tests/config.test.ts) plus supporting files (config.types.ts, slug.ts, json-storage.ts, config.dist.json). Full OWASP Top 10 evaluation performed. 0 Critical, 0 High findings. 1 Medium and 2 Low observations recorded — none blocking. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-06-26T10:02:11Z",
+          "note": "A09 / Information Disclosure — src/config/config.ts:235-238: The legacy-format error message for an invalid token type exposes the hostname key in the error string: `gitCredentials[\"${host}\"] must be a string, got ${typeof token}`. If application error output is captured in shared or forwarded logs, this leaks hostnames that have associated credentials. Recommendation: mask or omit the hostname in the error message, e.g. use `gitCredentials[entry #${index}]` instead of interpolating the raw key."
+        },
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-06-26T10:02:11Z",
+          "note": "A04 / Insecure Design — src/config/config.ts (parseGitCredentials, new-format array path): No maximum length validation is applied to the `token`, `id`, `label`, or `host` fields. An adversarially crafted config.json with extremely long strings could cause memory pressure at load time. Low risk for a local developer tool, but a simple guard (e.g. reject fields exceeding 4096 chars) would add defence-in-depth."
+        },
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-06-26T10:02:11Z",
+          "note": "A04 / Insecure Design — src/config/config.ts (parseGitCredentials, both paths): The `host` field is accepted as any non-empty string without hostname format validation. A malformed value (e.g. containing path traversal sequences, null bytes, or whitespace) could cause unexpected behaviour in downstream git credential matching (WP-005/WP-007 scope). Recommendation: validate `host` against a basic hostname pattern (e.g. no slashes, no null bytes, must resemble a domain or IP) in a future WP."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-26T10:02:11Z",
+          "note": "A02 / Cryptographic Failures (defence-in-depth) — src/config/config.ts:300-302: saveConfigField() correctly applies chmodSync(0o600) after writing config.json on POSIX systems to restrict token file to owner-only read/write. This is a positive security control. Note: on Windows, no equivalent permission restriction is applied — acceptable for a local tool but worth documenting in the README."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-26T10:02:11Z",
+          "note": "No hardcoded secrets, test tokens, or credential values found in config.dist.json or any test fixtures. config.dist.json uses an empty array [] for gitCredentials — no sample/placeholder token values that could be mistakenly committed."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-06-26T10:02:37Z",
+      "completed_at": "2026-06-26T10:04:32Z",
+      "duration_ms": 115000,
+      "summary": [
+        "Reviewed src/config/config.ts (parseGitCredentials rewrite, ~130 lines) and src/tests/config.test.ts (62 tests) line-by-line across all four review dimensions: maintainability, best practices, performance, and future context.",
+        "Verdict: PASS. No blocking issues found. The implementation is clean, well-structured, and architecturally sound.",
+        "One Fix-Forward opportunity assessed (Security Auditor's Medium finding on hostname leak in error messages at lines 236/241) but deferred — the existing test assertions match on the hostname literal regex, meaning a message-format change requires a coordinated test update. Escalated as a documentation-forward note for the Developer to handle cleanly in a subsequent pass.",
+        "Two documentation-forward items identified for the Documentation agent.",
+        "All 8 acceptance criteria confirmed met by prior pipeline stages."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/config/config.ts",
+          "src/tests/config.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-26T10:04:32Z",
+          "note": "Maintainability — parseGitCredentials() is very well decomposed. The two branches (array path vs. legacy-object path) are clearly separated with inline comments, and the JSDoc is accurate and complete. The use of `as const` on the field array ['id','label','host','token'] is a nice touch that gives TypeScript a literal tuple and keeps the loop type-safe. No unnecessary complexity observed."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-26T10:04:32Z",
+          "note": "Best Practices — The type assertion pattern `entry = value[i] as Record<string, unknown>` followed immediately by a runtime `typeof entry !== 'object'` guard is idiomatic TypeScript for parsing unknown JSON. The assertion widens to a working type while the runtime guard provides safety. This is the correct pattern for this context — no use of any unsafe `any`-based shortcuts. Consistent with how other parsers in the codebase handle raw config fields."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-26T10:04:32Z",
+          "note": "Best Practices — ID deduplication logic (lines 188/231, `Set<string>`) is correct and efficient. The loop appends a numeric suffix starting at 2 — the convention is intuitive (matches common OS file-copy conventions like 'file (2)'). One observation: the suffix counter is not reset between entries, which is correct behavior. No bug here."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-26T10:04:32Z",
+          "note": "Performance — No performance concerns in the new-format validation path. The O(n) loop over entries with a Set for duplicate detection is optimal. The legacy-format migration uses Object.entries() which is O(n) — equally appropriate. No redundant passes over the array. Config parsing is startup-time only, so even a quadratic approach would be acceptable for realistic credential counts, but the O(n) approach is clean."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-26T10:04:32Z",
+          "note": "Future Context — The dual-format parser (new array + legacy object) is a well-designed migration bridge. Having the migration logic colocated with validation (rather than in a separate migration module) is appropriate given the scope — it keeps the parsing contract self-contained. As credential management grows (WP-005, WP-007), the decision to use GitCredentialEntry[] with a stable `id` field as the lookup key gives downstream consumers a clean reference contract."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-26T10:04:32Z",
+          "note": "Future Context — The _defaultsCoverageGuard pattern (lines 37-42) is an excellent compile-time completeness guard. Any future AppConfig field addition will surface at this line if DEFAULTS is not updated. This is a proactive maintainability investment and worthy of being documented as a project convention."
+        },
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-06-26T10:04:32Z",
+          "note": "Hostname leak in legacy error messages (Security Auditor Medium finding, lines 236 and 241): The messages `gitCredentials[\"${host}\"] must be a string` and `gitCredentials[\"${host}\"] must not be an empty string` embed the raw hostname into the error string. Fix-Forward was considered but not applied: the existing test at config.test.ts:379 asserts on the regex /gitCredentials\\[\"github\\.com\"\\].*string/, which would fail if the message format changes. This requires a coordinated Developer fix + test update. Recommend replacing `\"${host}\"` with a positional reference (e.g. `entry #${index}`) in both throw messages and updating the two corresponding test assertions to match the new format."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-06-26T10:04:32Z",
+          "note": "[documentation-forward] The _defaultsCoverageGuard pattern in src/config/config.ts (lines 37-42) is a valuable compile-time completeness guard. Add a comment in the config/README.md or inline at the declaration site explaining the pattern's intent — specifically that any new AppConfig field without a default will surface as a type error here, preventing silent omissions at runtime."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-06-26T10:04:32Z",
+          "note": "[documentation-forward] The {} empty object vs [] empty array asymmetry in parseGitCredentials() (undefined vs [] return value) is documented in JSDoc but not in config/README.md or any user-facing config guide. The next documentation pass should add a note explaining: 'omit gitCredentials or leave as null/{}  → treated as no credentials (undefined); use [] to explicitly set an empty credential list.' This distinction matters for consumers checking `config.gitCredentials !== undefined`."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-06-26T10:04:57Z",
+      "completed_at": "2026-06-26T10:08:42Z",
+      "duration_ms": 225000,
+      "summary": [
+        "Updated src/config/README.md: replaced stale Record<string,string> gitCredentials description with accurate GitCredentialEntry[] description; added _defaultsCoverageGuard bullet explaining the compile-time completeness guard; added new 'Parsing and migration' section documenting all parseGitCredentials() input cases, the {} vs [] asymmetry, collision handling with numeric suffixes, and idempotency; updated saveConfigField file-permission note to include the Windows caveat (no chmod on win32).",
+        "Updated docs/agents/project-manifest/constraints.md: added _defaultsCoverageGuard pattern bullet immediately after the DEFAULTS Pick maintenance bullet, explaining its purpose and the instruction not to remove it.",
+        "Updated docs/agents/project-manifest/data-flows.md: corrected section 9 pseudocode to use resolveCredential(url, config.gitCredentials, repo.credentialId) instead of the stale direct-key-lookup config.gitCredentials['github.com'] style, which no longer matches the GitCredentialEntry[] format.",
+        "Ran ctx generate — 31 .context/ files regenerated cleanly with zero errors or warnings. Directly affected: .context/modules/config/overview.md and .context/project-manifest.md."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/config/README.md",
+          "docs/agents/project-manifest/constraints.md",
+          "docs/agents/project-manifest/data-flows.md",
+          ".context/modules/config/overview.md",
+          ".context/project-manifest.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-26T10:08:42Z",
+          "note": "Both documentation-forward items from the code-review pipeline were addressed: (1) _defaultsCoverageGuard is now documented in src/config/README.md (new bullet) and docs/agents/project-manifest/constraints.md (new bullet); (2) the {} vs [] empty-credential asymmetry is now explained in the 'Parsing and migration' table and prose in src/config/README.md."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-26T10:08:42Z",
+          "note": "Security auditor's observation about Windows lacking chmod 0o600 equivalent for config.json is now captured in src/config/README.md's 'Config file' bullet, pointing users toward placing the file in a restricted location on Windows."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-26T10:08:42Z",
+          "note": "data-flows.md section 9 pseudocode corrected to reflect the new GitCredentialEntry[] lookup pattern (resolveCredential) rather than the obsolete Record<string,string> direct-key access. This was an implicit documentation gap not listed as a forward item but caught during gap analysis."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-06-26T10:08:42Z",
+  "last_updated": "2026-06-26T10:08:42Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-06-26T09:58:08Z",
+      "notes": [
+        "All 8 acceptance criteria are met. The parseGitCredentials() function now auto-migrates old Record<string,string> format and validates new GitCredentialEntry[] format.",
+        "config.dist.json already had 'gitCredentials': [] — no change required.",
+        "Pre-existing type errors in repository-orchestrator.ts, workspace-orchestrator.ts, server/routes/config.ts, and their tests are NOT from this WP — they stem from WP-001's type change and must be addressed in WP-005 (REST API credentials) and WP-007 (orchestrators). They prevent the full tsc build but do not affect config.test.ts.",
+        "The empty {} legacy case returns undefined (treated as 'no credentials configured'). The empty [] new-format case returns [] (explicitly empty credentials array). QA should verify this distinction is acceptable."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-06-26T10:00:37Z",
+      "notes": [
+        "All 8 ACs met and verified. 62 config tests pass. Edge cases confirmed: whitespace-only strings rejected, triple ID collision disambiguation works, {} vs [] empty semantic distinction is correct. Pre-existing tsc build failures in orchestrators/server routes are out of scope for WP-004 — to be addressed in WP-005/WP-007."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-06-26T10:02:11Z",
+      "notes": [
+        "Security audit PASS — 0 Critical/High findings. 1 Medium observation: legacy-format error message at config.ts:235-238 leaks the hostname key in the error string (recommend masking). 2 Low observations: no max-length validation on token/id/label/host fields; host field not validated against a hostname pattern (relevant for WP-005/007 downstream usage). All ACs confirmed met. Code is clear of hardcoded secrets and handles sensitive data responsibly. Approved for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-06-26T10:04:32Z",
+      "notes": [
+        "Code review PASS — no blocking issues. Two documentation-forward items logged: (1) document the _defaultsCoverageGuard pattern in config/README.md; (2) clarify the {} vs [] empty-credential asymmetry in user-facing docs. One medium-priority debt item for the Developer in a follow-up WP: replace hostname interpolation in legacy error messages (lines 236/241 of config.ts) with positional index references, and update the two corresponding test assertions. All 8 ACs confirmed met. Approved for documentation pipeline."
+      ]
+    }
+  ]
+}

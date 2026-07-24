@@ -1,0 +1,279 @@
+{
+  "work_package_id": "WP-006",
+  "work_package_file": "work/WP-006.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "PollingManager accepts an optional ErrorLogManager constructor parameter.",
+      "met": true
+    },
+    {
+      "criterion": "A fetch failure for a repo path produces a warning-severity error log entry with source 'polling' and operation 'status-poll'.",
+      "met": true
+    },
+    {
+      "criterion": "A persistently failing repo path produces at most one log entry per sweep-to-sweep cycle (deduplication).",
+      "met": true
+    },
+    {
+      "criterion": "When a previously failing repo recovers (successful fetch), its path is removed from the dedup set, allowing a new entry if it fails again.",
+      "met": true
+    },
+    {
+      "criterion": "Context in log entries includes ProjectId, WorkspaceId, and RepositoryId extracted from the repo path.",
+      "met": true
+    },
+    {
+      "criterion": "Existing polling manager tests pass without modification (the parameter is optional).",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-11T09:09:49Z",
+      "completed_at": "2026-04-11T09:12:24Z",
+      "duration_ms": 155000,
+      "summary": [
+        "Added optional `errorLogManager?: ErrorLogManager` as the 5th constructor parameter of PollingManager (after fetchStatusFn), preserving full backward compatibility — all existing tests construct PollingManager with ≤4 args and pass unchanged.",
+        "Added private `failedPaths = new Set<string>()` field for per-sweep deduplication.",
+        "Updated `fetchWithStagger()`: on successful fetch, calls `this.failedPaths.delete(repoPath)` to clear recovery state; on catch, appends a warning-severity error log entry (source='polling', operation='status-poll') if and only if `errorLogManager` is set and `repoPath` is not already in `failedPaths`, then adds repoPath to failedPaths.",
+        "Added `extractContext()` module-level helper that calls `path.relative(projectsFolder, repoPath)` and splits on `path.sep` to extract ProjectId, WorkspaceId, and RepositoryId from the `{projectsFolder}/{projectId}/{workspaceId}/{repoId}` convention. Returns `{}` if fewer than 3 segments are found (safe fallback).",
+        "Updated class-level and method-level JSDoc to document the new optional parameter, deduplication behaviour, and recovery semantics.",
+        "npx tsc --noEmit: 0 errors. npm test: 643/643 pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/server/pollingManager.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-11T09:12:24Z",
+          "note": "src/server/pollingManager.ts extractContext(): uses a dynamic `import()` type annotation in the return type position (`import('../error-log/error-log.types.js').ErrorLogContext`) to avoid adding a top-level import that is only needed for this internal helper. An alternative is to add a named import at the top of the file. Either approach is valid; the dynamic import type keeps the error-log dependency visible at the usage site. Could be standardised with a top-level import if the project prefers that convention."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-04-11T09:12:24Z",
+          "note": "src/server/pollingManager.ts: the `fetchWithStagger()` doc comment previously stated that errors are 'silently swallowed' — this was updated in this WP to reflect the new logging behaviour. No code debt, just flagging that the old phrasing existed and may still appear in derived documentation."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-04-11T09:12:24Z",
+          "note": "src/server/pollingManager.ts: the `errorLogManager.append()` call inside `fetchWithStagger()` is synchronous (returns a value but we do not await it since ErrorLogManager.append() is not async). If the disk write ever becomes async in a future refactor, the call site will need `await` and the surrounding `try/catch` structure may need adjustment. Worth noting for future maintainers."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-11T09:25:18Z",
+      "completed_at": "2026-04-11T09:27:51Z",
+      "duration_ms": 153000,
+      "summary": [
+        "Full Verification Stack completed — all 6 AC verified via 13 new targeted tests in src/server/__tests__/pollingManager.errorLog.test.ts.",
+        "Build check: npx tsc --noEmit → 0 errors.",
+        "Regression: 658 pre-existing tests all pass unchanged.",
+        "New QA tests: 13/13 pass. Grand total: 671/671.",
+        "AC1 (optional param): PollingManager constructs correctly with and without errorLogManager.",
+        "AC2 (warning log): first failure produces entry with Severity='warning', Source='polling', Operation='status-poll'; Error and non-Error throws both handled.",
+        "AC3 (dedup): second consecutive failure for same path produces zero additional entries; multiple distinct repos each get exactly one entry.",
+        "AC4 (recovery): successful fetch clears dedup set — re-failure after recovery correctly generates a fresh log entry.",
+        "AC5 (context): Context.ProjectId, Context.WorkspaceId, Context.RepositoryId correctly extracted from path segments; shallow path returns {} without panic.",
+        "AC6 (no-op without manager): fetch failures silently swallowed when errorLogManager is omitted."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/server/__tests__/pollingManager.errorLog.test.ts"
+        ]
+      },
+      "metrics": {
+        "test_coverage": "13 new tests covering all 6 AC",
+        "tests_passed": 671,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-11T09:27:51Z",
+          "note": "src/server/pollingManager.ts extractContext(): uses a dynamic import() type annotation in the return type (import('../error-log/error-log.types.js').ErrorLogContext). Functionally correct. A top-level named import would be more idiomatic and consistent with the rest of the file. Minor style preference, not a blocker."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-11T09:27:51Z",
+          "note": "AC3 test 'multiple distinct failing repos each get exactly one entry' takes ~306ms due to STAGGER_MS=150 between two repos. This is expected and correct behaviour — not a defect. Future test authors should account for stagger time when sizing test timeouts."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-11T09:27:51Z",
+          "note": "No issue: code is clean, well-documented, and all edge cases (non-Error throws, shallow paths, absent manager) are handled safely."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-11T09:39:10Z",
+      "completed_at": "2026-04-11T09:40:08Z",
+      "duration_ms": 58000,
+      "summary": [
+        "Reviewed src/server/pollingManager.ts (implementation) and src/server/__tests__/pollingManager.errorLog.test.ts (QA tests) against all four review dimensions.",
+        "All 6 acceptance criteria confirmed met. Architecture is sound and well-contained — the new feature is a clean optional dependency added as the 5th constructor parameter with full backward compatibility.",
+        "Applied one Fix-Forward change: replaced the dynamic import() type annotation in extractContext()'s return type with a standard top-level named import (`import type { ErrorLogContext } from '../error-log/error-log.types.js'`). This is a non-behavioral style improvement consistent with the rest of the file. Build verified: npx tsc --noEmit → 0 errors.",
+        "No blocking issues found. Code is maintainable, well-documented, and follows established project patterns."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/server/pollingManager.ts",
+          "src/server/__tests__/pollingManager.errorLog.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-11T09:40:08Z",
+          "note": "pollingManager.ts extractContext(): Replaced dynamic `import('../error-log/error-log.types.js').ErrorLogContext` return-type annotation with a top-level `import type { ErrorLogContext }` declaration (line 8). Behavior unchanged — purely a style normalisation to match the rest of the file's import conventions. Build re-verified: 0 errors."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-11T09:40:08Z",
+          "note": "pollingManager.ts fetchWithStagger(): The `errorLogManager.append()` call is synchronous (ErrorLogManager.append() returns a value, not a Promise). If append() is ever made async in a future refactor, the call site will need `await` and the surrounding try/catch may need adjustment. This is noted for future maintainers — no action required now."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-11T09:40:08Z",
+          "note": "[documentation-forward] The class-level JSDoc for PollingManager documents the `errorLogManager` parameter and deduplication behaviour, but the `## Lifecycle` code sample still shows a 3-argument constructor call. Consider updating the example to show the optional 5th parameter (e.g. `new PollingManager(config, projectManager, workspaceManager, undefined, errorLogManager)`) so new consumers can discover the injection point from the docstring alone."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-11T09:40:08Z",
+          "note": "No further concerns. Overall code quality is high: deduplication via Set is O(1) and memory-efficient, the fallback empty-context path is safe, the recovery semantic (delete on success) is intuitive, and the optional-parameter design correctly preserves all existing construction sites without modification."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-11T09:50:15Z",
+      "completed_at": "2026-04-11T09:52:38Z",
+      "duration_ms": 143000,
+      "summary": [
+        "Addressed the documentation-forward from code review: updated the PollingManager class-level JSDoc `## Lifecycle` code sample in src/server/pollingManager.ts to show all 5 constructor parameters, including the optional fetchStatusFn and errorLogManager arguments, with inline comments explaining each.",
+        "Updated docs/agents/project-manifest/api-surface.md: expanded the PollingManager constructor signature from 4 to 5 parameters, adding `errorLogManager?: ErrorLogManager` as the 5th. Added a prose note explaining the deduplication behaviour, the warning-severity logging contract, and the no-op fallback when the parameter is omitted.",
+        "Ran `ctx generate` — all 24 CTX documents regenerated successfully. The .context/project-manifest.md and .context/modules/server/architecture-core.md files now reflect the updated source and api-surface.",
+        "No README.md changes required — the README does not contain its own PollingManager constructor listing and has no stale references to the old 4-parameter signature.",
+        "Reviewer's debt note about the old 'silently swallowed' phrasing was already corrected by the Developer in the fetchWithStagger() JSDoc during implementation — no additional documentation action needed."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/server/pollingManager.ts",
+          "docs/agents/project-manifest/api-surface.md",
+          ".context/project-manifest.md",
+          ".context/project-overview.md",
+          ".context/project-folder-structure.md",
+          ".context/modules/server/architecture-core.md",
+          ".context/modules/server/architecture-routes.md",
+          ".context/modules/server/overview.md",
+          ".context/modules/server/file-structure.md",
+          ".context/modules/config/overview.md",
+          ".context/modules/config/architecture-core.md",
+          ".context/modules/utils/overview.md",
+          ".context/modules/utils/architecture-core.md",
+          ".context/modules/models/overview.md",
+          ".context/modules/models/architecture-core.md",
+          ".context/modules/models/file-structure.md",
+          ".context/modules/storage/overview.md",
+          ".context/modules/storage/architecture-core.md",
+          ".context/modules/orchestration/overview.md",
+          ".context/modules/orchestration/architecture-core.md",
+          ".context/modules/error-log/overview.md",
+          ".context/modules/error-log/architecture-core.md",
+          ".context/modules/git/overview.md",
+          ".context/modules/git/architecture-core.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-11T09:52:38Z",
+          "note": "docs/agents/project-manifest/api-surface.md PollingManager section: added a new prose paragraph after the class signature to document the errorLogManager deduplication contract and no-op fallback. This mirrors the existing BranchOrchestrator pattern in the same file, keeping the two optional-errorLogManager injections documented consistently."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-11T09:52:38Z",
+          "note": "src/server/pollingManager.ts ## Lifecycle example: switched from a terse one-liner to a multi-line constructor call with inline comments on the last two parameters. This mirrors real production usage (where errorLogManager is injected from src/server/index.ts) and is more discoverable than the previous 3-arg example."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-11T09:52:38Z",
+          "note": "No documentation-forward items left unaddressed. The Reviewer's single forward (update Lifecycle JSDoc example) has been fully applied. The debt note about the old 'silently swallowed' phrasing was already resolved in the implementation pipeline."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-11T09:52:38Z",
+  "last_updated": "2026-04-11T09:52:38Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-11T09:12:24Z",
+      "notes": [
+        "Only src/server/pollingManager.ts was modified. No new files were created.",
+        "The new `errorLogManager` parameter is the 5th positional argument. All existing tests pass 4 or fewer args and are not affected.",
+        "deduplication is in-memory and resets on server restart — this is by design per the WP spec.",
+        "extractContext() returns an empty context object `{}` when the path has fewer than 3 segments relative to projectsFolder — safe fallback, no panics.",
+        "QA should test: (1) warning logged on first failure, (2) no second log entry on repeated failure (dedup), (3) log entry reappears after recovery then re-failure, (4) no log entries when errorLogManager is omitted, (5) context fields populated correctly from a well-formed path."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-11T09:27:51Z",
+      "notes": [
+        "All 6 AC verified and marked met. 671/671 tests pass.",
+        "New test file added: src/server/__tests__/pollingManager.errorLog.test.ts (13 tests).",
+        "Only src/server/pollingManager.ts was modified by the Developer — no other files changed.",
+        "Minor style note: extractContext() uses a dynamic import() type annotation instead of a top-level import. Functionally fine; Reviewer may wish to flag this as a convention preference.",
+        "No security concerns identified in the new code path — the only external call is ErrorLogManager.append(), which is an in-process synchronous call with no user-supplied data reaching the log entry without sanitisation."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-11T09:40:08Z",
+      "notes": [
+        "All 6 AC confirmed met. Code review PASS.",
+        "One Fix-Forward applied: dynamic import() type annotation in extractContext() replaced with a top-level named import. Non-behavioral; build verified clean (0 tsc errors).",
+        "One documentation-forward noted: PollingManager class JSDoc Lifecycle example should show the optional 5th constructor parameter so consumers can discover it from the docstring.",
+        "No blocking issues. Ready for Documentation pipeline."
+      ]
+    }
+  ]
+}

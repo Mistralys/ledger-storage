@@ -1,0 +1,252 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Reviewer",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "parseJsonBody resolves with the parsed object on valid JSON and rejects with a descriptive error on malformed input or when body exceeds 1MB",
+      "met": true
+    },
+    {
+      "criterion": "sendJson sets Content-Type: application/json and the correct status code on every call",
+      "met": true
+    },
+    {
+      "criterion": "sendError always produces a response body of the shape { error: string } with the specified HTTP status",
+      "met": true
+    },
+    {
+      "criterion": "extractParams correctly extracts named path segments (e.g. /repos/:id) matching against a URL string",
+      "met": true
+    },
+    {
+      "criterion": "All functions are exported and covered by unit tests with valid-input and invalid-input cases",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-07T14:12:42Z",
+      "completed_at": "2026-04-07T14:15:20Z",
+      "duration_ms": 158000,
+      "summary": [
+        "Created src/server/requestUtils.ts with four exported functions: parseJsonBody, sendJson, sendError, extractParams",
+        "parseJsonBody reads IncomingMessage chunks, enforces 1 MB limit with a settled-flag guard to prevent double-rejection on stream destroy, rejects on malformed JSON or stream error",
+        "sendJson writes Content-Type: application/json, Content-Length, and the given status code via writeHead then ends the response with the JSON-stringified payload",
+        "sendError delegates to sendJson with the { error: message } shape",
+        "extractParams splits both pattern and URL on '/' (stripping query string from URL), matches static segments literally, captures :named segments, returns null on length or content mismatch",
+        "Created src/server/__tests__/requestUtils.test.ts with 25 tests covering valid-input and invalid-input cases for all four functions",
+        "Updated package.json test script to include dist/server/__tests__/*.test.js glob",
+        "All 369 tests pass (0 fail)"
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/server/requestUtils.ts",
+          "src/server/__tests__/requestUtils.test.ts",
+          "package.json"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 369,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:15:20Z",
+          "note": "The settled-flag pattern in parseJsonBody prevents the double-rejection race that occurs when req.destroy() causes some EventEmitter mocks (and real Node.js streams) to emit 'error' synchronously. This is a defensive pattern worth keeping as a convention for all future stream-reading utilities."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:15:20Z",
+          "note": "extractParams strips query strings from the URL before matching but does not support wildcard (*) segments or optional (:param?) syntax. These are not required by the WP spec but should be noted if the router layer later needs them."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-07T14:19:42Z",
+      "completed_at": "2026-04-07T14:22:14Z",
+      "duration_ms": 152000,
+      "summary": [
+        "Reviewed src/server/requestUtils.ts and src/server/__tests__/requestUtils.test.ts in full",
+        "Ran full test suite: 383 tests pass, 0 fail (includes 25 requestUtils-specific tests)",
+        "TypeScript compilation clean: npx tsc --noEmit exits 0",
+        "Verified all 5 acceptance criteria against live behaviour",
+        "Boundary probe: exactly 1 MB body resolves correctly; 1 MB + 1 byte rejects with '1 MB limit' message",
+        "Settled-flag guard confirmed: destroy() emitting 'error' after limit rejection does not cause double-reject",
+        "sendJson: circular-reference input throws TypeError (unhandled – see edge-case note), undefined input throws Node ERR_INVALID_ARG_TYPE; both are exceptional mis-use cases outside WP scope",
+        "extractParams: URL-encoded values pass through verbatim (correct), empty segment captured as empty string (correct for spec), trailing-slash symmetry verified"
+      ],
+      "metrics": {
+        "test_coverage": "25 requestUtils unit tests covering valid-input and invalid-input paths for all 4 functions",
+        "tests_passed": 383,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:22:14Z",
+          "note": "parseJsonBody: empty body (no chunks before 'end') rejects with 'Invalid JSON body: ' (trailing space only). The error is technically descriptive but the empty raw snippet is unhelpful. Low severity as empty-body is a caller error and the HTTP layer would typically set Content-Length. No AC violation."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:22:14Z",
+          "note": "sendJson: passing a non-serialisable value (circular reference) throws a synchronous TypeError before writeHead is called, leaving the ServerResponse in an uncommitted state. Callers are responsible for only passing serialisable data; this is standard Node.js behaviour and outside WP scope, but worth noting for future defensive guards."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:22:14Z",
+          "note": "extractParams: captures an empty string when a URL contains a double-slash (e.g. /repos// → { id: '' }). This is correct per the current spec (no validation of captured values is required), but a future router layer may want to add non-empty guards."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:22:14Z",
+          "note": "No regression introduced: entire suite still at 383/383 pass after new files added. Build and TS compile both clean."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-07T14:26:28Z",
+      "completed_at": "2026-04-07T14:28:14Z",
+      "duration_ms": 106000,
+      "summary": [
+        "Reviewed src/server/requestUtils.ts in full against OWASP Top-10 and Node.js HTTP utility security concerns",
+        "Zero runtime dependencies — no supply-chain attack surface",
+        "DoS protection: 1 MB body limit correctly enforced at byte granularity; settled-flag prevents double-rejection race on stream destroy",
+        "Prototype pollution: JSON.parse does not pollute Object.prototype in modern V8; plain-object assignment of :__proto__ or :constructor params in extractParams does not pollute either — confirmed by live test",
+        "Path traversal: extractParams performs no filesystem operations; URL segments containing '..' are captured as plain strings and are harmless at this layer",
+        "Info-disclosure (low): error message in parseJsonBody echoes up to 120 chars of raw user-controlled body; newlines in crafted input can cause log injection if callers log error.message verbatim",
+        "Info-disclosure (low): stream error wrapping echoes err.message from underlying Node.js socket errors — acceptable for a local-server utility",
+        "Security headers: sendJson sets Content-Type and Content-Length only; no security headers (X-Content-Type-Options, etc.) — not expected at utility level, should be addressed at the HTTP server middleware layer",
+        "No auth, session, or cryptographic logic in scope — not applicable",
+        "All 383 tests pass; no new vulnerabilities introduced"
+      ],
+      "metrics": {
+        "tests_passed": 383,
+        "tests_failed": 0,
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:28:14Z",
+          "note": "parseJsonBody error message (\"Invalid JSON body: ${raw.slice(0,120)}\") echoes up to 120 chars of raw user-controlled body. If callers log error.message directly, a crafted body containing newlines or terminal escape sequences can cause log injection. Mitigation: sanitise the snippet before embedding (replace \\n, \\r, ANSI escapes) or omit the raw body from the error message entirely and only include character position/offset from the JSON.parse SyntaxError."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:28:14Z",
+          "note": "sendJson does not set security response headers (X-Content-Type-Options: nosniff, X-Frame-Options, etc.). This is intentional for a low-level utility — these belong in the HTTP server middleware layer — but should be tracked as a server-layer requirement so they are never accidentally omitted when this utility is wired into the live server."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:28:14Z",
+          "note": "parseJsonBody has no request timeout of its own — a slow sender can hold the Promise open indefinitely. This is a server-layer concern (Node.js http.Server requestTimeout / socket timeout), not a requestUtils bug, but should be confirmed set when the HTTP server is stood up."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:28:14Z",
+          "note": "Zero runtime dependencies confirmed — only devDependencies (typescript, @types/node). No supply-chain risk for this module."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-07T14:28:41Z",
+      "completed_at": "2026-04-07T14:29:50Z",
+      "duration_ms": 69000,
+      "summary": [
+        "Reviewed src/server/requestUtils.ts (120 lines) and src/server/__tests__/requestUtils.test.ts (257 lines) in full",
+        "Confirmed 383/383 tests pass and `npx tsc --noEmit` exits clean",
+        "All 5 acceptance criteria verified against implementation and test suite",
+        "Architecture: four tightly-scoped, single-responsibility functions with correct TypeScript types and JSDoc — clean and consistent with project conventions",
+        "parseJsonBody: settled-flag guard is an excellent defensive pattern; chunk accumulation before 'end' is correct; 1 MB limit enforced at byte granularity per spec",
+        "sendJson: uses writeHead + end correctly; Content-Length computed with Buffer.byteLength (handles multi-byte UTF-8 correctly); throws synchronously on non-serialisable input — acceptable, documented by QA",
+        "sendError: a clean single-line delegate to sendJson — no duplication, correct shape enforcement",
+        "extractParams: segment-length guard + static/named dispatch is correct and readable; query-string stripping is properly applied to the URL-side only; no fragment handling needed for this use case",
+        "Test file: 25 tests with clear naming, isolated mock helpers (mockRequest / mockRequestWithError / mockResponse), covers valid-input, invalid-input, edge cases (multi-chunk, query string, root path, stream error); test assertions are specific and use assert/strict throughout",
+        "Minor style observation: `settled = true` is set after `resolve()` in the 'end' handler (lines 43-44) — this is safe but slightly non-idiomatic versus the `fail()` helper which sets `settled` first. No behavioural impact.",
+        "No blocking issues found. Code is production-ready for this layer."
+      ],
+      "comments": [
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:29:50Z",
+          "note": "In parseJsonBody's 'end' handler (lines 43-44), `resolve(JSON.parse(raw))` is called before `settled = true`. The `fail()` helper sets `settled` first before calling `reject()`. These are mirror-symmetric but asymmetric in order — for consistency and to guard against any future middleware that might add a synchronous listener between resolve and settled-flag set, prefer `settled = true; resolve(JSON.parse(raw));` (matching the fail() pattern). Zero functional impact currently."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:29:50Z",
+          "note": "sendJson throws synchronously if `data` is not JSON-serialisable (circular reference → TypeError from JSON.stringify on line 61). Since this happens before writeHead, the ServerResponse is left in an uncommitted state. The existing test coverage notes this; a future improvement would be to wrap JSON.stringify in a try/catch and call sendError with a 500, but this requires a design decision about whether requestUtils should handle its own failure modes at the HTTP layer — outside current WP scope."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:29:50Z",
+          "note": "extractParams captures empty strings for double-slash URLs (e.g. /repos// → { id: '' }). This is spec-compliant — no value validation is required. A non-empty guard at the router layer is recommended when this utility is wired in."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:29:50Z",
+          "note": "No wildcard (*) or optional (:param?) segment support in extractParams. Not required by this WP but worth tracking for the router layer. The current segment-count guard means these will return null rather than partially match — safe fail-closed behaviour."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-07T14:29:50Z",
+  "last_updated": "2026-04-07T14:29:50Z",
+  "handoff_notes": [
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-04-07T14:22:14Z",
+      "notes": [
+        "All 5 acceptance criteria verified and met. 383/383 tests pass, TypeScript clean. Two low-priority observations noted (empty-body error message aesthetics, non-serialisable sendJson input) but neither violates any AC. Ready for security-audit pipeline."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-07T14:28:14Z",
+      "notes": [
+        "Security audit PASS. No blocking vulnerabilities found. Four low-severity observations recorded (log injection risk in error preview, security headers at server layer, request timeout at server layer, zero runtime deps confirmed). All are server-layer concerns or caller responsibilities — none require changes to requestUtils.ts. Ready for code-review pipeline."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-04-07T14:29:50Z",
+      "notes": [
+        "Code review PASS. All 5 ACs met, 383/383 tests pass, TypeScript clean. Four low-priority observations recorded (resolve/settled ordering asymmetry in parseJsonBody, non-serialisable sendJson input behaviour, empty-capture in extractParams, no wildcard support) — none block completion. Implementation is clean, well-structured, and production-ready for the request-utilities layer. Ready for documentation pipeline."
+      ]
+    }
+  ]
+}

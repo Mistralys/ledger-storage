@@ -1,0 +1,178 @@
+{
+  "work_package_id": "WP-006",
+  "work_package_file": "work/WP-006.md",
+  "status": "COMPLETE",
+  "assigned_to": "Reviewer",
+  "dependencies": [
+    "WP-004"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "createProject() creates the project folder and delegates STABLE workspace creation to the workspace orchestrator.",
+      "met": true
+    },
+    {
+      "criterion": "deleteProject() removes the project folder, all associated VS Code workspace files, and the project data entry.",
+      "met": true
+    },
+    {
+      "criterion": "deleteProject() validates that the target path is under projectsFolder before recursive deletion.",
+      "met": true
+    },
+    {
+      "criterion": "renameProject() renames the project folder and all associated VS Code workspace files.",
+      "met": true
+    },
+    {
+      "criterion": "renameProject() regenerates VS Code workspace file content with updated folder paths.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "security-audit",
+    "code-review"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-07T09:49:19Z",
+      "completed_at": "2026-04-07T09:59:16Z",
+      "duration_ms": 597000,
+      "summary": [
+        "Implemented src/orchestration/project-orchestrator.ts with createProject(), deleteProject(), and renameProject() methods. Also added WorkspaceCloneResult and AddRepositoryResult types to orchestration.types.ts in anticipation of WP-008. All 296 existing tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/orchestration/project-orchestrator.ts",
+          "src/orchestration/orchestration.types.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T09:59:16Z",
+          "note": "project-orchestrator.ts re-reads the existing project in renameProject() before calling projectManager.rename() to detect non-existence early (fast-fail before data mutation), matching the pattern established in workspace-orchestrator.ts. This is intentional redundancy, not a smell."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T09:59:16Z",
+          "note": "orchestration.types.ts: Added WorkspaceCloneResult and AddRepositoryResult types adjacent to OrchestrationResult to keep all orchestration result contracts in one file. No other changes to the shared types."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-07T10:03:47Z",
+      "completed_at": "2026-04-07T10:07:44Z",
+      "duration_ms": 237000,
+      "summary": [
+        "Reviewed src/orchestration/project-orchestrator.ts and src/orchestration/orchestration.types.ts. All OWASP Top 10 categories checked. 0 Critical, 0 High. 1 Medium (missing explicit path-traversal guard on renameProject() destination — blocked in practice by kebab-case validation upstream). 2 Low findings noted. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-04-07T10:07:44Z",
+          "note": "OWASP A01 — Broken Access Control | src/orchestration/project-orchestrator.ts — renameProject() | renameProject() builds newProjectFolder = this.projectFolder(newId) and calls fs.renameSync(oldProjectFolder, newProjectFolder) without an explicit path-containment check. deleteProject() has an explicit guard using path.resolve() + startsWith(resolvedProjectsFolder + path.sep); renameProject() does not. In practice the risk is fully mitigated because newId is validated as strict kebab-case (^[a-z0-9]+(-[a-z0-9]+)*$) by ProjectManager.rename() before reaching the filesystem step — the regex excludes '..', '/', '\\', and all other path-separating characters. Recommendation: add an explicit pre-rename guard mirroring deleteProject() for defence-in-depth and consistency, e.g. validate that path.resolve(newProjectFolder).startsWith(resolvedProjectsFolder + path.sep)."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T10:07:44Z",
+          "note": "OWASP A04 — Insecure Design | src/orchestration/project-orchestrator.ts — createProject() | createProject() calls projectManager.create() (writes data to disk) before calling fs.mkdirSync(). If mkdirSync throws, the project data record exists in the store with no corresponding filesystem folder, leaving the project data in an orphaned/inconsistent state. Not a security issue but a data-integrity risk. Recommendation: wrap in a try/catch and call projectManager.remove() in the catch branch to roll back the data entry on filesystem failure, or create the directory first before persisting data."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T10:07:44Z",
+          "note": "OWASP A09 — Security Logging & Monitoring Failures | src/orchestration/project-orchestrator.ts | deleteProject() and renameProject() are security-sensitive destructive/mutating operations (recursive folder deletion, data-entry mutation) but emit no log or audit trail. For a CLI developer tool this is currently acceptable, but as the tool gains a server mode (phase 5+) these operations should emit structured audit entries."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T10:07:44Z",
+          "note": "No additional security findings. orchestration.types.ts adds three pure TypeScript interface types (WorkspaceCloneResult, AddRepositoryResult, BranchSwitchResult/BranchSwitchRepoResult). No runtime behaviour, no injection surface, no sensitive data. No issues."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-07T10:09:38Z",
+      "completed_at": "2026-04-07T10:13:28Z",
+      "duration_ms": 230000,
+      "summary": [
+        "Reviewed src/orchestration/project-orchestrator.ts and src/orchestration/orchestration.types.ts. All five acceptance criteria are met. Code is well-structured, readable, and follows the codebase's established responsibility-split pattern. Private helpers eliminate path/filename duplication. deleteProject() path-traversal guard is correct and mirrors the required pattern. renameProject() correctly reads existing project data before mutation to enable cascading workspace file regeneration. removeWorkspaceFile() handles ENOENT gracefully. Two improvement observations recorded; no blocking issues found. PASS."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/orchestration/project-orchestrator.ts",
+          "src/orchestration/orchestration.types.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-04-07T10:13:28Z",
+          "note": "createProject() data-before-disk ordering: projectManager.create() persists the project data record before fs.mkdirSync() creates the folder. If mkdirSync() throws (permissions, disk-full), the project data entry is left orphaned — a subsequent createProject() with the same ID will fail with 'duplicate project' even though no folder exists. The systemic project pattern does not include rollback, but the risk is real. Recommended fix: wrap fs.mkdirSync() and workspaceOrchestrator.createWorkspace() in a try/catch, calling projectManager.remove(project.Id) in the catch branch before re-throwing."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-04-07T10:13:28Z",
+          "note": "renameProject() lacks an explicit path-containment guard on the destination folder. deleteProject() validates newProjectFolder against resolvedProjectsFolder via path.resolve() + startsWith(); renameProject() does not perform a parallel check on newProjectFolder. In practice the risk is fully mitigated by the kebab-case'^[a-z0-9]+(-[a-z0-9]+)*$' validation inside ProjectManager.rename(), which excludes all path-separator characters. Recommendation: add an explicit guard before fs.renameSync() for defence-in-depth and consistency with deleteProject(), as noted by the Security Auditor."
+        },
+        {
+          "type": "improvement",
+          "priority": "high",
+          "timestamp": "2026-04-07T10:13:28Z",
+          "note": "No test file for ProjectOrchestrator. workspace-orchestrator.test.ts and branch-orchestrator.test.ts both exist, establishing a convention of per-orchestrator test coverage. project-orchestrator.test.ts is absent. The path-traversal guard in deleteProject(), the cascading workspace-file cleanup loop, and the rename-then-regenerate sequence in renameProject() all contain meaningful control flow that warrants unit coverage. Recommend adding project-orchestrator.test.ts in a follow-up work package."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-04-07T10:13:28Z",
+          "note": "[documentation-forward] renameProject() JSDoc could document that ProjectManager.rename() is called first (validating kebab-case format and ID uniqueness) before any filesystem mutations occur — matching the detail level of the deleteProject() docstring which explicitly documents its path-traversal guard logic."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-07T10:13:28Z",
+  "last_updated": "2026-04-07T10:13:28Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-04-07T09:59:16Z",
+      "notes": [
+        "project-orchestrator.ts is complete. renameProject() reads project data before calling projectManager.rename() so the pre-rename workspace/repo lists are available for VS Code file regeneration. deleteProject() guards against path traversal before any recursive fs.rmSync. The STABLE workspace is created via workspaceOrchestrator.createWorkspace() which handles cloning."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-07T10:07:44Z",
+      "notes": [
+        "project-orchestrator.ts passed security review. Medium finding: renameProject() lacks an explicit path-containment guard on the destination — blocked by kebab-case validation in practice but should be hardened for consistency with deleteProject(). Low findings: createProject() has no rollback on mkdirSync failure (data-integrity risk); no audit logging for destructive ops. orchestration.types.ts is clean — pure type definitions only. 0 Critical/High blockers."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-04-07T10:13:28Z",
+      "notes": [
+        "project-orchestrator.ts PASS. Two medium improvement observations (createProject rollback on mkdirSync failure; missing path guard in renameProject) are recorded as comments — neither is blocking. One high-priority observation: no test file for ProjectOrchestrator; recommend adding project-orchestrator.test.ts. One documentation-forward tag left for the Documentation agent."
+      ]
+    }
+  ]
+}

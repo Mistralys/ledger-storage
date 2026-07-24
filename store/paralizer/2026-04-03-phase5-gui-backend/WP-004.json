@@ -1,0 +1,253 @@
+{
+  "work_package_id": "WP-004",
+  "work_package_file": "work/WP-004.md",
+  "status": "COMPLETE",
+  "assigned_to": "Reviewer",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "Requesting / serves index.html from the configured base directory",
+      "met": true
+    },
+    {
+      "criterion": "Correct Content-Type headers are set for .html, .css, .js, .json, .png, .svg, and .ico files",
+      "met": true
+    },
+    {
+      "criterion": "A path containing ../ or resolving outside the base directory returns a 403 and does not read any file",
+      "met": true
+    },
+    {
+      "criterion": "A request for a non-existent file returns false (allowing the caller to fall through to the router)",
+      "met": true
+    },
+    {
+      "criterion": "serveStatic is covered by unit tests for: root path, valid asset, directory traversal attempt, and missing file",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-07T14:34:05Z",
+      "completed_at": "2026-04-07T14:35:59Z",
+      "duration_ms": 114000,
+      "summary": [
+        "Implemented serveStatic() in src/server/staticServer.ts and 19 unit tests in src/server/__tests__/staticServer.test.ts. All 19 tests pass; combined suite of 61 tests (requestUtils + router + staticServer) passes cleanly."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/server/staticServer.ts",
+          "src/server/__tests__/staticServer.test.ts"
+        ]
+      },
+      "metrics": {
+        "test_coverage": "All AC paths covered: root, MIME types, traversal, missing file, directory path, query string",
+        "tests_passed": 19,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:35:59Z",
+          "note": "serveStatic awaits stream completion (stream 'end' event) before returning true, preventing async activity leaking past the call site and keeping test teardown safe."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-04-07T14:35:59Z",
+          "note": "Path traversal guard uses path.resolve() + prefix check (with path.sep appended) to prevent both literal ../ and URL-encoded %2e%2e%2f traversals. decodeURIComponent() is called before the resolve so encoded sequences can't bypass the guard."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:35:59Z",
+          "note": "existsSync() used before stat() to avoid throwing for missing files; stat() then confirms the path is a regular file (not a directory) before serving."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-07T14:38:29Z",
+      "completed_at": "2026-04-07T14:39:22Z",
+      "duration_ms": 53000,
+      "summary": [
+        "Full test suite: 419 tests, 0 failures. All 19 serveStatic-specific tests pass.",
+        "AC1 verified: URL path '/' and '' both remap to index.html (line 62-64). Two tests confirm serving and correct Content-Type.",
+        "AC2 verified: MIME_TYPES map covers all 7 required extensions (.html, .css, .js, .json, .png, .svg, .ico). Tested by parametric loop — all 7 types pass.",
+        "AC3 verified: decodeURIComponent called before existsSync — URL-encoded traversal decoded first. Prefix check with path.sep appended prevents false positives. 4 tests cover literal ../, URL-encoded, in-base traversal (allowed), and no-I/O ordering guarantee.",
+        "AC4 verified: Non-existent file returns false with no response written. 2 tests (top-level missing, nested missing). Directory path also returns false.",
+        "AC5 verified: 19 unit tests cover root, all 7 MIME types, subdirectory file, Content-Length, 4 traversal cases, 2 missing-file cases, directory-path case, and query-string stripping."
+      ],
+      "metrics": {
+        "test_coverage": "All 5 ACs and 19 serveStatic-specific tests pass",
+        "tests_passed": 419,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:39:22Z",
+          "note": "No test exercises the malformed-URL 400 branch (decodeURIComponent throw path, line 54-58). Benign in practice (browsers never send malformed percent-encoding), but the branch is untested."
+        },
+        {
+          "type": "edge-case",
+          "priority": "medium",
+          "timestamp": "2026-04-07T14:39:22Z",
+          "note": "Stream read errors (stream.on('error', reject)) propagate as Promise rejections but serveStatic has no internal catch. The caller receives an unhandled rejection unless it awaits and catches. Worth flagging in code-review to ensure the HTTP server wrapper catches and returns a 500."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:39:22Z",
+          "note": "TOCTOU window exists between existsSync(resolved) and stat(resolved) (lines 78-86). The guard fires before either call so a traversal can't exploit this. For server-managed static files the window is benign, but the security-audit pass should confirm."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:39:22Z",
+          "note": "resolved !== baseDir guard on line 72 is a defensive check for the exact-base-dir case. The subsequent isFile() check would also reject it (directories return false), so the guard is redundant but harmless."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-07T14:39:53Z",
+      "completed_at": "2026-04-07T14:41:27Z",
+      "duration_ms": 94000,
+      "summary": [
+        "Security audit PASS. No exploitable vulnerabilities found. Zero third-party dependencies; entire implementation is Node.js built-ins only. All OWASP-relevant attack surfaces reviewed: path traversal, URL encoding bypass, TOCTOU race, MIME sniffing, header injection, symlink escape, information disclosure, and stream error propagation.",
+        "PATH TRAVERSAL (OWASP A01 / CWE-22): SECURE. Guard fires BEFORE any filesystem I/O (lines 69-75). Uses path.resolve() which normalises all ../ segments — including double-encoded and mixed-case variants on case-insensitive filesystems. safeBase includes trailing sep so /foo/barbaz cannot prefix-match /foo/bar. decodeURIComponent() called before resolve on line 55 so %2e%2e%2f, %252e%252e%252f (double-encoded) and all single-level encodings are decoded first. Confirmed TOCTOU is non-exploitable: the traversal guard blocks at line 72 before existsSync/stat are ever reached for out-of-base paths.",
+        "TOCTOU (CWE-367): BENIGN. The existsSync→stat→createReadStream window (lines 78-98) exists between two reads on the same already-verified path. An attacker who replaced the file between existsSync and stat would still receive the new file's content — no security boundary is crossed because the traversal check has already validated the path is inside baseDir. Symlink attacks: if the base directory itself is under attacker control the whole server is compromised regardless; this threat is outside module scope.",
+        "URL DECODING / ENCODING BYPASS (CWE-116): SECURE. decodeURIComponent covers %xx and %2e patterns. Double-encoded paths (e.g. %252e%252e) decode to literal '%2e..' which path.resolve() treats as a filename character — these would resolve inside baseDir and return false (file not found) rather than escaping. Null-byte injection (%00): path.resolve() on Node.js ≥ 18 does not truncate on null bytes in path strings (null-byte truncation was a C-layer concern); the resolved path with a null byte would fail existsSync and return false. No bypass path found.",
+        "MIME SNIFFING / CONTENT-TYPE (OWASP A03): SECURE. Explicit allowlist of 7 MIME types with a safe fallback of application/octet-stream. No user-controlled Content-Type. Binary files (PNG, ICO) correctly omit charset. SVG is served as image/svg+xml — acceptable given this is a trusted local GUI server. In a public-facing context SVG XSS via inline scripts would warrant Content-Security-Policy headers; flagged as low-priority hardening note.",
+        "HEADER INJECTION (CWE-113): SECURE. Only two response headers are written by serveStatic: Content-Type (derived from a static allowlist map) and Content-Length (derived from fileStat.size, a numeric value). Neither value is derived from user-supplied input. No injection vector.",
+        "INFORMATION DISCLOSURE (CWE-200): SECURE. 403 response body is the generic string 'Forbidden' (via sendError). Missing files return false with no response written at all (the caller emits the 404). No stack traces, file paths, or directory listings are exposed.",
+        "DIRECTORY LISTING (CWE-548): NOT POSSIBLE. isFile() check on line 84 returns false for directories — they are not served and no listing is generated.",
+        "STREAM READ ERROR / UNHANDLED REJECTION: LOW RISK (flagged for code-review). stream.on('error', reject) propagates read errors as Promise rejections. serveStatic itself has no internal catch, so the HTTP server caller must await and catch to avoid an unhandled rejection that could crash or silence-fail a request. This is a robustness concern, not a security exploit, but it should be addressed at the HTTP server integration layer.",
+        "DEPENDENCY SURFACE: ZERO THIRD-PARTY DEPENDENCIES. The module uses only Node.js built-in modules: node:fs, node:fs/promises, node:path, node:http. No npm package vulnerabilities possible. devDependencies (typescript, @types/node) are build-time only and not shipped."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:41:27Z",
+          "note": "SVG served as image/svg+xml. For a trusted local-only GUI server this is fine. If the server is ever exposed publicly, consider adding a Content-Security-Policy: default-src 'none' header for SVG responses or serving them as application/octet-stream to prevent inline script execution in SVG files loaded directly in the browser."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:41:27Z",
+          "note": "Double-encoded paths (%252e%252e%252f) do not escape the base directory — they resolve to a literal filename with '%2e' characters and return false (not found). This is safe but worth documenting: the guard's correctness for double-encoded inputs depends on Node.js path.resolve() not performing a second round of URL decoding, which is guaranteed (path.resolve is filesystem-level, not URL-level)."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-04-07T14:41:27Z",
+          "note": "Stream read error propagation: serveStatic rejects on stream I/O errors (stream.on('error', reject) at line 101). The caller must catch this rejection and respond with HTTP 500. At this point in the project no HTTP server wires serveStatic yet, but the integration WP should include explicit try/catch around await serveStatic() to prevent unhandled rejection crashes. Flag for code-review and integration WP."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:41:27Z",
+          "note": "No security-sensitive headers (X-Content-Type-Options, X-Frame-Options, Cache-Control for sensitive assets) are set. Not a vulnerability in this context (local GUI tool, no authentication tokens in static files), but a hardening opportunity for the HTTP server layer when the full server WP is implemented."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-07T14:42:58Z",
+      "completed_at": "2026-04-07T14:43:37Z",
+      "duration_ms": 39000,
+      "summary": [
+        "WP-004 code review PASS. staticServer.ts is well-structured, correctly implements all security-critical logic, and is thoroughly tested (19 tests, 419 total passing). The traversal guard is correctly ordered (before any I/O), the MIME allowlist is clean, and the async stream piping pattern is sound. One medium-priority actionable item carried forward from security-audit: the stream read error propagation (stream.on('error', reject)) means any caller must await serveStatic() inside a try/catch to avoid unhandled rejections on disk read errors — this must be enforced at the HTTP server integration layer. All 5 ACs confirmed met. No blocking issues."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-04-07T14:43:37Z",
+          "note": "staticServer.ts line 101: stream.on('error', reject) propagates disk read errors as Promise rejections. serveStatic() has no internal catch, so the integration layer (the HTTP server callback) MUST wrap `await serveStatic(...)` in try/catch and respond with HTTP 500 on rejection. This is the single medium-priority action required before the module is wired into the server. Not a bug in isolation, but must be enforced at the call site to prevent process crashes on unexpected I/O errors."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:43:37Z",
+          "note": "The JSDoc comment on serveStatic (line 27-43) says it returns `true` if the file was served OR a 403 was sent. This is accurate and important for callers — the return value conflates 'request handled' with 'file found', meaning callers cannot distinguish a 403 from a 200 via the boolean alone. This is a deliberate design trade-off (caller needs only to know whether to fall through) and is correctly documented."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:43:37Z",
+          "note": "The redundant guard on line 72 (`resolved !== baseDir`) is a correct defensive check even though the isFile() check at line 84 would also reject a directory. The belt-and-suspenders approach is harmless and makes intent explicit. No change needed."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:43:37Z",
+          "note": "existsSync() followed by async stat() (lines 78-86) is a minor style inconsistency (sync then async), but functionally fine. The existsSync shortcut avoids a try/catch around stat() for the missing-file case. No issues."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:43:37Z",
+          "note": "No coverage-gap issues. The one uncovered branch (malformed URL → 400, line 54-58) is a browser-unreachable path and its absence is acceptable given the local-GUI context. No rework required."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-07T14:43:37Z",
+  "last_updated": "2026-04-07T14:43:37Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-07T14:35:59Z",
+      "notes": [
+        "Static file server implementation complete. 19 unit tests pass covering root, all 7 MIME types, directory traversal (literal and URL-encoded), traversal that stays inside base, missing file, directory-path, and query string stripping. Files: src/server/staticServer.ts, src/server/__tests__/staticServer.test.ts. Ready for QA + security-audit review."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-04-07T14:39:22Z",
+      "notes": [
+        "QA PASS. 419/419 tests pass. All 5 ACs confirmed met. Key note for security-audit: verify the TOCTOU window between existsSync and stat is not exploitable (should be benign given traversal guard fires first). Key note for code-review: stream error rejection propagation — ensure the HTTP server caller catches it to avoid unhandled rejections on read errors."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-07T14:41:27Z",
+      "notes": [
+        "Security audit PASS. Zero exploitable vulnerabilities. All critical checks passed: path traversal guard (OWASP A01/CWE-22) is correct and fires before any I/O; TOCTOU window is non-exploitable; URL encoding bypass (double-encode, null-byte) confirmed safe; MIME types are allowlisted; no header injection; no information disclosure; no directory listing. Zero third-party deps. One medium-priority robustness item for code-review: the HTTP server integration layer must catch the Promise rejection from serveStatic on stream read errors (stream.on('error', reject) at line 101) and return HTTP 500 — this is not a security exploit but could cause unhandled rejection crashes. Low-priority hardening notes: SVG CSP headers if ever public-facing, and consider X-Content-Type-Options/Cache-Control at the server layer."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-04-07T14:43:37Z",
+      "notes": [
+        "Code review PASS. All 5 ACs confirmed met. One medium-priority action for the integration WP: the HTTP server callback must wrap `await serveStatic(req, res, baseDir)` in try/catch and return HTTP 500 on rejection (stream read error path). Safe to proceed to documentation."
+      ]
+    }
+  ]
+}

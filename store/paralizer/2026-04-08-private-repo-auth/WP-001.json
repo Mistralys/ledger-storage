@@ -1,0 +1,259 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "loadConfig() returns gitCredentials: undefined when the field is absent from config.json.",
+      "met": true
+    },
+    {
+      "criterion": "loadConfig() returns the parsed Record<string, string> when valid entries are present.",
+      "met": true
+    },
+    {
+      "criterion": "loadConfig() throws a descriptive error when gitCredentials contains a non-string value or an empty-string token.",
+      "met": true
+    },
+    {
+      "criterion": "config.dist.json contains \"gitCredentials\": {}.",
+      "met": true
+    },
+    {
+      "criterion": "Type audit: gitCredentials is Record<string, string> | undefined, optional on AppConfig.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-10T10:25:38Z",
+      "completed_at": "2026-04-10T10:27:19Z",
+      "duration_ms": 101000,
+      "summary": [
+        "Added gitCredentials?: Record<string, string> to AppConfig interface in config.types.ts.",
+        "Updated loadConfig() in config.ts to validate gitCredentials: rejects non-object types, non-string values, and empty-string tokens; returns undefined when field is absent or null.",
+        "Added parseGitCredentials() helper (module-private) for clear separation of validation logic.",
+        "Added gitCredentials: {} to config.dist.json.",
+        "Added 8 new test cases in config.test.ts covering all acceptance criteria. All 392 tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/config/config.types.ts",
+          "src/config/config.ts",
+          "config.dist.json",
+          "src/tests/config.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T10:27:19Z",
+          "note": "config.ts: The inline numeric defaults for cloneDepth, serverPort, and gitPollingIntervalSeconds are repeated across DEFAULTS and the return object. A typed helper (e.g., applyNumericDefault) would remove the duplication, but scope is too narrow for this WP."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-10T10:27:19Z",
+          "note": "config.ts: Raw config fields are accessed via string-indexed notation (raw['fieldName']) rather than a typed intermediate cast. This is consistent with existing style and is safe given the upfront validation, so no change needed — just noted for the Reviewer."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-10T12:53:43Z",
+      "completed_at": "2026-04-10T13:05:29Z",
+      "duration_ms": 706000,
+      "summary": [
+        "Build: clean compile (0 TypeScript errors). All 22 config tests pass including all 8 new gitCredentials tests. Full regression: 507/507 tests pass. parseGitCredentials() confirmed module-private. config.dist.json confirmed. All 5 acceptance criteria independently verified."
+      ],
+      "metrics": {
+        "tests_passed": 507,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-10T13:05:29Z",
+          "note": "parseGitCredentials() is module-private as required. Only loadConfig() and saveConfigField() are exported. Edge cases (boolean/number/nested object/null token values) are all correctly rejected by the typeof guard."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-10T13:23:35Z",
+      "completed_at": "2026-04-10T13:26:13Z",
+      "duration_ms": 158000,
+      "summary": [
+        "Reviewed 4 files (config.types.ts, config.ts, config.dist.json, config.test.ts). 0 Critical, 0 High, 2 Medium, 0 Low, 1 Info. Security sign-off: PASS. No blocking issues. Handoff notes for downstream WPs regarding saveConfigField() field allowlisting and plaintext credential storage guidance."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-04-10T13:26:13Z",
+          "note": "A02 — Cryptographic Failures | src/config/config.types.ts (gitCredentials field) + config.dist.json. PATs are stored as plaintext strings in config.json with no encryption at rest. For a local developer tool this is a known and accepted trade-off, but the README/documentation should explicitly advise users to: (1) set restrictive file permissions on config.json (chmod 600), (2) never commit config.json to version control. The .gitignore and config.dist.json template pattern is correct but silent on file permissions. Recommendation: add a one-line note in config.dist.json _instructions and the README."
+        },
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-04-10T13:26:13Z",
+          "note": "A04 — Insecure Design | src/config/config.ts:111 (saveConfigField). The exported function accepts any string as the field parameter with no allowlist guard. If a future server route handler passes user-supplied input directly (e.g., PATCH /api/config body field), an attacker with network access to the local server could overwrite arbitrary config fields such as projectsFolder or storageFolder, enabling path-traversal or denial-of-service. Remediation: when wiring saveConfigField() to HTTP routes in subsequent WPs, validate the field parameter against an explicit allowlist (e.g., ['gitCredentials']) before calling the function. The function itself does not need to change, but the route handler must guard it."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T13:26:13Z",
+          "note": "A09 — Security Logging | src/config/config.ts. No audit logging for credential load, modification, or deletion events. Acceptable for a single-user local tool with no multi-tenancy. Recommended: if a future release adds multi-user or daemon mode, add structured logging for credential mutation events (saveConfigField calls on gitCredentials) to enable anomaly detection."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-10T13:32:04Z",
+      "completed_at": "2026-04-10T13:34:45Z",
+      "duration_ms": 161000,
+      "summary": [
+        "Reviewed config.types.ts, config.ts, config.dist.json, and config.test.ts. No blocking issues found. Implementation is clean and well-structured: parseGitCredentials() is correctly private, all edge cases are handled with precise error messages, and the 8 new tests achieve comprehensive coverage. Applied one Fix-Forward: updated api-surface.md to include gitCredentials field on AppConfig and saveConfigField() signature (both exported but omitted from the manifest). Tagged two documentation gaps for the Documentation agent."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/config/config.types.ts",
+          "src/config/config.ts",
+          "config.dist.json",
+          "src/tests/config.test.ts",
+          "docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-10T13:34:45Z",
+          "note": "docs/agents/project-manifest/api-surface.md: Added gitCredentials?: Record<string, string> to the AppConfig interface block and added saveConfigField() to the exported functions list. Per AGENTS.md manifest maintenance rules, exported types and functions modified/added in a WP must be reflected in api-surface.md. This is a non-behavioral documentation update — QA validation remains fully intact."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "high",
+          "timestamp": "2026-04-10T13:34:45Z",
+          "note": "[documentation-forward] api-surface.md and the config module README should document the saveConfigField(field, value) signature more thoroughly — specifically that 'field' is unvalidated at the function level and callers (HTTP route handlers in particular) must guard it against untrusted input with an allowlist. This was flagged by the Security Auditor as a downstream concern."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-10T13:34:45Z",
+          "note": "[documentation-forward] README and/or config.dist.json _instructions should explicitly advise users to (1) chmod 600 config.json to restrict file permissions, and (2) confirm config.json is gitignored before committing. gitCredentials stores PATs as plaintext — this is an accepted trade-off for a local dev tool but should be stated clearly for users."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T13:34:45Z",
+          "note": "src/tests/config.test.ts: makeTempDir() creates OS temp directories without registering a process.on('exit') cleanup handler. AGENTS.md (Section 4) marks this as MUST. The pattern is pre-existing across all tests in this file, but the 8 new tests inherit the same gap. Recommend a future cleanup pass to add a single process.on('exit', () => { cleanupDirs.forEach(fs.rmSync) }) handler at the top of the file."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-10T13:39:45Z",
+      "completed_at": "2026-04-10T13:41:31Z",
+      "duration_ms": 106000,
+      "summary": [
+        "Updated README.md: added gitCredentials row to the config.json schema table; added new 'Private repository authentication' subsection with chmod 600 advisory, .gitignore confirmation note, scoped-PAT guidance, and a JSON example block.",
+        "Updated docs/agents/project-manifest/api-surface.md: added a security callout below saveConfigField() documenting that the field parameter is unvalidated at the function level and that HTTP route callers must guard it with an explicit allowlist.",
+        "Updated src/config/README.md: expanded Key Concepts to include gitCredentials validation semantics, file-permission advisory, and saveConfigField caller-guard requirement.",
+        "Ran ctx generate — all 21 CTX output files regenerated cleanly."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "README.md",
+          "docs/agents/project-manifest/api-surface.md",
+          "src/config/README.md",
+          ".context/project-overview.md",
+          ".context/project-manifest.md",
+          ".context/modules/config/overview.md",
+          ".context/modules/config/architecture-core.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T13:41:31Z",
+          "note": "src/tests/config.test.ts: makeTempDir() does not register a process.on('exit') cleanup handler per AGENTS.md Section 4 (MUST). This is a pre-existing pattern across all tests in the file — 8 new test cases inherit the same gap. Recommend a future cleanup WP to add a single registered exit handler that removes all temp directories created during the test run."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T13:41:31Z",
+          "note": "No documentation changes were needed for the test file itself. The makeTempDir cleanup note is recorded as an observation for a future WP — it does not block this pipeline."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-10T13:41:31Z",
+  "last_updated": "2026-04-10T13:41:31Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-10T10:27:19Z",
+      "notes": [
+        "All 5 acceptance criteria met and covered by dedicated tests.",
+        "parseGitCredentials() is module-private (not exported) — QA should verify it is not visible in the public API.",
+        "gitCredentials: {} in config.dist.json documents the field for users. QA should verify a config with populated credentials (e.g. github.com → valid token) is returned correctly end-to-end."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-04-10T13:05:29Z",
+      "notes": [
+        "All 5 AC verified. 507/507 tests pass. parseGitCredentials() correctly scoped as module-private. Security Auditor should review how gitCredentials tokens flow from config into git clone/fetch calls — the config layer is clean, but credential injection into git URLs or env vars is the next concern."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-10T13:26:13Z",
+      "notes": [
+        "All 5 AC confirmed secure. 0 Critical/High findings — no remediation required. Two Medium observations for downstream WPs: (1) When wiring saveConfigField() to HTTP routes, add a field-name allowlist in the route handler before calling the function — do not pass raw user input as the field parameter. (2) Documentation WP should advise users to chmod 600 config.json and confirm it is gitignored. The core config validation and parseGitCredentials() logic is clean and secure."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-10T13:34:45Z",
+      "notes": [
+        "All 5 AC met and confirmed across implementation, QA, and security review. Code quality is high — no blocking findings. One reviewer-applied-fix: api-surface.md updated for gitCredentials and saveConfigField. Documentation agent should address: (1) chmod 600 / .gitignore advisory for plaintext PAT storage in README, (2) saveConfigField caller-guard note in api-surface.md or module README, (3) makeTempDir temp cleanup gap in tests (low priority, pre-existing)."
+      ]
+    },
+    {
+      "from_agent": "Documentation",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-04-10T13:41:31Z",
+      "notes": [
+        "Documentation complete. README.md now covers gitCredentials config, plaintext PAT security advisory (chmod 600, .gitignore, scoped PATs), and a JSON example. api-surface.md and config/README.md document the saveConfigField caller-guard requirement for future HTTP route implementors. All reviewer-forwarded items addressed."
+      ]
+    }
+  ]
+}

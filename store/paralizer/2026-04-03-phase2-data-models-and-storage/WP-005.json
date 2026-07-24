@@ -1,0 +1,234 @@
+{
+  "work_package_id": "WP-005",
+  "work_package_file": "work/WP-005.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-003"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "ProjectManager exposes list, getById, create, update, rename, remove, addRepository, and removeRepository methods.",
+      "met": true
+    },
+    {
+      "criterion": "create() auto-generates a STABLE workspace with correct timestamps.",
+      "met": true
+    },
+    {
+      "criterion": "create() validates all repository IDs exist via RepositoryManager and throws if any are invalid.",
+      "met": true
+    },
+    {
+      "criterion": "create() generates ID from name via toKebabCase() when no explicit ID is provided.",
+      "met": true
+    },
+    {
+      "criterion": "update() and rename() keep the project index in sync with individual project files.",
+      "met": true
+    },
+    {
+      "criterion": "rename() renames the project storage JSON file on disk.",
+      "met": true
+    },
+    {
+      "criterion": "All mutations update DateModified with an ISO 8601 timestamp.",
+      "met": true
+    },
+    {
+      "criterion": "remove() deletes only the project JSON file and index entry.",
+      "met": true
+    },
+    {
+      "criterion": "All public methods re-read from disk (stateless between calls).",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-03T12:27:38Z",
+      "completed_at": "2026-04-03T12:32:20Z",
+      "duration_ms": 282000,
+      "summary": [
+        "Implemented src/models/project/project.types.ts with ProjectWorkspace, ProjectData, ProjectIndexEntry, and ProjectIndex type definitions.",
+        "Implemented src/models/project/project.manager.ts with ProjectManager class exposing all 8 required public methods: list, getById, create, update, rename, remove, addRepository, removeRepository.",
+        "create() auto-generates a STABLE workspace with ISO 8601 timestamps, validates all repository IDs via RepositoryManager.exists(), and generates ID from name via toKebabCase() when no explicit ID is provided.",
+        "rename() writes the new project file before deleting the old one (safe ordering), then updates the index.",
+        "All mutations update DateModified. All public methods are stateless (re-read from disk on each call).",
+        "Added 37 tests in src/tests/project.manager.test.ts covering all methods, happy paths, and error cases. All 104 tests pass (0 failures)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/models/project/project.types.ts",
+          "src/models/project/project.manager.ts",
+          "src/tests/project.manager.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-03T12:32:20Z",
+          "note": "rename() in project.manager.ts writes the new file before deleting the old one for safety, but there is no atomic rename (e.g. fs.renameSync). If the process crashes between the write and the unlink, both files will exist. This is acceptable for a single-process local tool, but worth noting for future resilience improvements."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-03T12:32:20Z",
+          "note": "project.manager.ts uses 'import type' for RepositoryManager to avoid a potential circular-reference warning, but RepositoryManager is needed at runtime (for .exists() calls). The constructor parameter type resolves correctly at runtime because TypeScript erases the type import — this is correct behaviour, but a comment explaining the intentional 'import type' usage would aid future readers."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-03T12:32:20Z",
+          "note": "The DEFAULT_INDEX constant in project.manager.ts spreads into a new object on every loadIndex() miss, which is good practice (prevents mutation of the module-level constant). The same pattern is used consistently in repository.manager.ts — convention is well-established."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-03T12:33:15Z",
+      "completed_at": "2026-04-03T12:35:19Z",
+      "duration_ms": 124000,
+      "summary": [
+        "Reviewed 3 files (src/models/project/project.types.ts, src/models/project/project.manager.ts, src/tests/project.manager.test.ts) plus supporting modules (json-storage.ts, slug.ts, config.types.ts, repository.manager.ts). 0 Critical, 0 High, 1 Medium (path traversal via unvalidated explicit project ID — flagged for resolution before HTTP phase), 1 Low (unchecked JSON cast, already self-documented). No secrets, no third-party runtime dependencies, no injection or SSRF vectors. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-04-03T12:35:19Z",
+          "note": "MEDIUM — A01 Broken Access Control (path traversal). Files: src/models/project/project.manager.ts lines 58, ~115, ~220. The projectFilePath() helper constructs a filesystem path via path.join(this.projectsDir, id + '.json') without validating the id against isValidKebabCase(). When an explicit id is supplied to create() or a newId to rename(), an attacker (or a future HTTP API consumer) could supply '../../etc/hostname' and cause writes/reads outside the intended projects/ subdirectory. Auto-generated IDs (via toKebabCase()) are safe because the slug function strips all non-alphanumeric characters. Remediation: call isValidKebabCase(resolvedId) in create() after the slug-generation block and throw an informative error if it fails; apply the same guard to newId at the top of rename(). The isValidKebabCase() utility already exists in src/utils/slug.ts and requires no new code. This must be resolved before Phase 5 (HTTP backend) begins, at which point the severity escalates to High."
+        },
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-04-03T12:35:19Z",
+          "note": "LOW — A08 Software & Data Integrity / Insecure Deserialization. File: src/storage/json-storage.ts, readJsonFile(). The function performs a bare JSON.parse cast to generic T with no runtime schema validation. The existing JSDoc warns callers, and no caller in this WP performs hand-edited-file validation. This is acceptable for a single-process local tool but creates a risk surface if storage files are tampered with or migrated incorrectly. Remediation: consider adding a lightweight schema guard (e.g. a type-predicate function on ProjectData and ProjectIndex) before phase 5 exposes this path to external inputs. No immediate action required."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-03T12:35:55Z",
+      "completed_at": "2026-04-03T12:39:34Z",
+      "duration_ms": 219000,
+      "summary": [
+        "Reviewed src/models/project/project.types.ts, src/models/project/project.manager.ts, and src/tests/project.manager.test.ts against all four review dimensions.",
+        "Code is clean, well-structured, and consistent with the RepositoryManager pattern established in WP-003.",
+        "Two Fix-Forward changes applied: (1) added explanatory comment on `import type RepositoryManager` to clarify the injection-only pattern; (2) expanded create() and rename() JSDoc to document the verbatim/unvalidated explicit-ID behavior, aligning with RepositoryManager.add() which already carries this warning.",
+        "All 104 tests pass post-fix. No blocking issues found."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/models/project/project.manager.ts",
+          "src/models/project/project.types.ts",
+          "src/tests/project.manager.test.ts"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 104,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-03T12:39:34Z",
+          "note": "Added explanatory comment on `import type { RepositoryManager }` in project.manager.ts to clarify that `import type` is intentional — RepositoryManager is only ever injected via the constructor, never constructed inside this module, so TypeScript correctly erases the type import with no runtime impact."
+        },
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "medium",
+          "timestamp": "2026-04-03T12:39:34Z",
+          "note": "Expanded JSDoc on create() and rename() to document that explicitly supplied `id` / `newId` values are stored verbatim without format validation, matching the documented behavior in RepositoryManager.add(). Added explicit call-site responsibility note and a reference to isValidKebabCase() for callers (e.g. the future HTTP layer). This closes the documentation gap that the Security Auditor's Medium finding exposed."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "high",
+          "timestamp": "2026-04-03T12:39:34Z",
+          "note": "[documentation-forward] Architecture documentation should record the 'caller-owned ID validation' design pattern: both ProjectManager.create()/rename() and RepositoryManager.add() accept explicit IDs verbatim. Before Phase 5 (HTTP backend) is built, the architecture doc must document that HTTP handlers are responsible for calling isValidKebabCase() before passing explicit IDs to either manager. Reference: Security Auditor Medium finding in WP-005 security-audit pipeline."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-03T12:39:34Z",
+          "note": "update() silently skips the index sync when the project file exists but has no corresponding index entry (the `if (entry)` guard). This is consistent with the same pattern in rename(). For the current single-process local tool this is acceptable, but if the index and project files ever diverge (e.g. manual disk edit), a name update would silently succeed without fixing the index. Worth considering a reconcile/repair path in a future maintenance pass."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-03T12:39:34Z",
+          "note": "No blocking issues. remove() uses fs.existsSync before unlinking, which gracefully handles index-file-exists-but-disk-file-missing scenarios. This is slightly inconsistent with the loadProject()-based check in rename(), but is defensively correct and does not warrant a change."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-03T12:40:05Z",
+      "completed_at": "2026-04-03T12:41:57Z",
+      "duration_ms": 112000,
+      "summary": [
+        "Added 'Project management' section to README.md documenting ProjectManager constructor, all 8 public methods, create() and rename() parameters, and error conditions.",
+        "Added 'Caller-owned ID validation' architecture section documenting the design pattern across both ProjectManager and RepositoryManager, describing which parameters accept verbatim IDs and mandating isValidKebabCase() validation in the Phase 5 HTTP layer.",
+        "Addressed the [documentation-forward] item from the code-review pipeline: architecture docs now explicitly record the caller-owned ID validation pattern and the HTTP handler obligation before Phase 5 is built."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "README.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-03T12:41:57Z",
+          "note": "The README 'Caller-owned ID validation' section includes a concrete code snippet showing how the Phase 5 HTTP layer should call isValidKebabCase(). This pre-empts the security gap identified by the Security Auditor (WP-005) and makes the obligation explicit to future developers."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-03T12:41:57Z",
+  "last_updated": "2026-04-03T12:41:57Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-04-03T12:32:20Z",
+      "notes": [
+        "All 9 acceptance criteria met. New files: src/models/project/project.types.ts, src/models/project/project.manager.ts, src/tests/project.manager.test.ts. 37 new tests, all passing. No regressions in the existing 67 tests. The implementation follows the exact patterns established by RepositoryManager (stateless re-reads, FileNotFoundError handling, writeJsonFile/readJsonFile utilities, ISO 8601 DateModified)."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-03T12:35:19Z",
+      "notes": [
+        "Security audit PASS. One Medium finding (path traversal via unvalidated explicit project ID in create() and rename()) and one Low finding (unchecked JSON cast in readJsonFile). Both are recorded as pipeline comments. The Medium finding MUST be resolved before Phase 5 HTTP backend work begins — isValidKebabCase() from slug.ts should be applied to the explicit id param in create() and to newId in rename(). All 9 acceptance criteria remain met. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-03T12:39:34Z",
+      "notes": [
+        "PASS. Two Fix-Forward documentation improvements applied to project.manager.ts: (1) import type comment clarification; (2) create() and rename() JSDoc updated to document verbatim/unvalidated explicit-ID behavior matching RepositoryManager pattern. No behavioral changes — all 104 tests pass. One [documentation-forward] comment left for Documentation agent: architecture docs must record the caller-owned ID validation pattern and the obligation for the Phase 5 HTTP layer to call isValidKebabCase() before passing explicit IDs to either manager. All 9 acceptance criteria confirmed met."
+      ]
+    }
+  ]
+}

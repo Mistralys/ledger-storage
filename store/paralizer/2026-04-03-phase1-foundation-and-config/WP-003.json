@@ -1,0 +1,222 @@
+{
+  "work_package_id": "WP-003",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "writeJsonFile followed by readJsonFile round-trips objects preserving all values.",
+      "met": true
+    },
+    {
+      "criterion": "readJsonFile throws a descriptive error on missing or malformed files.",
+      "met": true
+    },
+    {
+      "criterion": "writeJsonFile uses 4-space indentation and trailing newline.",
+      "met": true
+    },
+    {
+      "criterion": "ensureDirectory creates nested directories and is silent if they exist.",
+      "met": true
+    },
+    {
+      "criterion": "storage.types.ts exports a SchemaVersion type.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-03T10:36:04Z",
+      "completed_at": "2026-04-03T10:37:15Z",
+      "duration_ms": 71000,
+      "summary": [
+        "Implemented src/storage/storage.types.ts exporting SchemaVersion type alias.",
+        "Implemented src/storage/json-storage.ts with readJsonFile<T>(), writeJsonFile<T>(), ensureDirectory().",
+        "writeJsonFile uses JSON.stringify(data, null, 4) + trailing newline and auto-creates parent directories via ensureDirectory.",
+        "readJsonFile guards against missing files (ENOENT message) and malformed JSON (parse error message with filename).",
+        "ensureDirectory uses fs.mkdirSync({ recursive: true }) — creates nested dirs silently when they already exist.",
+        "All five acceptance criteria verified via runtime tests on compiled output."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/storage/storage.types.ts",
+          "src/storage/json-storage.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-03T10:37:15Z",
+          "note": "readJsonFile in src/storage/json-storage.ts calls fs.existsSync() then fs.readFileSync() — two syscalls. A single try/catch around readFileSync checking err.code === 'ENOENT' would be more idiomatic Node.js and avoids a TOCTOU race (another process could delete the file between the exist-check and the read). Low-risk for this tool but worth noting."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-03T10:37:15Z",
+          "note": "ensureDirectory does not guard against the case where dirPath already exists as a file rather than a directory. mkdirSync({ recursive: true }) will throw ENOTDIR in that scenario. For a config/storage tool this is unlikely, but a clearer error message would help diagnostics."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-03T10:41:23Z",
+      "completed_at": "2026-04-03T10:42:21Z",
+      "duration_ms": 58000,
+      "summary": [
+        "Build already passing from WP-002 build check.",
+        "All 5 acceptance criteria verified via runtime tests.",
+        "AC1: round-trip of complex object (nested, array, null, bool) — PASS.",
+        "AC2: missing file error includes filename; malformed JSON error includes filename and parse reason — PASS.",
+        "AC3: writeJsonFile output uses 4-space indent and ends with trailing newline — PASS.",
+        "AC4: ensureDirectory creates deeply nested dirs; idempotent on existing dirs — PASS.",
+        "AC5: SchemaVersion type exported from storage.types.ts (type alias erased in JS, confirmed in TS source) — PASS.",
+        "Edge cases: auto-create deep parent dirs, empty file parse error, file-as-dir (EEXIST), overwrite idempotency — all handled correctly."
+      ],
+      "metrics": {
+        "tests_passed": 9,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-03T10:42:21Z",
+          "note": "ensureDirectory throws EEXIST (not ENOTDIR) when the target path already exists as a file. Error message is opaque at that point. As flagged by Developer, adding a stat-check before mkdirSync would produce a clearer diagnostic error."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-03T10:42:21Z",
+          "note": "No automated test suite exists. All verification was ad-hoc node invocations. A formal test file (tests/storage/json-storage.test.ts) would solidify regression coverage for future WPs."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-03T10:42:21Z",
+          "note": "No observations beyond existing Developer comments — code is clean and all ACs verified."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-03T10:46:09Z",
+      "completed_at": "2026-04-03T10:47:31Z",
+      "duration_ms": 82000,
+      "summary": [
+        "Reviewed src/storage/json-storage.ts and src/storage/storage.types.ts against all five acceptance criteria — all met.",
+        "Applied Fix-Forward: replaced TOCTOU-prone existsSync+readFileSync pattern with a single idiomatic try/catch. ENOENT branch preserves the 'File not found' message; all descriptive error text unchanged. Eliminates a redundant syscall and closes the race window.",
+        "writeJsonFile is clean: ensureDirectory auto-invoked on parent, 4-space indent + trailing newline, correct.",
+        "ensureDirectory: mkdirSync recursive is idiomatic. ENOTDIR edge case (path-is-file) is low risk for a dev tool.",
+        "SchemaVersion type alias in storage.types.ts is minimal and correct.",
+        "Build verified clean after Fix-Forward (tsc exits 0)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/storage/json-storage.ts",
+          "src/storage/storage.types.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "medium",
+          "timestamp": "2026-04-03T10:47:31Z",
+          "note": "Applied Fix-Forward to readJsonFile: removed the fs.existsSync() pre-check and restructured to a single try/catch around fs.readFileSync(). The ENOENT branch preserves the original 'File not found' message; all other I/O errors go through the 'Failed to read file' branch. This eliminates the TOCTOU race (file deleted between existsSync and readFileSync emitted a raw ENOENT instead of the descriptive message) and removes a redundant syscall. All error messages are identical from the caller's perspective. Build passes."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-03T10:47:31Z",
+          "note": "ensureDirectory does not guard the case where dirPath already exists as a regular file — mkdirSync throws ENOTDIR in that scenario. The error is opaque. For a dev-tool this is an unlikely edge case; the current behavior is acceptable but a stat-check and clear diagnostic message would help debugging. Deferred — low impact."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-03T10:47:31Z",
+          "note": "[documentation-forward] readJsonFile and writeJsonFile generics (<T>) are unvalidated at runtime — the returned type is cast, not checked. Documentation agent should add a note to the API docs clarifying that callers are responsible for type-guarding if the schema cannot be trusted (e.g., config files hand-edited by users)."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-04-03T10:47:31Z",
+          "note": "[documentation-forward] ensureDirectory is auto-called by writeJsonFile. Documentation should clarify this so callers don't need to call both."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-03T10:50:14Z",
+      "completed_at": "2026-04-03T10:51:06Z",
+      "duration_ms": 52000,
+      "summary": [
+        "Updated readJsonFile<T> JSDoc in src/storage/json-storage.ts to add an explicit 'Type safety' callout: the generic return is an unchecked cast; callers must apply a type guard or schema validator when the JSON source is untrusted (e.g., hand-edited config files).",
+        "writeJsonFile JSDoc already documented the auto-ensureDirectory behaviour ('Parent directories are created automatically') — documentation-forward item satisfied without additional changes.",
+        "Build verified clean (tsc exits 0)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/storage/json-storage.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-03T10:51:06Z",
+          "note": "writeJsonFile JSDoc already stated 'Parent directories are created automatically' — the documentation-forward item about ensureDirectory auto-invocation was already covered. No additional change needed."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-03T10:51:06Z",
+          "note": "Both documentation-forward items from code-review addressed: readJsonFile<T> now explicitly warns about the unchecked generic cast and caller responsibility for type-guarding; writeJsonFile auto-ensureDirectory was already documented."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-03T10:51:06Z",
+  "last_updated": "2026-04-03T10:51:06Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-03T10:37:15Z",
+      "notes": [
+        "WP-003 fully implemented. Two new files: src/storage/storage.types.ts and src/storage/json-storage.ts. All five ACs verified at runtime — round-trip, descriptive error messages, 4-space indent+trailing newline, idempotent directory creation. No test framework yet — QA will need to establish one or add integration tests covering the AC scenarios demonstrated in the runtime verification above."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-03T10:42:21Z",
+      "notes": [
+        "WP-003 QA passed. json-storage.ts is correct — round-trip, error messages, formatting, and directory creation all verified. Edge cases also clean. No blocking issues. Minor note: ensureDirectory throws EEXIST (not ENOTDIR) when target path is a file, but this is an edge case with acceptable behavior for a dev tool."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-03T10:47:31Z",
+      "notes": [
+        "WP-003 code-review PASS with one Fix-Forward applied: readJsonFile TOCTOU fixed — existsSync pre-check removed, replaced with idiomatic single try/catch on readFileSync. All AC descriptive error messages are preserved. Documentation agent: note the unchecked generic cast in readJsonFile<T> and that writeJsonFile auto-calls ensureDirectory."
+      ]
+    }
+  ]
+}

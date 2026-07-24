@@ -1,0 +1,259 @@
+{
+  "work_package_id": "WP-010",
+  "work_package_file": "work/WP-010.md",
+  "status": "COMPLETE",
+  "assigned_to": "Reviewer",
+  "dependencies": [
+    "WP-001",
+    "WP-002",
+    "WP-003",
+    "WP-004",
+    "WP-005",
+    "WP-006",
+    "WP-007",
+    "WP-008",
+    "WP-009"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "startServer(config) returns a resolved promise once the server is listening on config.serverPort (default 4200)",
+      "met": true
+    },
+    {
+      "criterion": "HTTP requests for existing static files are served before any API route handler is consulted",
+      "met": true
+    },
+    {
+      "criterion": "Requests matching a registered API route are dispatched correctly and return the expected JSON response",
+      "met": true
+    },
+    {
+      "criterion": "Requests matching neither a static file nor a registered route receive a 404 JSON response",
+      "met": true
+    },
+    {
+      "criterion": "stopServer() closes the HTTP listener and halts polling without throwing, even if called before any requests are served",
+      "met": true
+    },
+    {
+      "criterion": "Server catches EADDRINUSE and logs a clear error message suggesting a different port",
+      "met": true
+    },
+    {
+      "criterion": "Integration smoke test starts server on an ephemeral port, issues one static and one API request, asserts correct responses, then stops the server",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-07T15:12:16Z",
+      "completed_at": "2026-04-07T15:15:22Z",
+      "duration_ms": 186000,
+      "summary": [
+        "Created src/server/index.ts — exports ServerConfig type, startServer(config), and stopServer()",
+        "startServer instantiates RepositoryManager, ProjectManager, WorkspaceManager, BranchOrchestrator, and PollingManager from the provided appConfig, builds a Router, registers all five route groups (repositories, projects, workspaces, branches, status), then creates an http.Server whose request handler runs serveStatic first → router fallback → 404",
+        "EADDRINUSE is caught on the server 'error' event; a clear actionable message is written to stderr before the promise rejects",
+        "stopServer calls pollingManager.stop() then closes the http.Server; safe to call before any requests or when no server is running (no-op)",
+        "Created src/server/__tests__/index.test.ts with 6 tests covering: startServer resolves on listen, stopServer no-throw, stopServer no-op, EADDRINUSE rejection, 404 JSON for unmatched routes, and an integration smoke test (static + API requests then stopServer)",
+        "All 501 tests (6 new + 495 existing) pass; tsc clean compile"
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/server/index.ts",
+          "src/server/__tests__/index.test.ts"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 501,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T15:15:22Z",
+          "note": "startServer() currently throws synchronously if called twice. A promise-based guard (or exposing a 'is running' status) could be cleaner for callers, but the synchronous throw is safe and easy to reason about for the current use-case."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T15:15:22Z",
+          "note": "The module uses file-level mutable state (_server, _pollingManager) which means only one server instance can run per process. This is appropriate for the tool's intended single-server use case."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-07T15:15:58Z",
+      "completed_at": "2026-04-07T15:18:06Z",
+      "duration_ms": 128000,
+      "summary": [
+        "All 501 tests pass (6 new WP-010 tests + 495 prior); 0 failures; tsc compiles clean.",
+        "AC1 ✅ — startServer resolves on 'listening'; default port fallback chain (serverPort → appConfig.serverPort → 4200) verified in code.",
+        "AC2 ✅ — serveStatic is invoked first in the request handler pipeline before router.handle; integration smoke test confirms /index.html 200 HTML.",
+        "AC3 ✅ — Integration smoke test confirms GET /api/repositories returns 200 JSON []; router dispatch verified through real HTTP.",
+        "AC4 ✅ — Test 5 issues a request to an unregistered path and asserts 404 with { error: string } JSON body.",
+        "AC5 ✅ — Test 2 (stopServer after start, no requests served) and Test 3 (stopServer with no running server) both pass without throwing; code correctly nulls both _server and _pollingManager.",
+        "AC6 ✅ — Test 4 binds a blocker server to a real port then calls startServer on the same port; asserts err.code === 'EADDRINUSE'; stderr message with port suggestion confirmed in source.",
+        "AC7 ✅ — Integration smoke test (Test 6) uses getFreePort(), starts server, issues static + API requests, asserts all responses, then calls stopServer() via doesNotReject."
+      ],
+      "metrics": {
+        "test_coverage": "6/6 new tests cover all 7 ACs",
+        "tests_passed": 501,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-04-07T15:18:06Z",
+          "note": "The default port fallback (4200) is tested only via code inspection, not via a live bind on port 4200. This is acceptable in CI environments where port 4200 may already be occupied; the existing test coverage through ephemeral ports is sufficient."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-04-07T15:18:06Z",
+          "note": "Test 5 (404 for unmatched routes) uses a two-phase approach: starts on port 0 then restarts on getFreePort(). A minor redundancy in the test — port 0 startup could be skipped — but does not affect correctness or reliability."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T15:18:06Z",
+          "note": "The integration smoke test in Test 6 uses getFreePort() (bind-then-close) for port selection, which has a small TOCTOU window. For a test tool this is acceptable risk; no action required."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-07T15:18:46Z",
+      "completed_at": "2026-04-07T15:26:02Z",
+      "duration_ms": 436000,
+      "summary": [
+        "Reviewed all server-layer files: src/server/index.ts, staticServer.ts, router.ts, requestUtils.ts, pollingManager.ts, and all five route handlers (repositories, projects, workspaces, branches, status).",
+        "OWASP A01 (Broken Access Control): No authentication/authorisation is present — consistent with the tool's design as a localhost-only developer utility. No sensitive multi-tenant data is exposed. Acceptable for scope.",
+        "OWASP A03 (Injection): No shell exec, eval, or child_process calls exist in the server layer. All external data flows through typed TypeScript structures. No injection vectors identified.",
+        "OWASP A05 (Security Misconfiguration): server.listen(port) binds to all interfaces (0.0.0.0) — acceptable for a local dev tool but noted. No CORS headers, no security headers (X-Content-Type-Options, X-Frame-Options, CSP) — low risk for localhost tool, no browser same-origin attack surface from remote origins.",
+        "OWASP A06 (Vulnerable Components): No third-party dependencies are introduced by WP-010 code; uses Node.js built-ins only (http, fs, path, os).",
+        "Path Traversal (CWE-22): staticServer.ts decodes percent-encoding before resolving, then guards with a startsWith(safeBase) check using path.sep suffix to prevent /foo/bar-evil matching /foo/bar. The use of path.resolve() (not join) combined with the prefix guard provides solid double-defence. Correctly returns 403 without disk I/O on traversal attempts.",
+        "Body Size Limit: parseJsonBody enforces a 1 MB cap with stream destruction on overflow — protects against resource exhaustion via large POST bodies (CWE-400).",
+        "Error Information Disclosure: Error messages from managers are forwarded to HTTP responses. For a developer tool running locally this is acceptable; no stack traces or file paths from the server process are leaked in normal operation.",
+        "Unhandled Rejection Safety: serveStatic promise errors are caught in index.ts and return a 500; router handler rejections are swallowed via void Promise.resolve().catch(). Both patterns prevent unhandled-rejection process termination.",
+        "Race Condition (double-start guard): The synchronous _server !== null check prevents duplicate server instances at module level. Minor TOCTOU window in tests' getFreePort() is test-only and noted.",
+        "No hardcoded credentials, secrets, or API keys found in any server source file.",
+        "TypeScript strict compilation passes clean — no implicit any, no unsafe casts beyond intentional type-narrowing patterns."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T15:26:02Z",
+          "note": "server.listen(port) in index.ts binds to 0.0.0.0 (all interfaces). For a developer-only tool this is acceptable, but binding to '127.0.0.1' explicitly would be a defence-in-depth improvement that prevents the server from being reachable on LAN/external interfaces."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T15:26:02Z",
+          "note": "No HTTP security headers are set on static file responses (X-Content-Type-Options: nosniff, X-Frame-Options: DENY, Content-Security-Policy). The risk is negligible for a localhost tool not accessed from a remote browser, but adding these headers is a low-effort hardening measure."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T15:26:02Z",
+          "note": "Error messages from manager layer (e.g., RepositoryManager, ProjectManager) are forwarded verbatim to HTTP error responses. For a local developer tool this aids debuggability, but if the tool were ever exposed beyond localhost, these messages could leak internal path or schema details. No action required at current scope."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T15:26:02Z",
+          "note": "The extractParams function in requestUtils.ts does not URL-decode path segments before matching. A request like /api/repositories/%2Ffoo won't match /api/repositories/:id in the intended way — the %2F is passed raw into params['id']. This is a correctness nuance rather than a security issue (no injection risk), but callers should be aware that URL-encoded slashes in params are not normalised."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-07T15:26:31Z",
+      "completed_at": "2026-04-07T15:28:23Z",
+      "duration_ms": 112000,
+      "summary": [
+        "Reviewed all 8 server-layer source files: src/server/index.ts, router.ts, staticServer.ts, requestUtils.ts, pollingManager.ts, and all five route handlers (repositories.ts, projects.ts, workspaces.ts, branches.ts, status.ts), plus the test file src/server/__tests__/index.test.ts.",
+        "Architecture: Clean three-layer separation — entry point (index.ts) wires managers/router; infrastructure helpers (router, staticServer, requestUtils, pollingManager); route handlers per resource. Dependency injection is consistent and testable throughout.",
+        "index.ts: startServer() correctly sequences static-first → router fallback → 404. EADDRINUSE error path writes to stderr before rejecting. Module-level state (_server, _pollingManager) is appropriate for single-server use case. stopServer() correctly nulls both handles before closing, preventing double-close issues.",
+        "router.ts: Clean implementation. Iterates routes once, accumulates allowedMethods for 405 responses, provides correct Allow header. void Promise.resolve().catch() pattern correctly prevents unhandled rejection process termination without consuming the error (handlers own their responses).",
+        "staticServer.ts: Exemplary path traversal defence — decodeURIComponent before resolve, then startsWith(safeBase + sep) guard prevents /foo/bar-evil bypass. Correct precedence: 400 on bad URL decode, 403 on traversal without disk I/O, 404 on missing file, 200 with streaming.",
+        "requestUtils.ts: parseJsonBody is production-quality — settled flag prevents race between destroy() error event and manual rejection. 1 MB cap with immediate stream destruction. sendJson uses Buffer.byteLength (correct for UTF-8, not string length). extractParams is simple and correct.",
+        "pollingManager.ts: STAGGER_MS=150 per-repo delay is a good thundering-herd mitigation. intervalHandle.unref() correctly prevents the polling timer from blocking process exit. sweepInProgress flag prevents overlapping sweeps. fetchWithStagger silently swallows individual repo errors — appropriate design for a best-effort cache.",
+        "Route handlers (repositories, projects, workspaces, branches, status): Consistent input validation pattern across all five — isPlainObject guard → field validation → manager delegation → error mapping. Error-to-HTTP-status mapping is correct (404 vs 400 discriminated by error message content where needed). branches.ts validates workspace existence before consuming the request body (correct ordering). status.ts GET route correctly reads from the in-memory cache without spawning git subprocesses.",
+        "Test file: Integration smoke test pattern (real temp dirs, real HTTP, real port) is thorough and correctly validates end-to-end behaviour. afterEach(stopServer) ensures no state leak between tests. EADDRINUSE test uses a blocker server pattern correctly — closes it in finally. getFreePort() TOCTOU window is minimal and acceptable for a test utility.",
+        "TypeScript: No unsafe casts beyond intentional narrowing (e.g., branchAssignments = assignments as Record<string,string> after full validation). All imports are typed. No implicit any.",
+        "All 501 tests pass; tsc compiles clean."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T15:28:23Z",
+          "note": "src/server/routes/workspaces.ts, branches.ts, and status.ts each define their own isPlainObject() guard inline. These three are identical to the one in repositories.ts and projects.ts. Extracting it to requestUtils.ts as an exported helper would eliminate the duplication (DRY), but this is a minor style issue with no functional impact."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T15:28:23Z",
+          "note": "In routes/workspaces.ts and routes/projects.ts, error-to-status-code discrimination relies on substring matching (msg.includes('does not exist')). This is functional but fragile — a manager that changes its error wording would silently produce wrong HTTP status codes. A typed error class (e.g. NotFoundError extends Error) in the manager layer would make this discrimination explicit and refactor-safe. Low priority given the controlled codebase."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T15:28:23Z",
+          "note": "branches.ts POST /switch returns 500 on orchestrator errors, but all other error paths use 404. A 500 is correct for an unexpected failure, but callers may benefit from a more specific status (e.g. 422 Unprocessable Entity) for known failure modes like a non-existent branch name. Not blocking."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-07T15:28:23Z",
+          "note": "The _repoManager parameter in registerProjectRoutes() (projects.ts line 44) is declared but never used (prefixed with underscore appropriately). If the parameter is truly vestigial it could be removed from the public API to simplify the call site in index.ts. No functional issue."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T15:28:23Z",
+          "note": "No observations that require blocking action — code is clean, well-structured, and consistent across all files. The design choices (static-first pipeline, module-level singletons, staggered polling, settled flag in parseJsonBody) are all deliberate and well-reasoned for the tool's scope."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-07T15:28:23Z",
+  "last_updated": "2026-04-07T15:28:23Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-07T15:26:02Z",
+      "notes": [
+        "Security audit PASS. Zero security issues found. Four low-priority improvement observations noted (localhost binding, missing security headers, verbatim error forwarding, URL-encoded params). All are appropriate trade-offs for a localhost developer tool. Ready for code-review pipeline.\""
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-04-07T15:28:23Z",
+      "notes": [
+        "Code review PASS. All 7 ACs met, all 501 tests pass, tsc clean. Four low-priority improvement observations noted (shared isPlainObject helper, typed error classes for status discrimination, branch switch error status code, unused _repoManager param). None are blocking. Ready for documentation pipeline."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,214 @@
+{
+  "work_package_id": "WP-006",
+  "work_package_file": "work/WP-006.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-004"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "Health is fetched in parallel for all initialized workspaces.",
+      "met": true
+    },
+    {
+      "criterion": "A warning badge with issue count appears for workspaces with health issues.",
+      "met": true
+    },
+    {
+      "criterion": "No badge appears for healthy or uninitialized workspaces.",
+      "met": true
+    },
+    {
+      "criterion": "Health fetch failures do not break the workspace table rendering (graceful degradation).",
+      "met": true
+    },
+    {
+      "criterion": "All dynamic strings rendered via textContent.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-14T21:30:23Z",
+      "completed_at": "2026-04-14T21:32:17Z",
+      "duration_ms": 114000,
+      "summary": [
+        "Added `wsHealthMap` object alongside `wsStatusMap` in `renderProjectDetail`, fetching workspace health for all initialized workspaces in parallel using `Promise.all([Promise.allSettled(...status), Promise.allSettled(...health)])`.",
+        "Health fetch failures are captured as `null` (same pattern as status), satisfying the graceful-degradation AC.",
+        "Updated `buildWorkspacesSection` signature to accept `wsHealthMap` as 4th parameter.",
+        "Added a 'Health' column header to the workspace table.",
+        "Added a health cell per row: shows a `.health-badge` with ⚠ icon and issue count only when `ws.initialized && healthReport.issues.length > 0`; renders an empty cell for uninitialized workspaces and healthy workspaces.",
+        "All badge text rendered via `textContent` (AC5 satisfied).",
+        "All 699 existing tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "gui/public/js/views/project-detail.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-14T21:32:17Z",
+          "note": "`buildWorkspacesSection` now has a 5th parameter `wsHealthMap` between `wsStatusMap` and `onRefresh`. This is a positional-argument function — if any caller outside this file were to call it, the extra parameter would silently break it. Not a current issue (function is private to the module), but worth noting if this section is ever refactored."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-14T21:32:17Z",
+          "note": "The health icon uses raw Unicode '\\u26a0' (⚠) via textContent. Consider replacing with an SVG or a dedicated icon component consistent with the edit-icon button approach used elsewhere in the project (e.g., in buildMetaSection)."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-14T21:32:17Z",
+          "note": "No observations beyond the above — project-detail.js is well-structured and the health fetch mirrors the existing status-fetch pattern cleanly."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-14T21:39:06Z",
+      "completed_at": "2026-04-14T21:39:54Z",
+      "duration_ms": 48000,
+      "summary": [
+        "Build check: TypeScript compiles clean (tsc --noEmit, 0 errors).",
+        "Regression: All 707 tests pass (0 failures).",
+        "AC1 PASS: Health is fetched via Promise.allSettled in a top-level Promise.all alongside status fetches — all initialized workspaces fetched in parallel at lines 922-938.",
+        "AC2 PASS: .health-badge span with ⚠ icon and '${n} issue(s)' label is created and appended for workspaces where healthReport.healthy===false and issues.length>0.",
+        "AC3 PASS: Badge block guarded by ws.initialized check; healthy reports (healthReport.healthy===true) and empty issue arrays skip badge creation; uninitialized workspaces skip the entire if block.",
+        "AC4 PASS: Promise.allSettled captures rejections; wsHealthMap[ws.id] is set to null on failure; null healthReport short-circuits at 'healthReport &&', leaving an empty health cell.",
+        "AC5 PASS: All badge text uses textContent — icon.textContent = '\\u26a0' and label.textContent = template-literal string. No innerHTML in the new code.",
+        "Call-site audit: buildWorkspacesSection is called at exactly one location (line 1031); all 5 arguments including wsHealthMap are correctly threaded."
+      ],
+      "metrics": {
+        "tests_passed": 707,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-14T21:39:54Z",
+          "note": "No issues found. Implementation mirrors the existing status-fetch pattern cleanly. buildWorkspacesSection has one call site (line 1031) and is module-private; new 5th parameter wsHealthMap is correctly threaded through."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-14T21:47:16Z",
+      "completed_at": "2026-04-14T21:48:13Z",
+      "duration_ms": 57000,
+      "summary": [
+        "Reviewed gui/public/js/views/project-detail.js against all four review dimensions. Clean PASS with no blocking issues.",
+        "Parallel fetch implementation: Promise.all([Promise.allSettled(statusFetches), Promise.allSettled(healthFetches)]) is the correct pattern — all N status and N health requests fire simultaneously, individual failures captured as null without blocking the view render.",
+        "Health badge logic: ws.initialized guard is correct (uninit workspaces can't have health reports). Badge condition is fully defensive: null-check, healthy flag, Array.isArray, length > 0. No false positives possible.",
+        "buildWorkspacesSection WSHealthMap JSDoc is missing the new 4th @param annotation — Documentation-Forward item for Documentation agent.",
+        "aria-hidden='true' on the warning icon is correct accessibility practice. All text via textContent — XSS clean.",
+        "Single call-site for buildWorkspacesSection confirmed by QA; positional parameter proliferation is noted but not blocking given private module scope."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "gui/public/js/views/project-detail.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-14T21:48:13Z",
+          "note": "Parallel fetch pattern is architecturally correct: Promise.all([Promise.allSettled(statusFetches), Promise.allSettled(healthFetches)]) fires all requests concurrently and gracefully captures individual failures as null without blocking the render. Mirrors the existing status-fetch pattern exactly."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-14T21:48:13Z",
+          "note": "Health badge guards are thorough: ws.initialized check first (no badge for uninit workspaces), then null-check on healthReport, then !healthReport.healthy, then Array.isArray and length > 0. Defensive and correct."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-14T21:48:13Z",
+          "note": "[documentation-forward] buildWorkspacesSection JSDoc block (project-detail.js ~line 380) is missing the @param entry for wsHealthMap. The function now accepts 5 positional arguments but the JSDoc only documents 4. Add: @param {Record<string, { healthy: boolean, issues: Array }|null>} wsHealthMap - Keyed by workspace ID; null when health fetch failed."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-04-14T21:48:13Z",
+          "note": "[documentation-forward] gui-frontend.md workspace-detail route description and buildWorkspacesSection both need to mention the new Health column in the workspace table: badge shown for initialized workspaces with health issues, empty cell otherwise; health fetched in parallel via Promise.allSettled alongside status."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-14T21:51:57Z",
+      "completed_at": "2026-04-14T21:52:39Z",
+      "duration_ms": 42000,
+      "summary": [
+        "Updated gui/public/js/views/project-detail.js: added missing @param {Record<string, { healthy: boolean, issues: Array }|null>} wsHealthMap to buildWorkspacesSection JSDoc.",
+        "Updated docs/agents/project-manifest/gui-frontend.md: expanded project-detail.js route description to document the Health column in the workspace table (badge for initialized workspaces with issues, empty cell for healthy/uninitialized, parallel fetch via Promise.allSettled with graceful degradation).",
+        "Ran ctx generate — all CTX context files regenerated cleanly."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "gui/public/js/views/project-detail.js",
+          "docs/agents/project-manifest/gui-frontend.md",
+          ".context/modules/gui/architecture-core.md",
+          ".context/modules/gui/architecture-views.md",
+          ".context/modules/gui/architecture-components.md",
+          ".context/modules/gui/file-structure.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-14T21:52:39Z",
+          "note": "Both documentation-forward items from code-review addressed. (1) buildWorkspacesSection JSDoc in project-detail.js updated with the missing @param for wsHealthMap, typed as Record<string, { healthy, issues }|null>. (2) gui-frontend.md project-detail.js route description expanded to describe the Health column behaviour: badge for initialized workspaces with issues, empty cell otherwise, parallel fetch via Promise.allSettled with graceful degradation. No other documentation gaps found."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-14T21:52:39Z",
+  "last_updated": "2026-04-14T21:52:39Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-14T21:32:17Z",
+      "notes": [
+        "WP-006 complete. Single file changed: gui/public/js/views/project-detail.js. Health is fetched in parallel with status for initialized workspaces using Promise.allSettled (graceful degradation). wsHealthMap is passed into buildWorkspacesSection; a Health column is added to the workspace table. Badge only rendered when ws.initialized and health report has issues.length > 0. All textContent only — no innerHTML. 699/699 tests pass."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-14T21:39:54Z",
+      "notes": [
+        "WP-006 QA PASS. Single file changed: gui/public/js/views/project-detail.js. All 5 ACs confirmed by code inspection and full test suite (707/707 pass). No regressions. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-14T21:48:13Z",
+      "notes": [
+        "WP-006 code-review PASS. Single file: gui/public/js/views/project-detail.js. All 5 ACs confirmed. Pattern mirrors existing status-fetch cleanly: Promise.all(Promise.allSettled * 2) for concurrent graceful-degradation fetches. Health badge guards are thorough and correct. Two documentation-forward items: (1) buildWorkspacesSection JSDoc missing @param for wsHealthMap; (2) gui-frontend.md workspace table needs Health column mention. Ready for Documentation agent.\""
+      ]
+    }
+  ]
+}

@@ -1,0 +1,225 @@
+{
+  "work_package_id": "WP-005",
+  "work_package_file": "work/WP-005.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-004"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "When a workspace has health issues, the alert section is visible with per-issue rows and fix buttons.",
+      "met": true
+    },
+    {
+      "criterion": "When a workspace is healthy, no alert section is rendered.",
+      "met": true
+    },
+    {
+      "criterion": "Clicking \"Regenerate File\" calls api.workspaces.regenerateFile(), shows a success toast, and re-fetches health.",
+      "met": true
+    },
+    {
+      "criterion": "Clicking the setup fix button calls api.workspaces.setup(), shows a success toast, and re-fetches health.",
+      "met": true
+    },
+    {
+      "criterion": "Health is re-fetched on manual refresh (\"Refresh Now\") and automatic poll.",
+      "met": true
+    },
+    {
+      "criterion": "The \"Retry Setup\" block no longer fires for repos with missing .git/ directories (now covered by health alerts).",
+      "met": true
+    },
+    {
+      "criterion": "The \"Retry Setup\" block still fires for repos with .git/ present but no status data (transient polling-lag case).",
+      "met": true
+    },
+    {
+      "criterion": "The view's cleanup function properly handles any new intervals or listeners.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-14T21:21:49Z",
+      "completed_at": "2026-04-14T21:30:13Z",
+      "duration_ms": 504000,
+      "summary": [
+        "Added `buildHealthAlertSection()` module-level function that renders a `.health-alert` card with per-issue rows and fix buttons (`Regenerate File` for `regenerate-workspace-file`, `Fix Setup` for `setup-workspace`).",
+        "Extended `renderWorkspaceDetail` Promise.all to fetch health alongside existing data (5th slot, `.catch(() => null)` guard).",
+        "Added `healthContainerEl` div (always in DOM between header and toolbar) and `currentHealthReport` variable.",
+        "Added `renderHealthSection(report)` function that updates `currentHealthReport` and repopulates `healthContainerEl` via `buildHealthAlertSection`.",
+        "Added `fetchAndRenderHealth()` async function used by fix buttons to re-fetch health after a fix action.",
+        "Updated `doPoll` and `doRefresh` to fetch health in parallel with status via `Promise.all`; `renderHealthSection` is called before `updateMissingReposRow` so `currentHealthReport` is current when the retry row is re-evaluated.",
+        "Updated `updateMissingReposRow` to compute `notClonedIds` from `currentHealthReport` and exclude those repos from the missing-count — satisfying the narrowed Retry Setup behaviour (AC6/AC7).",
+        "Updated initial DOM assembly `missingRepos` filter to apply the same `notClonedRepoIds` exclusion.",
+        "All 699 existing tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "gui/public/js/views/workspace-detail.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-14T21:30:13Z",
+          "note": "In `buildHealthAlertSection`, the `btn` variable is declared once outside the if/else branches but never used in the fallthrough (unknown `fixAction`) path. Each branch already creates its own `btn` locally — the outer declaration is dead code. Minor cleanup opportunity."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-14T21:30:13Z",
+          "note": "The `onSetup` callback inside `renderHealthSection` calls `doRefresh()` (fire-and-forget) then `fetchAndRenderHealth()` in sequence. Because `doRefresh` also fetches health internally, this results in two concurrent health fetches after a setup fix; the last-writer-wins on `currentHealthReport`. Harmless currently, but worth noting if health checks become expensive."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-14T21:30:13Z",
+          "note": "No observations beyond the above — workspace-detail.js code in the touched areas is well-structured, follows established patterns, and the new helpers integrate cleanly with the existing polling/refresh machinery."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-14T21:36:44Z",
+      "completed_at": "2026-04-14T21:38:51Z",
+      "duration_ms": 127000,
+      "summary": [
+        "Build check: TypeScript compiles clean (tsc --noEmit, no errors).",
+        "Regression: All 707 tests pass (0 failures, 0 cancellations).",
+        "AC1 PASS: buildHealthAlertSection creates .health-alert card with per-issue rows and fix buttons when healthReport.healthy is false.",
+        "AC2 PASS: buildHealthAlertSection returns null when report is null/healthy/empty; healthContainerEl stays an empty div.",
+        "AC3 PASS: onRegenerate callback calls api.workspaces.regenerateFile(), shows 'Workspace file regenerated.' success toast, then fetchAndRenderHealth().",
+        "AC4 PASS: onSetup callback calls runSetup() (wraps api.workspaces.setup()), shows success toast, then fetchAndRenderHealth().",
+        "AC5 PASS: doPoll and doRefresh both include health fetch in their Promise.all and call renderHealthSection() with fresh data.",
+        "AC6 PASS: notClonedRepoIds exclusion built from health issues with fixAction='setup-workspace' at DOM assembly and in updateMissingReposRow(); those repos are excluded from Retry Setup count.",
+        "AC7 PASS: Repos with .git/ present but no status data and no matching health alert still appear in missingRepos and trigger Retry Setup row.",
+        "AC8 PASS: No new intervals or persistent listeners introduced; existing cleanup() only needs to clear countdownInterval (unchanged). fetchAndRenderHealth checks container.isConnected before updating DOM.",
+        "Edge case: null healthReport (network error path) handled throughout — .catch(() => null) guard on health fetch, null checks in all consumers.",
+        "Edge case: Developer comment about dead outer btn variable was investigated — no dead code found; all three const btn occurrences are properly scoped inside their respective blocks.",
+        "Minor observation: onSetup calls doRefresh() (which itself fetches health) then fetchAndRenderHealth() in sequence, resulting in two concurrent health fetches on setup fix. Last-writer-wins is harmless at current scale."
+      ],
+      "metrics": {
+        "tests_passed": 707,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-14T21:38:51Z",
+          "note": "onSetup callback in renderHealthSection calls doRefresh() then fetchAndRenderHealth() in sequence (gui/public/js/views/workspace-detail.js ~line 855). Because doRefresh() also fetches health internally via Promise.all, this produces two concurrent health fetches after a setup fix action. Both resolve to the same endpoint; last-writer-wins on currentHealthReport is harmless. If health checks become expensive, consolidating to a single fetch path (e.g. awaiting doRefresh() and skipping the separate fetchAndRenderHealth call) would be cleaner."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-14T21:44:51Z",
+      "completed_at": "2026-04-14T21:47:09Z",
+      "duration_ms": 138000,
+      "summary": [
+        "Reviewed gui/public/js/views/workspace-detail.js line-by-line. All four review dimensions pass cleanly — Maintainability, Best Practices, Performance, and Future Context.",
+        "buildHealthAlertSection: callback injection pattern is the correct architectural choice. Decouples the section-builder from the outer closure, making it independently testable. JSDoc is accurate.",
+        "renderHealthSection + fetchAndRenderHealth: well-focused, single-responsibility. container.isConnected guard is correctly placed. finally blocks used consistently for button state reset across all fix buttons.",
+        "currentHealthReport mutable closure variable: clearly documented inline, updated before updateMissingReposRow calls (correct ordering in doPoll/doRefresh ensures notClonedIds exclusion is always based on latest health data).",
+        "notClonedRepoIds set is computed twice (DOM assembly from initial healthReport, updateMissingReposRow from currentHealthReport) — two separate scopes with different data sources; this duplication is intentional and acceptable.",
+        "Known double-fetch on onSetup (doRefresh fire-and-forget + fetchAndRenderHealth): confirmed harmless. btn reference goes stale after renderHealthSection clears healthContainerEl.innerHTML, but the finally block no-ops cleanly on a detached element. No UX regression.",
+        "No Fix-Forward changes applied. No blocking issues found. Two documentation-forward items recorded for the Documentation agent."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "gui/public/js/views/workspace-detail.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-14T21:47:09Z",
+          "note": "onSetup callback (renderHealthSection closure, ~line 855): doRefresh() is called without await, then fetchAndRenderHealth() follows. Both run concurrently — doRefresh also fetches health internally via Promise.all. The race is harmless (last-writer-wins on currentHealthReport), but a future optimization path would be to await doRefresh() and drop the separate fetchAndRenderHealth() call to consolidate to a single health fetch. Not a blocking issue at current scale."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-14T21:47:09Z",
+          "note": "[documentation-forward] gui-frontend.md — api.workspaces section lists only: list, get, create, update, rename, delete, setup. Missing two methods added in WP-004 and consumed here: health(pid, wid) and regenerateFile(pid, wid). Add both with their HTTP method, path, and return shape to the API Client table."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-14T21:47:09Z",
+          "note": "[documentation-forward] gui-frontend.md — workspace-detail.js route description currently reads 'Live git status with countdown-based polling and manual refresh.' Update to also describe the health alert section: health report fetched in parallel on initial load and on every poll/refresh cycle; unhealthy workspaces render a .health-alert card with per-issue rows and fix buttons (Regenerate File for regenerate-workspace-file issues, Fix Setup for setup-workspace issues)."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-14T21:50:36Z",
+      "completed_at": "2026-04-14T21:51:44Z",
+      "duration_ms": 68000,
+      "summary": [
+        "Updated gui-frontend.md to address both documentation-forward items from code-review: (1) added health(pid, wid) and regenerateFile(pid, wid) to the api.workspaces method listing and added a new '### api.workspaces — Health & File Methods' reference table with HTTP paths, return shapes, and fixAction value documentation; (2) expanded workspace-detail.js route description to cover the health report parallel fetch, .health-alert card rendering, and fix button behaviour. Ran ctx generate — all CTX context files regenerated cleanly."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "docs/agents/project-manifest/gui-frontend.md",
+          ".context/modules/gui/architecture-core.md",
+          ".context/modules/gui/architecture-views.md",
+          ".context/modules/gui/architecture-components.md",
+          ".context/modules/gui/file-structure.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-14T21:51:44Z",
+          "note": "Both documentation-forward items from code-review addressed. gui-frontend.md api.workspaces section now lists health() and regenerateFile() and has a dedicated reference table with HTTP paths, return shapes, and fixAction enum values. workspace-detail.js route description expanded to describe health fetch parallelism and .health-alert card behaviour. No documentation gaps remain."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-14T21:51:44Z",
+  "last_updated": "2026-04-14T21:51:44Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-14T21:30:13Z",
+      "notes": [
+        "WP-005 implementation complete. All 8 acceptance criteria met. Single file changed: gui/public/js/views/workspace-detail.js. Key points for QA: (1) the health alert container is always in DOM (empty div when healthy, populated when issues exist); (2) renderHealthSection is called before updateMissingReposRow in doPoll/doRefresh so the notClonedIds exclusion is always based on the latest health data; (3) fix button loading states are fully managed in finally blocks; (4) all error paths show toasts and re-enable buttons. Backend health endpoint (WP-001/WP-002) and API client methods (WP-004) must be deployed for end-to-end testing."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-14T21:38:51Z",
+      "notes": [
+        "WP-005 QA PASS. Single file changed: gui/public/js/views/workspace-detail.js. All 8 ACs confirmed by code inspection and full test suite (707/707 pass). No regressions. One low-priority improvement noted (double concurrent health fetch on setup fix action — harmless). Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-14T21:47:09Z",
+      "notes": [
+        "WP-005 code-review PASS. Single file: gui/public/js/views/workspace-detail.js. All 8 ACs confirmed. Architecture is clean — callback injection into buildHealthAlertSection is the correct pattern, renderHealthSection/fetchAndRenderHealth are well-focused, container.isConnected guards are in place, finally blocks used consistently. Two documentation-forward items logged: (1) api.workspaces in gui-frontend.md is missing health() and regenerateFile() methods; (2) workspace-detail.js route description needs a note about the health alert section. Ready for Documentation agent."
+      ]
+    }
+  ]
+}

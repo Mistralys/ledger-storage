@@ -1,0 +1,182 @@
+{
+  "work_package_id": "WP-008",
+  "work_package_file": "work/WP-008.md",
+  "status": "COMPLETE",
+  "assigned_to": "Reviewer",
+  "dependencies": [
+    "WP-001",
+    "WP-003"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "GET /api/projects/:id/workspaces/:wid/branches returns 200 with available branches per repo plus compiled suggestions",
+      "met": true
+    },
+    {
+      "criterion": "POST /api/projects/:id/workspaces/:wid/branches/switch returns 200 with per-repo switch results on valid input",
+      "met": true
+    },
+    {
+      "criterion": "POST /api/projects/:id/workspaces/:wid/branches/switch returns 400 when the assignments field is missing or invalid",
+      "met": true
+    },
+    {
+      "criterion": "POST /api/projects/:id/workspaces/:wid/branches/switch returns 404 when the project or workspace does not exist",
+      "met": true
+    },
+    {
+      "criterion": "Both endpoints are covered by unit tests using mocked orchestrator and manager dependencies",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-07T14:53:19Z",
+      "completed_at": "2026-04-07T14:54:47Z",
+      "duration_ms": 88000,
+      "summary": [
+        "Implemented registerBranchRoutes() in src/server/routes/branches.ts with 2 route handlers: GET /api/projects/:id/workspaces/:wid/branches (returns per-repo branches + compiled suggestions) and POST /api/projects/:id/workspaces/:wid/branches/switch (executes branch assignments). Added 12 unit tests in src/server/__tests__/routes/branches.test.ts using MockBranchOrchestrator and MockWorkspaceManager. All 485 tests pass (0 failures)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/server/routes/branches.ts",
+          "src/server/__tests__/routes/branches.test.ts"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 485,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:54:47Z",
+          "note": "WorkspaceManager.getById() is used for existence checks before delegating to the orchestrator, ensuring 404 is returned before any git I/O occurs for invalid project/workspace combinations."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:54:47Z",
+          "note": "GET branches tests use setImmediate instead of process.nextTick for flush because the orchestrator is async (Promise-based) and requires a full event loop turn to settle. POST tests use two process.nextTick flushes which is sufficient for the parseJsonBody + async handler chain."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-07T15:01:59Z",
+      "completed_at": "2026-04-07T15:02:47Z",
+      "duration_ms": 48000,
+      "summary": [
+        "QA passed for WP-008 (Branch API Routes). 495/495 tests pass, 0 failures. All 5 acceptance criteria verified. 12 unit tests cover both endpoints: GET (4 tests) and POST switch (8 tests). MockBranchOrchestrator supports configurable branchMap, switchResult, and throw-on-get/throw-on-switch stubs. MockWorkspaceManager uses registerWorkspace() + setThrowOnGet() pattern for 404 simulation. Key implementation detail: GET uses setImmediate (not process.nextTick) for async flush because orchestrator.getAvailableBranches() is promise-based — this is correct. Map-to-plain-object conversion for branches is verified in the payload shape test. Minor gap: no test for orchestrator.switchBranches() throwing (500 path) but this is low-risk.\""
+      ],
+      "metrics": {
+        "tests_passed": 495,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-04-07T15:02:47Z",
+          "note": "No test for orchestrator.switchBranches() throwing an error — the catch block on line 153 returns 500 in that case. The setThrowOnSwitch() method exists in MockBranchOrchestrator but is never exercised by a test. Low risk path."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T15:02:47Z",
+          "note": "GET handler uses setImmediate (full event loop turn) to flush the async orchestrator Promise, correctly handling the microtask queue. POST tests use process.nextTick x2 which is sufficient for parseJsonBody + synchronous mock resolution."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T15:02:47Z",
+          "note": "BranchesResponse interface is exported from branches.ts and imported in the test file — strong typing on the response shape that prevents silent schema drift. Clean practice."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-04-07T15:02:47Z",
+          "note": "Workspace existence check (wm.getById) precedes body parsing in the POST handler, so a 404 is returned without consuming the request stream when project/workspace is invalid. Correct fast-fail behaviour."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-07T15:08:21Z",
+      "completed_at": "2026-04-07T15:09:11Z",
+      "duration_ms": 50000,
+      "summary": [
+        "Code review PASS for WP-008 (Branch API Routes).",
+        "src/server/routes/branches.ts: The most complex of the four route files. Two handlers with meaningfully different concerns: a GET that delegates to an async orchestrator and a POST that validates rich input then delegates to another async orchestrator method.",
+        "Architecture: workspace existence validation via workspaceManager.getById() precedes git I/O in both handlers — correct fast-fail design that avoids wasting git operations on invalid coordinates.",
+        "GET handler: correct Map-to-plain-object conversion (lines 80–83) for JSON serialisation. BranchesResponse interface is exported and imported in the test — prevents silent schema drift across the test boundary. The fallback catch maps any orchestrator exception to 404; this is slightly broad (a real orchestrator failure would be a 500), but as the only documented error path from getAvailableBranches() is 'project does not exist' (a 404-worthy condition), this is pragmatically correct for current usage.",
+        "POST handler: validates assignments field thoroughly — must be a plain object (not array), non-empty, and all values must be string. This is the most complete input validation of all four route files. The per-entry check (lines 141–146) correctly identifies which key had the invalid value in the error message.",
+        "POST switchBranches() catch maps to 500 (line 154). This is the only 500 in any route file and is appropriate: a switch failure is an internal/git error, not a client error. The test gap (no test for the 500 path) is low-risk as noted by QA.",
+        "setImmediate vs nextTick for async flush: GET tests correctly use setImmediate (full event loop tick) to drain the Promise microtask queue from getAvailableBranches(), while POST tests use two process.nextTick calls (sufficient for parseJsonBody + synchronous mock resolution). Both are correct for their respective async depths.",
+        "Test file: MockBranchOrchestrator with configurable stubs (setBranchMap, setSwitchResult, setThrowOnGet, setThrowOnSwitch) is the most flexible mock in the suite — well-designed for future coverage additions. MockWorkspaceManager uses a lean registerWorkspace/setThrowOnGet approach. 12 tests cover 4 GET paths and 8 POST paths.",
+        "495/495 tests pass. All 5 ACs confirmed met."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/server/routes/branches.ts",
+          "src/server/__tests__/routes/branches.test.ts"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 495,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T15:09:11Z",
+          "note": "isPlainObject() defined locally in branches.ts — fourth instance of the same 3-line helper across route files. At this point extraction to requestUtils.ts is clearly warranted and should be done as a follow-up refactor."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T15:09:11Z",
+          "note": "GET handler catch block (line 87-89) maps any orchestrator exception to 404. For the current BranchOrchestrator implementation this is correct (the only documented throw is 'project does not exist'). If orchestrator errors grow (e.g., git I/O failures), this would incorrectly surface as 404. A future improvement: distinguish NotFoundError from other errors, mapping git failures to 500."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T15:09:11Z",
+          "note": "MockBranchOrchestrator.setThrowOnSwitch() is implemented in the test file but never called by any test, leaving the POST 500 path uncovered. This is a known gap from QA. The infrastructure to cover it is already present — adding one test would be trivial."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-07T15:09:11Z",
+  "last_updated": "2026-04-07T15:09:11Z",
+  "handoff_notes": [
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-07T15:02:47Z",
+      "notes": [
+        "All 5 ACs met. 495/495 tests pass. Both routes covered. Minor untested 500 path in POST switch. Clean for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-04-07T15:09:11Z",
+      "notes": [
+        "Code review PASS. All 5 ACs met, 495/495 tests green. Three low-priority observations (isPlainObject duplication, GET catch masking non-404 orchestrator errors as 404, untested POST 500 path) — none block completion. Ready for Documentation pipeline."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,218 @@
+{
+  "work_package_id": "WP-003",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "RepositoryManager exposes list, getById, add, update, remove, and exists methods.",
+      "met": true
+    },
+    {
+      "criterion": "add() with no explicit ID infers it from the URL using inferSlugFromUrl().",
+      "met": true
+    },
+    {
+      "criterion": "add() throws a descriptive error when the URL produces an empty slug.",
+      "met": true
+    },
+    {
+      "criterion": "add() throws when adding a duplicate ID or duplicate URL.",
+      "met": true
+    },
+    {
+      "criterion": "update() modifies only the Name field and throws if the ID doesn't exist.",
+      "met": true
+    },
+    {
+      "criterion": "remove() throws if the ID doesn't exist.",
+      "met": true
+    },
+    {
+      "criterion": "All public methods re-read from disk (stateless between calls).",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-03T12:17:58Z",
+      "completed_at": "2026-04-03T12:19:55Z",
+      "duration_ms": 117000,
+      "summary": [
+        "Created src/models/repository/repository.types.ts with Repository and RepositoryStore interfaces, using SchemaVersion from storage.types.ts.",
+        "Created src/models/repository/repository.manager.ts with RepositoryManager class exposing list(), getById(), exists(), add(), update(), remove(). All methods re-read from disk (stateless). add() infers ID via inferSlugFromUrl() when not provided, throws on empty slug, duplicate ID, or duplicate URL. update() modifies only Name and throws if ID is missing. remove() throws if ID is missing. load() returns empty default store when repositories.json is absent (graceful FileNotFoundError handling). All 64 existing tests continue to pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/models/repository/repository.types.ts",
+          "src/models/repository/repository.manager.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-03T12:19:55Z",
+          "note": "In repository.manager.ts, the DEFAULT_STORE constant is partially cloned in load() via { ...DEFAULT_STORE, Repositories: [] }. This is safe but slightly redundant since DEFAULT_STORE already has an empty array. A comment explaining the intent (fresh array reference to avoid mutations) would add clarity."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-04-03T12:19:55Z",
+          "note": "storage.types.ts currently only exports SchemaVersion (a bare number alias). As more store types are added (RepositoryStore, ProjectStore, etc.), consider adding a shared BaseStore interface with SchemaVersion to unify the pattern and reduce repetition across model files."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-03T12:19:55Z",
+          "note": "The storage seed in json-storage.ts uses PascalCase keys (Repositories, Projects, SchemaVersion). The new Repository fields follow the same PascalCase convention (Id, Name, Url). This is consistent but deviates from standard TypeScript/JSON camelCase conventions — worth noting for any future API serialization layer."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-03T12:20:46Z",
+      "completed_at": "2026-04-03T12:22:30Z",
+      "duration_ms": 104000,
+      "summary": [
+        "Reviewed 2 files (repository.types.ts, repository.manager.ts) plus supporting context (json-storage.ts, slug.ts, config.types.ts). 0 Critical, 0 High, 1 Medium, 1 Low. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-04-03T12:22:30Z",
+          "note": "Medium | A04 — Insecure Design | src/models/repository/repository.manager.ts, add() (~line 83): When an explicit `id` is supplied by the caller, it bypasses inferSlugFromUrl()/toKebabCase() entirely with no validation. A value like \"../../escape\" is persisted unmodified. When this ID is later used to construct project directory paths (path.join(projectsFolder, id)), it enables relative path traversal. isValidKebabCase() already exists in src/utils/slug.ts — add a guard: if (params.id && !isValidKebabCase(params.id)) throw new Error('Invalid ID: must be kebab-case'). This closes the traversal vector before the git-clone/workspace phase is built."
+        },
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-04-03T12:22:30Z",
+          "note": "Low | A05 — Security Misconfiguration | src/models/repository/repository.manager.ts, add() (~lines 90, 100): Two error messages echo the raw params.url value verbatim. If the caller passes a credential-bearing URL (e.g. https://token@github.com/org/repo.git) and the call is rejected, the token appears in the thrown Error and any downstream log sink. Recommend stripping the auth component before interpolating: url.replace(/\\/\\/[^@]+@/, '//')."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-03T12:22:30Z",
+          "note": "Info | A03 (forward-looking) | The Url field stored in repositories.json will later drive git clone operations. When that integration is built, the URL must be passed as a structured argument array (e.g. execa('git', ['clone', url, dest])), never shell-interpolated, to prevent command injection via crafted URLs."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-03T12:22:57Z",
+      "completed_at": "2026-04-03T12:25:19Z",
+      "duration_ms": 142000,
+      "summary": [
+        "Reviewed repository.manager.ts and repository.types.ts against all four Review Dimensions.",
+        "Code is well-structured: stateless per-call disk reads, clean separation of load/save helpers, correct defensive spread in load().",
+        "Applied one Fix-Forward: added clarifying comment in load() explaining why the DEFAULT_STORE constant is spread with a fresh Repositories array (mutation protection).",
+        "Two Security Auditor findings echoed as non-blocking comments (see pipeline comments). No Blocking issues found.",
+        "One documentation-forward item recorded for the Documentation agent.",
+        "VERDICT: PASS with Fix-Forward."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/models/repository/repository.manager.ts",
+          "src/models/repository/repository.types.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-03T12:25:19Z",
+          "note": "repository.manager.ts load(): Added clarifying comment explaining that { ...DEFAULT_STORE, Repositories: [] } is used instead of returning DEFAULT_STORE directly in order to prevent callers from accidentally mutating the module-level constant via push() on the returned store. Non-behavioral — comment only."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-04-03T12:25:19Z",
+          "note": "repository.manager.ts add() (~line 83): Explicit `id` values bypass all format validation. A whitespace-only value (e.g. '   ') passes the !id check and is stored verbatim, since '   ' is truthy. Additionally, as the Security Auditor flagged, any string (e.g. '../../escape') is accepted without isValidKebabCase() guard. Both edge cases should be addressed before IDs are used as filesystem path components in the git-clone phase. Recommended fix: trim the incoming id and validate with isValidKebabCase()."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-03T12:25:19Z",
+          "note": "repository.manager.ts add() (~lines 90, 100): Error messages echo params.url verbatim. Credential-bearing URLs (e.g. https://token@host/org/repo.git) will expose tokens in thrown errors and any downstream log sink. Apply url.replace(/\\/\\/[^@]+@/, '//') before interpolating into error strings. Echoing the Security Auditor's Low finding for visibility."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-03T12:25:19Z",
+          "note": "[documentation-forward] add() JSDoc describes behavior when id is omitted but does not state that explicitly-provided id values are stored verbatim without kebab-case validation. Update the JSDoc to document this contract and add a @param note clarifying the caller's responsibility for format correctness when supplying an explicit id."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-03T12:25:55Z",
+      "completed_at": "2026-04-03T12:27:10Z",
+      "duration_ms": 75000,
+      "summary": [
+        "Updated add() JSDoc in repository.manager.ts to document the verbatim-id contract: explicit id values are stored without format validation, the caller owns kebab-case correctness, and examples of unsafe values (untrimmed strings, path-traversal sequences) are called out. This directly addresses the documentation-forward item from the code-review pipeline.",
+        "Added 'Repository management' section to README.md documenting the RepositoryManager class: constructor signature, all six public methods with signatures and descriptions, and a dedicated add() parameter table that highlights the no-validation contract on explicit id values."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/models/repository/repository.manager.ts",
+          "README.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-03T12:27:10Z",
+          "note": "The documentation-forward item from the Reviewer is fully addressed in the add() JSDoc. The two security findings (id validation, credential redaction in error messages) are not documentation gaps — they are code changes deferred to the git-clone phase and do not require README documentation at this time."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-03T12:27:10Z",
+  "last_updated": "2026-04-03T12:27:10Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-04-03T12:19:55Z",
+      "notes": [
+        "WP-004 (repository manager tests) depends on WP-003 and is now unblocked. RepositoryManager constructor takes AppConfig; in tests use a temp dir with a fake config of shape { storageFolder: tmpDir, projectsFolder: tmpDir, ... }. Note: add() accepts { url, name?, id? }; update() accepts { name }. FileNotFoundError from json-storage is handled in load() so an empty store is returned when repositories.json doesn't exist — test this boundary. Error messages include the offending ID/URL for assertions."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-03T12:22:30Z",
+      "notes": [
+        "Security sign-off PASS. One Medium finding to address before or during the git-clone phase: add isValidKebabCase() validation on explicit `id` in add() to prevent future path traversal when IDs are used as directory names. One Low finding: redact auth credentials from URL-interpolated error messages. No blocking issues — code-review may proceed."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-03T12:25:19Z",
+      "notes": [
+        "PASS. All 7 acceptance criteria met. One Fix-Forward applied (comment in load()). Two security findings echoed as medium/low non-blocking comments — both should be resolved before the git-clone/workspace phase: (1) add isValidKebabCase() + trim() guard for explicit id in add(); (2) redact credentials from URL-interpolated error messages. One documentation-forward item for WP-003 add() JSDoc. No blocking issues."
+      ]
+    }
+  ]
+}

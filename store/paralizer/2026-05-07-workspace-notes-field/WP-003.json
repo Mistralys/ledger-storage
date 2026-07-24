@@ -1,0 +1,216 @@
+{
+  "work_package_id": "WP-003",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-002"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "PUT with body { \"notes\": \"text\" } (no description) returns 200 and persists the notes value.",
+      "met": true
+    },
+    {
+      "criterion": "PUT with body { \"description\": \"text\" } (no notes) continues to work as before.",
+      "met": true
+    },
+    {
+      "criterion": "PUT with body { \"notes\": \"text\", \"description\": \"text\" } persists both fields.",
+      "met": true
+    },
+    {
+      "criterion": "PUT with empty body {} returns 400 with an appropriate error message.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-07T08:45:11Z",
+      "completed_at": "2026-05-07T08:47:31Z",
+      "duration_ms": 140000,
+      "summary": [
+        "Relaxed the PUT /api/projects/:id/workspaces/:wid handler to accept 'notes' as a standalone field (without requiring 'description'), accept 'description' alone as before, accept both fields together, and return 400 with a clear message when neither field is present.",
+        "Updated MockWorkspaceManager in workspaces.test.ts to handle Notes in StoredWorkspace and the update() method signature.",
+        "Added 4 new route tests covering all acceptance criteria. All 779 tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/server/routes/workspaces.ts",
+          "src/server/__tests__/routes/workspaces.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T08:47:31Z",
+          "note": "No observations — code in the touched files is clean and consistent. The handler change is minimal and follows the existing validation pattern in the same file precisely."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-07T08:48:19Z",
+      "completed_at": "2026-05-07T08:50:02Z",
+      "duration_ms": 103000,
+      "summary": [
+        "Build: clean (`tsc` 0 errors). Full 779-test suite: 0 failures, 0 regressions.",
+        "All 4 AC-specific route tests pass (notes-only 200, description-only 200, both-fields 200, empty-body 400).",
+        "Edge cases verified: non-string values (e.g. notes:42) correctly return 400 via the missing-field guard; empty-string notes are accepted and persisted — consistent with pre-existing description behaviour."
+      ],
+      "metrics": {
+        "tests_passed": 779,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T08:50:02Z",
+          "note": "Empty string values for `notes` (e.g. { \"notes\": \"\" }) are accepted and persisted — consistent with how `description` was already handled pre-WP-003. No change required, but worth noting for future API design discussions."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T08:50:02Z",
+          "note": "Non-string typed fields (e.g. { \"notes\": 42 }) are silently treated as absent rather than explicitly rejected with a 422 type-mismatch error. Behaviour is correct (returns 400 via the missing-field guard) but the error message says 'no updatable field' rather than 'wrong type'. Low-priority UX consideration, not a defect."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-05-07T08:51:07Z",
+      "completed_at": "2026-05-07T08:52:34Z",
+      "duration_ms": 87000,
+      "summary": [
+        "Reviewed 2 modified files (src/server/routes/workspaces.ts, src/server/__tests__/routes/workspaces.test.ts) plus workspace.manager.ts and requestUtils.ts for full context. 0 Critical, 0 High, 0 Medium findings. 2 Low/Info observations recorded. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T08:52:34Z",
+          "note": "A09 — Security Logging & Monitoring: The PUT /:wid handler now persists a 'notes' field but there is no audit log entry when notes (or description) is updated. This is consistent with the pre-existing behaviour for the description field — no regression introduced. For a future hardening pass, consider logging sensitive field mutations (who changed what, when) if multi-user access is ever added."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T08:52:34Z",
+          "note": "A04 — Insecure Design (Info): The 'notes' field accepts any string value up to the 1 MB body cap enforced by parseJsonBody. There is no per-field length constraint (e.g. 10 000 characters). This is consistent with how 'description' was already handled. Risk is low given this is a local-only tool, but a field-level length cap would improve resilience for any future networked deployment."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T08:52:34Z",
+          "note": "No other security findings — all OWASP Top 10 categories reviewed. Input validation is correct (typeof string guard + 1 MB body limit). No new dependencies introduced. No SQL/template/shell injection vectors. No secrets or hardcoded credentials. Error responses do not expose stack traces. STABLE workspace invariant is preserved by the storage layer and not affected by this change."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-07T08:54:23Z",
+      "completed_at": "2026-05-07T08:55:52Z",
+      "duration_ms": 89000,
+      "summary": [
+        "Code review PASS. Production code change in workspaces.ts is minimal, clean, and correct — follows the exact same validation pattern (typeof string guard → changes object → manager call) used throughout the file. Applied one Fix-Forward comment update. No blocking issues found across all four Review Dimensions."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/server/routes/workspaces.ts",
+          "src/server/__tests__/routes/workspaces.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-07T08:55:52Z",
+          "note": "Fixed stale inline comment on the PUT /:wid route section header in workspaces.ts — changed 'update workspace description' to 'update workspace description and/or notes' to accurately reflect the expanded contract introduced by this WP. Non-behavioral change; QA validation remains intact."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T08:55:52Z",
+          "note": "MockWorkspaceManager.list() and getById() in workspaces.test.ts do not propagate the stored Notes value — both return Notes: '' via makeWsInfo() regardless of what is in storage. No currently-passing test relies on this, but the mock is inconsistent with the production implementation. If a future test asserts the Notes value from a list or getById call, this will mislead the test author. Low priority since the mock is test-local."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "high",
+          "timestamp": "2026-05-07T08:55:52Z",
+          "note": "[documentation-forward] rest-api.md needs updating: the PUT /api/projects/:id/workspaces/:wid endpoint description must document the new optional 'notes' (string) request body field, the new 400 error case ('neither description nor notes present'), and the fact that the response body now includes a Notes field on the returned WorkspaceInfo object."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-07T08:57:49Z",
+      "completed_at": "2026-05-07T08:59:26Z",
+      "duration_ms": 97000,
+      "summary": [
+        "Updated docs/agents/project-manifest/rest-api.md to document the expanded PUT /api/projects/:id/workspaces/:wid endpoint introduced in WP-003.",
+        "Table row updated: body schema now shows `{ description?, notes? }` (at least one required), 400 description expanded to cover the neither-field-present case, and the response Notes field is noted.",
+        "Added a dedicated subsection '### PUT /api/projects/:id/workspaces/:wid — Request Body' below the Workspaces table with a field reference table, enumerated 400 cases, and 200 response shape documentation.",
+        "Addressed the documentation-forward item from the code-review pipeline in full. No other documentation files required changes (api-surface.md already documents WorkspaceInfo.Notes and the updated update() signature from a prior WP)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "docs/agents/project-manifest/rest-api.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T08:59:26Z",
+          "note": "Addressed the documentation-forward item tagged by the Reviewer: rest-api.md now documents the expanded body schema (notes field), the updated 400 case (neither field present), and the Notes field in the response. No other docs required changes — api-surface.md already reflected WorkspaceInfo.Notes from a prior WP."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-07T08:59:26Z",
+  "last_updated": "2026-05-07T08:59:26Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-07T08:47:31Z",
+      "notes": [
+        "PUT /:wid handler now accepts notes and/or description. Validation rejects an empty body {}. All 4 ACs verified by new unit tests (779 total pass). Ready for QA.\">\n"
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-05-07T08:50:02Z",
+      "notes": [
+        "All 4 ACs verified. Build clean. 779 tests passing. No regressions. Ready for security audit."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-07T08:55:52Z",
+      "notes": [
+        "Code review PASS. One Fix-Forward applied (comment update in workspaces.ts — non-behavioral). One documentation-forward item tagged: rest-api.md must document the expanded PUT /:wid body schema (notes field, updated 400 case, Notes in response). No blocking issues."
+      ]
+    }
+  ]
+}

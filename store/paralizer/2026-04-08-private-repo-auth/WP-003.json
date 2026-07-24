@@ -1,0 +1,254 @@
+{
+  "work_package_id": "WP-003",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "extractHost('https://github.com/org/repo.git') returns 'github.com'.",
+      "met": true
+    },
+    {
+      "criterion": "extractHost('git@github.com:org/repo.git') returns null (SSH — not applicable).",
+      "met": true
+    },
+    {
+      "criterion": "injectCredentials('https://github.com/org/repo.git', { 'github.com': 'ghp_abc' }) returns 'https://ghp_abc@github.com/org/repo.git'.",
+      "met": true
+    },
+    {
+      "criterion": "injectCredentials returns the original URL unchanged when no matching host exists in the credentials map.",
+      "met": true
+    },
+    {
+      "criterion": "hasEmbeddedCredentials('https://token@github.com/org/repo.git') returns true.",
+      "met": true
+    },
+    {
+      "criterion": "stripEmbeddedCredentials('https://user:pass@github.com/org/repo.git') returns 'https://github.com/org/repo.git'.",
+      "met": true
+    },
+    {
+      "criterion": "All functions handle edge cases (empty strings, malformed URLs, non-HTTPS schemes).",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-10T10:29:23Z",
+      "completed_at": "2026-04-10T10:31:03Z",
+      "duration_ms": 100000,
+      "summary": [
+        "Created src/git/git-credentials.ts with four exported functions: extractHost(), injectCredentials(), hasEmbeddedCredentials(), stripEmbeddedCredentials().",
+        "All functions handle edge cases: empty string inputs, malformed URLs, SSH URLs, non-HTTPS schemes.",
+        "Created src/tests/git-credentials.test.ts with 29 tests covering all acceptance criteria and edge cases. 29/29 pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/git/git-credentials.ts",
+          "src/tests/git-credentials.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T10:31:03Z",
+          "note": "git-credentials.ts: All four functions use the WHATWG URL API (new URL()) for parsing. This is correct and avoids regex-based URL parsing pitfalls. The catch-and-return pattern is clean and consistent."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-10T10:31:03Z",
+          "note": "git-credentials.ts: injectCredentials() uses only the username field (token as username, empty password). This is the correct pattern for PAT-based HTTPS auth on GitHub/GitLab. Document this in the JSDoc if the Security Auditor requests justification."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-10T13:18:03Z",
+      "completed_at": "2026-04-10T13:19:04Z",
+      "duration_ms": 61000,
+      "summary": [
+        "All 7 AC verified. 29/29 git-credentials tests pass including all named AC cases plus edge case coverage. Full regression: 507/507 pass. Implementation uses WHATWG URL API correctly. All functions correctly handle SSH URLs, malformed URLs, empty strings, non-HTTPS schemes."
+      ],
+      "metrics": {
+        "tests_passed": 507,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-10T13:19:04Z",
+          "note": "stripEmbeddedCredentials() is correctly exported but not yet consumed by any downstream logging callsite. This is expected — downstream wiring is a separate WP concern. The Security Auditor should verify it is called before any URL logging in later WPs."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-10T13:27:59Z",
+      "completed_at": "2026-04-10T13:28:54Z",
+      "duration_ms": 55000,
+      "summary": [
+        "Reviewed 2 files (git-credentials.ts, git-credentials.test.ts). 0 Critical, 0 High, 1 Medium (forward-looking: stripEmbeddedCredentials() must wrap all credentialed URL surfaces in orchestrator WP), 1 Low, 0 Info. Security sign-off: PASS. Token injection via URL object API (not string concat) is the secure implementation pattern."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T13:28:54Z",
+          "note": "A03 — Injection | src/git/git-credentials.ts:40 (injectCredentials). Token injection is performed via URL object property assignment (parsed.username = token) using the WHATWG URL API, NOT string concatenation. Special characters in tokens (e.g., '@', '/', '#') are automatically percent-encoded by the URL serialiser before the URL string is produced. This prevents URL injection attacks even with adversarially-crafted token values. This is the correct implementation pattern."
+        },
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-04-10T13:28:54Z",
+          "note": "A09 / Credential Exposure (forward-looking, blocking concern for the next WP) | src/git/git-credentials.ts:40 (injectCredentials). The function returns a URL with the PAT embedded as userinfo. Once the orchestrator WP wires up injectCredentials(), any code path that logs, surfaces in API responses, or includes in Error messages a URL that transited through injectCredentials() MUST call stripEmbeddedCredentials() first. stripEmbeddedCredentials() is already implemented and exported. The follow-on orchestrator WP must apply it to: (1) GitResult.stderr before logging or surfacing error strings, (2) any URL field in JSON API responses, (3) the Error message in runGitOrThrow() (src/git/git-cli.ts:141). Failure to do so will expose PATs in error logs and API responses. This must be verified in the orchestrator WP security audit."
+        },
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-04-10T13:28:54Z",
+          "note": "A04 — Design observation | src/git/git-credentials.ts:40 (injectCredentials). If the input URL already contains embedded credentials and no matching entry exists in the credentials map, injectCredentials() returns the original URL unchanged (including the pre-existing credentials). This is correct by design, but callers should be aware that URLs may arrive with pre-embedded credentials from external input. The isAllowedUrl() guard in git-clone.ts validates the scheme but does not strip pre-existing credentials before clone. For the orchestrator WP, confirm that user-supplied repo URLs are checked for pre-embedded credentials (hasEmbeddedCredentials) and either accepted with warning or stripped then re-injected from config."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-10T13:36:03Z",
+      "completed_at": "2026-04-10T13:37:27Z",
+      "duration_ms": 84000,
+      "summary": [
+        "Reviewed git-credentials.ts and git-credentials.test.ts. No blocking issues. Implementation is clean and secure: all four functions use the WHATWG URL API correctly, the catch-and-return pattern is consistent, and 29 tests provide comprehensive coverage. Applied two Fix-Forwards: (1) added a Security note to injectCredentials() JSDoc documenting that WHATWG URL property assignment prevents URL injection via automatic percent-encoding (Security Auditor directive); (2) updated api-surface.md with all 4 new exported functions."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/git/git-credentials.ts",
+          "src/tests/git-credentials.test.ts",
+          "docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "medium",
+          "timestamp": "2026-04-10T13:37:27Z",
+          "note": "src/git/git-credentials.ts injectCredentials() JSDoc: Added a 'Security note' paragraph explicitly documenting that token injection uses WHATWG URL object property assignment (not string concatenation), and that special characters in tokens are automatically percent-encoded by the URL serialiser. The Security Auditor specifically directed the Reviewer to verify this is captured in code comments. Without this note a future maintainer might 'simplify' to string concat, inadvertently introducing a URL injection vulnerability."
+        },
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-10T13:37:27Z",
+          "note": "docs/agents/project-manifest/api-surface.md: Added the four new git-credentials.ts exports (extractHost, injectCredentials, hasEmbeddedCredentials, stripEmbeddedCredentials) to the Git Layer section. Required by AGENTS.md manifest maintenance rules."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "high",
+          "timestamp": "2026-04-10T13:37:27Z",
+          "note": "[documentation-forward] api-surface.md now lists the four git-credentials functions. The module README (src/git/README.md) and/or data-flows.md should document the credential injection lifetime contract: injectCredentials() must only be called immediately before a git operation, and stripEmbeddedCredentials() must be applied to any error string or URL field before it is surfaced externally. This is a standing architectural rule for all future WPs."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-10T13:37:27Z",
+          "note": "[documentation-forward] The Security Auditor identified a design nuance: if a repo URL already has embedded credentials AND the host is not in the config credentials map, injectCredentials() returns the URL with the pre-existing credentials intact. This should be documented in data-flows.md or constraints.md as a known behavior so future orchestrator implementors handle it explicitly (e.g., call hasEmbeddedCredentials() before injectCredentials())."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-10T13:42:57Z",
+      "completed_at": "2026-04-10T13:44:35Z",
+      "duration_ms": 98000,
+      "summary": [
+        "Updated src/git/README.md: added git-credentials.ts row to the Files table listing all four exported functions.",
+        "Updated docs/agents/project-manifest/constraints.md: added two new bullets under Git Subprocess Security — the credential injection lifetime contract (injectCredentials() must only be called immediately before git invocation) and the pre-embedded-credentials passthrough rule (callers must hasEmbeddedCredentials() check before injecting).",
+        "Updated docs/agents/project-manifest/data-flows.md: added a new section 9 'Credential-Bearing Git Operation (Private Repository)' with an annotated step-by-step flow showing how credentials are injected, how GIT_ASKPASS=echo provides the fail-fast fallback, and where stripEmbeddedCredentials() is required on error paths. Previous section 9 renumbered to 10.",
+        "Ran ctx generate — all 21 CTX output files regenerated cleanly."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/git/README.md",
+          "docs/agents/project-manifest/constraints.md",
+          "docs/agents/project-manifest/data-flows.md",
+          ".context/project-overview.md",
+          ".context/project-manifest.md",
+          ".context/modules/git/overview.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T13:44:35Z",
+          "note": "Both high-priority documentation-forward items addressed. The credential injection lifetime contract (inject immediately before git op, strip before surfacing) is now captured both in constraints.md and as a full annotated data flow in data-flows.md section 9. The pre-embedded-credentials passthrough behavior and the hasEmbeddedCredentials() pre-check requirement are documented in constraints.md."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-10T13:44:35Z",
+  "last_updated": "2026-04-10T13:44:35Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-10T10:31:03Z",
+      "notes": [
+        "All 7 acceptance criteria met and covered by 29 dedicated unit tests.",
+        "Security consideration: injectCredentials() embeds a PAT in the URL userinfo section. The Security Auditor should confirm this is acceptable vs. git credential helpers or env-var approaches.",
+        "stripEmbeddedCredentials() should be called before logging any remote URL to avoid leaking tokens in log output. QA should verify this is used correctly in downstream consumers."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-04-10T13:19:04Z",
+      "notes": [
+        "All 7 ACs verified. 29/29 dedicated tests pass, 507/507 total tests pass. stripEmbeddedCredentials() is exported and ready; downstream logging integration is out-of-scope for this WP. Security Auditor: note that injectCredentials() embeds tokens in userinfo (username-only, no password), which is the standard PAT pattern for GitHub/GitLab HTTPS."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-10T13:28:54Z",
+      "notes": [
+        "0 Critical/High findings — PASS. Critical forward-looking constraint: when injectCredentials() is wired into the orchestrator (next WP), ALL code paths that log or surface a URL that transited through injectCredentials() MUST call stripEmbeddedCredentials() first. This applies to: GitResult.stderr handling, Error messages in runGitOrThrow(), and any URL field in API JSON responses. The orchestrator WP security audit will verify this. Reviewer: confirm injectCredentials() safe token-injection approach is commented in code."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-10T13:37:27Z",
+      "notes": [
+        "All 7 AC met. Excellent implementation — WHATWG URL API used throughout for safe injection and parsing. Two reviewer-applied-fixes: (1) added Security note to injectCredentials() JSDoc documenting percent-encoding safety; (2) updated api-surface.md with all 4 new exports. Documentation agent: two documentation-forward comments — capture the credential injection lifetime contract in data-flows.md/constraints.md (high priority), and document the pre-embedded-credentials passthrough behavior."
+      ]
+    },
+    {
+      "from_agent": "Documentation",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-04-10T13:44:35Z",
+      "notes": [
+        "Documentation complete for WP-003. All four git-credentials.ts functions added to src/git/README.md files table. Credential injection lifetime contract captured in constraints.md (two new bullets) and data-flows.md (new section 9 with annotated flow). Pre-embedded-credentials passthrough documented as orchestrator constraint. CTX regenerated cleanly."
+      ]
+    }
+  ]
+}

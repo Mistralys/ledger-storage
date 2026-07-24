@@ -1,0 +1,223 @@
+{
+  "work_package_id": "WP-003",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "cloneRepository() constructs the correct git clone argument array including --depth from CloneOptions",
+      "met": true
+    },
+    {
+      "criterion": "When options.branch is provided, the --branch flag is included in the arguments",
+      "met": true
+    },
+    {
+      "criterion": "When options.branch is omitted, no --branch flag is passed",
+      "met": true
+    },
+    {
+      "criterion": "The function returns a GitResult with exit code 0 on successful clone",
+      "met": true
+    },
+    {
+      "criterion": "The function returns a GitResult with non-zero exit code on failure without throwing",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-03T14:06:31Z",
+      "completed_at": "2026-04-03T14:10:18Z",
+      "duration_ms": 227000,
+      "summary": [
+        "Created src/git/git-clone.ts with cloneRepository() that builds the git argument array from CloneOptions (depth, branch, bare) and delegates to runGit(). All promise semantics match the git-cli.ts contract — resolves for all exit codes, rejects only on spawn errors.",
+        "Created src/tests/git-clone.test.ts covering all 5 acceptance criteria using a local git fixture (init -b main + 2 commits + extra-branch). Key finding: --depth requires a file:// protocol URL for local repos to be properly respected by git. All 185 tests pass (5 new + 180 pre-existing)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/git/git-clone.ts",
+          "src/tests/git-clone.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-03T14:10:18Z",
+          "note": "src/git/git-clone.ts: The CloneOptions.bare field is included in the argument builder for completeness (the type defines it), but WP-003 has no AC covering bare clones. Future WPs may want a dedicated test for bare clone behaviour."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-03T14:10:18Z",
+          "note": "src/tests/git-clone.test.ts: The test fixture uses `git init -b main` which requires git >= 2.28. The project has no stated minimum git version. Consider documenting this requirement in README or package.json engines field."
+        },
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-04-03T14:10:18Z",
+          "note": "src/tests/git-clone.test.ts: The local fixture setup runs synchronously at module load time (IIFE) rather than inside a proper test lifecycle hook. This works but means setup errors surface as unhandled exceptions rather than test failures. Consider migrating to node:test `before()` hooks when the project adopts a Node version that exposes them reliably."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-03T14:14:12Z",
+      "completed_at": "2026-04-03T14:15:33Z",
+      "duration_ms": 81000,
+      "summary": [
+        "Reviewed 2 modified files (src/git/git-clone.ts, src/tests/git-clone.test.ts) plus the pre-existing src/git/git-cli.ts dependency. 0 Critical, 0 High, 1 Medium (process hang — no timeout), 2 Low (URL scheme / branch name not validated, no destination path bounds), 1 Info (no audit logging). Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-03T14:15:33Z",
+          "note": "A03/A10 — Low. src/git/git-clone.ts line 36 (args.push(url, destination)): The url parameter is passed directly to git with no URL scheme validation. Git's ext:: and rsh:: transport protocols can execute arbitrary shell commands when git processes the URL — e.g., ext::sh -c 'cmd' path. With shell:false the OS shell is bypassed, but git itself processes the transport and can spawn commands. For the current CLI-tool context where callers are trusted users this is Low, but if cloneRepository() is ever exposed via an API endpoint or automation surface where URL is derived from untrusted input it escalates to Critical SSRF/injection. Recommendation: when untrusted input is possible, validate that the URL scheme is one of https://, http://, ssh://, git://, or file:// before passing to cloneRepository()."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-03T14:15:33Z",
+          "note": "A03 — Low. src/git/git-clone.ts lines 30-31 (args.push('--branch', options.branch)): options.branch is typed as string with no format validation. Pushing it as the value for --branch means git treats it as a literal branch name, so flag injection (e.g. --upload-pack=evil) does not occur. However, a branch value containing newlines or null bytes could behave unexpectedly depending on the git version and transport. Recommendation: validate options.branch matches /^[A-Za-z0-9._/\\-]+$/ or equivalent safe refname pattern before use."
+        },
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-04-03T14:15:33Z",
+          "note": "A04 — Medium. src/git/git-cli.ts — runGit() has no timeout: spawn() is called with no killSignal/timeout option, and the Promise resolves only on process close. If git blocks waiting for user credentials (e.g. SSH key passphrase prompt, HTTPS credential prompt) or a unreachable host, the promise never resolves, hanging the calling process indefinitely. In automation pipelines this is a resource-exhaustion / availability risk. Recommendation: add an AbortController-based timeout parameter to runGit() (and expose it via CloneOptions) so callers can bound execution time."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-03T14:15:33Z",
+          "note": "A01 — Low. src/git/git-clone.ts line 36 (args.push(url, destination)): The destination path is not validated against a permitted base directory. A caller could pass an absolute path like /etc or a path with .. traversal segments to clone into unexpected filesystem locations. For the current trusted-user CLI context this is acceptable, but worth noting for future API surfaces. Recommendation: if the function is ever called with user-supplied destination values in a multi-user context, validate that destination is under an expected base path (path.resolve check)."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-03T14:15:33Z",
+          "note": "A09 — Info. src/git/git-clone.ts: No audit logging of clone operations (URL cloned, destination, outcome). For a CLI tool this is acceptable, but operators running this in CI/CD pipelines have no record of what was cloned where. Recommendation: consider emitting a structured log entry (url, destination, exitCode, durationMs) at the caller level or via an optional logger callback in CloneOptions."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-03T14:17:41Z",
+      "completed_at": "2026-04-03T14:20:08Z",
+      "duration_ms": 147000,
+      "summary": [
+        "Code review PASS. cloneRepository() is a clean, minimal, well-documented adapter over runGit(). The arg-array construction is correct (flags before positionals), the CloneOptions branching is idiomatic, and the JSDoc accurately describes the promise contract. One Fix-Forward applied: removed unnecessary async keyword from cloneRepository() — the function delegates directly to runGit() without any await, and the non-async signature matches the established pattern of runGit() itself. Two documentation-forward items and two non-blocking improvement notes recorded below."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/git/git-clone.ts",
+          "src/tests/git-clone.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-03T14:20:08Z",
+          "note": "src/git/git-clone.ts: Removed unnecessary 'async' keyword from cloneRepository(). The function body does no awaiting — it constructs the args array and returns runGit(args) directly. Using 'async' on a function that returns a Promise without using 'await' is a convention violation: it communicates async behavior that isn't there and differs from the established non-async pattern of runGit() in git-cli.ts. The return type Promise<GitResult> is unchanged; all callers continue to work identically. No test changes required."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-03T14:20:08Z",
+          "note": "[documentation-forward] The test fixture in src/tests/git-clone.test.ts uses 'git init -b main', which requires git >= 2.28 (released 2020-07-27). The project's package.json 'engines' field only documents the Node.js version (>=18) — the minimum git version is undocumented. Add a 'git >= 2.28' requirement to README prerequisites or package.json engines to avoid silent failures on older git installations."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-04-03T14:20:08Z",
+          "note": "[documentation-forward] CloneOptions.bare is implemented in git-clone.ts (the --bare flag is conditionally included) but no acceptance criterion or test covers bare clone behaviour. Consider adding a note to the README or a follow-up work item to verify and document bare clone semantics — specifically that the destination is a bare repo with no working tree."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-03T14:20:08Z",
+          "note": "src/tests/git-clone.test.ts: The tmpDir created by fs.mkdtempSync() is never cleaned up after the test run. Temporary clone directories accumulate in the OS temp folder across repeated test runs during development. Consider adding an after() lifecycle hook that calls fs.rmSync(tmpDir, { recursive: true }) once node:test's after() hook is reliably available in the target Node.js version."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-03T14:20:08Z",
+          "note": "src/git/git-clone.ts: CloneOptions.depth is typed as number with no lower-bound guard. Passing { depth: 0 } generates '--depth 0', which git rejects with 'fatal: depth 0 is not a positive number'. The design contract is sound (non-zero exit code, no throw), but callers could be surprised. A JSDoc note on the field ('must be a positive integer when provided') or a light runtime guard would reduce the foot-gun surface."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-03T14:33:31Z",
+      "completed_at": "2026-04-03T14:34:43Z",
+      "duration_ms": 72000,
+      "summary": [
+        "Addressed both reviewer-forwarded documentation items. (1) Added git >= 2.28 minimum version requirement to package.json engines field and to README Prerequisites section — covers the test fixture dependency on `git init -b main`. (2) Documented cloneRepository() as a new top-level section in the README Git CLI section, including a CloneOptions parameter table with depth, branch, and bare fields. Added a note that CloneOptions.bare is implemented but lacks test coverage. Updated the CloneOptions type table entry to expand the field descriptions.",
+        "No existing documentation was inaccurate — changes are purely additive."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "README.md",
+          "package.json"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-03T14:34:43Z",
+          "note": "README.md: The bare clone caveat note ('implemented but not covered by current test suite') should be removed once a dedicated bare clone test is added in a future WP. It is a temporary gap marker, not a permanent limitation."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-03T14:34:43Z",
+  "last_updated": "2026-04-03T14:34:43Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-04-03T14:10:18Z",
+      "notes": [
+        "Implementation is complete. The git-clone.ts module is a thin, focused adapter over runGit(). Security note for the auditor: shell:false is inherited from runGit() — the args array is never passed through a shell, so no injection surface exists in git-clone.ts itself. The test suite verifies both success (exit 0) and failure (non-zero exit, no throw) paths with a real local git repository."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-03T14:15:33Z",
+      "notes": [
+        "Security audit PASS. No Critical or High findings. Key notes for Reviewer: (1) The shell:false spawn in git-cli.ts is the primary injection defence — that design decision is sound and must be preserved. (2) Medium: runGit() has no timeout — automation contexts risk indefinite hangs on blocked git processes; worth flagging in code review for a follow-up. (3) Low: URL scheme validation is absent — acceptable now for a trusted-user CLI but should be gated before any API exposure. All 5 acceptance criteria confirmed met by the implementation."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-03T14:20:08Z",
+      "notes": [
+        "All 5 acceptance criteria confirmed met. One reviewer-applied fix: removed unnecessary 'async' from cloneRepository() — non-behavioral, returns type unchanged. Documentation agent should address: (1) minimum git >= 2.28 requirement in README/package.json, (2) bare clone test gap note. Non-blocking improvement notes on test cleanup and depth validation left for future consideration."
+      ]
+    }
+  ]
+}

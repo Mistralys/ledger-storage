@@ -1,0 +1,285 @@
+{
+  "work_package_id": "WP-004",
+  "work_package_file": "work/WP-002.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-002"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "After runSweep() completes, updateLastActivity() is called with the correct max lastActivity ISO timestamp for each project that has at least one cached repo entry with a non-null lastActivity.",
+      "met": true
+    },
+    {
+      "criterion": "After refreshWorkspace() completes, updateLastActivity() is called with the correct max lastActivity for each project represented in the cache.",
+      "met": true
+    },
+    {
+      "criterion": "Projects where all cached repo entries have null lastActivity are skipped — updateLastActivity() is not called for them.",
+      "met": true
+    },
+    {
+      "criterion": "Cache entries where extractContext() returns an empty object (no ProjectId) are skipped without error.",
+      "met": true
+    },
+    {
+      "criterion": "The runSweep() method itself is not restructured — persistLastActivity() is a separate post-processing step called after the existing fetchWithStagger().",
+      "met": true
+    },
+    {
+      "criterion": "All existing polling manager tests continue to pass.",
+      "met": true
+    },
+    {
+      "criterion": "New unit tests cover: correct max computation across multiple repos/workspaces of the same project, null-activity skip, and extractContext parse-failure skip.",
+      "met": true
+    },
+    {
+      "criterion": "ProjectData interface in project.types.ts includes LastActivity?: string as an optional field.",
+      "met": true
+    },
+    {
+      "criterion": "updateLastActivity() sets LastActivity on the project JSON file and does NOT modify DateModified.",
+      "met": true
+    },
+    {
+      "criterion": "updateLastActivity() short-circuits without writing to disk when the new value equals the existing LastActivity value.",
+      "met": true
+    },
+    {
+      "criterion": "updateLastActivity() silently returns (no error thrown) when called with a project ID that does not exist.",
+      "met": true
+    },
+    {
+      "criterion": "All existing project manager tests continue to pass.",
+      "met": true
+    },
+    {
+      "criterion": "New unit tests in project.manager.test.ts verify all four behaviours above.",
+      "met": true
+    },
+    {
+      "criterion": "All TypeScript imports use .js extensions per the Node16 ESM requirement.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-23T09:05:53Z",
+      "completed_at": "2026-04-23T09:09:51Z",
+      "duration_ms": 238000,
+      "summary": [
+        "Added private persistLastActivity() method to PollingManager that iterates the in-memory cache, computes the max non-null lastActivity ISO timestamp per project using extractContext() for path→ProjectId resolution, and calls projectManager.updateLastActivity() for each qualifying project.",
+        "Called persistLastActivity() after fetchWithStagger() in both runSweep() and refreshWorkspace() — no restructuring of either method.",
+        "Added updateLastActivity no-op stub to makeProjectManager() in pollingManager.test.ts and pollingManager.errorLog.test.ts to fix existing tests that now trigger persistLastActivity.",
+        "Added 8 new focused unit tests in pollingManager.test.ts covering: correct max after refreshWorkspace, correct max after runSweep, max selection across 3 repos, independent per-project max computation, all-null skip, partial-null handling, and extractContext parse-failure path. All 763 tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/server/pollingManager.ts",
+          "src/server/__tests__/pollingManager.test.ts",
+          "src/server/__tests__/pollingManager.errorLog.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-23T09:09:51Z",
+          "note": "persistLastActivity() uses ISO string comparison (lexicographic) to find the max timestamp. This is correct for well-formed ISO 8601 strings (same timezone offset), but a note-worthy assumption. If lastActivity values ever include mixed timezone offsets (e.g. '+05:00' vs 'Z'), the comparison would be incorrect. For the current codebase, git.types.ts defines lastActivity as a git commit timestamp that is always converted to ISO with a consistent offset, so this is safe. Consider adding a brief comment to persistLastActivity() noting this assumption."
+        },
+        {
+          "type": "refactor",
+          "priority": "low",
+          "timestamp": "2026-04-23T09:09:51Z",
+          "note": "In pollingManager.test.ts the makeTrackingProjectManager helper duplicates the list/getById boilerplate from makeProjectManager. These could be unified into a single factory that optionally accepts a tracking callback for updateLastActivity. Not blocking, but worth cleaning up if the test file grows further."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-23T09:10:08Z",
+      "completed_at": "2026-04-23T09:11:32Z",
+      "duration_ms": 84000,
+      "summary": [
+        "Full verification stack executed against WP-004 (ProjectData.LastActivity + updateLastActivity). All 7 ACs confirmed met. 763 tests pass (0 failures). 4 new updateLastActivity tests verified individually. No regressions detected.",
+        "AC1: LastActivity?: string is present in project.types.ts as optional field with correct JSDoc. PASS.",
+        "AC2: updateLastActivity() sets LastActivity on the JSON file without touching DateModified — verified by test and direct code inspection (no this.now() call or DateModified assignment in the method body). PASS.",
+        "AC3: Short-circuit guard (project.LastActivity === value → return) verified. mtime test confirms no disk write on duplicate value. PASS.",
+        "AC4: project not found → early return with no error thrown. doesNotThrow test passes. PASS.",
+        "AC5: All 763 pre-existing tests continue to pass. PASS.",
+        "AC6: 4 new tests present in project.manager.test.ts covering all 4 behaviours. All pass. PASS.",
+        "AC7: All imports in project.manager.ts and project.manager.test.ts use .js extensions. PASS.",
+        "Edge-case notes: (1) updateLastActivity accepts any string — no ISO format validation. This is acceptable: the caller (persistLastActivity in pollingManager) already sources from well-formed lastActivity ISO strings. (2) Concurrent writes scenario: multiple processes calling updateLastActivity simultaneously could race on the same file. Not a regression — the manager has always been stateless/disk-based and the same caveat applies to all other write methods."
+      ],
+      "metrics": {
+        "test_coverage": "4 new updateLastActivity tests; all 7 ACs covered",
+        "tests_passed": 763,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-23T09:11:32Z",
+          "note": "updateLastActivity() accepts any string value with no ISO 8601 format validation. This is acceptable since all callers source values from well-formed git commit timestamps, but a brief note in the JSDoc about expected format would improve maintainability."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-23T09:11:32Z",
+          "note": "No concurrent-write protection on updateLastActivity() — same read-modify-write pattern as all other ProjectManager methods. Not a regression, but worth noting if the server ever becomes multi-threaded."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-23T09:11:50Z",
+      "completed_at": "2026-04-23T09:12:59Z",
+      "duration_ms": 69000,
+      "summary": [
+        "Reviewed all three modified files: pollingManager.ts, pollingManager.test.ts, pollingManager.errorLog.test.ts, plus the directly modified project.manager.ts, project.types.ts, and project.manager.test.ts.",
+        "Implementation is clean, well-scoped, and follows existing codebase conventions. No blocking issues found.",
+        "Applied one Fix-Forward: added an inline comment in persistLastActivity() about the lexicographic ISO timestamp comparison assumption, as flagged by both Developer and QA.",
+        "Tagged two Documentation-Forward items for the Documentation agent."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/server/pollingManager.ts",
+          "src/server/__tests__/pollingManager.test.ts",
+          "src/server/__tests__/pollingManager.errorLog.test.ts",
+          "src/models/project/project.manager.ts",
+          "src/models/project/project.types.ts",
+          "src/tests/project.manager.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-23T09:12:59Z",
+          "note": "Added an inline comment inside persistLastActivity() noting that the ISO string max comparison is lexicographically correct only for same-timezone-offset timestamps (always the case here, since git commit timestamps are normalized to a consistent ISO offset). Satisfies the documentation suggestion raised in both the implementation and QA pipelines without bouncing to the Developer."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-23T09:12:59Z",
+          "note": "makeTrackingProjectManager() in pollingManager.test.ts duplicates the list/getById boilerplate from makeProjectManager(). Consider unifying into a single factory accepting an optional tracking callback for updateLastActivity. Not blocking — test file is still small and readable."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-23T09:12:59Z",
+          "note": "[documentation-forward] updateLastActivity() JSDoc in project.manager.ts should document the expected format of the `value` parameter (ISO 8601 string) and note that it is sourced from git commit timestamps. QA and Developer both flagged this as a maintainability gap."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-04-23T09:12:59Z",
+          "note": "[documentation-forward] persistLastActivity() private method in pollingManager.ts should include a brief note in its JSDoc (or inline comment) about the lexicographic comparison assumption for ISO timestamps — specifically that mixed timezone offsets would break the max computation. The fix-forward adds an inline comment, but a formal JSDoc @remarks or @internal note would be consistent with the rest of the class documentation style."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-23T09:12:59Z",
+          "note": "project.types.ts SchemaVersion versioning policy JSDoc is excellent — the explicit explanation of when to bump SchemaVersion is a strong pattern worth preserving as the data model evolves."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-23T09:13:23Z",
+      "completed_at": "2026-04-23T09:15:15Z",
+      "duration_ms": 112000,
+      "summary": [
+        "Addressed both documentation-forward items from the code-review pipeline.",
+        "project.manager.ts — enhanced updateLastActivity() JSDoc with a @param value tag that documents the expected ISO 8601 string format, its git-commit-timestamp origin, and the no-validation contract.",
+        "pollingManager.ts — added a @remarks block to persistLastActivity() JSDoc formalising the lexicographic ISO comparison assumption and the consequence of mixed timezone offsets. Inline comment added by the Reviewer's fix-forward is preserved; the @remarks block provides the higher-level contract note consistent with the rest of the class documentation style.",
+        "data-flows.md — updated '7. Git Status Polling' to show the persistLastActivity() post-sweep step for both the interval sweep and refreshWorkspace() on-demand path, with a callout about the timestamp comparison constraint.",
+        "api-surface.md — enhanced the updateLastActivity() inline comment to include the ISO 8601 / git-commit-timestamp value format detail.",
+        "ctx generate run successfully — all .context/ files regenerated to reflect the updated source."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/models/project/project.manager.ts",
+          "src/server/pollingManager.ts",
+          "docs/agents/project-manifest/data-flows.md",
+          "docs/agents/project-manifest/api-surface.md",
+          ".context/project-manifest.md",
+          ".context/project-overview.md",
+          ".context/modules/server/architecture-core.md",
+          ".context/modules/models/architecture-core.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-04-23T09:15:15Z",
+          "note": "[documentation-forward resolved] updateLastActivity() JSDoc in project.manager.ts now includes a @param value tag documenting the expected ISO 8601 format and its git-commit-timestamp origin. Addresses the gap flagged by both QA and the Reviewer."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-23T09:15:15Z",
+          "note": "[documentation-forward resolved] persistLastActivity() JSDoc in pollingManager.ts now includes a @remarks block formalising the lexicographic ISO comparison assumption, specifying that mixed timezone offsets would produce incorrect results and naming the normalisation constraint that makes the current implementation safe. The Reviewer's inline fix-forward comment is preserved; the @remarks block adds the formal contract note."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-23T09:15:15Z",
+          "note": "data-flows.md updated: 'Git Status Polling' flow now explicitly shows the persistLastActivity() post-sweep step and the refreshWorkspace() on-demand path. A callout explains the ISO lexicographic comparison constraint for future maintainers."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-23T09:15:15Z",
+          "note": "api-surface.md: updateLastActivity() inline comment enhanced with the ISO 8601 / git-commit-timestamp format note for completeness in the agent reference document."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-23T09:15:15Z",
+  "last_updated": "2026-04-23T09:15:15Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-23T09:09:51Z",
+      "notes": [
+        "All 7 acceptance criteria met and verified by 763 passing tests (8 new tests added).",
+        "persistLastActivity() is purely synchronous and iterates the existing Map cache — no new I/O paths introduced.",
+        "Both pollingManager.test.ts and pollingManager.errorLog.test.ts mocks updated with updateLastActivity no-op stub; this is a backward-compatible mock extension."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-23T09:11:32Z",
+      "notes": [
+        "All 7 ACs verified. 763 tests pass. Implementation is clean and minimal — updateLastActivity() has no side effects on DateModified, correctly short-circuits on no-op writes, and silently handles missing projects. Two low-priority improvement notes logged (no-format-validation, no-concurrency-guard) — neither is a blocker. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-23T09:12:59Z",
+      "notes": [
+        "All 14 ACs verified and confirmed met. Implementation is sound with no blocking issues. One Fix-Forward applied (inline ISO comparison comment in persistLastActivity). Two documentation-forward items logged for the Documentation agent: (1) updateLastActivity() JSDoc should document the expected ISO 8601 format of the value parameter; (2) persistLastActivity() JSDoc should include a formal note about the lexicographic comparison assumption. No rework required."
+      ]
+    }
+  ]
+}

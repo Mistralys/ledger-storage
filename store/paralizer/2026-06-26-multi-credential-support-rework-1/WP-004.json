@@ -1,0 +1,279 @@
+{
+  "work_package_id": "WP-004",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "PUT /api/config/credentials rejects host values containing /, \\, null bytes, or whitespace with HTTP 400 and a descriptive error message.",
+      "met": true
+    },
+    {
+      "criterion": "Valid host values (e.g., github.com) are accepted without regression.",
+      "met": true
+    },
+    {
+      "criterion": "All new and existing credential route tests pass.",
+      "met": true
+    },
+    {
+      "criterion": "docs/agents/project-manifest/constraints.md is updated with the hostname format validation rule for credential host fields.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-06-29T08:58:42Z",
+      "completed_at": "2026-06-29T08:58:59Z",
+      "duration_ms": 17000,
+      "summary": [
+        "Hostname format validation guard was already implemented in src/server/routes/config.ts (around line 238) via regex /[/\\\\\\0\\s]/.test(host), rejecting any host containing forward slash, backslash, null byte, or whitespace with HTTP 400. All four test cases (forward slash, backslash, null byte, whitespace → 400; valid hostname → 200) are present in src/server/__tests__/routes/config.test.ts and pass. constraints.md documents the hostname format validation rule and regex. TypeScript build is clean and all 88 route config tests pass.\""
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/server/routes/config.ts",
+          "src/server/__tests__/routes/config.test.ts",
+          "docs/agents/project-manifest/constraints.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T08:58:59Z",
+          "note": "No observations — code in the touched files is clean and consistent. The hostname validation guard in src/server/routes/config.ts follows the established pattern of early-return validation guards used throughout the handler."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-06-29T08:59:19Z",
+      "completed_at": "2026-06-29T09:01:33Z",
+      "duration_ms": 134000,
+      "summary": [
+        "Build check: TypeScript compilation passes cleanly (tsc exit 0).",
+        "AC verification: All 4 ACs confirmed met — hostname format validation guard present in config.ts lines 236–241; all four forbidden-character test cases (forward slash, backslash, null byte, whitespace) reject with HTTP 400 and error message containing '\"host\"'; valid hostname 'github.com' accepted with HTTP 200; constraints.md documents the validation rule and regex.",
+        "Regression testing: All 88 config route tests pass (node --test dist/server/__tests__/routes/config.test.js). Failures observed in the full parallel test run (src/tests/**) are pre-existing and caused by PATH mutation concurrency (documented in constraints.md); each file passes when run individually.",
+        "Edge-case stress testing: Regex /[/\\\\\\0\\s]/ validated against 11 additional cases including tab (\\t), newline (\\n), IP address, port-suffixed hostname, and multi-label subdomain — all produce expected results."
+      ],
+      "metrics": {
+        "test_coverage": "88/88 config route tests pass; 4 WP-004 hostname validation tests confirmed individually",
+        "tests_passed": 88,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T09:01:33Z",
+          "note": "The hostname format check (line 238, config.ts) tests the raw `host` value before trimming. This is intentional and correct — any whitespace in the host field (even leading/trailing) is rejected outright. The subsequent `host.trim()` for length checks and final storage is consistent with this intent."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-06-29T09:01:33Z",
+          "note": "The regex /[/\\\\\\0\\s]/ correctly catches tab and newline characters via \\s, not just space. This was confirmed via manual validation. No additional test cases are strictly required, but adding tab/newline test variants would strengthen documentation."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T09:01:33Z",
+          "note": "Port-suffixed hostnames (e.g., 'github.com:8080') and IP addresses ('192.168.1.1') pass the hostname validation regex — this is correct behavior since colons, digits, and dots are all valid. No concern here."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-06-29T09:01:56Z",
+      "completed_at": "2026-06-29T09:03:34Z",
+      "duration_ms": 98000,
+      "summary": [
+        "Reviewed 3 modified files (src/server/routes/config.ts, src/server/__tests__/routes/config.test.ts, docs/agents/project-manifest/constraints.md). 0 Critical, 0 High, 0 Medium findings. 2 Low / Info observations recorded. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T09:03:34Z",
+          "note": "A01 — Broken Access Control: No access-control layer exists on any /api/config/* endpoint (no authentication middleware, no session checks). This is a pre-existing architectural characteristic of the tool — it appears to be a local developer tool, not a multi-tenant server. The WP-004 change does not introduce or worsen this posture. No new IDOR or privilege-escalation vectors are introduced by the hostname validation guard. Info only; no action required for this WP."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T09:03:34Z",
+          "note": "A02 — Cryptographic Failures: Plaintext PATs are stored in config.json. This is a known, documented design decision (see constraints.md and config/README.md). Mitigation already in place: saveConfigField() applies chmod 600 on POSIX after every write (src/config/config.ts line 316-318), and all API responses pass tokens through buildMaskedCredentials() (showing only last 4 chars). The WP-004 change does not alter token storage or transmission. Info only."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T09:03:34Z",
+          "note": "A03 — Injection: The hostname validation guard (config.ts line 238) uses /[/\\\\\\0\\s]/.test(host) to reject forward slash, backslash, null bytes, and whitespace before the value is persisted. This directly prevents path-traversal injection via the host field. No SQL, template, or OS-command injection vectors are present in the credential routes — values are persisted as JSON and never interpolated into shell commands at this layer. All four forbidden-character cases are tested (forward slash, backslash, null byte, whitespace). PASS."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T09:03:34Z",
+          "note": "A04 — Insecure Design: The hostname format validation (reject /, \\, \\0, \\s) is applied to the raw host value before trim(), which is correct security posture — any whitespace anywhere in the field, including leading/trailing, causes an immediate 400 rejection. The subsequent host.trim() used for length checking and persistence is consistent with this intent. No logic flaws identified in the validation flow."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T09:03:34Z",
+          "note": "A05 — Security Misconfiguration: Error messages in the credential routes use static, field-name-based messages (e.g., 'Invalid field \"host\": must not contain...'). No stack traces, internal file paths, or sensitive runtime state are leaked in error responses. sendError() wraps the message in { error: string } with no additional metadata. PASS."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T09:03:34Z",
+          "note": "A07 — Identification & Authentication Failures / A09 — Security Logging: Credential mutation operations (create, update, delete) are audit-logged via errorLogManager?.append() with Severity: 'warning', Source: 'credential-audit'. The audit entries include id, label, host but deliberately never include the token value — this is explicit in the code comments (lines 310, 355). The hostname validation guard does not bypass this audit path. PASS."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T09:03:34Z",
+          "note": "No security findings — all OWASP Top 10 categories reviewed against the 3 modified files. The hostname validation guard (A03/Injection, path-traversal prevention) is correctly implemented, tested, and documented. No Critical or High issues identified. The two pre-existing architectural notes (no auth middleware on /api/config/* endpoints; plaintext token storage) are both documented design decisions outside the scope of WP-004."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-06-29T09:04:00Z",
+      "completed_at": "2026-06-29T09:05:30Z",
+      "duration_ms": 90000,
+      "summary": [
+        "Reviewed 3 implementation artifacts: src/server/routes/config.ts, src/server/__tests__/routes/config.test.ts, docs/agents/project-manifest/constraints.md.",
+        "No Blocking issues found. The hostname validation guard is correctly placed (raw host before trim), uses the right regex (/[/\\\\\\0\\s]/), returns HTTP 400 with a descriptive error, and does not regress the create/update/delete credential paths.",
+        "One Fix-Forward applied: stale JSDoc comment in registerConfigRoutes() at lines 164-166 falsely stated that host accepts any non-empty string with no format restriction — updated to accurately describe the WP-004 guard.",
+        "One Documentation-Forward tagged: the JSDoc param block for registerConfigRoutes() references only pollingManager but not errorLogManager — the Documentation agent should add the missing @param entry.",
+        "All 4 ACs verified as met. PASS verdict."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/server/routes/config.ts",
+          "src/server/__tests__/routes/config.test.ts",
+          "docs/agents/project-manifest/constraints.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-06-29T09:05:30Z",
+          "note": "Fixed stale JSDoc in registerConfigRoutes() (config.ts lines 164-166). The comment previously read: 'The host field accepts any non-empty string (no format restriction is enforced at this layer).' — this was copy-paste from pre-WP-004 code and is now factually incorrect. Updated to: 'The host field is validated to reject /, \\, null bytes, and whitespace (see WP-004 / constraints.md § Hostname Format).' Change is purely documentary; no program behaviour is altered."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-06-29T09:05:30Z",
+          "note": "[documentation-forward] The @param block of registerConfigRoutes() (config.ts, around line 168-170) lists only router, appConfig, configPath, and pollingManager. The errorLogManager option was added during the multi-credential feature work but is not described in the JSDoc. The Documentation agent should add: '@param options.errorLogManager - Optional ErrorLogManager; when provided, credential mutations (create/update/delete) are audit-logged at Severity: warning, Source: credential-audit.'"
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T09:05:30Z",
+          "note": "The validation ordering in PUT /api/config/credentials is architecturally sound: (1) body parse, (2) required string presence, (3) hostname format guard, (4) token presence, (5) optional id validation, (6) length limits. The hostname format check at step 3 correctly runs on the raw host value before trim() — this is intentional and correct (whitespace-only hosts are caught at step 2 by the trim() === '' check, while any whitespace within a non-whitespace-only host is caught at step 3). No reordering required."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T09:05:30Z",
+          "note": "Test structure for the WP-004 test block is consistent with the surrounding test suite: uses the same mockRequest/mockResponse/buildSut pattern, awaits two process.nextTick turns for the async PUT handler, and asserts both status code and error message field-name presence. The acceptance test (valid hostname → 200) correctly asserts body[0]?.host === 'github.com', confirming the value is persisted as-supplied (trimmed). No issues."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T09:05:30Z",
+          "note": "constraints.md addition (§ Hostname Format) is clear, self-contained, and cross-references the regex. The 253-character limit described in § Per-Field Length Limits is consistent with the actual code enforcement (config.ts line 262). No inconsistencies detected."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-06-29T09:05:50Z",
+      "completed_at": "2026-06-29T09:08:01Z",
+      "duration_ms": 131000,
+      "summary": [
+        "Addressed Reviewer documentation-forward: expanded the single @param options JSDoc entry on registerConfigRoutes() into per-property entries (@param options.router, .appConfig, .configPath, .pollingManager, .errorLogManager). The errorLogManager entry was entirely missing; now documents that when provided, credential mutations are audit-logged at Severity: 'warning', Source: 'credential-audit'.",
+        "Fixed stale REST API documentation: docs/agents/project-manifest/rest-api.md line 313 still described the `host` field as having 'No format restriction enforced at this layer' — directly contradicting the WP-004 implementation. Updated to accurately state that /, \\, null bytes, and whitespace are rejected with HTTP 400, with a cross-reference to constraints.md § Hostname Format.",
+        "Updated the 400 cases summary line in the same section to enumerate the hostname format rejection case explicitly.",
+        "Verified constraints.md § Hostname Format was already updated during implementation — no further changes needed.",
+        "Verified api-surface.md ConfigRoutesOptions already includes errorLogManager — no changes needed.",
+        "CTX context regenerated: .context/modules/server/architecture-routes.md and .context/project-manifest.md updated to reflect all documentation changes."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/server/routes/config.ts",
+          "docs/agents/project-manifest/rest-api.md",
+          ".context/modules/server/architecture-routes.md",
+          ".context/project-manifest.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T09:08:01Z",
+          "note": "The Reviewer's documentation-forward was specific and actionable — the exact @param text to add was provided verbatim. Applied as recommended with minor style normalization to match the per-property JSDoc pattern used elsewhere in the codebase."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T09:08:01Z",
+          "note": "The stale 'No format restriction' text in rest-api.md was not flagged by the Reviewer but was identified during gap analysis — a direct contradiction of the WP-004 implementation that any API consumer would encounter. Fixed alongside the documentation-forward."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T09:08:01Z",
+          "note": "No README.md changes required. The README only references the credentials feature at a high level ('Private repo support — per-host credential management') which remains accurate. The host validation constraint is an implementation detail appropriately documented in rest-api.md and constraints.md."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-06-29T09:08:01Z",
+  "last_updated": "2026-06-29T09:08:01Z",
+  "handoff_notes": [
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-06-29T09:01:33Z",
+      "notes": [
+        "All 4 ACs met. Hostname validation guard is at src/server/routes/config.ts lines 236–241. 88/88 config route tests pass. Build is clean. constraints.md documents the rule and regex. No blocking issues for security audit."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-06-29T09:03:34Z",
+      "notes": [
+        "All 4 ACs met. Security sign-off: PASS. 0 Critical, 0 High findings. Two pre-existing architectural notes (no auth layer on /api/config/* endpoints; plaintext token storage with chmod 600 mitigation) are documented design decisions outside WP-004 scope. Hostname validation guard at config.ts lines 236-241 is correctly implemented, tested (4 forbidden-character tests + 1 valid-hostname acceptance test), and documented in constraints.md. No remediation required — ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-06-29T09:05:30Z",
+      "notes": [
+        "PASS. One Fix-Forward applied: stale JSDoc in registerConfigRoutes() corrected to reflect the WP-004 hostname format guard. One Documentation-Forward tagged: @param entry for errorLogManager is missing from the registerConfigRoutes() JSDoc block. All 4 ACs confirmed met. No blocking issues. Ready for Documentation agent."
+      ]
+    }
+  ]
+}

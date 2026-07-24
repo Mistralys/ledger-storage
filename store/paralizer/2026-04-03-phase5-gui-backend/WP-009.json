@@ -1,0 +1,187 @@
+{
+  "work_package_id": "WP-009",
+  "work_package_file": "work/WP-009.md",
+  "status": "COMPLETE",
+  "assigned_to": "Reviewer",
+  "dependencies": [
+    "WP-001",
+    "WP-002",
+    "WP-003"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "GET /api/projects/:id/workspaces/:wid/status returns 200 with cached GitStatusInfo for all repos in the workspace",
+      "met": true
+    },
+    {
+      "criterion": "GET /api/projects/:id/workspaces/:wid/status returns 404 when the project or workspace does not exist",
+      "met": true
+    },
+    {
+      "criterion": "POST /api/projects/:id/workspaces/:wid/status/refresh triggers an immediate PollingManager.refreshWorkspace call and returns 200 with the updated status",
+      "met": true
+    },
+    {
+      "criterion": "POST /api/projects/:id/workspaces/:wid/status/refresh returns 404 when the project or workspace does not exist",
+      "met": true
+    },
+    {
+      "criterion": "Cached-status endpoints do NOT invoke any git subprocess — they read only from the in-memory cache",
+      "met": true
+    },
+    {
+      "criterion": "Both endpoints are covered by unit tests using a mock PollingManager",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-07T14:55:23Z",
+      "completed_at": "2026-04-07T14:57:19Z",
+      "duration_ms": 116000,
+      "summary": [
+        "Implemented registerStatusRoutes() in src/server/routes/status.ts with 2 route handlers: GET /api/projects/:id/workspaces/:wid/status (reads from PollingManager cache, no git I/O) and POST /api/projects/:id/workspaces/:wid/status/refresh (triggers PollingManager.refreshWorkspace then returns updated cache). Function signature takes an additional projectManager and config parameter beyond the WP spec to resolve repo paths for cache lookups. Added 10 unit tests in src/server/__tests__/routes/status.test.ts. All 495 tests pass (0 failures)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/server/routes/status.ts",
+          "src/server/__tests__/routes/status.test.ts"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 495,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:57:19Z",
+          "note": "registerStatusRoutes() accepts projectManager and config as additional parameters beyond the WP spec signature. This is required to compute absolute repo paths (pattern: projectsFolder/projectId/workspaceId/repoId) so that PollingManager.getStatus(repoPath) can be called. The PollingManager has no method to enumerate cached paths for a workspace — adding these params is the minimal-invasive solution."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-07T14:57:19Z",
+          "note": "A dedicated test ('GET status: does NOT call refreshWorkspace') verifies AC#5 (no git subprocess on GET) by asserting pm.refreshCallCount === 0 after a GET request."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-07T15:02:59Z",
+      "completed_at": "2026-04-07T15:03:49Z",
+      "duration_ms": 50000,
+      "summary": [
+        "QA passed for WP-009 (Git Status API Routes). 495/495 tests pass, 0 failures. All 6 acceptance criteria verified. 10 unit tests cover both endpoints: GET status (6 tests) and POST refresh (4 tests). MockPollingManager has refreshCallCount and getStatusCallCount tracking enabling AC5 verification ('GET does NOT call refreshWorkspace' test explicitly asserts refreshCallCount === 0). Repo path computation in tests mirrors the route implementation exactly using nodePath.join('/projects', projectId, workspaceId, repoId). Race condition test verifies 404 when refreshWorkspace throws after validation passes. Function signature extended beyond WP spec (added projectManager + config params) to resolve repo paths for PollingManager cache lookups — correct design decision noted. No regressions.\""
+      ],
+      "metrics": {
+        "tests_passed": 495,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T15:03:49Z",
+          "note": "AC5 is verified programmatically: the test 'GET status: does NOT call refreshWorkspace' asserts pm.refreshCallCount === 0 after a successful GET. This is a strong behavioral guarantee, not just a coverage claim."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T15:03:49Z",
+          "note": "Repo path computation in tests mirrors the route implementation exactly (nodePath.join('/projects', ...) vs path.join(config.projectsFolder, ...)). TEST_CONFIG.projectsFolder is set to '/projects' so both are equivalent. Deterministic path matching."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-04-07T15:03:49Z",
+          "note": "POST refresh: race condition test seeds project+workspace in managers but configures pollingManager to throw — verifies that post-validation errors from refreshWorkspace correctly return 404."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T15:03:49Z",
+          "note": "WorkspaceStatusResponse type is exported from status.ts and imported in the test, providing strong typing on response shape. Consistent with the BranchesResponse export pattern in WP-008."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-07T15:09:26Z",
+      "completed_at": "2026-04-07T15:10:21Z",
+      "duration_ms": 55000,
+      "summary": [
+        "Code review PASS for WP-009 (Git Status API Routes).",
+        "src/server/routes/status.ts: Cleanest of the five route files despite being the most architecturally interesting. No isPlainObject() needed (neither handler has a request body). Imports are minimal and precise.",
+        "Function signature design: registerStatusRoutes() accepts 5 parameters (router, pollingManager, projectManager, workspaceManager, config). The handoff note flags this as an intentional extension beyond the WP spec. The rationale is sound: PollingManager.getStatus() takes an absolute repo path, and the route handler must compute those paths from projectsFolder + projectId + workspaceId + repoId. There is no other way to perform this lookup without either (a) adding an expensive method to PollingManager to enumerate all cached paths for a workspace, or (b) passing the resolution inputs to the route handler. Option (b) is the right call. The parameter list is clear and every parameter is used.",
+        "GET handler (lines 53–87): synchronous, no body parsing. Validation sequence: project check via projectManager.getById(), workspace check via workspaceManager.getById(). Both use the same null/undefined check + try/catch pattern established in branches.ts. Cache read is a simple for-loop over project.Repositories iterating pollingManager.getStatus() — pure in-memory, no I/O. AC#5 (no git subprocess) is therefore structurally guaranteed by the implementation, not just by test assertion.",
+        "POST handler (lines 94–136): async, no body to parse (POST with no body is semantically correct here — it's a command, not a data submission). Validation mirrors GET exactly. refreshWorkspace() is awaited and its exception is mapped to 404. Post-refresh, the status map is reconstructed from cache using the same pattern as GET — good DRY adherence within the file.",
+        "POST refresh exception → 404: refreshWorkspace() can throw for project/workspace not found (post-validation race). Mapping this to 404 is correct. A git-layer failure would also map to 404 — slightly broad (500 might be more appropriate for a git failure), but the same pragmatic trade-off as in branches.ts.",
+        "Test file: the most complete of the route tests. 10 tests, 6 GET and 4 POST. MockPollingManager with call-count tracking is a notable quality improvement: refreshCallCount === 0 assertion in the GET test provides a structural behavioral guarantee for AC#5. seedCache() mirrors the exact path computation used in the implementation. TEST_CONFIG fixture with /projects root makes path assertions deterministic.",
+        "WorkspaceStatusResponse exported and imported in tests — consistent with BranchesResponse pattern in WP-008.",
+        "495/495 tests pass. All 6 ACs confirmed met."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/server/routes/status.ts",
+          "src/server/__tests__/routes/status.test.ts"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 495,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T15:10:21Z",
+          "note": "No isPlainObject() in status.ts — neither handler has a request body. This file naturally avoids the duplication observed across the other four route files. When isPlainObject() is extracted to requestUtils.ts in a future cleanup, status.ts will require no change."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T15:10:21Z",
+          "note": "POST handler maps refreshWorkspace() exceptions to 404 regardless of cause (line 124). This is consistent with branches.ts catch semantics. As with branches.ts, a git-layer failure would produce a misleading 404. The same 'extract NotFoundError' improvement applies here. Low-priority."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-07T15:10:21Z",
+          "note": "GET and POST handlers share the identical project+workspace validation block (lines 61–77 and 101–118). This duplication is inherent to the two-handler structure — there is no shared helper inside the function. Not a defect, but a future extractValidateProjectAndWorkspace() helper would reduce repetition if a third status-adjacent handler were added."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-07T15:10:21Z",
+  "last_updated": "2026-04-07T15:10:21Z",
+  "handoff_notes": [
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-07T15:03:49Z",
+      "notes": [
+        "All 6 ACs met. 495/495 tests pass. AC5 (no git I/O on GET) verified programmatically via refreshCallCount assertion. Extended function signature (projectManager + config) is noted and intentional — reviewer should confirm this is the right approach for path resolution."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-04-07T15:10:21Z",
+      "notes": [
+        "Code review PASS. All 6 ACs met, 495/495 tests green. Three low-priority observations (isPlainObject not needed, POST catch broad 404, duplicated validation block) — none block completion. This is the cleanest and best-tested of the five route files. Ready for Documentation pipeline."
+      ]
+    }
+  ]
+}

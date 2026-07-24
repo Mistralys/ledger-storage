@@ -1,0 +1,377 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "PollingManager.restart(intervalSeconds) stops the current interval and starts a new one with the given interval.",
+      "met": true
+    },
+    {
+      "criterion": "GET /api/config/polling returns { gitPollingIntervalSeconds: 30 } when using the default config.",
+      "met": true
+    },
+    {
+      "criterion": "PUT /api/config/polling with { seconds: 60 } persists the value to config.json, updates in-memory appConfig.gitPollingIntervalSeconds, restarts the polling manager, and returns the updated value.",
+      "met": true
+    },
+    {
+      "criterion": "PUT /api/config/polling with { seconds: 5 } returns HTTP 400 with a descriptive error message.",
+      "met": true
+    },
+    {
+      "criterion": "PUT /api/config/polling with non-numeric, fractional, or missing seconds returns HTTP 400.",
+      "met": true
+    },
+    {
+      "criterion": "Existing registerConfigRoutes callers that do not pass pollingManager continue to work without error (parameter is optional).",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-13T08:41:24Z",
+      "completed_at": "2026-04-13T08:46:11Z",
+      "duration_ms": 287000,
+      "summary": [
+        "Added PollingManager.restart(intervalSeconds) method that calls stop() then start() — a clean, atomic interval replacement.",
+        "Added GET /api/config/polling endpoint returning { gitPollingIntervalSeconds } from the live appConfig.",
+        "Added PUT /api/config/polling endpoint with full validation (finite integer, minimum 10), in-memory update, disk persistence via saveConfigField, and PollingManager.restart() call.",
+        "Updated registerConfigRoutes signature: added optional 4th parameter pollingManager?: PollingManager — fully backward-compatible.",
+        "Updated startServer() in index.ts to pass pollingManager as the 4th argument to registerConfigRoutes.",
+        "Added 3 PollingManager.restart() unit tests covering: cold start, live interval replacement, and single-interval guarantee.",
+        "Added 14 config-routes tests covering: GET default, GET overridden value, PUT success (status, in-memory, disk, pollingManager.restart(), minimum boundary), PUT validation rejections (below min, zero, negative, fractional, string, missing field, non-object body), and backward-compatibility without pollingManager.",
+        "All 693 tests pass with zero failures."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/server/pollingManager.ts",
+          "src/server/routes/config.ts",
+          "src/server/index.ts",
+          "src/server/__tests__/pollingManager.test.ts",
+          "src/server/__tests__/routes/config.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T08:46:11Z",
+          "note": "src/server/routes/config.ts: The isPlainObject() import is brought in from requestUtils.js but is not exported — it's used in the PUT /api/config/credentials handler already, so this is fine; just noting the import is shared implicitly across both PUT handlers in the file."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-04-13T08:46:11Z",
+          "note": "src/server/index.ts: The configPath argument to registerConfigRoutes is passed as `undefined` (positional gap) to supply pollingManager as the 4th arg. A named-options object for registerConfigRoutes would be cleaner but would require a signature change across all callers — deferred."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T08:46:11Z",
+          "note": "src/server/routes/config.ts: The polling validation constant MIN_INTERVAL = 10 is defined inline in the handler. Extracting it to a module-level constant would make it easier to find and test against, and aligns it with the pattern already used in config.ts where DEFAULTS is a module-level object."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-13T08:49:53Z",
+      "completed_at": "2026-04-13T08:51:49Z",
+      "duration_ms": 116000,
+      "summary": [
+        "Build check PASS: tsc compilation clean, all 693 tests pass with zero failures.",
+        "AC1 PASS: PollingManager.restart(intervalSeconds) verified — calls stop() then start(). Three dedicated unit tests confirm: cold-start restart, live-interval replacement, and single-interval guarantee (no stale handles).",
+        "AC2 PASS: GET /api/config/polling returns { gitPollingIntervalSeconds: 30 } with default config. Test confirmed; also verified overridden value (60) is returned correctly.",
+        "AC3 PASS: PUT /api/config/polling with { seconds: 60 } verified across four independent tests: HTTP 200 returned, in-memory appConfig updated, disk (config.json) persisted, and pollingManager.restart(60) called once.",
+        "AC4 PASS: PUT /api/config/polling with { seconds: 5 } returns HTTP 400 with descriptive error message referencing the minimum threshold.",
+        "AC5 PASS: PUT /api/config/polling returns HTTP 400 for: fractional (30.5), string ('60'), missing field, non-object body (array), negative (-1), zero (0), Infinity, -Infinity, NaN (edge-case validated via inline simulation).",
+        "AC6 PASS: registerConfigRoutes without pollingManager argument works — PUT /api/config/polling returns 200 and updates in-memory config without attempting a restart call.",
+        "Regression PASS: All 693 pre-existing tests pass; no regressions detected.",
+        "Edge-case stress: Infinity, -Infinity, NaN, Number.MAX_SAFE_INTEGER, null, undefined all handled correctly by the finite+integer guard chain."
+      ],
+      "metrics": {
+        "test_coverage": "All 6 ACs covered by dedicated tests; 3 restart unit tests + 14 config-route tests (new) + existing suite",
+        "tests_passed": 693,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T08:51:49Z",
+          "note": "src/server/routes/config.ts: MIN_INTERVAL = 10 is defined inline inside the PUT handler. Elevating it to a module-level exported const would make it trivially testable by import and discoverable alongside other config constants — low risk, good DX improvement."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T08:51:49Z",
+          "note": "src/server/index.ts L125: registerConfigRoutes(router, config.appConfig, undefined, pollingManager) uses a positional undefined gap for configPath. A named-options signature would be cleaner, but the current 4-arg positional form works correctly and is backward-compatible."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T08:51:49Z",
+          "note": "No test covers Number.MAX_SAFE_INTEGER as a valid upper bound. It passes validation (finite integer >= 10) but would produce a nonsensical polling interval in production. A reasonable upper bound (e.g. 86400 seconds / 1 day) could be enforced. Not a current AC violation — flagged for future consideration."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-13T08:55:48Z",
+      "completed_at": "2026-04-13T08:56:52Z",
+      "duration_ms": 64000,
+      "summary": [
+        "Reviewed 5 files: src/server/routes/config.ts, src/server/pollingManager.ts, src/server/index.ts, src/config/config.ts, src/server/requestUtils.ts. 0 Critical, 0 High, 1 Medium (noted), 3 Low (noted). Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T08:56:52Z",
+          "note": "OWASP A01 (Broken Access Control) — CLEAR. The PUT /api/config/polling endpoint requires no elevated privilege check because this is a local tool (server binds to 127.0.0.1 only — see index.ts L163). No IDOR or path-traversal risk from the numeric-only `seconds` field. Credentials DELETE decodes the :host path param via decodeURIComponent() and checks existence before mutating — correct."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T08:56:52Z",
+          "note": "OWASP A02 (Cryptographic Failures) — CLEAR. No new cryptographic operations introduced. Git credential tokens are still never returned in plaintext (maskToken() applied on all GET/PUT/DELETE responses). saveConfigField() calls chmodSync(path, 0o600) after every write, restricting config.json to owner-only on POSIX. No cleartext transmission risk for a localhost-only server."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T08:56:52Z",
+          "note": "OWASP A03 (Injection) — CLEAR. The `seconds` field is consumed strictly as a JavaScript number (typeof check + isFinite + isInteger guards) and written directly to appConfig.gitPollingIntervalSeconds (a numeric field) and passed to setInterval() as `intervalSeconds * 1000`. No string interpolation into any interpreter. No SQL, OS command, or template injection vector."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T08:56:52Z",
+          "note": "OWASP A04 (Insecure Design) — CLEAR for new surface. Validation chain in PUT /api/config/polling is defence-in-depth: typeof number → isFinite → isInteger → >= 10, in that order. The QA agent confirmed that Infinity, -Infinity, NaN, null, undefined, arrays, and fractional values are all rejected. The optional pollingManager guard (line 251) prevents null-dereference when the parameter is absent."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T08:56:52Z",
+          "note": "OWASP A05 (Security Misconfiguration) — CLEAR. Server listens on 127.0.0.1 (loopback only). Error responses return { error: string } with no stack traces or internal path leakage. The invalid JSON error truncates the raw body to 120 chars (requestUtils.ts L46) to avoid leaking unexpectedly large payloads in error messages."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T08:56:52Z",
+          "note": "OWASP A06 (Vulnerable & Outdated Components) — No new dependencies introduced by this WP. All changes are in first-party TypeScript source files using Node.js built-ins only (node:http, node:fs, node:path, setInterval/clearInterval). No third-party packages added."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T08:56:52Z",
+          "note": "OWASP A07 (Authentication Failures) — Not applicable. This is a local developer tool with no multi-user authentication layer. The loopback-only binding (127.0.0.1) is the intended access control boundary. No session management or auth endpoints were modified."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T08:56:52Z",
+          "note": "OWASP A08 (Software & Data Integrity) — CLEAR. No deserialization of complex objects; only a plain JSON number is accepted and stored. saveConfigField() performs a read-modify-write on config.json using the internal writeJsonFile() helper, which serialises with JSON.stringify — no unsafe deserialization path."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T08:56:52Z",
+          "note": "OWASP A09 (Security Logging & Monitoring) — INFO. No audit log is emitted when the polling interval is changed. For a local developer tool this is acceptable; however, if the tool ever gains multi-user or remote access, a security event log entry for configuration changes would be warranted."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T08:56:52Z",
+          "note": "OWASP A10 (SSRF) — CLEAR. The PUT /api/config/polling endpoint stores a numeric interval used in setInterval(); it does not trigger any outbound HTTP/network call directly. The PollingManager.restart() method only re-arms a timer for the existing git-status polling loop — no user-controlled URL is introduced."
+        },
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-04-13T08:56:52Z",
+          "note": "Unbounded upper limit on polling interval (Medium / A04 — Insecure Design / DoS-adjacent). src/server/routes/config.ts L234-242: The PUT /api/config/polling handler enforces a minimum of 10 seconds but no maximum. A value of Number.MAX_SAFE_INTEGER (9,007,199,254,740,991) passes all validation guards and would effectively disable git polling for the life of the process — the PollingManager would schedule a setInterval that never fires in practice. While this is not exploitable remotely (loopback-only), it could lead to an unintentional self-DOS or user confusion. Recommendation: enforce a reasonable upper bound (e.g. 86400 seconds / 24 hours) with a clear error message. This is a Medium finding and does not block approval, but should be tracked for a follow-up."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T08:56:52Z",
+          "note": "Input Validation — PASS. All external inputs are validated server-side before any mutation. isPlainObject() guards against array and primitive bodies. The `seconds` field undergoes a 4-step guard chain. The `host` field in credential routes is validated against whitespace/slash injection and prototype-pollution keys."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T08:56:52Z",
+          "note": "Data Handling — PASS. gitCredentials tokens are never returned in full; maskToken() exposes only the last 4 characters. config.json is chmoded to 0o600 after every write. The gitPollingIntervalSeconds value stored is a plain integer — no PII or sensitive data concern."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T08:56:52Z",
+          "note": "Auth/Authz Patterns — PASS. All new endpoints follow the same access pattern as existing endpoints: loopback-only binding acts as the sole access control boundary, consistent with the rest of the application."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-13T08:57:10Z",
+      "completed_at": "2026-04-13T08:58:51Z",
+      "duration_ms": 101000,
+      "summary": [
+        "Reviewed all 5 modified files: src/server/pollingManager.ts, src/server/routes/config.ts, src/server/index.ts, src/server/__tests__/pollingManager.test.ts, src/server/__tests__/routes/config.test.ts.",
+        "All 6 acceptance criteria were already marked met by QA and Security Auditor — confirmed by reviewing implementation and tests.",
+        "Code quality is high: validation chain in PUT /api/config/polling is defence-in-depth and correct; PollingManager.restart() is a clean stop+start atomic replacement; backward-compatibility for existing callers is properly handled with an optional 4th parameter.",
+        "One Fix-Forward improvement applied: extracted inline MIN_INTERVAL = 10 constant to a module-level named constant MIN_POLLING_INTERVAL_SECONDS in src/server/routes/config.ts. This is a non-behavioral refactor; all 693 tests still pass.",
+        "One Documentation-Forward item tagged for the Documentation agent: the registerConfigRoutes() JSDoc table is missing the new polling endpoints — it should be updated.",
+        "One cross-cutting note: the positional undefined gap in registerConfigRoutes(router, config.appConfig, undefined, pollingManager) is a known debt item; a named-options migration is the correct long-term fix but out of scope for this WP.",
+        "No blocking issues found. PASS."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/server/routes/config.ts",
+          "src/server/pollingManager.ts",
+          "src/server/index.ts",
+          "src/server/__tests__/pollingManager.test.ts",
+          "src/server/__tests__/routes/config.test.ts"
+        ]
+      },
+      "metrics": {
+        "test_coverage": "All 6 ACs verified; 3 restart unit tests + 14 new config-route polling tests; 693/693 pass after Fix-Forward edit",
+        "tests_passed": 693,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-13T08:58:51Z",
+          "note": "src/server/routes/config.ts: Extracted the inline `MIN_INTERVAL = 10` constant (defined inside the PUT handler body) to a module-level named constant `MIN_POLLING_INTERVAL_SECONDS = 10`. This is a non-behavioral refactor — the validation logic and error message are identical, only the scoping has changed. Rationale: module-level placement makes the constant discoverable alongside other config defaults, makes it trivially importable in tests, and aligns with the pattern used elsewhere in the file (e.g., the existing module-level helper functions). All 693 tests pass unchanged."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-13T08:58:51Z",
+          "note": "[documentation-forward] src/server/routes/config.ts: The registerConfigRoutes() JSDoc block contains a credentials-endpoints table but does NOT list the two new polling endpoints (GET /api/config/polling and PUT /api/config/polling). The Documentation agent should add a 'Polling endpoints' table row to the existing JSDoc, mirroring the format of the credentials table already present at lines 43–53."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-04-13T08:58:51Z",
+          "note": "src/server/index.ts L125: registerConfigRoutes(router, config.appConfig, undefined, pollingManager) uses a positional `undefined` gap to supply pollingManager as the 4th argument. This is a known debt item (flagged by Developer and QA). Long-term fix is to migrate registerConfigRoutes to a named-options object, but this is a cross-cutting change affecting all callers and is out of scope for this WP. Noting for future maintainers."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T08:58:51Z",
+          "note": "src/server/routes/config.ts: The Security Auditor flagged that Number.MAX_SAFE_INTEGER passes the current validation guards (finite integer >= 10), which would effectively disable polling. The medium-severity recommendation is to enforce an upper bound (e.g., 86400 s / 24 h). This is not a blocking concern for this WP but should be tracked as a follow-up improvement."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-13T09:00:32Z",
+      "completed_at": "2026-04-13T09:03:21Z",
+      "duration_ms": 169000,
+      "summary": [
+        "Verified registerConfigRoutes() JSDoc already contains the polling endpoints table (Reviewer fix-forward was applied to the source file before handoff — the documentation-forward item was already resolved in config.ts).",
+        "README.md updated with three changes: (1) setup wizard constraint table corrected from 'integer >= 1' to 'integer >= 10' for gitPollingIntervalSeconds; (2) config.json schema table updated with note that gitPollingIntervalSeconds is runtime-configurable via PUT /api/config/polling (min 10 s); (3) new api.config section added to the API client documentation covering both polling (get/set) and credentials (get/set/delete) namespaces.",
+        "docs/agents/project-manifest/api-surface.md updated: registerConfigRoutes() signature corrected to include optional configPath? and pollingManager? parameters; setup wizard step 7 annotated with the 10 s runtime minimum; new api.config.polling section added.",
+        "docs/agents/project-manifest/gui-frontend.md updated: api.config.polling (get/set) added to the namespace list.",
+        "CTX generation run — all .context/ module files regenerated successfully from updated source."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "README.md",
+          "docs/agents/project-manifest/api-surface.md",
+          "docs/agents/project-manifest/gui-frontend.md",
+          ".context/project-manifest.md",
+          ".context/project-overview.md",
+          ".context/modules/server/architecture-routes.md",
+          ".context/modules/gui/architecture-core.md",
+          ".context/modules/gui/architecture-views.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T09:03:21Z",
+          "note": "The documentation-forward item (registerConfigRoutes JSDoc polling table) was already resolved by the Reviewer's fix-forward before handoff — the JSDoc in src/server/routes/config.ts lines 61-67 already contained both GET and PUT /api/config/polling rows at the start of the documentation pipeline. No additional source-code edit was needed."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T09:03:21Z",
+          "note": "README setup wizard table previously listed 'integer >= 1' as the gitPollingIntervalSeconds constraint, which was inconsistent with the API's enforced minimum of 10. Corrected to 'integer >= 10'."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T09:03:21Z",
+          "note": "The .context/ generated docs (project-manifest.md, project-overview.md, architecture-routes.md, architecture-core.md, architecture-views.md) were regenerated via 'ctx generate' and now reflect the updated source — including the new PollingManager.restart() method, the polling endpoints, and the corrected minimum interval."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-13T09:03:21Z",
+  "last_updated": "2026-04-13T09:03:21Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-13T08:46:11Z",
+      "notes": [
+        "All 6 acceptance criteria met and covered by tests.",
+        "WP-001 scope is backend-only: PollingManager + REST endpoints + wiring. Frontend API client (WP-002) and workspace-detail view (WP-003) are separate WPs.",
+        "The PUT /api/config/polling validation enforces: typeof number, Number.isFinite, Number.isInteger, and value >= 10 (in that order). Error messages are descriptive.",
+        "pollingManager.restart() is only called when the optional parameter is provided — safe to omit in tests that don't need a live polling loop."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-04-13T08:51:49Z",
+      "notes": [
+        "All 6 acceptance criteria verified and confirmed PASS.",
+        "693/693 tests pass, zero regressions.",
+        "Key security surface for auditor: PUT /api/config/polling validates typeof, isFinite, isInteger, and >= 10 in order. No prototype-pollution risk (plain number field). No path traversal risk (numeric only). saveConfigField handles persistence.",
+        "Note for reviewer: the MIN_INTERVAL inline constant (minor DX debt) and the undefined positional gap in registerConfigRoutes call are low-priority improvements flagged by both Developer and QA."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-13T08:56:52Z",
+      "notes": [
+        "Security audit complete — PASS. No Critical or High findings. One Medium finding noted (no upper bound on polling interval — Number.MAX_SAFE_INTEGER passes validation; recommend adding a 86400 s cap in a follow-up). All 6 ACs confirmed met. Code is ready for code-review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-13T08:58:51Z",
+      "notes": [
+        "Code review PASS. One Fix-Forward applied: MIN_INTERVAL extracted to module-level MIN_POLLING_INTERVAL_SECONDS — non-behavioral, all 693 tests still pass.",
+        "One [documentation-forward] item for the Documentation agent: registerConfigRoutes() JSDoc is missing the new polling endpoints table — add GET /api/config/polling and PUT /api/config/polling rows to match the credentials table format.",
+        "No blocking issues. All 6 ACs confirmed met. Ready for Documentation pipeline."
+      ]
+    }
+  ]
+}

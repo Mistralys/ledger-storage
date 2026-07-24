@@ -1,0 +1,176 @@
+{
+  "work_package_id": "WP-010",
+  "work_package_file": "work/WP-010.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-006",
+    "WP-007"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "At least one test per orchestrator verifies that cloneRepository() receives a token-injected URL when credentials are configured.",
+      "met": true
+    },
+    {
+      "criterion": "At least one test per orchestrator verifies that cloneRepository() receives the original URL when no credentials match.",
+      "met": true
+    },
+    {
+      "criterion": "All new tests pass.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-10T14:48:26Z",
+      "completed_at": "2026-04-10T15:03:09Z",
+      "duration_ms": 883000,
+      "summary": [
+        "Added setupFakeGit() helper and two credential injection tests to workspace-orchestrator.test.ts: one verifying the injected token URL is passed to git when credentials are configured, and one verifying the original URL is passed when no credentials match.",
+        "Added setupFakeGit() helper and two credential injection tests to repository-orchestrator.test.ts with the same structure for addRepositoryToProject().",
+        "Repository.manager.test.ts already had comprehensive credential stripping tests from WP-007; no additions needed.",
+        "Test approach: fake git binary stub placed ahead of real git on PATH captures all argument strings, allowing reliable inspection without network access, module mocking, or reliance on git's own error message format (which strips embedded credentials on modern git/libcurl).",
+        "All 612 tests pass; tsc --noEmit reports no errors."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/tests/workspace-orchestrator.test.ts",
+          "src/tests/repository-orchestrator.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-04-10T15:03:09Z",
+          "note": "src/tests/workspace-orchestrator.test.ts and repository-orchestrator.test.ts: Modern git (2.x with libcurl) strips embedded credentials from its own error messages before writing them to stderr. This made the initially attempted approach — checking for '***@' in the stripped orchestrator error — unreliable. Switched to a fake-git binary approach: a stub shell script is prepended to PATH, capturing the exact arguments passed to git without relying on git's error output format. This is a robust, platform-consistent pattern for testing CLI argument construction without network access or module mocking."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T15:03:09Z",
+          "note": "src/tests/repository-orchestrator.test.ts: The unused WorkspaceManager import was already present in the file from earlier tests. The new credential injection tests ended up not using WorkspaceManager directly (projectManager.create() auto-creates the STABLE workspace). No action needed."
+        },
+        {
+          "type": "refactor",
+          "priority": "low",
+          "timestamp": "2026-04-10T15:03:09Z",
+          "note": "src/tests/workspace-orchestrator.test.ts + repository-orchestrator.test.ts: The setupFakeGit() helper is defined once per file (not shared). If more fake-git tests are added in future, extracting to a shared test utility (e.g., src/tests/test-helpers.ts) would reduce duplication."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-10T15:04:32Z",
+      "completed_at": "2026-04-10T15:05:11Z",
+      "duration_ms": 39000,
+      "summary": [
+        "All 3 ACs verified. 4 new credential injection tests pass (2 per orchestrator): 'passes token-injected URL to cloneRepository when credentials match' and 'passes original URL to cloneRepository when no credentials match' in both workspace-orchestrator and repository-orchestrator. The fake-git binary stub approach correctly captures git arguments without network access. Build clean, 612/612 total tests pass."
+      ],
+      "metrics": {
+        "tests_passed": 612,
+        "tests_failed": 0
+      }
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-10T15:11:58Z",
+      "completed_at": "2026-04-10T15:14:01Z",
+      "duration_ms": 123000,
+      "summary": [
+        "Code review PASS with one Fix-Forward applied.",
+        "Reviewed both test files: workspace-orchestrator.test.ts and repository-orchestrator.test.ts.",
+        "Test architecture: fake-git binary stub approach is excellent — avoids module mocking, doesn't depend on git's credential-stripping behavior, captures CLI arguments deterministically, no network access required. PATH is always restored in finally blocks.",
+        "Each test uses uniquely-prefixed temp dirs (fake-git-ws-inj-, fake-git-ws-nocr-, fake-git-ro-inj-, fake-git-ro-nocr-) — no collision risk.",
+        "Assertion quality is high: the injected-URL tests check for the token in the path; no-credentials tests assert both presence of the clean URL AND absence of the @host pattern.",
+        "Fix-Forward: removed dead workspaceManager local in the repository-orchestrator injection test — non-behavioral, cleans up dead code flagged by the Developer’s own comment.",
+        "Minor concern: setupFakeGit() is duplicated across both files. Low priority — recommend extracting to a shared test helper if a third consumer appears."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/tests/workspace-orchestrator.test.ts",
+          "src/tests/repository-orchestrator.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-10T15:14:01Z",
+          "note": "Fix-Forward applied in repository-orchestrator.test.ts, 'credentials match' injection test. Removed the unused `const workspaceManager = new WorkspaceManager(projectManager)` local variable — WorkspaceManager is not a parameter of RepositoryOrchestrator and the variable was never referenced after construction. The 'no credentials match' test immediately below was already correct (no workspaceManager). Non-behavioral: tsc --noEmit still clean, 0 test changes."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T15:14:01Z",
+          "note": "setupFakeGit() is defined identically in both workspace-orchestrator.test.ts and repository-orchestrator.test.ts. The Developer noted this as a potential refactor target (extract to src/tests/test-helpers.ts). Flagging for when the fake-git pattern is adopted by a third test file — DRY principle suggests extraction at two-plus sites of duplication."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T15:14:01Z",
+          "note": "The fake-git tests mutate process.env.PATH within a finally block, providing correct cleanup on failure. However, if Node.js ever runs these tests with sub-test concurrency across files, concurrent PATH mutations could interfere. The current sequential test runner makes this safe today. Low risk for a dev tool test suite — documenting for awareness."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-10T15:17:30Z",
+      "completed_at": "2026-04-10T15:18:20Z",
+      "duration_ms": 50000,
+      "summary": [
+        "WP-010 is test-only — no API surface, REST endpoints, or GUI changes.",
+        "Added fake-git binary stub pattern to the Test Conventions section of constraints.md: documents the pattern rationale (modern git strips embedded credentials from stderr, making module-mocking unreliable), the PATH prepend/restore contract, pointers to the reference implementations in workspace-orchestrator.test.ts and repository-orchestrator.test.ts, and a note that PATH mutation is not concurrency-safe under parallel file execution.",
+        "Ran ctx generate — all 19 CTX documents regenerated cleanly."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "docs/agents/project-manifest/constraints.md",
+          ".context/project-manifest.md",
+          ".context/project-overview.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T15:18:20Z",
+          "note": "No documentation-forward items were tagged. WP-010 is test-only with no API surface, REST endpoint, or GUI changes. The only documentation gap was the fake-git binary test pattern, which is a significant new technique not yet covered in constraints.md. Added to the Test Conventions section with: pattern rationale, the PATH mutation/restore contract, a pointer to the reference implementations, and a concurrency safety note."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-10T15:18:20Z",
+  "last_updated": "2026-04-10T15:18:20Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-10T15:03:09Z",
+      "notes": [
+        "WP-010 adds credential injection tests to both orchestrator test files using a fake git binary stub. The stub is a shell script placed in a temp directory that is prepended to PATH for the test duration — it records all git arguments to a file and exits 128, so the orchestrator thinks the clone failed. Tests verify that the captured arguments contain the injected token URL (with credentials) vs. the original URL (without credentials). 612 total tests pass, tsc --noEmit is clean."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-10T15:14:01Z",
+      "notes": [
+        "Code review PASS with one Fix-Forward applied: removed unused `workspaceManager` local in repository-orchestrator injection test. The fake-git binary approach for testing CLI argument construction is solid and well-documented. No blocking issues found. All 3 ACs met, 612/612 tests pass, tsc --noEmit clean.\""
+      ]
+    }
+  ]
+}

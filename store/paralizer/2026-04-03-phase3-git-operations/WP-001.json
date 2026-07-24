@@ -1,0 +1,184 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "GitResult, GitStatusInfo, BranchInfo, and CloneOptions types are exported from git.types.ts",
+      "met": true
+    },
+    {
+      "criterion": "runGit() spawns Git with shell: false and resolves with exit code, stdout, and stderr for both zero and non-zero exit codes",
+      "met": true
+    },
+    {
+      "criterion": "runGit() rejects the promise when the git binary is not found (ENOENT spawn error)",
+      "met": true
+    },
+    {
+      "criterion": "runGitOrThrow() returns trimmed stdout on success and throws on non-zero exit code",
+      "met": true
+    },
+    {
+      "criterion": "No shell injection is possible — shell: false is enforced and arguments are passed as an array",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-03T13:56:29Z",
+      "completed_at": "2026-04-03T13:59:02Z",
+      "duration_ms": 153000,
+      "summary": [
+        "Created src/git/git.types.ts exporting GitResult, GitStatusInfo, BranchInfo, and CloneOptions. Created src/git/git-cli.ts implementing runGit() (shell: false, resolves for all exit codes, rejects on ENOENT) and runGitOrThrow() (trims stdout, throws with diagnostic message on non-zero exit). All 180 existing tests continue to pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/git/git.types.ts",
+          "src/git/git-cli.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-03T13:59:02Z",
+          "note": "No observations — both new files are clean, focused, and consistent with the project's patterns (Node16 ESM imports, strict TypeScript, JSDoc on exported symbols)."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-03T14:00:25Z",
+      "completed_at": "2026-04-03T14:01:07Z",
+      "duration_ms": 42000,
+      "summary": [
+        "Reviewed 2 files (src/git/git.types.ts, src/git/git-cli.ts). 0 Critical, 0 High, 2 Medium (noted), 0 Low. Security sign-off: PASS. Shell injection (A03) is fully mitigated — shell: false enforced and args passed as an array. Two medium findings documented for awareness: credential exposure via args in error messages, and unbounded output buffer growth."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-04-03T14:01:07Z",
+          "note": "Medium | A02/A05 — Credential Exposure in Error Messages | src/git/git-cli.ts ~L64 | runGitOrThrow() constructs the error message via `args.join(' ')`. If a caller passes a git URL containing embedded credentials (e.g. https://user:pat@github.com/org/repo), those credentials will appear verbatim in the thrown Error.message and subsequently in any log, error-reporting service, or stack trace. Recommendation: redact credential-bearing URL segments before including args in error output, or limit the error message to the exit code and stderr only."
+        },
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-04-03T14:01:07Z",
+          "note": "Medium | A04 — Unbounded Output Buffer Growth | src/git/git-cli.ts L32-33 | stdoutChunks and stderrChunks grow without bound. A git command producing very large output (e.g. git log --all on a large repository) can exhaust process heap memory. Recommendation: impose a per-stream byte cap and reject (or truncate with a warning) when the cap is exceeded."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-03T14:01:33Z",
+      "completed_at": "2026-04-03T14:03:35Z",
+      "duration_ms": 122000,
+      "summary": [
+        "Code review PASS with one Fix-Forward applied. Both files (git.types.ts, git-cli.ts) are clean, well-architected, and correctly implement all 5 acceptance criteria. No Blocking issues found.",
+        "Fix-Forward applied: changed runGitOrThrow() error message from args.join(' ') to args[0] ?? '(unknown)' — this keeps the subcommand name (clone/log/fetch/etc.) while eliminating the credential-exposure risk the Security Auditor flagged for URLs embedded in args.",
+        "Architecture is solid: runGit() resolves for all exit codes (caller decides severity), rejects only on spawn failures, correctly uses Buffer.concat for cross-boundary UTF-8 safety. runGitOrThrow() is a clean thin wrapper with no surprises. shell: false enforced throughout."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/git/git-cli.ts",
+          "src/git/git.types.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "medium",
+          "timestamp": "2026-04-03T14:03:35Z",
+          "note": "Applied Fix-Forward: src/git/git-cli.ts L64 — changed error message from `git ${args.join(' ')} failed` to `git ${args[0] ?? '(unknown)'} failed`. Eliminates credential exposure risk (credential-bearing URLs in args) raised by Security Auditor, while preserving the subcommand name for diagnostics. Non-behavioral change — no tests assert on this error message format."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-03T14:03:35Z",
+          "note": "[documentation-forward] git-cli.ts has no corresponding test file (src/tests/git-cli.test.ts). The public surface — runGit() resolve/reject contract, null exit code fallback, and runGitOrThrow() throw shape — should be documented in a test file or in the API docs so future contributors understand the expected behavior without reading the implementation."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-03T14:03:35Z",
+          "note": "Unbounded output buffer (stdoutChunks/stderrChunks) noted by Security Auditor is a future-phase concern. Acceptable for the current foundation WP, but a per-stream byte cap should be added before commands like `git log --all` are invoked on large repositories in later phases."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-03T14:04:06Z",
+      "completed_at": "2026-04-03T14:06:02Z",
+      "duration_ms": 116000,
+      "summary": [
+        "Added '### Git CLI' section to README.md documenting the new src/git/ module introduced in WP-001. Section covers: all four exported types (GitResult, GitStatusInfo, BranchInfo, CloneOptions) with field descriptions; runGit() resolve/reject contract including null exit code fallback and Buffer.concat UTF-8 handling; runGitOrThrow() throw shape with exact error message format; and a Security sub-section explaining shell: false enforcement, typed args array, and the args[0]-only error message policy that prevents credential-bearing URL leakage. Addressed the documentation-forward item from the Reviewer: the public API contract is now documented without requiring readers to inspect the implementation."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "README.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-03T14:06:02Z",
+          "note": "Addressed documentation-forward from code-review: README.md now documents the full public API contract for runGit() and runGitOrThrow() — resolve/reject semantics, null exit code fallback, throw shape, and credential-safe error messages. No test file for git-cli.ts exists, but the public surface is now discoverable from the README without reading the implementation."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-03T14:06:02Z",
+          "note": "Security note added to the Git CLI section documenting the args[0]-only error message policy applied by the Reviewer's Fix-Forward, making the rationale visible to future contributors."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-03T14:06:02Z",
+  "last_updated": "2026-04-03T14:06:02Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-04-03T13:59:02Z",
+      "notes": [
+        "Both files are in src/git/. git.types.ts exports four interfaces; git-cli.ts exports runGit() and runGitOrThrow(). Security auditor should confirm shell: false is enforced and no string interpolation into args occurs. All 180 pre-existing tests pass — no regressions."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-03T14:01:07Z",
+      "notes": [
+        "WP-001 security audit PASS. Two medium findings documented (credential exposure in error messages, unbounded output buffer) — neither blocks approval. Core shell injection concern fully resolved via shell: false + array args. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-03T14:03:35Z",
+      "notes": [
+        "WP-001 code-review PASS. One Fix-Forward applied: error message in runGitOrThrow() now uses args[0] only (not full args array) to avoid credential exposure. Both files are clean and well-documented. One documentation-forward comment flagged: no git-cli.test.ts exists — Documentation agent should note the public API contract for runGit() and runGitOrThrow(). Unbounded buffer concern from Security Auditor is a future-phase item, not blocking."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,338 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-005.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "errorLogManager is available in both config.ts and repositories.ts route handler scope via the updated interfaces and call sites.",
+      "met": true
+    },
+    {
+      "criterion": "Credential create, update, and delete operations produce audit log entries with Source: 'credential-audit' and appropriate Operation values (create-credential, update-credential, delete-credential).",
+      "met": true
+    },
+    {
+      "criterion": "Credential assign and clear operations produce audit log entries with Source: 'credential-audit' and Operation values (assign-credential, clear-credential).",
+      "met": true
+    },
+    {
+      "criterion": "No audit log message contains a credential token value.",
+      "met": true
+    },
+    {
+      "criterion": "All new and existing route tests pass.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-06-29T08:01:25Z",
+      "completed_at": "2026-06-29T08:06:23Z",
+      "duration_ms": 298000,
+      "summary": [
+        "Added ErrorLogManager import and optional errorLogManager field to ConfigRoutesOptions interface in config.ts",
+        "Added optional errorLogManager parameter to registerRepositoryRoutes() in repositories.ts",
+        "Updated startServer() in index.ts to pass errorLogManager to both registerRepositoryRoutes() and registerConfigRoutes()",
+        "Added audit log entries (Source: 'credential-audit') for create-credential, update-credential, delete-credential operations in config.ts PUT/DELETE handlers",
+        "Added audit log entries for assign-credential and clear-credential operations in repositories.ts PUT credential handler",
+        "Audit messages include id, label, host but never the token value",
+        "Added MockErrorLogManager test helper and audit log assertions to both config.test.ts and repositories.test.ts",
+        "All 105 server route tests pass with 0 failures"
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/server/routes/config.ts",
+          "src/server/routes/repositories.ts",
+          "src/server/index.ts",
+          "src/server/__tests__/routes/config.test.ts",
+          "src/server/__tests__/routes/repositories.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T08:06:23Z",
+          "note": "The DELETE /api/config/credentials/:id handler is synchronous (not async), which differs from PUT. This is by design since there is no request body to parse, but the asymmetry could trip up future maintainers. A comment in the handler already notes this."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-06-29T08:07:16Z",
+      "completed_at": "2026-06-29T08:10:19Z",
+      "duration_ms": 183000,
+      "summary": [
+        "Build passes cleanly (tsc, exit 0).",
+        "AC1 PASS: errorLogManager wired as optional param in ConfigRoutesOptions.errorLogManager (config.ts:114), registerRepositoryRoutes 4th arg (repositories.ts:39), and both call sites in startServer() (index.ts:135, 140).",
+        "AC2 PASS: PUT /api/config/credentials emits Source:'credential-audit' with Operation 'create-credential' (new entry) or 'update-credential' (existing id match). DELETE /api/config/credentials/:id emits Operation 'delete-credential'. Verified in config.ts:287–293 and 332–338.",
+        "AC3 PASS: PUT /api/repositories/:id/credential emits Operation 'assign-credential' (credentialId string) or 'clear-credential' (credentialId null) via repositories.ts:291–300.",
+        "AC4 PASS: Code review confirms audit messages include only id, label, host — the token field (savedEntry.token / deletedEntry.token) is never referenced in any append() call. Token absence test also passes in the automated suite.",
+        "AC5 PASS: 902 tests, 0 failures. Specific audit log tests confirmed: config.test.ts covers create/update/delete operations and token-absence check; repositories.test.ts covers assign and clear operations.",
+        "Edge-case analysis: Audit only fires on successful paths (all early-return 400/404 guards precede the append() calls). Optional chaining (errorLogManager?.append) ensures no crash when manager is omitted — backward compat maintained. assign-credential Context includes RepositoryId; create/update/delete use empty Context{} — both valid under ErrorLogContext (all fields optional)."
+      ],
+      "metrics": {
+        "tests_passed": 902,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T08:10:19Z",
+          "note": "No test covers the 'no errorLogManager' backward-compat path for the credential routes specifically — the existing 'works without pollingManager' test only checks pollingManager absence. The optional-chaining (?.) syntax makes runtime safety self-evident, but an explicit test would be defensive. Not a blocker."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T08:10:19Z",
+          "note": "create/update/delete audit entries use Context:{} (empty object) while assign/clear entries correctly pass Context:{RepositoryId:id}. Consider adding ProjectId context to create/update/delete entries in a future pass for richer filtering in the error log GUI."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T08:10:19Z",
+          "note": "No code is clean and consistent across all five mutation paths. The asymmetry noted by the Developer (DELETE handler is synchronous vs async PUT) is already documented with a code comment — confirmed and accepted."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-06-29T08:10:45Z",
+      "completed_at": "2026-06-29T08:12:23Z",
+      "duration_ms": 98000,
+      "summary": [
+        "Reviewed 5 modified files (config.ts, repositories.ts, index.ts, config.test.ts, repositories.test.ts). Full OWASP Top 10 scan performed. 0 Critical, 0 High findings. 2 Medium observations recorded (audit log information-disclosure boundary and Source namespace collision risk). Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T08:12:23Z",
+          "note": "OWASP A01 (Broken Access Control) — No issues. All credential mutation endpoints operate on server-local config with no multi-tenant isolation boundary. Access control is delegated to the OS-level binding (127.0.0.1 only, index.ts:180). This is consistent with the single-user local-tool architecture. No IDOR or path traversal vectors identified."
+        },
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-06-29T08:12:23Z",
+          "note": "OWASP A02 (Cryptographic Failures) — Tokens stored in plaintext in config.json. The saveConfigField() function applies chmod 0o600 (config.ts:301) on POSIX to restrict file access to the owner, which is the appropriate mitigation for a local developer tool. On Windows, no file-permission tightening is applied (the platform check is explicit). This is a known, accepted architectural decision for this tool class. Recommend documenting the Windows gap in the security model and considering Credential Manager integration as a future improvement."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T08:12:23Z",
+          "note": "OWASP A02 (Token masking) — maskToken() (config.ts:29-31) exposes the last 4 characters of the token. For tokens shorter than 4 characters the full token is masked ('****'). For longer tokens, '****' + last-4 is returned. This leaks the tail of short tokens (e.g. 5-char token 'abcde' → '****e'). For PATs this is generally acceptable; however, if very short tokens are supported, even a single revealed character could aid brute-force. Low risk in practice but worth noting."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T08:12:23Z",
+          "note": "OWASP A03 (Injection) — No injection vectors found. All user-controlled strings (label, host, token, id, credentialId) are validated as non-empty strings and stored as-is in JSON (handled by JSON.stringify in writeJsonFile). Token injection into git URLs uses WHATWG URL property assignment (git-credentials.ts:79), which auto-encodes special characters — URL injection is not possible. Credential IDs go through toKebabCase() before auto-generation and are stored/compared by exact match."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T08:12:23Z",
+          "note": "OWASP A04 (Insecure Design) — No unsafe defaults. errorLogManager is optional (defensive optional chaining ?.append) to preserve backward compatibility. Audit log fires only after successful persistence — there is no TOCTOU window between the credential operation and the audit entry. The ordering (persist → audit) is correct: a failed write will throw before audit, preventing ghost audit entries for failed operations."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T08:12:23Z",
+          "note": "OWASP A05 (Security Misconfiguration) — Server binds to 127.0.0.1 only (index.ts:180), not 0.0.0.0. No CORS headers are emitted. Error responses return user-friendly messages without stack traces (sendError passes err.message for user-originated parse errors, but 500 paths return a generic 'Internal server error.' string). No verbose internals leak identified."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T08:12:23Z",
+          "note": "OWASP A06 (Vulnerable & Outdated Components) — No new third-party dependencies were introduced by this WP. All changes are internal route handler additions using existing in-tree modules (ErrorLogManager, saveConfigField, parseJsonBody, sendJson, sendError). No CVE surface added."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T08:12:23Z",
+          "note": "OWASP A07 (Identification & Authentication Failures) — This is a local single-user tool with no authentication layer; this is by design and within the tool's threat model. No session management, rate limiting, or credential storage vulnerabilities were introduced by this WP."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T08:12:23Z",
+          "note": "OWASP A08 (Software & Data Integrity) — No deserialization of untrusted data. JSON is parsed via parseJsonBody which enforces isPlainObject() before any field extraction. No prototype pollution vectors found (spread syntax used on validated plain objects only)."
+        },
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-06-29T08:12:23Z",
+          "note": "OWASP A09 (Security Logging & Monitoring Failures) — QA handoff raised three traceability questions; addressing each: (1) Source: 'credential-audit' is a custom string that does not collide with existing error-level Sources (e.g. 'GitManager', 'WorkspaceOrchestrator'). However, the Severity is set to 'warning' — if the ErrorLogManager GUI filters by Severity to separate operational errors from audit events, audit entries will appear in warning-level views alongside non-security warnings. No dedicated 'audit' Severity type exists in ErrorSeverity (error | warning). This is a medium traceability gap, not a blocking security issue. (2) errorLogManager absence in production: startServer() always instantiates ErrorLogManager (index.ts:96) and passes it to both route registrations. The optional parameter path is only reachable in test scenarios — the production code path always has the manager present. (3) Context field omission: create/update/delete entries use Context:{} while assign/clear entries use Context:{RepositoryId:id}. The ErrorLogContext interface has all fields optional, so empty Context is valid. Filtering by RepositoryId in the GUI will not surface config-level credential mutations; this is a monitoring completeness gap (not a security vulnerability). Recommend as a future improvement: add a dedicated 'audit' severity level or a flag to distinguish security audit events from operational warnings."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T08:12:23Z",
+          "note": "OWASP A10 (SSRF) — No server-side URL fetching is performed in the modified endpoints. The host field in credential entries is stored as a plain string and used only for host-matching at credential resolution time (git-credentials.ts:extractHost). The webserverUrl PUT endpoint (config.ts:460-464) blocks javascript:, data:, and vbscript: schemes. No SSRF vector introduced by this WP."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T08:12:23Z",
+          "note": "Token absence verification — Confirmed by code inspection and test coverage. The audit log append() calls in config.ts:287-293 and config.ts:332-338 reference savedEntry.id, savedEntry.label, savedEntry.host and deletedEntry.id, deletedEntry.label, deletedEntry.host — never .token. The repositories.ts:291-300 audit entries reference only the credentialId (the ID string, not the token value). The dedicated test at config.test.ts:1473-1495 confirms no token leakage via JSON serialization of the audit entry."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-06-29T08:12:45Z",
+      "completed_at": "2026-06-29T08:14:09Z",
+      "duration_ms": 84000,
+      "summary": [
+        "Reviewed all 5 modified files: config.ts, repositories.ts, index.ts, config.test.ts, repositories.test.ts.",
+        "Architecture: errorLogManager is cleanly threaded as an optional parameter at every call site. Optional chaining (?.append) is consistently applied — no crash risk when the manager is absent. Backward compatibility is fully preserved.",
+        "Audit log placement (persist → audit ordering) is correct: early-return guards precede all append() calls, and persistence is always attempted before auditing. No ghost audit entries for failed writes.",
+        "Token safety: exhaustive code inspection confirms no credential token value is referenced in any append() call across config.ts and repositories.ts. The dedicated token-absence test (config.test.ts:1473–1495) serializes the entire entry to JSON and asserts the raw token string is absent.",
+        "Test quality: MockErrorLogManager in both test files is structurally identical — a clean, minimal stub pattern. Tests cover all 5 mutation paths with Source and Operation assertions. The flushAsync() helper usage in repositories.test.ts improves tick-flushing readability over the double-nextTick pattern in config.test.ts.",
+        "One documentation-forward item recorded: the inline ternary in config.ts:292 Message construction and the pre-existing token-mask inconsistency between credential-options ('***' hardcoded) and the maskToken() helper ('****' + last-4). Neither was introduced by this WP.",
+        "No blocking issues found. No behavioral changes applied. PASS verdict."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/server/routes/config.ts",
+          "src/server/routes/repositories.ts",
+          "src/server/index.ts",
+          "src/server/__tests__/routes/config.test.ts",
+          "src/server/__tests__/routes/repositories.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T08:14:09Z",
+          "note": "config.ts:292 — The audit Message uses an inline ternary (auditOperation === 'create-credential' ? 'created' : 'updated') to derive the past-tense verb. This duplicates logic already captured in auditOperation. A future refactor could derive the verb from a small lookup map (e.g. const verb = { 'create-credential': 'created', 'update-credential': 'updated' }[auditOperation]) to make the message template uniform. Not applied as Fix-Forward because even a cosmetic message change would alter persisted audit log content."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-06-29T08:14:09Z",
+          "note": "[documentation-forward] The GET /api/repositories/:id/credential-options endpoint in repositories.ts:350 masks tokens with the hardcoded string '***' (3 asterisks), while the config.ts maskToken() helper produces '****' + last-4 chars (4 asterisks prefix). This inconsistency is pre-existing and was not introduced by this WP, but it means the two credential-listing surfaces return tokens in different masked formats. The Documentation agent should note this discrepancy in the API surface documentation and flag it as a known inconsistency pending a future cleanup pass."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T08:14:09Z",
+          "note": "config.test.ts:1420–1421 uses two sequential 'await new Promise(resolve => process.nextTick(resolve))' calls for async tick-flushing, while repositories.test.ts uses the cleaner 'await flushAsync()' helper (which appears to be a shared utility). Consider migrating config.test.ts to use flushAsync() for consistency and readability. This is a test-quality observation, not a production code concern."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T08:14:09Z",
+          "note": "The MockErrorLogManager stub is duplicated verbatim between config.test.ts:80–89 and repositories.test.ts:112–121. Both implement the same appendedEntries array and append() stub. A shared test helper module (e.g. src/server/__tests__/helpers/mock-error-log-manager.ts) would eliminate duplication and keep the stub interface in sync when ErrorLogManager evolves."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T08:14:09Z",
+          "note": "Security Auditor noted (OWASP A09) that audit entries use Severity: 'warning' because the ErrorSeverity type only supports 'error' | 'warning'. This is architecturally sound given current type constraints. The Principal Systems Architect endorses the Security Auditor's recommendation: if a dedicated 'audit' severity is added to ErrorSeverity in a future iteration, all credential-audit append() calls in config.ts and repositories.ts should be updated to use it. This would allow GUI-level filtering to cleanly separate security audit events from operational warnings without relying on Source-string filtering."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-06-29T08:14:32Z",
+      "completed_at": "2026-06-29T08:18:02Z",
+      "duration_ms": 210000,
+      "summary": [
+        "Updated docs/agents/project-manifest/api-surface.md: corrected registerRepositoryRoutes signature to include appConfig and optional errorLogManager parameters; replaced the registerConfigRoutes flat-parameter signature with the named-options ConfigRoutesOptions interface (reflecting the actual implementation), documenting configPath, pollingManager, and errorLogManager fields.",
+        "Updated docs/agents/project-manifest/rest-api.md: added audit-logging note to the Credentials section intro; added a new 'Audit log entries for credential mutations' subsection documenting the Source, Operation, Severity, Context, and Message fields; added an audit-logging callout to the PUT /api/repositories/:id/credential endpoint; added a 'Known inconsistency — token mask format' callout to the GET /api/repositories/:id/credential-options response table documenting the pre-existing '***' vs '****'+last-4 discrepancy (documentation-forward item from Reviewer).",
+        "Updated src/server/README.md: expanded the Error Log bullet to reflect that errorLogManager is now also shared with credential route handlers (config.ts, repositories.ts), and that Severity:'warning' audit entries with Source:'credential-audit' are emitted on successful credential mutations.",
+        "Delegated CTX regeneration to ctx-architect subagent: .context/project-manifest.md, .context/project-overview.md, and .context/modules/server/overview.md were all regenerated cleanly with no context.yaml configuration changes needed."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "docs/agents/project-manifest/api-surface.md",
+          "docs/agents/project-manifest/rest-api.md",
+          "src/server/README.md",
+          ".context/project-manifest.md",
+          ".context/project-overview.md",
+          ".context/modules/server/overview.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T08:18:02Z",
+          "note": "documentation-forward addressed: the token-masking inconsistency between GET /api/repositories/:id/credential-options ('***' hardcoded) and GET /api/config/credentials (maskToken() → '****'+last-4) is now documented as a known inconsistency callout in rest-api.md with a note that it will be unified in a future cleanup pass."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T08:18:02Z",
+          "note": "api-surface.md registerRepositoryRoutes was stale (missing appConfig and errorLogManager parameters). Updated to match the actual 4-parameter signature. registerConfigRoutes was also stale (documented as 4 positional params, actual implementation uses a ConfigRoutesOptions named-options bag). Corrected to reflect the interface."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-06-29T08:18:02Z",
+  "last_updated": "2026-06-29T08:18:02Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-06-29T08:06:23Z",
+      "notes": [
+        "WP-001 is fully implemented and all tests pass. The errorLogManager is now wired into both config.ts and repositories.ts routes. Audit log entries are emitted for all credential mutations with Source: 'credential-audit'. The token field is never included in audit messages — only id, label, and host. QA should verify the audit log entries appear correctly in the error log GUI view and that token absence is enforced across all mutation paths."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-06-29T08:10:19Z",
+      "notes": [
+        "All 5 AC verified and passing. Audit log entries are emitted correctly for all 5 mutation operations (create, update, delete, assign, clear). Token is never exposed in any log entry. 902/902 tests pass. The Security Auditor should pay particular attention to: (1) whether the 'credential-audit' Source string in error-log entries is distinguishable enough from error-level entries for filtering, (2) whether errorLogManager absence in production is a realistic scenario, and (3) whether the Context field omission (no ProjectId/WorkspaceId on config-level credential mutations) is acceptable from a security traceability standpoint."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-06-29T08:12:23Z",
+      "notes": [
+        "Security audit PASS — 0 Critical, 0 High findings. Two Medium observations recorded (plaintext token storage on Windows lacks file-permission tightening; audit entries use Severity:'warning' rather than a dedicated audit severity, making GUI-level filtering imprecise). All 5 AC confirmed met. The Principal Systems Architect should pay particular attention to: (1) whether adding a dedicated 'audit' severity or a Source-based filter convention should be standardized for future audit log consumers, and (2) whether the Windows chmod gap warrants a code comment or a backlog item in the README security notes."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-06-29T08:14:09Z",
+      "notes": [
+        "Code review PASS — all 5 AC confirmed met, no blocking issues found. One documentation-forward item recorded: the pre-existing token-mask inconsistency between credential-options ('***' hardcoded in repositories.ts) and the maskToken() helper ('****'+last-4 in config.ts). The Documentation agent should cover this in API surface docs. Additionally, the MockErrorLogManager stub is duplicated across config.test.ts and repositories.test.ts — worth noting as a future test-hygiene item. No files were modified during this review."
+      ]
+    },
+    {
+      "from_agent": "Documentation",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-06-29T08:18:02Z",
+      "notes": [
+        "WP-001 documentation is complete. All 5 acceptance criteria were already met before this pipeline. Three doc files updated: api-surface.md (corrected stale function signatures), rest-api.md (added audit log documentation + token-masking inconsistency callout), src/server/README.md (updated Error Log bullet). CTX context files regenerated cleanly."
+      ]
+    }
+  ]
+}

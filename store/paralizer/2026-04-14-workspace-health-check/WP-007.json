@@ -1,0 +1,249 @@
+{
+  "work_package_id": "WP-007",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001",
+    "WP-002"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "The endpoint returns { healthy: true, issues: [] } for an uninitialized workspace.",
+      "met": true
+    },
+    {
+      "criterion": "The endpoint returns a valid WorkspaceHealthReport for an initialized workspace.",
+      "met": true
+    },
+    {
+      "criterion": "The endpoint returns 404 for non-existent project or workspace IDs.",
+      "met": true
+    },
+    {
+      "criterion": "The endpoint delegates to checkWorkspaceHealth() from workspace-health.js.",
+      "met": true
+    },
+    {
+      "criterion": "All relative imports use .js extensions.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-14T21:32:26Z",
+      "completed_at": "2026-04-14T21:34:22Z",
+      "duration_ms": 116000,
+      "summary": [
+        "Added `import { checkWorkspaceHealth } from '../../orchestration/workspace-health.js';` to workspaces.ts.",
+        "Registered `GET /api/projects/:id/workspaces/:wid/health` route with a synchronous handler.",
+        "Handler returns 404 for non-existent project or workspace IDs (mirrors existing route patterns).",
+        "Handler returns `{ healthy: true, issues: [] }` for uninitialized workspaces (folder not yet on disk).",
+        "Handler delegates to `checkWorkspaceHealth(projectId, workspaceId, appConfig.projectsFolder, project.Repositories)` for initialized workspaces and sends the resulting WorkspaceHealthReport.",
+        "Updated route-table JSDoc comment to include the new endpoint.",
+        "tsc --noEmit: no errors. 699/699 tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/server/routes/workspaces.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-14T21:34:22Z",
+          "note": "The health route is a synchronous handler (no async/await), consistent with the other GET routes in this file that perform only in-memory lookups + fs.existsSync calls. This is correct since checkWorkspaceHealth() is side-effect-free and synchronous."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-14T21:34:22Z",
+          "note": "project.Repositories is typed as string[] (repository IDs), which matches what checkWorkspaceHealth expects. No normalization needed — the backend stores repo IDs as plain strings in ProjectInfo."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-14T21:34:22Z",
+          "note": "No observations beyond the above — the handler follows the established route pattern exactly (project lookup → workspace existence check → initialized guard → logic), code is clean."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-14T21:40:03Z",
+      "completed_at": "2026-04-14T21:40:45Z",
+      "duration_ms": 42000,
+      "summary": [
+        "Build check: TypeScript compiles clean (tsc --noEmit, 0 errors).",
+        "Regression: All 707 tests pass (0 failures).",
+        "AC1 PASS: !fs.existsSync(wsDir) guard at line ~356 returns {healthy:true, issues:[]} immediately for uninitialized workspaces.",
+        "AC2 PASS: checkWorkspaceHealth() result is sent directly via sendJson(res, 200, report) for initialized workspaces.",
+        "AC3 PASS: project lookup returns 404 for unknown project; workspaceManager.getById try/catch returns 404 for unknown workspace.",
+        "AC4 PASS: import at line 12 and call at line ~362 correctly delegate to checkWorkspaceHealth from workspace-health.js.",
+        "AC5 PASS: Import path uses .js extension: '../../orchestration/workspace-health.js'. All other existing imports in the file also use .js extensions.",
+        "Route table JSDoc comment updated to include the new health endpoint."
+      ],
+      "metrics": {
+        "tests_passed": 707,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-14T21:40:45Z",
+          "note": "No issues found. Handler follows the exact same pattern as existing workspace routes (project lookup → workspace existence check → initialized guard → logic). Import is clean (.js extension). workspaceFolder helper is pre-existing and reused correctly."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-14T21:42:00Z",
+      "completed_at": "2026-04-14T21:44:26Z",
+      "duration_ms": 146000,
+      "summary": [
+        "Reviewed 2 files: src/server/routes/workspaces.ts (modified) and src/orchestration/workspace-health.ts (dependency). 0 Critical, 0 High, 0 Medium findings. 2 Low/Info items noted (pre-existing patterns, not introduced by this WP). Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-14T21:44:26Z",
+          "note": "Low/Info — A05 (Security Misconfiguration): projectId and workspaceId URL params are echoed verbatim in 404 error messages (e.g., 'Project \"${projectId}\" not found.'). For a local CLI-only tool this is acceptable, but would warrant a review for a public API. Pre-existing pattern throughout this file — not introduced by the health endpoint."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-14T21:44:26Z",
+          "note": "Low/Info — A01 (Broken Access Control): The workspaceFolder() helper constructs filesystem paths from URL params without explicit path-segment sanitization (e.g., no rejection of '..' segments). In practice, the data-layer gates (projectManager.getById → undefined → 404; workspaceManager.getById → undefined → 404) prevent the filesystem path-building code from being reached with malicious IDs. The new health endpoint uses this helper identically to the pre-existing withInitialized() helper. Defense-in-depth improvement would be to add an explicit assert that resolved path starts with appConfig.projectsFolder — but this is not a new risk introduced by this WP and does not rise to Medium."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-14T21:44:26Z",
+          "note": "No new security surface introduced. All OWASP Top 10 categories reviewed: A01 — data-layer gates prevent path traversal; A02 — no crypto ops; A03 — no injection vectors (no SQL, no OS commands, no templates); A04 — read-only, side-effect-free design; A05 — error messages echo IDs (pre-existing, acceptable for local tool); A06 — no new dependencies; A07 — no auth layer changes; A08 — no deserialization of untrusted data; A09 — error logging via ErrorLogManager consistent with other routes; A10 — no URL fetching, no SSRF surface."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-14T21:48:22Z",
+      "completed_at": "2026-04-14T21:49:13Z",
+      "duration_ms": 51000,
+      "summary": [
+        "Reviewed src/server/routes/workspaces.ts. Clean PASS on all four dimensions.",
+        "Handler architecture: thin-route pattern — project lookup → workspace existence check → initialized guard → delegate to checkWorkspaceHealth(). No logic in the route handler. Correct.",
+        "Two-level 404: projectManager.getById returns undefined (no throw), workspaceManager.getById wrapped in try/catch (can throw on data-layer errors). Pattern matches all other workspace routes.",
+        "Synchronous handler is correct — checkWorkspaceHealth() is synchronous (FS probes only). No async/await needed.",
+        "rest-api.md manifest does not include the new health endpoint — Documentation-Forward (high priority) recorded for Documentation agent.",
+        "The inline route-table JSDoc in workspaces.ts was correctly updated (line 34). Manifest doc gap is the only remaining item."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/server/routes/workspaces.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-14T21:49:13Z",
+          "note": "Handler structure is textbook thin-route: project lookup → workspace existence check → initialized guard → delegate to orchestration layer. No logic leaks into the route handler. Consistent with all other GET routes in this file."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-14T21:49:13Z",
+          "note": "The try/catch wrapping workspaceManager.getById is correct — the manager can throw on data-layer errors, unlike projectManager.getById which returns undefined. Two-path 404 handling matches the established file pattern."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "high",
+          "timestamp": "2026-04-14T21:49:13Z",
+          "note": "[documentation-forward] rest-api.md is missing the new GET /api/projects/:id/workspaces/:wid/health endpoint. Add a row to the workspace routes table with: method GET, path /api/projects/:id/workspaces/:wid/health, success 200 { healthy: boolean, issues: WorkspaceHealthIssue[] }, error 404 (unknown project or workspace). Note that uninitialized workspaces return { healthy: true, issues: [] }."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-14T21:52:51Z",
+      "completed_at": "2026-04-14T21:53:25Z",
+      "duration_ms": 34000,
+      "summary": [
+        "Updated docs/agents/project-manifest/rest-api.md: added the missing GET /api/projects/:id/workspaces/:wid/health endpoint row to the Workspaces table, with full response shape, 404 error conditions, and the uninitialized-workspace special case.",
+        "Ran ctx generate — all CTX context files regenerated cleanly."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "docs/agents/project-manifest/rest-api.md",
+          ".context/modules/gui/architecture-core.md",
+          ".context/modules/gui/architecture-views.md",
+          ".context/modules/gui/architecture-components.md",
+          ".context/modules/gui/file-structure.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-14T21:53:25Z",
+          "note": "Documentation-forward addressed: added GET /api/projects/:id/workspaces/:wid/health to the Workspaces table in rest-api.md, with success 200 response shape (healthy boolean + issues array with full type details), error 404 conditions, and the uninitialized-workspace special case ({ healthy: true, issues: [] }). The inline route-table JSDoc in workspaces.ts was already up to date (updated by Developer). No other documentation gaps found."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-14T21:53:25Z",
+  "last_updated": "2026-04-14T21:53:25Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-14T21:34:22Z",
+      "notes": [
+        "WP-007 complete. File changed: src/server/routes/workspaces.ts. Added import for checkWorkspaceHealth from workspace-health.js. Added GET /api/projects/:id/workspaces/:wid/health handler. Handler: (1) 404 if project not found; (2) 404 if workspace not found; (3) returns {healthy:true,issues:[]} for uninitialized workspaces; (4) delegates to checkWorkspaceHealth() for initialized workspaces. tsc --noEmit clean, 699/699 tests pass."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-04-14T21:40:45Z",
+      "notes": [
+        "WP-007 QA PASS. File changed: src/server/routes/workspaces.ts. All 5 ACs confirmed by code inspection. TypeScript builds clean, 707/707 tests pass. Ready for security audit and code review."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-14T21:44:26Z",
+      "notes": [
+        "WP-007 security audit PASS. File reviewed: src/server/routes/workspaces.ts. 0 Critical/High/Medium findings. 2 Low/Info notes: (1) URL params echoed in error messages (pre-existing, acceptable for local tool); (2) workspaceFolder() path construction lacks explicit boundary assertion (mitigated by data-layer gates, pre-existing pattern). All 5 ACs confirmed met. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-14T21:49:13Z",
+      "notes": [
+        "WP-007 code-review PASS. File: src/server/routes/workspaces.ts. All 5 ACs confirmed. Route handler is clean thin-route following established pattern exactly. Import uses .js extension. Security Auditor confirmed no new risk. One high-priority documentation-forward: rest-api.md is missing the new health endpoint. The inline route-table JSDoc in workspaces.ts was correctly updated but the manifest doc was not. Documentation agent must add the endpoint row to rest-api.md."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,191 @@
+{
+  "work_package_id": "WP-008",
+  "work_package_file": "work/WP-008.md",
+  "status": "COMPLETE",
+  "assigned_to": "Reviewer",
+  "dependencies": [
+    "WP-002",
+    "WP-004"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "addRepositoryToProject() clones the repository into all existing workspaces and updates all VS Code workspace files.",
+      "met": true
+    },
+    {
+      "criterion": "addRepositoryToProject() returns per-workspace clone results, handling partial failures gracefully.",
+      "met": true
+    },
+    {
+      "criterion": "removeRepositoryFromProject() deletes clone folders from all workspaces and updates VS Code workspace files.",
+      "met": true
+    },
+    {
+      "criterion": "deleteRepositoryGlobally() removes the repository from all projects (data + filesystem) and then removes it from the global repository list.",
+      "met": true
+    },
+    {
+      "criterion": "All delete operations validate that paths are under projectsFolder.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "security-audit",
+    "code-review"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-07T09:59:29Z",
+      "completed_at": "2026-04-07T10:00:16Z",
+      "duration_ms": 47000,
+      "summary": [
+        "Implemented src/orchestration/repository-orchestrator.ts with addRepositoryToProject(), removeRepositoryFromProject(), and deleteRepositoryGlobally() methods. WorkspaceCloneResult and AddRepositoryResult types used by this orchestrator were added to orchestration.types.ts. All 296 existing tests pass with no regressions."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/orchestration/repository-orchestrator.ts",
+          "src/orchestration/orchestration.types.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T10:00:16Z",
+          "note": "repository-orchestrator.ts: addRepositoryToProject() calls projectManager.addRepository() before cloning — if a single workspace clone fails the data is already updated. This matches the acceptance criterion 'handle partial failures gracefully' but means rollback on total failure is not supported. This is consistent with workspace-orchestrator.ts behavior."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-04-07T10:00:16Z",
+          "note": "repository-orchestrator.ts: deleteRepositoryGlobally() iterates projectManager.list() and getById() in sequence (two reads per project). For large installations with many projects this could be slow. An in-memory scan would be more efficient. Low priority since project counts are expected to be small."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T10:00:16Z",
+          "note": "repository-orchestrator.ts: regenerateWorkspaceFile() is a private helper that accepts the project name and repository list explicitly rather than re-reading from disk. This avoids a redundant project read inside the loop in removeRepositoryFromProject() where the updatedProject is already held in memory."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-07T10:07:59Z",
+      "completed_at": "2026-04-07T10:08:51Z",
+      "duration_ms": 52000,
+      "summary": [
+        "Reviewed src/orchestration/repository-orchestrator.ts. All OWASP Top 10 categories checked. 0 Critical, 0 High. 1 Medium (addRepositoryToProject() missing explicit path-containment guard — inconsistent with removeRepositoryFromProject() which has one; risk mitigated by upstream validated IDs). 2 Low findings noted. Security sign-off: PASS.\""
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-04-07T10:08:51Z",
+          "note": "OWASP A01 — Broken Access Control | src/orchestration/repository-orchestrator.ts — addRepositoryToProject() | addRepositoryToProject() computes a clone destination via repoPath(projectId, workspaceId, repositoryId) and passes it directly to cloneRepository() without an explicit path-containment check. In contrast, the sibling method removeRepositoryFromProject() validates each clone path with path.resolve() + startsWith(resolvedProjectsFolder + path.sep) before every fs.rmSync call. The actual traversal risk is fully mitigated by upstream validation: projectId must map to a known project (kebab-case), workspaceId comes from Object.keys(project.Workspaces) (uppercase 2-6 letter identifiers from trusted store), and repositoryId is validated against the repository store. However, the asymmetry violates the defence-in-depth contract and sets a precedent for future 'write' operations to be added without guards. Recommendation: add a path.resolve() + startsWith(resolvedProjectsFolder + path.sep) check on destination before the cloneRepository() call, consistent with removeRepositoryFromProject()."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T10:08:51Z",
+          "note": "OWASP A08 — Software & Data Integrity Failures | src/git/git-clone.ts | The URL allowlist permits 'http://' and 'git://' — both plaintext, unauthenticated transports susceptible to MITM. For a local developer tool, this is an acceptable trade-off (SSH and HTTPS are preferred alternatives and also allowed). Consider adding a prominent configuration-time warning when the cloneRepository caller supplies an http:// or git:// URL, or documenting this risk in the README."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T10:08:51Z",
+          "note": "OWASP A09 — Security Logging & Monitoring Failures | src/orchestration/repository-orchestrator.ts | removeRepositoryFromProject() and deleteRepositoryGlobally() perform irreversible filesystem deletions (fs.rmSync) and data-store mutations without any audit log or operation record. Acceptable for the current CLI tool scope; should be addressed before enabling a server-mode HTTP API (phase 5+)."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T10:08:51Z",
+          "note": "Design consistency | src/orchestration/repository-orchestrator.ts — addRepositoryToProject() | The project data entry is updated (projectManager.addRepository) before cloning begins. A complete clone failure leaves data showing a repository that has no corresponding filesystem clone. This is explicitly accepted by WP-008 AC2 ('partial failures gracefully'), but the caller receives no summary of orphaned data state. A future improvement could add a 'dataUpdated: true, allClonesSucceeded: false' flag to AddRepositoryResult to allow callers to surface this distinction."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-07T10:13:42Z",
+      "completed_at": "2026-04-07T10:14:26Z",
+      "duration_ms": 44000,
+      "summary": [
+        "Reviewed src/orchestration/repository-orchestrator.ts and src/orchestration/orchestration.types.ts. All five acceptance criteria are met. Code correctly composes ProjectManager and RepositoryManager for cross-project operations. private regenerateWorkspaceFile() helper effectively reduces duplication. Path-traversal guards are present on all delete operations. addRepositoryToProject() correctly re-reads project post-addRepository() to get the confirmed workspace list. deleteRepositoryGlobally() correctly takes a pre-mutation snapshot of allProjects before iterating. Partial-failure handling is consistent with the WorkspaceOrchestrator precedent. One high-priority observation: no test file for RepositoryOrchestrator. Two medium/low observations recorded. No blocking issues. PASS."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/orchestration/repository-orchestrator.ts",
+          "src/orchestration/orchestration.types.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "high",
+          "timestamp": "2026-04-07T10:14:26Z",
+          "note": "No test file for RepositoryOrchestrator. workspace-orchestrator.test.ts and branch-orchestrator.test.ts both exist, establishing a convention of per-orchestrator test coverage. repository-orchestrator.test.ts is absent. addRepositoryToProject() has concurrent multi-workspace clone coordination and partial-failure capture logic; removeRepositoryFromProject() has per-workspace path-traversal validation and data mutation; deleteRepositoryGlobally() has cascading project iteration. All of this is meaningful control flow that warrants unit test coverage. Recommend adding repository-orchestrator.test.ts in a follow-up work package."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-04-07T10:14:26Z",
+          "note": "addRepositoryToProject() path guard asymmetry vs removeRepositoryFromProject(): removeRepositoryFromProject() validates each clone path against config.projectsFolder via path.resolve() + startsWith() before calling fs.rmSync(); addRepositoryToProject() does not perform a parallel path-containment check on the clone destination before calling cloneRepository(). The risk is mitigated by projectId, workspaceId, and repositoryId all coming from the trusted data store (validated kebab-case identifiers), but the asymmetry creates an inconsistent defence-in-depth posture. Recommend adding the same pattern used in removeRepositoryFromProject() to addRepositoryToProject() for consistency, as noted by the Security Auditor."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T10:14:26Z",
+          "note": "addRepositoryToProject() regenerates VS Code workspace files for ALL workspaces after Promise.all, including workspaces where the clone failed. This means the .code-workspace file references a folder path that does not exist on disk. This is intentional and consistent with WorkspaceOrchestrator.createWorkspace() (which explicitly notes 'VS Code does not require the folder paths to exist yet'). The design intent is documented in the JSDoc. Behaviour is correct but may be counterintuitive to future contributors."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T10:14:26Z",
+          "note": "deleteRepositoryGlobally() correctly takes a snapshot of the full project list via projectManager.list() before iterating, then calls removeRepositoryFromProject() which mutates each project. This avoids a 'modify-while-iterating' hazard. Intentional design noted as a Gold Nugget pattern worth preserving in future global-mutation operations."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-04-07T10:14:26Z",
+          "note": "[documentation-forward] addRepositoryToProject() JSDoc mentions 'The project data update is not rolled back on clone failure' but does not explain WHY this is intentional (maintaining consistency with WorkspaceOrchestrator's design and the project-wide partial-failure philosophy). Adding a sentence explaining the rationale would help future contributors understand this is a deliberate design choice, not an oversight."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-07T10:14:26Z",
+  "last_updated": "2026-04-07T10:14:26Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-04-07T10:00:16Z",
+      "notes": [
+        "repository-orchestrator.ts is complete. All three methods (addRepositoryToProject, removeRepositoryFromProject, deleteRepositoryGlobally) are implemented. Path-traversal guards are applied in removeRepositoryFromProject before each fs.rmSync call. WorkspaceCloneResult and AddRepositoryResult types were added to orchestration.types.ts (done as part of WP-006 pipeline, referenced here). All 296 tests pass."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-07T10:08:51Z",
+      "notes": [
+        "repository-orchestrator.ts passed security review. Medium finding: addRepositoryToProject() lacks the explicit path-containment guard that removeRepositoryFromProject() has before fs.rmSync — asymmetric defence-in-depth. Risk is mitigated by validated kebab-case IDs from the trusted store; no active traversal vector. 2 Low findings: plaintext http:// / git:// allowed in clone URL allowlist (acceptable for dev tool); no audit logging for destructive operations. 0 Critical/High blockers."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-04-07T10:14:26Z",
+      "notes": [
+        "repository-orchestrator.ts PASS. Three improvement observations recorded (no tests, path-guard asymmetry in addRepositoryToProject, workspace-file-for-failed-clone behavior). One documentation-forward tag for the Documentation agent. No blocking issues found. The snapshot-before-mutation pattern in deleteRepositoryGlobally() is a Gold Nugget design decision worth preserving."
+      ]
+    }
+  ]
+}

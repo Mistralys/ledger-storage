@@ -1,0 +1,329 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-002.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "`registerWorkspaceRoutes()` accepts an `ErrorLogManager` parameter (6th argument), and `index.ts` passes it.",
+      "met": true
+    },
+    {
+      "criterion": "`POST /api/projects/:id/workspaces/:wid/launch/vscode` returns 404 when the workspace does not exist.",
+      "met": true
+    },
+    {
+      "criterion": "`POST /api/projects/:id/workspaces/:wid/launch/vscode` returns 400 with `\"Workspace file does not exist. Run setup first.\"` when the `.code-workspace` file is missing from disk.",
+      "met": true
+    },
+    {
+      "criterion": "`POST /api/projects/:id/workspaces/:wid/launch/vscode` returns `200 { success: true }` when the file exists and the launch succeeds.",
+      "met": true
+    },
+    {
+      "criterion": "`POST /api/projects/:id/workspaces/:wid/launch/github-desktop/:rid` returns 404 when the workspace or project/repository is not found.",
+      "met": true
+    },
+    {
+      "criterion": "`POST /api/projects/:id/workspaces/:wid/launch/github-desktop/:rid` returns 400 with `\"Repository directory does not exist. Run setup first.\"` when the repo directory is missing.",
+      "met": true
+    },
+    {
+      "criterion": "`POST /api/projects/:id/workspaces/:wid/launch/github-desktop/:rid` returns `200 { success: true }` when the directory exists and the launch succeeds.",
+      "met": true
+    },
+    {
+      "criterion": "On launch failure, both endpoints return 500 with a descriptive error message and log an entry to the error log with `Source: 'app-launcher'` and appropriate `Operation`, `Severity: 'error'`, `Context`, and `Message` fields.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-15T09:48:38Z",
+      "completed_at": "2026-04-15T09:58:01Z",
+      "duration_ms": 563000,
+      "summary": [
+        "Added `ErrorLogManager` as 6th parameter to `registerWorkspaceRoutes()` in workspaces.ts, plus an optional 7th `launchFn` parameter (defaults to real `launchApplication`) for test injection.",
+        "Imported `ErrorLogManager` (type-only) and `launchApplication` in workspaces.ts.",
+        "Added `POST /api/projects/:id/workspaces/:wid/launch/vscode` handler: verifies workspace exists (404), checks .code-workspace file on disk (400 with exact message), launches via `launchFn('code', [filePath])`, returns 200 {success:true} on success, 500 + error log on failure.",
+        "Added `POST /api/projects/:id/workspaces/:wid/launch/github-desktop/:rid` handler: verifies workspace (404), verifies project + repo membership via ProjectManager (404), checks repo dir on disk (400 with exact message), launches via `launchFn('github', [repoDir])`, returns 200 {success:true} on success, 500 + error log on failure.",
+        "Both 500 paths log to ErrorLogManager with Source: 'app-launcher', correct Operation, Severity: 'error', Context with ProjectId/WorkspaceId (and RepositoryId for github-desktop).",
+        "Updated `index.ts` to pass `errorLogManager` as 6th arg to `registerWorkspaceRoutes()`.",
+        "Updated existing `workspaces.test.ts` and `workspaces-health.test.ts` to pass stub 6th arg — no test regressions.",
+        "Created `workspaces-launch.test.ts` with 14 new tests covering all 8 acceptance criteria scenarios. All 733 tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/server/routes/workspaces.ts",
+          "src/server/index.ts",
+          "src/server/__tests__/routes/workspaces.test.ts",
+          "src/server/__tests__/routes/workspaces-health.test.ts",
+          "src/server/__tests__/routes/workspaces-launch.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T09:58:01Z",
+          "note": "The optional 7th `launchFn` parameter on `registerWorkspaceRoutes()` is documented as 'for testing only'. A cleaner alternative would be a separate `LaunchService` interface injected at construction time, but the current approach is pragmatic and consistent with the existing codebase's style of passing flat dependencies."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-15T09:58:01Z",
+          "note": "workspaces.ts now has two different 404 patterns for the github-desktop route: WorkspaceManager throws NotFoundError for an unknown project (caught and forwarded), while ProjectManager.getById returns null (checked with an explicit if). This asymmetry is pre-existing in the codebase (see regenerate-workspace-file handler) but is worth noting for future consistency work."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-04-15T09:58:01Z",
+          "note": "src/server/routes/workspaces.ts: The workspace-existence check at the top of both new handlers is copy-pasted from existing handlers (setup, health, regenerate-workspace-file). A small private helper `verifyWorkspaceExists(res, projectId, workspaceId): boolean` would reduce this duplication across 5+ handlers."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-15T09:58:15Z",
+      "completed_at": "2026-04-15T10:00:29Z",
+      "duration_ms": 134000,
+      "summary": [
+        "Build check passed: `npm run build` (tsc) produced zero errors.",
+        "All 733 tests passed (0 failures, 0 skipped). This includes 14 new tests in workspaces-launch.test.ts that directly cover all 8 acceptance criteria.",
+        "All 8 AC explicitly verified against the implementation in workspaces.ts and corresponding test assertions.",
+        "Regression confirmed: all pre-existing 719 tests continue to pass — workspaces.test.ts and workspaces-health.test.ts were correctly updated to pass the new 6th arg stub.",
+        "Edge-case analysis completed: path traversal via repoId is blocked by `project.Repositories.includes(repoId)` combined with kebab-case ID validation at repo creation time; non-Error thrown objects are handled with fallback message in both 500 paths; concurrent launch requests are safe and by design; existsSync-on-directory edge case is benign given the use case."
+      ],
+      "metrics": {
+        "test_coverage": "All 8 AC covered by 14 dedicated tests in workspaces-launch.test.ts",
+        "tests_passed": 733,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T10:00:29Z",
+          "note": "workspaces.ts launch/vscode handler: `fs.existsSync(wsFilePath)` returns true for directories as well as files. If a directory was created at the workspace file path, the 400 guard would be bypassed and `launchFn('code', [dirPath])` would be called. This is benign (VS Code opens directories) but worth noting for completeness — consistent with other handlers in the codebase."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T10:00:29Z",
+          "note": "workspaces.ts launch/github-desktop handler: repoId path-traversal is effectively blocked by the `project.Repositories.includes(repoId)` check combined with kebab-case validation at repository creation time. No additional sanitization is needed, but a brief inline comment would aid future maintainers."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T10:00:29Z",
+          "note": "Both new handlers share a copy-pasted workspace-existence check with 5+ other handlers (setup, health, regenerate-workspace-file, etc.). This pre-existing pattern was flagged by the Developer as a refactor opportunity. Not a defect — no action required for this WP."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-15T10:00:53Z",
+      "completed_at": "2026-04-15T10:02:23Z",
+      "duration_ms": 90000,
+      "summary": [
+        "Reviewed 5 files (workspaces.ts, index.ts, app-launcher.ts, error-log.manager.ts, router.ts). All OWASP Top 10 categories evaluated. 0 Critical, 0 High findings. 2 Medium observations recorded (path traversal defence could be hardened with explicit normalisation; error message disclosure in 500 paths). Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-04-15T10:02:23Z",
+          "note": "A03/A01 — Path Traversal (defence-in-depth gap): workspaces.ts lines 403 and 462. Both new handlers construct filesystem paths by joining `appConfig.projectsFolder`, `projectId`, `workspaceId`, and (for github-desktop) `repoId` via `path.join()`. These values originate from URL parameters extracted by the router. The router's `extractParams()` captures raw URL path segments without percent-decoding or normalisation — a segment value of `..` would survive extraction. For the github-desktop handler, `project.Repositories.includes(repoId)` provides the primary guard (the repository must be in the project's allow-list), so traversal via `repoId` is effectively blocked as long as ID values are validated at creation time (confirmed by QA). For `projectId` and `workspaceId`, there is no explicit traversal check in these two new handlers; traversal is only blocked indirectly by `workspaceManager.getById()` / `projectManager.getById()` lookup failures — callers can only reach a path if the manager returns a valid record for those IDs. This layered defence is adequate for the current localhost-only threat model, but adding explicit `path.resolve()` + `startsWith(appConfig.projectsFolder)` assertions would remove all doubt and future-proof the code if the server ever moves to a networked deployment. Remediation: add a guard such as `if (!resolvedPath.startsWith(path.resolve(appConfig.projectsFolder))) { sendError(res, 400, 'Invalid path.'); return; }` after constructing `wsFilePath` (line 403) and `repoDir` (line 462)."
+        },
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-04-15T10:02:23Z",
+          "note": "A05 — Error Message Information Disclosure: workspaces.ts lines 413 and 472. On launch failure, the raw `err.message` from `launchApplication` is forwarded directly to the HTTP response body (500) AND to the error log. The launcher error messages include the executable name (e.g. `Failed to launch application \"code\": spawn code ENOENT`). In a multi-user or network-accessible environment this would disclose internal path structure. In the current threat model (localhost single-user CLI tool, server binds to 127.0.0.1 per index.ts:176) this is low practical risk, but is worth noting. Remediation: consider mapping internal error messages to a generic user-facing message (e.g. `'Failed to launch VS Code. Ensure VS Code is installed and available on PATH.'`) while preserving the full message only in the error log entry."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T10:02:23Z",
+          "note": "A09 — Security Logging Coverage: Both new handlers log errors to ErrorLogManager on 500, with well-structured fields (Source, Operation, Severity, Context including ProjectId/WorkspaceId/RepositoryId). No gaps identified. Logging is absent for 400/404 responses, consistent with the existing codebase pattern — these are client errors and do not represent security events in this context."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T10:02:23Z",
+          "note": "A07 — Authentication/Authorization: These endpoints perform no authentication or session checks — consistent with the rest of the codebase. The server binds exclusively to 127.0.0.1 (index.ts line 176), restricting access to the local machine. No auth gap introduced by the new endpoints."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T10:02:23Z",
+          "note": "A06 — Dependencies: No new third-party dependencies were introduced. The implementation uses only Node.js built-ins (`node:child_process`, `node:fs`, `node:path`) and existing internal modules. No CVE exposure added."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T10:02:23Z",
+          "note": "A08 — Software & Data Integrity / Command Injection: app-launcher.ts uses `spawn()` with `shell: false` on non-Windows platforms, which prevents shell injection via the args array. On Windows, `shell: true` is used for `.cmd` launcher compatibility — the `command` argument is a hardcoded string literal ('code' or 'github') supplied by the route handler, not user-controlled input, so shell injection is not a risk in practice."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T10:02:23Z",
+          "note": "Full OWASP Top 10 review summary: A01 (Access Control) — workspace/project membership validated before filesystem access; A02 (Crypto) — no cryptographic operations introduced; A03 (Injection) — spawn args are derived from validated IDs + config paths, not raw user input; A04 (Insecure Design) — guard ordering is correct (entity existence before disk check before launch); A05 (Misconfiguration) — stack traces not leaked, generic 500 messages used except for launcher errors (noted above); A06 (Components) — no new deps; A07 (Auth) — localhost-only server, no regression; A08 (Integrity) — no unsafe deserialization or unsigned updates; A09 (Logging) — error log entries correctly structured; A10 (SSRF) — no outbound HTTP requests; no server-side URL fetching introduced."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-15T10:02:45Z",
+      "completed_at": "2026-04-15T10:04:00Z",
+      "duration_ms": 75000,
+      "summary": [
+        "Performed line-by-line review of all 5 modified files. Both new launch handlers (POST launch/vscode, POST launch/github-desktop/:rid) are well-structured, follow existing codebase conventions precisely, and are correct against all 8 acceptance criteria. Guard ordering is correct (entity-existence → disk-check → launch → 500). Test file is excellent: minimal mock setup, isolated temp dirs, typed assertions. One Fix-Forward applied (JSDoc description on registerWorkspaceRoutes was inaccurate — now correctly names all three delegated managers). Two Documentation-Forward items tagged for the Documentation agent. No Blocking issues found. PASS."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/server/routes/workspaces.ts",
+          "src/server/index.ts",
+          "src/server/__tests__/routes/workspaces.test.ts",
+          "src/server/__tests__/routes/workspaces-health.test.ts",
+          "src/server/__tests__/routes/workspaces-launch.test.ts",
+          "src/server/app-launcher.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-15T10:04:00Z",
+          "note": "workspaces.ts line 23: Updated JSDoc description on `registerWorkspaceRoutes()` — the old text said 'All handlers delegate to the supplied WorkspaceManager' which became inaccurate after WP-002 added launch handlers that also delegate to ProjectManager and ErrorLogManager. New text: 'Handlers delegate to the supplied WorkspaceManager, ProjectManager, and (on launch failure) ErrorLogManager'. Non-behavioral — no runtime change."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-15T10:04:00Z",
+          "note": "[documentation-forward] workspaces.ts: The optional 7th `launchFn` parameter on `registerWorkspaceRoutes()` has only a brief inline comment ('for testing only'). Add a JSDoc `@param` entry explicitly marking it as test-only, documenting its signature `(command: string, args: string[]) => Promise<void>`, and noting it defaults to `launchApplication`. This prevents future callers from using it in production code."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-04-15T10:04:00Z",
+          "note": "[documentation-forward] workspaces.ts (github-desktop handler): The `project.Repositories.includes(repoId)` check that implicitly blocks path traversal via `repoId` has no comment explaining why this is sufficient. Add a brief inline comment (e.g. '// repoId is already validated against the project allow-list, preventing path traversal') to aid future maintainers — this was flagged by both QA and Security Auditor."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T10:04:00Z",
+          "note": "workspaces-launch.test.ts lines 32–36: The `process.on('exit', ...)` cleanup handler is redundant given the `after()` hook on lines 38–43 that also clears allTempDirs. Both are present in workspaces-health.test.ts as well (pre-existing pattern), so this is consistent, but the process.on('exit') guard is only needed if the after() hook fails. Harmless belt-and-suspenders pattern — no action required."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T10:04:00Z",
+          "note": "workspaces.ts: The `launchFn` 7th positional parameter is pragmatic for now but will grow awkward if more injectable dependencies are added to this function. Worth noting as a future refactor target: a named options object (e.g. `{ launchFn? }`) or a proper DI approach would scale better. Not a blocker for this WP."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-15T10:04:19Z",
+      "completed_at": "2026-04-15T10:06:26Z",
+      "duration_ms": 127000,
+      "summary": [
+        "Addressed both documentation-forward items from code review. (1) Added full @param JSDoc block for the 7th launchFn parameter on registerWorkspaceRoutes() in workspaces.ts — documents its signature, marks it as test-only, and notes it defaults to launchApplication. (2) Added inline comment before the project.Repositories.includes(repoId) check in the github-desktop handler explaining that the allow-list lookup also prevents path traversal via repoId.",
+        "Updated docs/agents/project-manifest/rest-api.md — added two new Workspaces table rows for POST launch/vscode and POST launch/github-desktop/:rid, including success codes, all error codes, error messages, error log context, and response shape.",
+        "Updated docs/agents/project-manifest/api-surface.md — corrected the registerWorkspaceRoutes() signature from the stale 4-argument form to the current 6-argument form (router, workspaceManager, workspaceOrchestrator, appConfig, projectManager, errorLogManager), with the optional 7th launchFn parameter annotated as test-only.",
+        "Ran ctx generate — all .context/ files regenerated successfully. Key diffs confirmed: project-manifest.md now contains the two new launch endpoints in the REST API section and the updated registerWorkspaceRoutes signature; architecture-routes.md reflects the @param JSDoc and the path-traversal inline comment."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/server/routes/workspaces.ts",
+          "docs/agents/project-manifest/rest-api.md",
+          "docs/agents/project-manifest/api-surface.md",
+          ".context/project-manifest.md",
+          ".context/modules/server/architecture-routes.md",
+          ".context/project-overview.md",
+          ".context/project-folder-structure.md",
+          ".context/modules/server/architecture-core.md",
+          ".context/modules/server/overview.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T10:06:26Z",
+          "note": "docs/agents/project-manifest/api-surface.md: The registerWorkspaceRoutes() signature was stale (4-arg form pre-dating WP-001 and WP-002 additions). Updated to the current 6-required + 1-optional form. Future WPs that change this signature should update this file in the same pass."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T10:06:26Z",
+          "note": "workspaces.ts @param launchFn: Added a full JSDoc block (signature, test-only marker, default note, @param/@returns). The 'For testing only' guard is now explicit in JSDoc, reducing the risk of accidental production usage. Documentation-forward item #1 addressed."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T10:06:26Z",
+          "note": "workspaces.ts github-desktop handler: Added a 3-line inline comment before project.Repositories.includes(repoId) explaining the path-traversal prevention rationale (allow-list + kebab-case creation-time validation). Flagged by both QA and Security Auditor; documentation-forward item #2 addressed."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-15T10:06:26Z",
+  "last_updated": "2026-04-15T10:06:26Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-15T09:58:01Z",
+      "notes": [
+        "\"All 8 acceptance criteria are met and verified by 14 dedicated tests in workspaces-launch.test.ts. The injectable `launchFn` parameter (7th arg, optional, defaults to real `launchApplication`) is the test seam — QA tests should use this same mechanism. The route for github-desktop does a double 404 check: first via WorkspaceManager (throws NotFoundError for unknown project), then via ProjectManager.getById (null for unknown project) + Repositories.includes (for unknown repo). The workspace file path for vscode uses the same `getWorkspaceFilePath()` helper used by the regenerate-workspace-file route.\""
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-04-15T10:00:29Z",
+      "notes": [
+        "All 8 acceptance criteria verified and met. 733/733 tests pass. Build is clean. Two new POST routes (launch/vscode, launch/github-desktop/:rid) are correctly implemented with proper 404/400/200/500 handling and ErrorLogManager integration. No security concerns beyond what is noted in comments (existsSync-on-directory is benign; repoId traversal is blocked by existing validation). Ready for Security Audit."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-15T10:02:23Z",
+      "notes": [
+        "Security audit PASS. No Critical or High findings. Two Medium observations raised (defence-in-depth path traversal hardening; error message disclosure in 500 paths) — neither blocks approval in the current localhost-only deployment context. All 8 acceptance criteria confirmed met. Ready for Code Review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-15T10:04:00Z",
+      "notes": [
+        "Code review PASS. All 8 AC confirmed met. One Fix-Forward applied: JSDoc description on registerWorkspaceRoutes() updated to accurately name all three delegated managers (non-behavioral). Two documentation-forward items for the Documentation agent: (1) add @param JSDoc for the test-only launchFn 7th parameter; (2) add inline comment in the github-desktop handler explaining why project.Repositories.includes(repoId) is sufficient for path traversal prevention. No blocking issues. Ready for Documentation."
+      ]
+    }
+  ]
+}

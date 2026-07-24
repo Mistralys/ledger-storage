@@ -1,0 +1,239 @@
+{
+  "work_package_id": "WP-008",
+  "work_package_file": "work/WP-008.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001",
+    "WP-004"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "GET /api/config/credentials returns { \"github.com\": \"****_abc1\" } (masked).",
+      "met": true
+    },
+    {
+      "criterion": "PUT /api/config/credentials with { \"host\": \"github.com\", \"token\": \"ghp_full\" } persists the entry to config.json and updates in-memory config.",
+      "met": true
+    },
+    {
+      "criterion": "DELETE /api/config/credentials/github.com removes the entry from both disk and memory.",
+      "met": true
+    },
+    {
+      "criterion": "Changes take effect immediately for subsequent clone operations (no server restart).",
+      "met": true
+    },
+    {
+      "criterion": "A token shorter than 4 characters is fully masked (e.g., \"****\").",
+      "met": true
+    },
+    {
+      "criterion": "Request validation rejects missing host or token fields with 400.",
+      "met": true
+    },
+    {
+      "criterion": "Unit tests cover all three endpoints including edge cases and validation.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-10T13:52:07Z",
+      "completed_at": "2026-04-10T13:59:38Z",
+      "duration_ms": 451000,
+      "summary": [
+        "Created `src/server/routes/config.ts` with `registerConfigRoutes(router, appConfig, configPath?)` implementing GET, PUT, and DELETE for `/api/config/credentials`.",
+        "Token masking: last 4 chars with `****` prefix; tokens < 4 chars return `****`.",
+        "PUT validates host (non-empty, no path separators/whitespace) and token (non-empty); returns 400 on failure.",
+        "DELETE returns 404 if host not found; removes the field from config if map becomes empty.",
+        "All mutations update in-memory `appConfig` and persist via `saveConfigField()`.",
+        "Wired `registerConfigRoutes` into `src/server/index.ts`.",
+        "17 new unit tests in `src/server/__tests__/routes/config.test.ts`.",
+        "Full test suite: 606 tests, 0 failures."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/server/routes/config.ts",
+          "src/server/index.ts",
+          "src/server/__tests__/routes/config.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T13:59:38Z",
+          "note": "The `host` field validation in PUT rejects path separators and whitespace (security guard against URL injection). This matches the plan's constraint but is not covered by a test for backslash separators — only forward-slash is tested. QA may want to add a backslash test."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-04-10T13:59:38Z",
+          "note": "`registerConfigRoutes` accepts an optional `configPath` for testability. The `startServer()` function in `server/index.ts` calls it without `configPath` (uses the default `getConfigPath()` from `saveConfigField`). If integration tests ever spin up a full server and want to use a custom config path, they would need to thread `configPath` through `ServerConfig` — this is deferred per the WP scope."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-10T14:02:09Z",
+      "completed_at": "2026-04-10T14:02:52Z",
+      "duration_ms": 43000,
+      "summary": [
+        "All 7 ACs verified. 17/17 config endpoint tests pass covering GET (masking, empty, short token), PUT (persist, in-memory, 400 validation), DELETE (remove, 404, disk persist). host validation regex /[\\s/\\\\]/ correctly rejects both forward-slash and backslash. In-memory AC4 verified by 'updates in-memory appConfig immediately' test. Full suite: 606/606 pass."
+      ],
+      "metrics": {
+        "tests_passed": 606,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-10T14:02:52Z",
+          "note": "host validation regex /[\\s/\\\\]/ covers both forward-slash AND backslash separators. Developer's note about backslash not being tested is partially incorrect: only the explicit TEST is missing for backslash, not the implementation. Low-priority gap."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-10T14:32:31Z",
+      "completed_at": "2026-04-10T14:34:23Z",
+      "duration_ms": 112000,
+      "summary": [
+        "Reviewed 3 files: src/server/routes/config.ts, src/server/index.ts, src/server/__tests__/routes/config.test.ts. 0 Critical, 0 High. Token masking is correct (last 4 chars, full mask for short tokens). Host validation rejects path separators and whitespace. Full token never returned in any API response. All 17 tests pass. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T14:34:23Z",
+          "note": "INFO — A03/A04 (Insecure Design): The host field validation regex /[\\s/\\\\]/ rejects path separators and whitespace but does not block reserved JavaScript property names (__proto__, constructor, prototype). In Node.js >= 18 (project requirement), bracket-notation assignment obj['__proto__'] = value on a plain object does NOT modify Object.prototype — this is V8-safe. However, defence-in-depth would suggest adding /^(__proto__|constructor|prototype)$/ to the rejection check to make the intent explicit and protect against any future JSON.parse round-trip edge cases. Low priority only."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T14:34:23Z",
+          "note": "INFO — A09: GET /api/config/credentials exposes last 4 characters of each token plus all configured hostnames. For a local-only tool this is an acceptable trade-off (direct config.json read gives full tokens). No High finding; the exposure is bounded and intentional for usability. Token masking is correctly implemented: tokens shorter than 4 chars return '****', longer return '****' + last 4 chars. Full token not present in any API response (verified by test 'full token value is never present in the response')."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T14:34:23Z",
+          "note": "No other OWASP A01–A10 issues found. PUT host validation rejects path separators and whitespace; token stored directly without transformation; in-memory mutation is immediate; persistence via saveConfigField() is correct; DELETE uses object key lookup (no filesystem exposure); all three endpoints return only masked credential data in success responses."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-10T14:38:41Z",
+      "completed_at": "2026-04-10T14:40:06Z",
+      "duration_ms": 85000,
+      "summary": [
+        "Code-review PASS. Reviewed 3 files: src/server/routes/config.ts (new), src/server/index.ts (one-line wire-up), src/server/__tests__/routes/config.test.ts (17 tests). All 7 ACs met. Token masking, host validation, in-memory mutation, and disk persistence are correctly implemented. One high-priority documentation-forward: rest-api.md needs the 3 new endpoint entries. No Fix-Forward applied, no blocking issues."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/server/routes/config.ts",
+          "src/server/index.ts",
+          "src/server/__tests__/routes/config.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T14:40:06Z",
+          "note": "maskToken() / buildMaskedCredentials() helper decomposition follows single-responsibility cleanly. isPlainObject() guard in the PUT handler correctly blocks prototype-pollution attempts before field destructuring. The gitCredentials object is cleared to undefined when the last entry is deleted — correct clean-up that keeps config.json tidy."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "high",
+          "timestamp": "2026-04-10T14:40:06Z",
+          "note": "[documentation-forward] rest-api.md must be updated with the 3 new endpoints: GET /api/config/credentials, PUT /api/config/credentials, DELETE /api/config/credentials/:host. Include method, path, request/response shape, validation rules (host rejects separators/whitespace, token non-empty), and masked-token format (****{last4})."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T14:40:06Z",
+          "note": "The DELETE handler reads `host` directly from URL params without trimming or separator validation (unlike the PUT handler which applies host.trim() and the injection-guard regex). In practice URL path params won't carry whitespace, but noting the asymmetry for consistency: if a stricter design is ever wanted, DELETE should apply the same /[\\s/\\\\]/ guard. Not blocking — current behaviour is safe."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T14:40:06Z",
+          "note": "No other observations — implementation is focused and correct. Route registration in server/index.ts is one line and consistent with all other route groups."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-10T14:43:27Z",
+      "completed_at": "2026-04-10T14:44:22Z",
+      "duration_ms": 55000,
+      "summary": [
+        "Added Credentials section to docs/agents/project-manifest/rest-api.md documenting POST GET, PUT, and DELETE endpoints for /api/config/credentials. Includes method table, validation rules, masking format, and example request/response bodies for all three endpoints. Addresses the high-priority documentation-forward from WP-008 code-review. CTX regenerated cleanly."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "docs/agents/project-manifest/rest-api.md",
+          ".context/project-overview.md",
+          ".context/project-manifest.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "high",
+          "timestamp": "2026-04-10T14:44:22Z",
+          "note": "Addressed high-priority documentation-forward from code-review: added a new Credentials section to rest-api.md documenting all 3 new endpoints (GET /api/config/credentials, PUT /api/config/credentials, DELETE /api/config/credentials/:host). Documented success/error codes, validation rules (host rejects separators and whitespace, token non-empty), token masking format (****{last4}, with full mask for tokens < 4 chars), and example request/response bodies for all three endpoints. CTX regenerated cleanly."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-10T14:44:22Z",
+  "last_updated": "2026-04-10T14:44:22Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-10T13:59:38Z",
+      "notes": [
+        "Three new endpoints registered: GET /api/config/credentials (masked), PUT /api/config/credentials (add/update), DELETE /api/config/credentials/:host (remove). All endpoints mutate the in-memory appConfig and persist via saveConfigField. QA should verify: token masking edge cases (exact 4 chars, empty credentials), persistence survives server restart (requires integration test), and the host validation rejects all injection-unsafe inputs.\""
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-10T14:34:23Z",
+      "notes": [
+        "PASS — all 7 ACs met. 17/17 config route tests pass. Token masking, host validation, in-memory mutation, and disk persistence all correct. No Critical or High findings. Ready for code-review pipeline."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-10T14:40:06Z",
+      "notes": [
+        "PASS. All 7 ACs met. No Fix-Forward applied. One high-priority documentation-forward: rest-api.md must document the 3 new /api/config/credentials endpoints. No blocking issues."
+      ]
+    }
+  ]
+}

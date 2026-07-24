@@ -1,0 +1,222 @@
+{
+  "work_package_id": "WP-007",
+  "work_package_file": "work/WP-007.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001",
+    "WP-005"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "getGitStatus() returns a complete GitStatusInfo object with all fields populated",
+      "met": true
+    },
+    {
+      "criterion": "localCommits correctly counts commits ahead of upstream; returns 0 when no upstream is configured",
+      "met": true
+    },
+    {
+      "criterion": "unfetchedCommits correctly counts commits behind remote; returns 0 when no remote tracking",
+      "met": true
+    },
+    {
+      "criterion": "modifiedFiles correctly counts files shown in git status --porcelain",
+      "met": true
+    },
+    {
+      "criterion": "lastActivity returns an ISO 8601 string for repos with commits, and null for empty repos",
+      "met": true
+    },
+    {
+      "criterion": "hasConflicts correctly detects merge conflict markers in porcelain output",
+      "met": true
+    },
+    {
+      "criterion": "fetchAndGetStatus() calls fetchRemote() before gathering status, and still returns status even if fetch fails",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-03T14:36:50Z",
+      "completed_at": "2026-04-03T14:40:52Z",
+      "duration_ms": 242000,
+      "summary": [
+        "Created src/git/git-status.ts with getGitStatus() and fetchAndGetStatus() functions.",
+        "Updated GitStatusInfo in src/git/git.types.ts to match plan spec: replaced ahead/behind/isClean/modifiedFiles(array)/untrackedFiles with currentBranch/localCommits/unfetchedCommits/modifiedFiles(number)/lastActivity/hasConflicts.",
+        "All 7 git queries run in parallel via Promise.all in getGitStatus() for performance.",
+        "fetchAndGetStatus() calls fetchRemote() via a try/catch so fetch failures are swallowed and status is always returned.",
+        "Created src/tests/git-status.test.ts with 19 tests covering all 7 acceptance criteria; all 222 suite tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/git/git.types.ts",
+          "src/git/git-status.ts",
+          "src/tests/git-status.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-04-03T14:40:52Z",
+          "note": "The original GitStatusInfo in git.types.ts (set in WP-001) defined fields (ahead, behind, isClean, modifiedFiles as string[], untrackedFiles) that directly contradict the plan spec. The WP-001 implementation deviated from the plan's type definition. This required an AC-breaking change to the type. No downstream consumers existed yet so the impact was zero, but this kind of drift between the plan spec and the implementation is a risk for future WPs — consider adding a type-audit step to QA."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-03T14:40:52Z",
+          "note": "git-status.ts runs all five git sub-commands in a single Promise.all(), which is optimal for read-only queries. However, the porcelain result is parsed twice (once for modifiedFiles count, once for hasConflicts). Extracting a shared parse step would eliminate the duplication, though it is minor."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-03T14:40:52Z",
+          "note": "CONFLICT_CODES in git-status.ts is a module-level constant Set. This is correct and efficient. Worth noting that 'both added' (AA) and 'both deleted' (DD) codes are included — these are less common but valid conflict states that some implementations miss."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-03T14:41:46Z",
+      "completed_at": "2026-04-03T14:42:56Z",
+      "duration_ms": 70000,
+      "summary": [
+        "Reviewed 3 modified files (git-status.ts, git.types.ts, git-status.test.ts) and 2 key dependencies (git-cli.ts, git-branch.ts). 0 Critical, 0 High, 0 Medium findings. 2 Low/Info observations recorded. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-03T14:42:56Z",
+          "note": "A03 (Injection) — CLEAR. git-cli.ts uses spawn('git', args, { shell: false }) on all invocations. In git-status.ts all git argument arrays are fully hardcoded; the repoPath parameter is passed exclusively as the cwd option and never interpolated into a git argument. No injection surface exists."
+        },
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-04-03T14:42:56Z",
+          "note": "A09 (Security Logging) — LOW. fetchAndGetStatus() silences fetch errors via .catch(() => undefined) (git-status.ts, fetchAndGetStatus function). If git fetch fails due to authentication rejection or network error, the failure is not logged anywhere. For a developer-tool context this is acceptable by design, but it makes auth failure diagnosis harder. Consider logging the error at debug level."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-03T14:42:56Z",
+          "note": "A01 (Broken Access Control) — LOW/INFO. getGitStatus() and fetchAndGetStatus() accept a repoPath string with no path validation (e.g. no check that the path is within expected workspace boundaries). Since repoPath is sourced from internal workspace configuration rather than direct user input, exploitation risk is minimal in current architecture. If the API surface expands to accept user-supplied paths in future, path validation should be added."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-03T14:43:30Z",
+      "completed_at": "2026-04-03T14:45:06Z",
+      "duration_ms": 96000,
+      "summary": [
+        "Code review complete — PASS with one Fix-Forward applied. git-status.ts, git.types.ts, and git-status.test.ts are well-structured, follow existing project patterns, and have thorough test coverage (19 tests, all AC met). Architecture is clean: Promise.all parallelism for read-only queries, shared porcelain parse step, correct conflict-code set, and silent fetch-failure behavior aligned with spec. One trivial non-behavioral improvement applied directly (see reviewer-applied-fix comment). No blocking issues found."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/git/git-status.ts",
+          "src/git/git.types.ts",
+          "src/tests/git-status.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-03T14:45:06Z",
+          "note": "src/git/git-status.ts — eliminated the redundant `lastActivityRaw` intermediate variable. The original two-step pattern `const lastActivityRaw = ...; const lastActivity = lastActivityRaw || null;` was consolidated into `const lastActivity = logResult.exitCode === 0 ? logResult.stdout.trim() || null : null;`. Semantically identical — the `|| null` coercion handles the edge case where exitCode is 0 but stdout is empty — but removes an unnecessary variable. Non-behavioral change."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-03T14:45:06Z",
+          "note": "src/git/git-status.ts — the JSDoc for `modifiedFiles` inside getGitStatus() says 'total lines returned by git status --porcelain'. The git.types.ts field comment is more precise ('Number of entries reported by git status --porcelain (staged, unstaged, and untracked)'). The JsDoc wording could cause a reader to conflate file count with raw line count. Minor but worth aligning."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-04-03T14:45:06Z",
+          "note": "[documentation-forward] src/tests/git-status.test.ts creates temp repos under os.tmpdir() without any cleanup (no after() hook, no process.on('exit') handler). The test suite should document whether this is intentional (relying on OS tmp cleanup) or an oversight. If intentional, add a comment near buildFixture(); if an oversight, add a cleanup step. The same pattern may apply to other test files in src/tests/."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-03T14:45:42Z",
+      "completed_at": "2026-04-03T14:47:34Z",
+      "duration_ms": 112000,
+      "summary": [
+        "Updated README.md: fixed stale GitStatusInfo type description in the Types table (was listing old WP-001 fields: branch/ahead/behind/isClean/modifiedFiles[]/untrackedFiles[]; now reflects the correct WP-007 fields: currentBranch/localCommits/unfetchedCommits/modifiedFiles/lastActivity/hasConflicts).",
+        "Added new 'Status operations (src/git/git-status.ts)' section to README.md documenting getGitStatus() and fetchAndGetStatus() with a full GitStatusInfo field table.",
+        "Fixed modifiedFiles JSDoc in git-status.ts: changed 'total lines returned by git status --porcelain' to 'total entries reported by git status --porcelain (staged, unstaged, and untracked)' — aligning with the more precise description already in git.types.ts (reviewer-forward item).",
+        "Addressed documentation-forward item: added an explanatory comment near buildFixture() in git-status.test.ts stating that no cleanup hook is intentional and consistent with the project-wide pattern across all test files."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "README.md",
+          "src/git/git-status.ts",
+          "src/tests/git-status.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-03T14:47:34Z",
+          "note": "README.md Types table — the GitStatusInfo row was still describing the original WP-001 shape (branch, ahead, behind, isClean, modifiedFiles[], untrackedFiles[]). This drift would have caused confusion for any reader relying on the README as the API reference. Updated to match the actual implementation."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-03T14:47:34Z",
+          "note": "[documentation-forward addressed] git-status.test.ts buildFixture() — reviewed all test files in src/tests/. None have an after() cleanup hook; all use mkdtempSync and rely on OS cleanup of tmpdir. This is a consistent project-wide pattern, not an oversight. Added a clarifying comment near buildFixture() in git-status.test.ts to document the intent."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-03T14:47:34Z",
+  "last_updated": "2026-04-03T14:47:34Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-04-03T14:40:52Z",
+      "notes": [
+        "WP-007 implementation complete. GitStatusInfo type was updated from the incorrect WP-001 definition to match the plan spec. The security auditor should review: (1) git-status.ts passes repoPath to runGit via git-cli.ts which uses spawn with shell:false — safe; (2) no user-controlled input reaches git-status.ts directly; (3) Promise.all() parallelism does not open any race conditions as all calls are read-only."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-03T14:42:56Z",
+      "notes": [
+        "WP-007 security audit complete — PASS. No Critical or High findings. All git subprocess calls use shell:false with hardcoded argument arrays; repoPath is cwd-only. Two low-priority observations: (1) fetch errors are silently swallowed in fetchAndGetStatus — no auth failure visibility; (2) repoPath has no boundary validation — acceptable for now given internal usage. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-03T14:45:06Z",
+      "notes": [
+        "WP-007 code review complete — PASS. One Fix-Forward applied: eliminated redundant `lastActivityRaw` intermediate variable in git-status.ts (non-behavioral). No blocking issues. One documentation-forward item: git-status.test.ts temp directory cleanup behaviour should be documented or fixed. All 7 acceptance criteria confirmed met. Ready for documentation pipeline."
+      ]
+    }
+  ]
+}

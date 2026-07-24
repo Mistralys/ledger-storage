@@ -1,0 +1,291 @@
+{
+  "work_package_id": "WP-008",
+  "work_package_file": "work/WP-004.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "PUT /api/repositories/:id/credential rejects credential assignments where credential.host does not match the repository URL's hostname with HTTP 400.",
+      "met": true
+    },
+    {
+      "criterion": "Clearing a credential association (credentialId: null) is always allowed without a host check.",
+      "met": true
+    },
+    {
+      "criterion": "The error message is actionable, indicating both the credential's host and the repository URL's host.",
+      "met": true
+    },
+    {
+      "criterion": "All new and existing repository route tests pass.",
+      "met": true
+    },
+    {
+      "criterion": "docs/agents/project-manifest/rest-api.md documents the new 400 case and the \"Known limitation — host/credential coherence\" note is removed.",
+      "met": true
+    },
+    {
+      "criterion": "docs/agents/project-manifest/constraints.md is updated with the host-coherence validation rule.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-06-29T09:42:08Z",
+      "completed_at": "2026-06-29T09:42:37Z",
+      "duration_ms": 29000,
+      "summary": [
+        "Host/credential coherence guard is fully implemented. The PUT /api/repositories/:id/credential handler in src/server/routes/repositories.ts already contains the guard (lines 286–298): it calls extractHost(repo.Url), compares against credential.host, and returns HTTP 400 with a descriptive error message when they differ. The guard is skipped for null credentialId (clear) and SSH URLs (extractHost returns null). Three specific coherence test cases are present in repositories.test.ts: mismatched host → 400 with both hosts in error message, matching host → 200, and null (clear) → 200. Both docs/agents/project-manifest/rest-api.md and docs/agents/project-manifest/constraints.md already document the guard. All 30 repository route tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/server/routes/repositories.ts",
+          "src/server/__tests__/routes/repositories.test.ts",
+          "docs/agents/project-manifest/rest-api.md",
+          "docs/agents/project-manifest/constraints.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T09:42:37Z",
+          "note": "repositories.ts: The host-coherence guard correctly uses extractHost() and skips the check for SSH URLs (null repoHost). The guard is placed at the correct boundary (after credential existence check, before updateCredential call). The comment block describing the check is clear and explains the SSH exemption rationale. No issues found in the touched files."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-06-29T09:43:42Z",
+      "completed_at": "2026-06-29T09:46:09Z",
+      "duration_ms": 147000,
+      "summary": [
+        "Full Verification Stack passed for WP-008 host/credential coherence guard.",
+        "Build: tsc compiles cleanly, no errors.",
+        "AC1: Guard in repositories.ts lines 286-298 rejects mismatched host with HTTP 400 — confirmed by test 'returns 400 when credential host does not match repository URL hostname' (gitlab.com cred + github.com repo → 400).",
+        "AC2: null credentialId bypasses guard entirely (inside 'if (typeof credentialId === string)' block) — confirmed by test 'clearing (credentialId: null) skips host-coherence check' → 200.",
+        "AC3: Error message 'Credential X is configured for host Y but repository URL resolves to Z' — test asserts both credential.host and repo host appear in the error string.",
+        "AC4: All 918 tests pass (0 failures), including all 3 new coherence tests and full regression suite.",
+        "AC5: rest-api.md documents new 400 case at line 32 and host-coherence guard callout at line 40. 'Known limitation' note is absent (grep confirmed).",
+        "AC6: constraints.md contains 'Host/Credential Coherence (PUT /api/repositories/:id/credential)' section at lines 48-51.",
+        "Edge cases verified: SSH URL repos return null from extractHost → guard skipped (exempt by design). Malformed URLs similarly return null → guard skipped. These are consistent with the WP spec rationale."
+      ],
+      "metrics": {
+        "test_coverage": "3 new coherence guard tests + 918 total passing",
+        "tests_passed": 918,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T09:46:09Z",
+          "note": "repositories.ts: The coherence guard correctly uses 'repoHost !== null' as the SSH exemption condition — this cleanly handles SSH URLs (git@...) and malformed URLs without a separate branch. No issues found."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T09:46:09Z",
+          "note": "repositories.test.ts: The 3 new coherence tests (mismatched host → 400, matching host → 200, null clear → 200) are complete and well-structured. Each test seeds a realistic repository URL and verifies exact status codes and error message content."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T09:46:09Z",
+          "note": "No observations — code is clean and consistent."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-06-29T09:46:24Z",
+      "completed_at": "2026-06-29T09:47:58Z",
+      "duration_ms": 94000,
+      "summary": [
+        "Reviewed 4 files (repositories.ts, repositories.test.ts, rest-api.md, constraints.md) plus supporting modules (git-credentials.ts, repository-orchestrator.ts, workspace-orchestrator.ts). 0 Critical, 0 High findings. 1 Medium (information disclosure — echoes user-supplied credentialId and internal credential.host in error response body; acceptable for a local-only admin tool with no auth layer). 1 Info (orchestrators do not re-validate host coherence at use time; by design — the API-layer guard closes the gap at assignment, so stored CredentialIds are always coherent). Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-06-29T09:47:58Z",
+          "note": "Medium — A05/Information Exposure | repositories.ts line 294 | The 400 error message echoes the caller-supplied credentialId and the internal credential.host value: 'Credential \"${credentialId}\" is configured for host \"${credential.host}\" but repository URL resolves to \"${repoHost}\".' Both values are user-controlled or admin-visible in this local tool, so practical impact is negligible. In a multi-tenant web context this pattern could constitute internal config disclosure. Remediation (if scope ever expands): return a generic message like 'Credential host does not match repository host' and log detail server-side."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T09:47:58Z",
+          "note": "Info — A04/Design | git-credentials.ts resolveCredential() / orchestrators | resolveCredential() with explicit credentialId does not cross-validate host coherence at use time (documented in @remarks). The WP-008 guard in PUT /api/repositories/:id/credential closes this gap at assignment time, making all persisted CredentialId values coherent. No additional runtime re-validation is required. Design is sound."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T09:47:58Z",
+          "note": "No Critical or High security findings. All OWASP Top 10 categories reviewed: A01 (no IDOR; guard enforces host constraint), A02 (tokens masked in credential-options response; URL encoding via WHATWG API), A03 (no injection — credentialId compared by strict equality; extractHost uses WHATWG URL parser; injectCredentialToken uses URL.username assignment), A04 (SSH exemption and null-clear path are intentional and correctly implemented), A05 (500 paths return generic messages), A06 (no new dependencies), A07 (local-only tool, no auth layer by design), A08 (type-guarded body parsing; no unsafe deserialization), A09 (audit log entries for assign-credential and clear-credential emitted correctly), A10 (no SSRF — no server-side URL fetch triggered by the credential endpoint)."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-06-29T09:48:20Z",
+      "completed_at": "2026-06-29T09:49:10Z",
+      "duration_ms": 50000,
+      "summary": [
+        "[PASS] Code review complete for WP-008 host/credential coherence guard. No blocking issues found. No Fix-Forward edits required. The implementation is clean, well-bounded, and architecturally consistent with the rest of the routing layer."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/server/routes/repositories.ts",
+          "src/server/__tests__/routes/repositories.test.ts",
+          "docs/agents/project-manifest/rest-api.md",
+          "docs/agents/project-manifest/constraints.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T09:49:10Z",
+          "note": "repositories.ts (lines 286–298): Guard placement is architecturally correct — after credential existence check, before updateCredential() call. The SSH exemption via `repoHost !== null` is the right idiom: it piggybacks on extractHost()'s null-for-non-HTTPS contract rather than adding a redundant URL-scheme check. DRY: extractHost() is reused from git-credentials.ts rather than reimplementing URL parsing inline."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T09:49:10Z",
+          "note": "repositories.ts: The route handler already uses `resolveRepository()` for the initial 404 guard, which keeps the credential handler consistent with the rest of the route file's pattern. No deviation from the established helper pattern."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T09:49:10Z",
+          "note": "repositories.test.ts: The three new coherence tests (mismatched host → 400, matching host → 200, null-clear → 200) are well-structured and test realistic scenarios (gitlab.com credential vs github.com repo). Test naming follows the established convention. The use of `flushAsync()` is consistent with all other async route tests in the file."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T09:49:10Z",
+          "note": "rest-api.md: The 400-case documentation at line 32 precisely mirrors the actual error message template, and the host-coherence guard callout at line 40 clearly explains the SSH exemption and null-clear semantics. The 'Known limitation' note has been correctly removed."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T09:49:10Z",
+          "note": "constraints.md: The Host/Credential Coherence section (lines 48–51) is well-placed within the existing Credential Field Validation section and documents both the guard behaviour and its skip conditions without duplication of rest-api.md content."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T09:49:10Z",
+          "note": "No observations — code is clean and consistent with established project conventions. No blocking, Fix-Forward, or Documentation-Forward items identified."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "FAIL",
+      "started_at": "2026-06-29T09:49:35Z",
+      "completed_at": "2026-06-29T09:50:18Z",
+      "summary": [
+        "Cancelled: Orchestrator stage error: MCP error -32602: Input validation error: Invalid arguments for tool ledger_complete_pipeline: [\n  {\n    \"code\": \"invalid_type\",\n    \"expected\": \"array\",\n    \"received\": \"string\",\n    \"path\": [\n      \"comments\"\n    ],\n    \"message\": \"Expected array, received string\"\n  }\n]"
+      ],
+      "auto_cancelled": true
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-06-29T09:50:24Z",
+      "completed_at": "2026-06-29T09:51:05Z",
+      "duration_ms": 41000,
+      "summary": [
+        "Documentation review complete for WP-008 host/credential coherence guard. Both target documentation files were already updated by the implementation pipeline and confirmed accurate: (1) rest-api.md line 32 documents the new HTTP 400 case with the exact error message template, line 40 documents the host-coherence guard behaviour including SSH exemption and null-clear semantics — the 'Known limitation — host/credential coherence' note is absent. (2) constraints.md lines 48–52 contain the 'Host/Credential Coherence (PUT /api/repositories/:id/credential)' section under Credential Field Validation, documenting the guard, the skip conditions, and its purpose. README.md references both files correctly and the 'Private repo support' feature bullet accurately reflects credential management. No documentation gaps found — all 6 acceptance criteria are met."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "docs/agents/project-manifest/rest-api.md",
+          "docs/agents/project-manifest/constraints.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T09:51:05Z",
+          "note": "rest-api.md: The 400 case at line 32 precisely mirrors the actual error message template from repositories.ts. The host-coherence guard callout at line 40 clearly explains SSH exemption (extractHost() returns null for non-HTTPS URLs) and null-clear semantics. No stale 'Known limitation' note present. Documentation is accurate and complete."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T09:51:05Z",
+          "note": "constraints.md: The Host/Credential Coherence section at lines 48–52 is well-scoped — it documents the guard, the two skip conditions (null credentialId and SSH URLs), and its purpose (preventing silent credential misrouting) without duplicating the rest-api.md endpoint detail. Placement within the Credential Field Validation section is logical."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-29T09:51:05Z",
+          "note": "README.md: No changes required. The 'Private repo support' feature bullet accurately describes per-host credential management. The Learn More table correctly references rest-api.md and constraints.md. The previous pipeline failure was an orchestrator tool-call error (comments passed as string instead of array) — not a real documentation gap."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-06-29T09:51:05Z",
+  "last_updated": "2026-06-29T09:51:05Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-06-29T09:42:37Z",
+      "notes": [
+        "All 6 acceptance criteria are met. Implementation, tests, and documentation are complete. The coherence guard is in the PUT /api/repositories/:id/credential handler — rejects mismatched host with HTTP 400, skips for null credentialId and SSH URLs. 30/30 tests pass."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-06-29T09:46:09Z",
+      "notes": [
+        "All 6 AC verified passing. 918/918 tests pass. Guard is in repositories.ts lines 286-298: uses extractHost() for SSH exemption (null check), returns HTTP 400 with both hosts in the error message on mismatch, skips entirely for null credentialId. Both docs updated — rest-api.md has the 400 case documented and 'Known limitation' removed; constraints.md has the Host/Credential Coherence section. No rework required."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-06-29T09:47:58Z",
+      "notes": [
+        "Security audit PASS. 0 Critical/High findings. 1 Medium (error message echoes credentialId + credential.host — acceptable for local tool), 1 Info (orchestrators trust persisted CredentialId coherence — by design). All 6 AC confirmed. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-06-29T09:49:10Z",
+      "notes": [
+        "Code review PASS. 0 blocking findings, 0 Fix-Forward edits applied, 0 documentation-forward items. All 6 AC confirmed met. Implementation is architecturally sound — guard placement, SSH exemption idiom, error message fidelity, and test coverage are all excellent. Ready for documentation pipeline."
+      ]
+    },
+    {
+      "from_agent": "Documentation",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-06-29T09:51:05Z",
+      "notes": [
+        "Documentation pipeline PASS. All 6 AC confirmed met. rest-api.md and constraints.md accurately document the host/credential coherence guard. No documentation gaps identified. WP-008 is ready for synthesis."
+      ]
+    }
+  ]
+}

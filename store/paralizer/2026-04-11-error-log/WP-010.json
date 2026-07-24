@@ -1,0 +1,244 @@
+{
+  "work_package_id": "WP-010",
+  "work_package_file": "work/WP-004.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001",
+    "WP-005",
+    "WP-007",
+    "WP-004",
+    "WP-006",
+    "WP-003"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "ErrorLogManager is instantiated once in startServer() and shared across all consumers.",
+      "met": true
+    },
+    {
+      "criterion": "registerErrorLogRoutes(router, errorLogManager) is called during route registration.",
+      "met": true
+    },
+    {
+      "criterion": "The errorLogManager reference is passed to WorkspaceOrchestrator, BranchOrchestrator, PollingManager, and Router constructor/setter calls.",
+      "met": true
+    },
+    {
+      "criterion": "The server starts successfully with the new wiring (startServer() resolves without error).",
+      "met": true
+    },
+    {
+      "criterion": "Existing tests that call startServer() / stopServer() continue to pass.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-11T09:59:17Z",
+      "completed_at": "2026-04-11T10:01:24Z",
+      "duration_ms": 127000,
+      "summary": [
+        "Imported ErrorLogManager from '../error-log/error-log.manager.js' and registerErrorLogRoutes from './routes/error-log.js' in src/server/index.ts.",
+        "Instantiated ErrorLogManager with config.appConfig immediately after workspaceManager in startServer().",
+        "Passed errorLogManager as the 5th (optional) argument to WorkspaceOrchestrator constructor.",
+        "Passed errorLogManager as the 4th (optional) argument to BranchOrchestrator constructor.",
+        "Passed errorLogManager as the 5th (optional) argument to PollingManager constructor (with undefined for fetchStatusFn to preserve default real git layer).",
+        "Called router.setErrorLogManager(errorLogManager) before route registration so the Router captures unhandled handler rejections.",
+        "Called registerErrorLogRoutes(router, errorLogManager) to expose GET/DELETE /api/error-log routes.",
+        "TypeScript compiles clean (npx tsc --noEmit, exit 0).",
+        "All 672 existing tests pass (npm test, 0 failures)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/server/index.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-11T10:01:24Z",
+          "note": "src/server/index.ts: The module-level _pollingManager reference is typed as PollingManager | null but never exposes the pollingManager to callers. If a consumer ever needs to trigger an on-demand refresh from outside the server (e.g., after a webhook event), there is currently no public handle — worth noting as a future extensibility point, but not required for current use cases."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-11T10:01:24Z",
+          "note": "src/server/index.ts: The new imports are appended at the bottom of the import block rather than grouped with the related 'routes/*' imports above. Consistent import grouping (node builtins → internal types → local modules by path depth) would improve readability. This is a cosmetic issue only; the file is functionally correct."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-11T10:01:24Z",
+          "note": "src/server/index.ts: The inline comment '// fetchStatusFn — use the default real git layer' on the undefined argument is helpful but could alternatively be made self-documenting by exposing a named constant or a factory overload on PollingManager. Minor; the comment is sufficient for now."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-11T10:05:05Z",
+      "completed_at": "2026-04-11T10:07:38Z",
+      "duration_ms": 153000,
+      "summary": [
+        "Build check: `npx tsc --noEmit` exits 0 — no TypeScript errors.",
+        "AC1 verified: `new ErrorLogManager(config.appConfig)` is called exactly once in `startServer()` (line 89 of src/server/index.ts); single instance shared to all consumers.",
+        "AC2 verified: `registerErrorLogRoutes(router, errorLogManager)` is called on line 122, after all other route groups are registered.",
+        "AC3 verified: errorLogManager is passed as 5th arg to WorkspaceOrchestrator (line 95), 4th arg to BranchOrchestrator (line 101), 5th arg to PollingManager (line 108, with `undefined` preserving fetchStatusFn default), and via `router.setErrorLogManager(errorLogManager)` (line 115). Constructor signatures in workspace-orchestrator.ts, branch-orchestrator.ts, and pollingManager.ts confirmed to accept the optional param in those exact positions.",
+        "AC4 verified: live HTTP smoke test — server started on ephemeral port, `GET /api/error-log` returned 200 `{ entries: [], total: 0 }`. `DELETE /api/error-log` returned 204. `GET /api/error-log?severity=error&limit=10&offset=0` returned 200.",
+        "AC5 verified: full test suite run — 672 tests, 0 failures, 0 skipped.",
+        "Edge-case validation: `GET /api/error-log/abc` → 400 (invalid ID format); `GET /api/error-log/0` → 400 (ID must be positive); `GET /api/error-log/999` → 404 (entry not found). All edge cases handled correctly by the route handler."
+      ],
+      "metrics": {
+        "test_coverage": "all 672 existing tests pass; error-log route smoke-tested live",
+        "tests_passed": 672,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-11T10:07:38Z",
+          "note": "src/server/index.ts: Import ordering — `registerErrorLogRoutes` and `ErrorLogManager` are appended after the existing `routes/*` block rather than grouped with peer route imports. No functional impact; cosmetic only. Previously noted by Developer."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-11T10:07:38Z",
+          "note": "src/server/index.ts: The inline `undefined` placeholder for `fetchStatusFn` (PollingManager 4th arg) is correct and safe, but a named constant or an overloaded factory would improve self-documentation. Low priority — existing inline comment is clear."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-11T10:07:38Z",
+          "note": "Live smoke test confirmed: GET /api/error-log/0 correctly returns 400 (id <= 0 guard), and GET /api/error-log/abc correctly returns 400 (non-numeric guard). Both edge cases handled without server crash or unhandled rejection."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-11T10:11:42Z",
+      "completed_at": "2026-04-11T10:12:48Z",
+      "duration_ms": 66000,
+      "summary": [
+        "Reviewed src/server/index.ts line-by-line against all four review dimensions (maintainability, best practices, performance, future context). Wiring is correct and coherent: ErrorLogManager is instantiated once and shared to all four consumers (WorkspaceOrchestrator, BranchOrchestrator, PollingManager, Router) with the correct argument positions confirmed against each constructor signature. Route registration order is sensible. The promise-based startServer()/stopServer() lifecycle is clean and the module-level state pattern is documented with a clear test-author warning. One Fix-Forward applied: moved the ErrorLogManager import from the bottom of the import block to its natural position among the other '../' imports, grouped by path depth. TypeScript compile confirmed clean (exit 0) after the fix. No blocking issues found."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/server/index.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-11T10:12:48Z",
+          "note": "Moved `import { ErrorLogManager } from '../error-log/error-log.manager.js'` from line 20 (appended after all routes/* imports) to line 9 (grouped with other '../' internal imports, immediately after BranchOrchestrator). Import block now follows a consistent grouping: node builtins → '../config' → '../models' → '../orchestration' → '../error-log' → local './server' modules → local './routes' modules. Purely cosmetic; no behavioral change. TypeScript compile confirmed clean post-fix."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-11T10:12:48Z",
+          "note": "src/server/index.ts: The `undefined` placeholder for `fetchStatusFn` in the PollingManager constructor call (line 107) is correct and safe, but worth noting as a documentation-forward item — callers unfamiliar with the PollingManager API may not immediately understand why a positional `undefined` is needed. The inline comment mitigates this well for now."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-11T10:12:48Z",
+          "note": "[documentation-forward] The JSDoc on `startServer()` documents the `EADDRINUSE` rejection path and the 'already running' throw, but does not mention that an `ErrorLogManager` is created and wired internally. A one-line addition ('Internally creates an `ErrorLogManager` shared across all subsystems; no external reference is returned.') would help future callers understand the error-log lifecycle without reading the implementation."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-11T10:12:48Z",
+          "note": "src/server/index.ts: The module-level `_pollingManager` reference is never exposed publicly. This is a known extensibility gap (noted by Developer and QA) but is not a blocker for the current use cases. If on-demand refresh from outside the server becomes a requirement, a `getPollingManager()` export or a dedicated `refreshNow()` export would be the appropriate surface."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-11T10:25:30Z",
+      "completed_at": "2026-04-11T10:26:51Z",
+      "duration_ms": 81000,
+      "summary": [
+        "Addressed the Reviewer's documentation-forward item: added a JSDoc paragraph to startServer() in src/server/index.ts stating that an ErrorLogManager is created internally and shared across all subsystems (WorkspaceOrchestrator, BranchOrchestrator, PollingManager, Router), with no external reference returned.",
+        "Updated src/server/README.md: expanded the REST API bullet to include error log access; added an Error Log key concept entry describing the singleton wiring; added routes/error-log.ts row to the Folder Structure table; added 'error-log' to the Dependencies line in Integration Points.",
+        "Ran ctx generate — all 24 context files regenerated successfully (exit 0). Server module overview and architecture files reflect the updated README and JSDoc.",
+        "No changes required to docs/agents/project-manifest/rest-api.md (already fully documented by a prior WP) or api-surface.md (startServer() is signature-only, Router.setErrorLogManager already documented)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/server/index.ts",
+          "src/server/README.md",
+          ".context/project-overview.md",
+          ".context/project-manifest.md",
+          ".context/modules/server/overview.md",
+          ".context/modules/server/architecture-core.md",
+          ".context/modules/server/architecture-routes.md",
+          ".context/modules/server/file-structure.md",
+          ".context/project-folder-structure.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-04-11T10:26:51Z",
+          "note": "Reviewer documentation-forward addressed: startServer() JSDoc now explicitly documents the ErrorLogManager singleton lifecycle. Future callers reading only the function signature will understand why no error-log reference is returned and that the instance is shared internally across all subsystems."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-11T10:26:51Z",
+          "note": "src/server/README.md: docs/agents/project-manifest/rest-api.md already contained full Error Log endpoint documentation (added by a prior WP). No duplication was introduced — the README points readers to the route file; the manifest carries the full parameter/response detail."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-11T10:26:51Z",
+          "note": "No documentation gaps found for acceptance criteria AC1–AC5. All criteria were already verifiable from existing module READMEs, rest-api.md, and api-surface.md. The only outstanding doc gap was the startServer() JSDoc (documentation-forward from Reviewer), which is now resolved."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-11T10:26:51Z",
+  "last_updated": "2026-04-11T10:26:51Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-11T10:01:24Z",
+      "notes": [
+        "All five acceptance criteria are met and verified. The single modified file is src/server/index.ts. No new tests were required — the existing integration test suite (index.test.ts) already exercises startServer()/stopServer() with a real temp-disk setup and all 672 tests pass. QA should verify: (1) GET /api/error-log returns 200 with { entries: [], total: 0 } after a fresh server start, (2) polling fetch failures produce entries in the error log, and (3) orchestrator clone failures are captured in the log."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-11T10:07:38Z",
+      "notes": [
+        "All 5 acceptance criteria confirmed PASS via static code inspection, TypeScript compile check, full 672-test suite run, and live HTTP integration test against a real ephemeral server. The single modified file is src/server/index.ts. No regressions detected. Code is clean and ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-11T10:12:48Z",
+      "notes": [
+        "All 5 acceptance criteria confirmed PASS. One Fix-Forward applied: ErrorLogManager import moved to its natural group among '../' imports (no behavioral change, compile verified clean). One documentation-forward item logged: startServer() JSDoc should note that an ErrorLogManager is created and shared internally. Code is clean, well-wired, and ready for the Documentation agent."
+      ]
+    }
+  ]
+}

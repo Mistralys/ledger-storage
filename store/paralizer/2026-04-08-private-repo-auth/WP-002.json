@@ -1,0 +1,301 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-004.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "The spawn() call includes an env option that merges process.env with { GIT_TERMINAL_PROMPT: '0' }.",
+      "met": true
+    },
+    {
+      "criterion": "Existing git-cli tests continue to pass.",
+      "met": true
+    },
+    {
+      "criterion": "Git clone attempts against private repos without credentials fail immediately with a clear auth error (not a 2-minute hang).",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-10T10:27:28Z",
+      "completed_at": "2026-04-10T10:29:14Z",
+      "duration_ms": 106000,
+      "summary": [
+        "Added env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } to the spawn() call in runGit() (src/git/git-cli.ts).",
+        "All 12 existing git-cli tests pass. No regressions in the full 392-test suite.",
+        "AC #3 (no-hang behavioral test) is integration-level and cannot be automated without mocking spawn — flagged for QA agent."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/git/git-cli.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-04-10T10:29:14Z",
+          "note": "git-cli.ts: AC #3 (no-hang behavior against private repos) is a behavioral integration criterion that cannot be verified by a simple unit test without mocking spawn or having a real credential-requiring server. The QA agent must verify this in an integration environment."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-10T10:29:14Z",
+          "note": "git-cli.ts: The env spread ({ ...process.env, GIT_TERMINAL_PROMPT: '0' }) overwrites any GIT_TERMINAL_PROMPT value callers may have set in process.env. This is intentional and correct — the tool always wants prompts disabled."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "FAIL",
+      "started_at": "2026-04-10T13:05:43Z",
+      "completed_at": "2026-04-10T13:17:20Z",
+      "duration_ms": 697000,
+      "summary": [
+        "AC #1 PASS: GIT_TERMINAL_PROMPT:'0' is present in spawn() env. AC #2 PASS: All 12 git-cli tests and 507 total tests pass. AC #3 FAIL: On macOS with system/global credential.helper=osxkeychain, GIT_TERMINAL_PROMPT=0 alone does not prevent hanging on 401 HTTP responses. osxkeychain bypasses the env var. Fix: add GIT_ASKPASS:'echo' to the env spread. Tested: without fix=hangs >6s; with fix=fails in 0.4s (exit 128)."
+      ],
+      "metrics": {
+        "tests_passed": 507,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "high",
+          "timestamp": "2026-04-10T13:17:20Z",
+          "note": "AC #3 FAIL: On macOS with system/global credential.helper=osxkeychain (default Homebrew git setup), GIT_TERMINAL_PROMPT=0 alone does NOT prevent git from hanging on a 401 HTTP response. Git invokes osxkeychain to resolve credentials, which can block indefinitely (tested: hang >6s with local 401 server). REPRO: spin up HTTP server returning 401, run git clone with env={GIT_TERMINAL_PROMPT:'0'} only, observe hang. FIX: Add GIT_ASKPASS:'echo' to the env option in spawn(). With this, git calls 'echo' as the askpass binary (returns empty credentials immediately), bypassing osxkeychain entirely. VERIFIED: with {GIT_TERMINAL_PROMPT:'0', GIT_ASKPASS:'echo'}, git fails fast (0.4s, exit 128) on the same 401 server. One-line change: env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_ASKPASS: 'echo' }."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-10T13:17:20Z",
+          "note": "AC #1 and AC #2 are cleanly met. The GIT_TERMINAL_PROMPT env var is correctly set and all 12 git-cli tests pass. The issue is narrow: only AC #3 fails due to macOS osxkeychain bypassing the env var."
+        }
+      ]
+    },
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-10T13:21:31Z",
+      "completed_at": "2026-04-10T13:22:11Z",
+      "duration_ms": 40000,
+      "summary": [
+        "Rework: added GIT_ASKPASS: 'echo' to the env spread in the spawn() call in runGit() (src/git/git-cli.ts), alongside the existing GIT_TERMINAL_PROMPT: '0'. This bypasses osxkeychain and any other credential helper by providing a no-op askpass binary, causing git to fail fast (exit 128) on 401 HTTP responses instead of hanging indefinitely. 507/507 tests pass, no regressions."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/git/git-cli.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-04-10T13:22:11Z",
+          "note": "src/git/git-cli.ts: GIT_ASKPASS='echo' instructs git to use a no-op credential program that immediately returns empty credentials, bypassing credential helpers like osxkeychain. This is the correct approach for non-interactive automation. The two env vars together (GIT_TERMINAL_PROMPT=0 + GIT_ASKPASS=echo) provide defence-in-depth: GIT_TERMINAL_PROMPT=0 suppresses prompt-based auth; GIT_ASKPASS=echo prevents credential-helper-based auth. Both are intentional."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-04-10T13:22:11Z",
+          "note": "src/git/git-cli.ts: GIT_ASKPASS='echo' causes git to submit empty credentials on the first auth challenge, resulting in an immediate 401 and exit. This is the desired behaviour for fail-fast, but should be noted in comments within the code so future maintainers understand why 'echo' is used and do not accidentally remove it or replace it with a real askpass binary path."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-10T13:22:35Z",
+      "completed_at": "2026-04-10T13:23:11Z",
+      "duration_ms": 36000,
+      "summary": [
+        "Rework verified. AC1: env contains GIT_TERMINAL_PROMPT:'0' and GIT_ASKPASS:'echo' in compiled output. AC2: 12/12 git-cli tests pass, 507/507 full suite. AC3: local 401-server integration test completes in 372ms with exit 128 and clear 'Authentication failed' message (was hanging >6s before fix). All previously-failed criteria now pass."
+      ],
+      "metrics": {
+        "tests_passed": 507,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-10T13:23:11Z",
+          "note": "AC #3 re-verified: with GIT_ASKPASS:'echo' added alongside GIT_TERMINAL_PROMPT:'0', the local 401-server integration test now passes in 372ms (exit 128, 'Authentication failed for ...'), down from >6s hang. Both env vars confirmed present in compiled dist/git/git-cli.js."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-10T13:26:24Z",
+      "completed_at": "2026-04-10T13:27:50Z",
+      "duration_ms": 86000,
+      "summary": [
+        "Reviewed 1 file (git-cli.ts). 0 Critical, 0 High, 1 Medium (forward-looking: stderr credential exposure when URL injection is added), 0 Low, 2 Info. Security sign-off: PASS. The GIT_TERMINAL_PROMPT+GIT_ASKPASS defence-in-depth is correct and complete."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-04-10T13:27:50Z",
+          "note": "A09 / Credential Exposure — Forward-looking concern for the credential-injection WP | src/git/git-cli.ts:141 (runGitOrThrow). When URL credential injection is added in a future WP (injectCredentials() wired into repository-orchestrator), git may echo the credentialed URL back in stderr (e.g., 'fatal: repository https://ghp_token@github.com/... not found'). The GitResult.stderr returned by runGitOrThrow() and runGit() would then contain the raw token. The future implementation WP must apply stripEmbeddedCredentials() to any error/stderr strings before they are surfaced in API responses, log output, or thrown Error messages. The utility already exists in src/git/git-credentials.ts."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T13:27:50Z",
+          "note": "A05 — Positive security control | src/git/git-cli.ts spawn() env option. The two-variable defence-in-depth (GIT_TERMINAL_PROMPT:'0' + GIT_ASKPASS:'echo') is the correct approach for non-interactive git automation: GIT_TERMINAL_PROMPT suppresses TTY prompts; GIT_ASKPASS:'echo' bypasses credential helpers (osxkeychain on macOS, libsecret on Linux, DPAPI on Windows) by substituting a no-op askpass binary. Together they guarantee fail-fast behaviour on unauthenticated clone attempts."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T13:27:50Z",
+          "note": "Platform note — Info | src/git/git-cli.ts GIT_ASKPASS:'echo'. On Windows, 'echo' is a CMD shell builtin and may not resolve as a standalone executable available on PATH when spawn uses shell:false. If Windows support is required, verify that git on Windows resolves 'echo' correctly (Portable Git and Git for Windows bundle 'echo.exe' in their bin/). No security impact but warrants platform testing."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-10T13:34:52Z",
+      "completed_at": "2026-04-10T13:35:55Z",
+      "duration_ms": 63000,
+      "summary": [
+        "Reviewed git-cli.ts. No blocking issues. The two-env-var defence-in-depth (GIT_TERMINAL_PROMPT=0 + GIT_ASKPASS=echo) is correct and complete — GIT_TERMINAL_PROMPT suppresses TTY prompts; GIT_ASKPASS=echo bypasses all credential helpers by substituting a no-op binary, preventing indefinite hangs on macOS osxkeychain. Applied Fix-Forward: added an explanatory block comment above the spawn() env option documenting the rationale and explicitly warning maintainers not to remove GIT_ASKPASS. Tagged two documentation-forward items for the Documentation agent."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/git/git-cli.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "medium",
+          "timestamp": "2026-04-10T13:35:55Z",
+          "note": "src/git/git-cli.ts spawn() env option: Added an explanatory block comment above the spawn() call documenting why GIT_TERMINAL_PROMPT=0 and GIT_ASKPASS=echo are both required, along with an explicit maintainer warning not to remove GIT_ASKPASS. Both the Developer (flagged as debt) and Security Auditor (requested Reviewer verification) identified this gap. The bare env line without context was a maintainability risk — a future developer could have silently removed 'echo' and reintroduced the osxkeychain hang."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-10T13:35:55Z",
+          "note": "[documentation-forward] The module README (src/git/README.md) should document that runGit() always disables interactive auth prompts, and explain that GIT_ASKPASS=echo is intentional. Future contributors need to know this is not a placeholder value."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "high",
+          "timestamp": "2026-04-10T13:35:55Z",
+          "note": "[documentation-forward] When the credential-injection WP is implemented, runGitOrThrow() must strip credentialed URLs from result.stderr before surfacing in thrown Error messages or API responses. stripEmbeddedCredentials() in git-credentials.ts is the designated utility. This is a forward-looking security prerequisite that the Documentation agent should capture in data-flows.md or constraints.md as a standing rule for all future git error handling."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T13:35:55Z",
+          "note": "src/git/git-cli.ts: GIT_ASKPASS='echo' dependency on 'echo' being a resolvable executable when shell:false. On Windows, 'echo' is a CMD builtin and may not resolve without Git for Windows' bundled echo.exe on PATH. Git for Windows does ship 'echo.exe' in its bin/, but this should be verified on the platform if Windows support is in scope."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-10T13:41:49Z",
+      "completed_at": "2026-04-10T13:42:43Z",
+      "duration_ms": 54000,
+      "summary": [
+        "Updated src/git/README.md: added Key Concept bullet documenting that runGit() always suppresses interactive auth with GIT_TERMINAL_PROMPT=0 and GIT_ASKPASS=echo, with an explicit maintainer warning not to remove GIT_ASKPASS and an explanation of why both vars are required.",
+        "Updated docs/agents/project-manifest/constraints.md: added two entries to the Git Subprocess Security section — one documenting the two-env-var non-interactive auth suppression, and one standing rule requiring stripEmbeddedCredentials() on any git stderr output before it is surfaced in error messages, logs, or API responses when credential injection is in use.",
+        "Ran ctx generate — all 21 CTX output files regenerated cleanly."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/git/README.md",
+          "docs/agents/project-manifest/constraints.md",
+          ".context/project-overview.md",
+          ".context/project-manifest.md",
+          ".context/modules/git/overview.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T13:42:43Z",
+          "note": "No documentation-forward items were unresolved. src/git/README.md now documents GIT_ASKPASS=echo explicitly and warns maintainers not to remove it. constraints.md now has a standing rule requiring stripEmbeddedCredentials() on any git stderr before it is surfaced — this will serve as a hard prerequisite check for the credential-injection WP."
+        }
+      ]
+    }
+  ],
+  "rework_counts": {
+    "implementation": 1,
+    "qa": 1
+  },
+  "status_changed_at": "2026-04-10T13:42:43Z",
+  "last_updated": "2026-04-10T13:42:43Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-10T10:29:14Z",
+      "notes": [
+        "AC #1 (spawn env option) and AC #2 (regression) are met. AC #3 (no-hang on private repos) requires integration testing with a real credential-requiring remote — cannot be demonstrated in unit tests without mocking child_process.spawn.",
+        "The change is a one-line env merge in the spawn() call in src/git/git-cli.ts. QA should verify that cloning a private HTTPS or SSH URL without credentials exits promptly (exit code non-zero) rather than hanging for the git timeout period."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Developer",
+      "timestamp": "2026-04-10T13:17:20Z",
+      "notes": [
+        "AC3 FAIL. Fix: add GIT_ASKPASS:'echo' next to GIT_TERMINAL_PROMPT:'0' in the spawn() env option in runGit() (src/git/git-cli.ts). Verified that this one-line addition causes git to fail fast (0.4s) on 401 instead of hanging (>6s). All other ACs pass, no regressions expected from this minimal change."
+      ]
+    },
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-10T13:22:11Z",
+      "notes": [
+        "All three ACs are now met. The fix adds GIT_ASKPASS:'echo' to the spawn() env in runGit(). AC3 (no-hang on private repos without credentials) is addressed by bypassing osxkeychain via the no-op askpass binary. 507 tests pass. QA should re-run the integration hang-test against a 401 HTTP server to confirm the 0.4s fast-fail is reproduced."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-10T13:27:50Z",
+      "notes": [
+        "0 Critical/High findings — PASS. One Medium forward-looking note: when credential injection is wired into the orchestrator (future WP), apply stripEmbeddedCredentials() to any GitResult.stderr before surfacing in error messages or API responses. This is a prerequisite security control for that WP and must not be skipped. Reviewer should verify the env hardening is clearly commented in code for maintainer awareness."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-10T13:35:55Z",
+      "notes": [
+        "All 3 AC confirmed. QA correctly caught the osxkeychain gap and triggered a rework — the final two-env-var approach (GIT_TERMINAL_PROMPT=0 + GIT_ASKPASS=echo) is the correct and complete solution. Applied one Fix-Forward: added explanatory block comment above the spawn() env option so future maintainers understand why both vars are required and do not remove GIT_ASKPASS. Documentation agent: see documentation-forward comments for two items (README update, and constraints.md capturing the future stripEmbeddedCredentials() requirement for credential-injection WPs)."
+      ]
+    },
+    {
+      "from_agent": "Documentation",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-04-10T13:42:43Z",
+      "notes": [
+        "Documentation complete for WP-002. Both reviewer-forwarded items addressed: (1) src/git/README.md documents auth-prompt suppression and the GIT_ASKPASS=echo rationale; (2) constraints.md now has a standing security rule requiring stripEmbeddedCredentials() on all GitResult.stderr output for credential-injection WPs. CTX regenerated successfully."
+      ]
+    }
+  ]
+}
