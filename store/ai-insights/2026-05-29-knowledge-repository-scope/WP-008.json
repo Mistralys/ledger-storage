@@ -1,0 +1,385 @@
+{
+  "work_package_id": "WP-008",
+  "work_package_file": "work/WP-008.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-005",
+    "WP-007"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "The Knowledge page shows \"Global\" and \"Repository\" tabs — no \"Project\" tab exists.",
+      "met": true
+    },
+    {
+      "criterion": "Repository insight cards display the repository_name value.",
+      "met": true
+    },
+    {
+      "criterion": "When origin_plan is present on an insight, a clickable provenance link is rendered that navigates to #/projects/{origin_plan}.",
+      "met": true
+    },
+    {
+      "criterion": "The \"Promote to Global\" action on a repository-scoped insight calls the promote endpoint with scope=repository&repository_name=...",
+      "met": true
+    },
+    {
+      "criterion": "The \"Move\" action presents a target_repository_name text input and calls the move endpoint with the correct body schema.",
+      "met": true
+    },
+    {
+      "criterion": "The repository tab's filter dropdown populates with distinct repository_name values from loaded insights.",
+      "met": true
+    },
+    {
+      "criterion": "No reference to project_slug, filterProject, or scope === 'project' remains in the file.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-30T11:00:18Z",
+      "completed_at": "2026-05-30T11:05:18Z",
+      "duration_ms": 300000,
+      "summary": [
+        "Updated knowledge.js: replaced 'project' tab with 'repository' (data-tab, label, activeTab default), renamed filterProject → filterRepository, updated applyFilters() to filter on scope==='repository' and ins.repository_name, updated getDistinctValues() to collect repository_name values (returning {categories, repositories} instead of {categories, projects}), updated buildFilterBarHtml() to render 'Repository' dropdown on repository tab (id=kn-repository), updated buildKnowledgeHtml() to render repository_name on cards with badge-scope-repository CSS class, added origin_plan provenance link rendering (#/projects/{origin_plan}), updated all action button data attributes from data-slug to data-repository, updated Move form input/placeholder to target-repository-name (id=kn-move-repo-{id}), updated wireFilterBarEvents() to bind #kn-repository to filterRepository, updated tab-click reset to use filterRepository, updated all action event handlers (confirm-delete, promote, confirm-move) to read data-repository and call API methods with repositoryName, updated edit submit handler to pass original.repository_name.",
+        "Updated api-client.js: renamed all four knowledge methods' projectSlug parameters to repositoryName, updated all JSON body keys from project_slug/source_project_slug to repository_name/source_repository_name/target_repository_name, updated JSDoc to reflect new scope values ('global'|'repository') and new parameter names, updated moveKnowledge() to send {source_scope, source_repository_name, target_repository_name} body matching the new KnowledgeMoveBodySchema from WP-005.",
+        "No build step required — vanilla ES5 with no module system. All changes are scoped to the two specified files. No references to project_slug, filterProject, or scope === 'project' remain in knowledge.js."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/knowledge.js",
+          "mcp-server/gui/public/api-client.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-30T11:05:18Z",
+          "note": "knowledge.js line 199: the origin_plan provenance link uses encodeURIComponent on the raw origin_plan value but doesn't guard against slugs with disallowed characters for href anchors. Current implementation is safe since origin_plan values come from plan directory names (slugs), but a brief null-check guard would make the intent explicit. No code change required — already guarded by the truthy `ins.origin_plan` check."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-05-30T11:05:18Z",
+          "note": "knowledge.js: view state variables (lines 16-23) use inconsistent indentation — filterRepository/filterCategory/filterQuery use extra spaces for alignment while editingId/confirmDeleteId/movingId use the original single space. Minor cosmetic inconsistency; pre-existing pattern for the latter group. Not introduced by this WP."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-05-30T11:05:18Z",
+          "note": "api-client.js: the `|| undefined` pattern for optional string parameters (e.g. `repositoryName || undefined`) silently drops the falsy string '0'. This is a documented known limitation in the JSDoc. Worth a future refactor to use `repositoryName != null ? repositoryName : undefined` for stricter semantics, but out of scope here."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "FAIL",
+      "started_at": "2026-05-30T11:05:38Z",
+      "completed_at": "2026-05-30T11:07:22Z",
+      "duration_ms": 104000,
+      "summary": [
+        "AC 1 PASS: knowledge.js renders only 'Global' (data-tab=global) and 'Repository' (data-tab=repository) tabs — no 'Project' tab exists (grep confirmed zero matches for data-tab=\"project\").",
+        "AC 2 PARTIAL — repository_name text value displays correctly (line 206) BUT badge-scope-repository CSS class is undefined in styles.css. The class is emitted in HTML (line 117) with no styling rule — badge renders with base .badge class only, losing the colour differentiation that badge-scope-project had before the rename. styles.css still defines badge-scope-project (now orphaned) and badge-scope-global only. Developer must add .badge-scope-repository and [data-theme=dark] .badge-scope-repository to styles.css (renaming/replacing badge-scope-project rules).",
+        "AC 3 PASS: origin_plan renders as an <a> tag with href #/projects/{encodeURIComponent(origin_plan)} and guarded by truthy check (line 198–200).",
+        "AC 4 PASS: promote handler reads data-repository attribute and calls API.promoteKnowledge(id, scope, repositoryName) which sends POST /knowledge/:id/promote?scope=repository&repository_name=... (api-client.js line 180–183).",
+        "AC 5 PASS: Move form renders <input id=kn-move-repo-{id} placeholder=target-repository-name> (line 190); confirm-move handler calls API.moveKnowledge(id, moveScope, moveRepo, targetRepoName) which posts {source_scope, source_repository_name, target_repository_name} body (api-client.js line 206–210).",
+        "AC 6 PASS: getDistinctValues() collects distinct repository_name values from allInsights into a sorted array (lines 63–70); buildFilterBarHtml() renders #kn-repository dropdown from this array when activeTab==='repository' (lines 87–97); wireFilterBarEvents() binds change event to set filterRepository (lines 312–317).",
+        "AC 7 PASS: zero matches for project_slug, filterProject, and scope === 'project' in knowledge.js (grep verified).",
+        "BLOCKER: styles.css missing badge-scope-repository rule — repo scope badge renders unstyled. Fix required before PASS."
+      ],
+      "metrics": {
+        "tests_passed": 6,
+        "tests_failed": 1
+      },
+      "comments": [
+        {
+          "type": "bug",
+          "priority": "medium",
+          "timestamp": "2026-05-30T11:07:22Z",
+          "note": "styles.css: .badge-scope-repository CSS rule is missing. knowledge.js line 117 assigns class 'badge badge-scope-repository' to non-global scope badges, but styles.css only defines .badge-scope-global and .badge-scope-project (the latter now orphaned). Repository scope badge renders with .badge base styles only — no background colour or text colour. Developer must: (1) rename/replace .badge-scope-project with .badge-scope-repository (suggested: green tones matching the old project rule: background:#dcfce7; color:#15803d); (2) rename/replace [data-theme=\"dark\"] .badge-scope-project with [data-theme=\"dark\"] .badge-scope-repository (suggested: background:#14532d; color:#86efac). File: mcp-server/gui/public/styles.css lines 2446–2449 and 2517–2520."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-30T11:07:22Z",
+          "note": "knowledge.js line 490: API.updateKnowledge passes original.repository_name || null — this correctly passes null for global insights. Consistent with the || undefined sentinel pattern used elsewhere; no issue."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-30T11:07:22Z",
+          "note": "Edge-case verified: when promRepo is an empty string (global insight shown on repository tab unexpectedly), btn.getAttribute('data-repository') || null returns null, which buildQueryString coerces to undefined via || undefined in promoteKnowledge — correct behaviour, repository_name is omitted from the query string."
+        }
+      ]
+    },
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-30T11:07:54Z",
+      "completed_at": "2026-05-30T11:08:16Z",
+      "duration_ms": 22000,
+      "summary": [
+        "Rework: added .badge-scope-repository (light) and [data-theme=\\\"dark\\\"] .badge-scope-repository (dark) to styles.css, replacing the now-orphaned .badge-scope-project rules. Light: background:#dcfce7; color:#15803d. Dark: background:#14532d; color:#86efac. No other changes required — all other ACs were already passing per QA. Zero references to badge-scope-project remain anywhere in the GUI public directory."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/styles.css"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-30T11:08:16Z",
+          "note": "styles.css: the comment above the rule was also updated from '/* Project scope — green tones */' to '/* Repository scope — green tones */' to keep the inline documentation accurate. No functional impact."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-30T11:08:33Z",
+      "completed_at": "2026-05-30T11:09:37Z",
+      "duration_ms": 64000,
+      "summary": [
+        "Rework QA — focused re-verification of AC 2 and orphan-cleanup regression only (all other ACs confirmed PASS in prior QA run; only styles.css changed).",
+        "AC 2 PASS: .badge-scope-repository light rule present at styles.css line 2446 (background:#dcfce7; color:#15803d). Dark override present at line 2517 ([data-theme='dark'] .badge-scope-repository; background:#14532d; color:#86efac). knowledge.js line 117 emits 'badge badge-scope-repository' class — CSS is now defined and will render with correct green tones in both themes.",
+        "Orphan cleanup PASS: zero matches for '.badge-scope-project' anywhere in the gui/public directory. No orphaned CSS rules remain.",
+        "AC 7 regression PASS: zero matches for project_slug, filterProject, or scope === 'project' in knowledge.js (matches in insights.js are a different, unrelated view file).",
+        "AC 1 PASS (unchanged): only 'Global' (data-tab=global) and 'Repository' (data-tab=repository) tabs rendered — no 'Project' tab.",
+        "AC 3 PASS (unchanged): origin_plan renders as anchor pointing to #/projects/{encodeURIComponent(origin_plan)}, guarded by truthy check.",
+        "AC 4 PASS (unchanged): promoteKnowledge sends scope=repository&repository_name=... query params.",
+        "AC 5 PASS (unchanged): Move form uses placeholder='target-repository-name'; confirm-move posts {source_scope, source_repository_name, target_repository_name}.",
+        "AC 6 PASS (unchanged): filter dropdown collects distinct repository_name values; wireFilterBarEvents binds #kn-repository to filterRepository.",
+        "All 7 ACs met. PASS."
+      ],
+      "metrics": {
+        "tests_passed": 7,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-30T11:09:37Z",
+          "note": "styles.css: inline comment above .badge-scope-repository was also updated to '/* Repository scope — green tones */' matching the rule rename — documentation stays accurate at no extra cost."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-30T11:09:37Z",
+          "note": "No regressions introduced. The styles.css change was surgical: only the two badge-scope-project rules (light + dark) were renamed/replaced. All other style rules verified unaffected."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-05-30T11:09:57Z",
+      "completed_at": "2026-05-30T11:11:34Z",
+      "duration_ms": 97000,
+      "summary": [
+        "Reviewed 3 modified files: knowledge.js, api-client.js, styles.css. Performed full OWASP Top 10 assessment. 0 Critical, 0 High findings. 1 Medium (pre-existing, non-blocking, documented). Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-30T11:11:34Z",
+          "note": "A03 XSS — PASS. All server-supplied string values interpolated into HTML use escapeHtml() guards throughout knowledge.js. origin_plan is doubly-encoded: encodeURIComponent() in the href attribute and escapeHtml() in the link text (lines 199–200). superseded_by is a numeric type from server JSON and is concatenated directly ('KN-' + ins.superseded_by, line 133) — safe. Inline error messages use escapeHtml(err.message || String(err)) (lines 502, 421, 435, 453). No raw innerHTML writes of unsanitised user input found."
+        },
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-05-30T11:11:34Z",
+          "note": "A05 Security Misconfiguration / A01 Broken Access Control — MEDIUM (pre-existing, non-blocking). api-knowledge.ts handleDeleteKnowledge (line 303) and handlePromoteKnowledge (line 371): repository_name query parameter is NOT validated against PROJECT_SLUG_REGEX at the handler layer. The storage layer's _validateSlug() prevents path traversal before any file path is constructed, so no security breach is possible. However, a malformed slug causes _validateSlug() to throw a generic Error (not an ApiError), which propagates to the unhandled-error branch and returns HTTP 500 instead of a well-typed HTTP 400 VALIDATION_ERROR. This is a documented known limitation in the file's @known-limitation comment. Contrast: handleMoveKnowledge and handleUpdateKnowledge both validate repository_name via Zod PROJECT_SLUG_REGEX before storage access. Recommended fix: add an explicit z.string().regex(PROJECT_SLUG_REGEX) guard to handleDeleteKnowledge and handlePromoteKnowledge to return consistent 400 responses and eliminate reliance on the storage layer as the sole validation point. This was NOT introduced by WP-008 — it pre-dates this work package."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-30T11:11:34Z",
+          "note": "A01 Broken Access Control — INFO. This is an internal developer-tool SPA served on localhost. No authentication or session management layer is present — consistent with the tool's intended audience and deployment model. No access control regressions introduced by WP-008."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-30T11:11:34Z",
+          "note": "A03 Injection (API layer) — PASS. api-client.js buildQueryString() uses encodeURIComponent() on all key/value pairs (line 45), preventing query-string injection. URL path segments (id, slug) are encoded via encodeURIComponent() at all call sites. Request bodies are serialised via JSON.stringify(), preventing injection through body parameters. moveKnowledge() passes targetRepositoryName directly to the JSON body without coercion — this is validated server-side by KnowledgeMoveBodySchema z.string().regex(PROJECT_SLUG_REGEX), providing proper server-side input validation."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-30T11:11:34Z",
+          "note": "A04 Insecure Design — PASS. scopeBadgeClass (knowledge.js line 117) is derived from ins.scope but only two hardcoded CSS class name strings are emitted based on a boolean check (isGlobal ? ... : ...) — ins.scope is never interpolated directly into HTML. No direct data-to-HTML injection path through scope values."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-30T11:11:34Z",
+          "note": "A06 Vulnerable & Outdated Components — PASS. No new third-party dependencies introduced in knowledge.js, api-client.js, or styles.css. All changes are vanilla ES5/CSS with no external library additions."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-30T11:11:54Z",
+      "completed_at": "2026-05-30T11:13:07Z",
+      "duration_ms": 73000,
+      "summary": [
+        "Code review PASS. Reviewed knowledge.js (518 lines), api-client.js (knowledge methods, lines 100–212), and styles.css (.badge-scope-repository rules). All 7 ACs confirmed met. Architecture is sound — correct use of closures for encapsulated view state, clean event delegation pattern, partial re-render strategy (renderFilterBar/renderList separation) correctly prevents focus-theft regression. No blocking issues found. One documentation-forward item tagged for the Documentation agent."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/knowledge.js",
+          "mcp-server/gui/public/api-client.js",
+          "mcp-server/gui/public/styles.css"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-30T11:13:07Z",
+          "note": "No blocking issues found. Code is clean and consistent with the codebase's vanilla ES5 SPA patterns."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-30T11:13:07Z",
+          "note": "Partial re-render architecture (renderFilterBar + renderList as separate concerns) is the correct approach. renderFilterBar is only invoked on tab change (when the bar layout changes), and renderList is called for all other state mutations. This avoids the focus-theft regression that a full re-render on every keystroke would cause. The inline comment (lines 257–262) accurately documents the rationale."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-30T11:13:07Z",
+          "note": "Post-promote and post-move optimistic update pattern (filter from allInsights + push newInsight + renderList) is correct. The promoted insight gains scope='global', so it disappears from the repository tab filter correctly via applyFilters(). User must switch to Global tab to see the promoted insight — this is expected SPA behaviour and consistent with prior art in this codebase. Not a bug."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-30T11:13:07Z",
+          "note": "getDistinctValues() collects repository_name values from ALL insights (not just the currently filtered set). This is correct — the filter dropdown should offer all known repositories, not just those matching current filters, to avoid the 'vanishing options' problem where selecting a filter removes other options."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-30T11:13:07Z",
+          "note": "api-client.js knowledge methods are well-documented: each has a JSDoc with @param types, a description of the falsy-coercion behaviour (|| undefined), and explicit mention of the '0'-string edge-case as a known limitation. This is commendable documentation discipline for a vanilla JS codebase."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-30T11:13:07Z",
+          "note": "[documentation-forward] The Move action's target repository input uses placeholder='target-repository-name' (the literal field name). End-user documentation or a tooltip should clarify that this expects a repository slug (e.g. 'my-project', 'ai-insights'), not a display label. The README or in-app help should document valid repository name format (matching PROJECT_SLUG_REGEX on the server side)."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-30T11:13:28Z",
+      "completed_at": "2026-05-30T11:16:49Z",
+      "duration_ms": 201000,
+      "summary": [
+        "Reviewed all three modified files (knowledge.js, api-client.js, styles.css) and the full pipeline history for WP-008.",
+        "Updated mcp-server/README.md: (1) Knowledge page bullet now references 'badge-scope-repository' (not 'badge-scope-project'), 'Repository' scope actions, and 'Move to Repository' (not 'Move to Project'); (2) removed the stale note claiming the frontend still uses project_slug/projectSlug — replaced with a concise terminology note confirming all layers now use repository_name; (3) fixed moveKnowledge() body field reference from 'repository_name' to the correct 'target_repository_name'.",
+        "Updated mcp-server/docs/agents/project-manifest/api-surface.md: (1) state variables table updated — activeTab type changed from 'global'|'project' to 'global'|'repository', filterProject renamed to filterRepository with updated description, movingId description updated to 'Move to Repository'; (2) applyFilters() description updated — 'project slug' → 'repository name'; (3) CSS class table: '.badge-scope-project' → '.badge-scope-repository'; (4) dark-mode table: '[data-theme=\"dark\"] .badge-scope-project' → '[data-theme=\"dark\"] .badge-scope-repository'; (5) knowledge-move-input description updated from 'project-slug text input' to 'repository-name text input' with valid format note; (6) renderKnowledge summary updated to 'Move to Repository inline slug input'; (7) added documentation-forward item: new note documenting that the Move input expects a repository slug (e.g. 'my-project', 'ai-insights') matching PROJECT_SLUG_REGEX — not a display label.",
+        "Updated mcp-server/docs/agents/project-manifest/file-tree.md: knowledge.js annotation updated from 'filtering by category, project slug' to 'filtering by category, repository_name (Repository tab only)' and 'Move to Project' → 'Move to Repository'."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/README.md",
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/file-tree.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-30T11:16:49Z",
+          "note": "No documentation gaps remained after addressing all pipeline artifacts and the code-review documentation-forward item. The forward requested clarifying the Move input's expected slug format — this is now documented in api-surface.md with a dedicated 'Move input format' callout block."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-30T11:16:49Z",
+          "note": "The data-flows.md and constraints.md files reference the knowledge endpoints in their current correct form (repository_name throughout the backend) and required no changes — their scope covers the server layer which was already migrated."
+        }
+      ]
+    }
+  ],
+  "rework_counts": {
+    "implementation": 1,
+    "qa": 1
+  },
+  "status_changed_at": "2026-05-30T11:16:49Z",
+  "last_updated": "2026-05-30T11:16:49Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-30T11:05:18Z",
+      "notes": [
+        "QA should verify: (1) 'Global' and 'Repository' tabs render correctly with no 'Project' tab; (2) repository insight cards show repository_name badge/text and scope badge uses badge-scope-repository class; (3) origin_plan link renders as an anchor tag pointing to #/projects/{slug}; (4) Promote button on repository card passes scope=repository&repository_name=... to the API; (5) Move form shows free-text input with placeholder 'target-repository-name' and posts {source_scope, source_repository_name, target_repository_name} body; (6) repository tab filter dropdown lists distinct repository_name values; (7) grep for project_slug/filterProject/scope === 'project' in knowledge.js returns zero matches. Note: api-client.js was also updated — all knowledge API methods now use repository_name instead of project_slug."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Developer",
+      "timestamp": "2026-05-30T11:07:22Z",
+      "notes": [
+        "Developer must add .badge-scope-repository (and its dark-mode override) to styles.css to replace the now-orphaned .badge-scope-project rule. Suggested values — light: background:#dcfce7; color:#15803d. Dark: background:#14532d; color:#86efac. All other ACs (1, 3, 4, 5, 6, 7) pass. Only AC 2 is blocked by the missing CSS."
+      ]
+    },
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-30T11:08:16Z",
+      "notes": [
+        "All 7 ACs now pass. The only change in this rework cycle was adding the missing .badge-scope-repository CSS rules (light and dark-mode) in styles.css. QA should re-verify AC 2: repository insight cards now display the repository_name value with proper green badge styling in both light and dark themes."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-05-30T11:09:37Z",
+      "notes": [
+        "All 7 ACs verified PASS. Modified files: knowledge.js, api-client.js (initial impl), styles.css (rework — added .badge-scope-repository light and dark rules). No references to project_slug, filterProject, badge-scope-project, or scope === 'project' remain in the Knowledge UI. Ready for Security Audit."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-30T11:11:34Z",
+      "notes": [
+        "Security audit PASS. 0 Critical, 0 High findings. 1 Medium noted (pre-existing handleDeleteKnowledge/handlePromoteKnowledge missing PROJECT_SLUG_REGEX validation at handler layer — storage layer prevents path traversal, but returns HTTP 500 instead of 400 on malformed slug; non-blocking, documented in api-knowledge.ts @known-limitation). All 3 modified files reviewed: knowledge.js, api-client.js, styles.css. All 7 ACs confirmed met. Ready for Code Review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-30T11:13:07Z",
+      "notes": [
+        "Code review PASS. All 7 ACs met, no blocking issues. Three files confirmed clean: knowledge.js, api-client.js, styles.css. One documentation-forward item: the Move action target input placeholder ('target-repository-name') should be documented with an example slug and reference to the PROJECT_SLUG_REGEX constraint so users understand valid input format. No Fix-Forward changes were applied — code was clean as-submitted (post-rework)."
+      ]
+    }
+  ]
+}

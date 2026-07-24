@@ -1,0 +1,187 @@
+{
+  "work_package_id": "WP-003",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "The prerequisite filter in startPipeline excludes pipelines where auto_cancelled is true.",
+      "met": true
+    },
+    {
+      "criterion": "A work package with [implementation PASS, implementation FAIL (auto_cancelled)] allows QA to start successfully.",
+      "met": true
+    },
+    {
+      "criterion": "Existing tests continue to pass (no regressions in non-cancelled prerequisite logic).",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-06-03T10:14:36Z",
+      "completed_at": "2026-06-03T10:15:56Z",
+      "duration_ms": 80000,
+      "summary": [
+        "Added `&& !p.auto_cancelled` to the prerequisite pipeline filter in `startPipeline` (pipeline.ts line 194). Auto-cancelled pipelines are now excluded from the most-recent prerequisite lookup, consistent with §21.27. A WP with [implementation PASS, implementation FAIL (auto_cancelled)] now correctly allows QA to start."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/tools/pipeline.ts"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 2862,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-03T10:15:56Z",
+          "note": "The `checkRevalidationGuard` function at pipeline.ts uses `wp.pipelines` directly (not filtered). It may also need to handle auto_cancelled entries consistently — currently out of scope but worth noting for a follow-up review."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-06-03T10:15:56Z",
+          "note": "The inline filter style `(p) => p.type === prerequisite && !p.auto_cancelled` is consistent with the existing codebase pattern. No helper abstraction was needed for this single call site."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-06-03T10:19:05Z",
+      "completed_at": "2026-06-03T10:22:21Z",
+      "duration_ms": 196000,
+      "summary": [
+        "AC #1: Confirmed — line 192 of pipeline.ts now reads `filter((p) => p.type === prerequisite && !p.auto_cancelled)`, correctly excluding auto-cancelled pipelines from the prerequisite PASS check.",
+        "AC #2: Verified via code logic — [impl PASS, impl FAIL(auto_cancelled)] filter yields [impl PASS]; at(-1).status === 'PASS' passes. No integration test covers this exact scenario but the logic is unambiguous.",
+        "AC #3: 2862/2862 tests pass with no regressions.",
+        "Bonus: Developer's concern about checkRevalidationGuard consistency confirmed as a non-issue — workflow-helpers.ts already applies !p.auto_cancelled in all three of its internal pipeline filters."
+      ],
+      "metrics": {
+        "tests_passed": 2862,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "coverage-gap",
+          "priority": "medium",
+          "timestamp": "2026-06-03T10:22:21Z",
+          "note": "AC #2 ('impl PASS + impl FAIL(auto_cancelled) → QA starts') is not covered by a dedicated integration test in start-pipeline-guards.test.ts. The existing auto_cancelled test (line 261) only covers the rework-counting exclusion, not the prerequisite-filter exclusion. Consider adding a test: WP with [impl PASS, impl FAIL(auto_cancelled)] → startPipeline(type: 'qa') succeeds."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-03T10:22:21Z",
+          "note": "checkRevalidationGuard (workflow-helpers.ts lines 223, 243, 259) already applies !p.auto_cancelled throughout. The developer's handoff concern about its consistency is a non-issue — no follow-up needed."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-06-03T10:24:27Z",
+      "completed_at": "2026-06-03T10:26:12Z",
+      "duration_ms": 105000,
+      "summary": [
+        "Single-predicate fix at pipeline.ts:192 reviewed in full. The change is correct, minimal, and consistent with all established auto_cancelled exclusion patterns in the codebase.",
+        "checkRevalidationGuard consistency confirmed — all three internal filters already apply !p.auto_cancelled; Developer's handoff concern is a non-issue.",
+        "Coverage gap (medium priority, not blocking): no dedicated integration test for the AC #2 scenario ([impl PASS, impl FAIL(auto_cancelled)] → QA start succeeds). Flagged for follow-up."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/tools/pipeline.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-06-03T10:26:12Z",
+          "note": "AC #2 scenario ([impl PASS, impl FAIL(auto_cancelled)] → QA start succeeds) has no dedicated integration test in start-pipeline-guards.test.ts. The existing auto_cancelled test (line 261) covers rework-count exclusion only, not the prerequisite-filter path. Recommend adding: WP with [impl PASS, impl FAIL(auto_cancelled)] → startPipeline(type: 'qa') resolves without error. This prevents silent regression if the filter predicate is ever modified."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-03T10:26:12Z",
+          "note": "The inline predicate style `(p) => p.type === prerequisite && !p.auto_cancelled` is idiomatic and consistent with line 222 and all checkRevalidationGuard internal filters. No abstraction is warranted for a single call site."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-06-03T10:27:47Z",
+      "completed_at": "2026-06-03T10:30:01Z",
+      "duration_ms": 134000,
+      "summary": [
+        "Corrected a spec inconsistency in §21.27 (edge-cases.md): the bullet claiming auto-cancelled pipelines are NOT excluded from prerequisite checks was directly contradicted by the fix in WP-003 and by the §8.2 algorithm in pipeline-routing.md. Updated §21.27 to (1) extend the heading from 'rework detection and circuit breaker calculations' to include 'prerequisite checks', and (2) replace the incorrect negative bullet with a sub-item under the exclusions list that documents the correct behavior with the concrete example ([impl PASS, impl FAIL(auto_cancelled)] → QA can start).",
+        "Added changelog entry v1.32.3 to mcp-server/changelog.md documenting the bug fix and the doc correction.",
+        "Reviewer documentation-forward addressed: the AC #2 integration test gap (no dedicated test for [impl PASS, impl FAIL(auto_cancelled)] → startPipeline(qa) success) is noted as a follow-up recommendation below."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/workflow-specification/edge-cases.md",
+          "mcp-server/changelog.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-06-03T10:30:01Z",
+          "note": "Reviewer forward (AC #2 test gap): No dedicated integration test covers [impl PASS, impl FAIL(auto_cancelled)] → startPipeline(type: 'qa') succeeds. The existing auto_cancelled test (start-pipeline-guards.test.ts:261) covers only the rework-count exclusion path. Recommend adding: WP with two implementation pipelines (first PASS, second FAIL with auto_cancelled=true) → startPipeline('qa') resolves without error. This prevents silent regression if the filter predicate at pipeline.ts:192 is modified."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-03T10:30:01Z",
+          "note": "CTX regeneration recommended: edge-cases.md was updated, so the .context/mcp-server/workflow-spec-edge-cases.md snapshot is now stale. Run `node scripts/cli.js ctx-generate` to refresh — this is a non-blocking follow-up."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-06-03T10:30:01Z",
+  "last_updated": "2026-06-03T10:30:01Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-06-03T10:15:56Z",
+      "notes": [
+        "One-line change: added `&& !p.auto_cancelled` to the filter predicate in the prerequisite check block (§8.2). Test suite: 2862 tests, all pass. QA should verify the scenario: WP with [impl-PASS, impl-FAIL(auto_cancelled)] → QA start succeeds. The `checkRevalidationGuard` call that follows the filter was not changed — it still uses `wp.pipelines` directly so QA may want to confirm that function is also consistent with the auto_cancelled exclusion pattern (though it was out of scope for this WP)."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-06-03T10:22:21Z",
+      "notes": [
+        "One-line fix verified correct. All 2862 tests pass. Medium-priority coverage gap: no integration test for the exact AC #2 scenario ([impl PASS, impl FAIL(auto_cancelled)] → QA start succeeds). Reviewer should consider requesting a test addition or accepting the code-review-level verification."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-06-03T10:26:12Z",
+      "notes": [
+        "One-line fix verified correct and consistent with all codebase auto_cancelled exclusion patterns. PASS. One documentation-forward comment: AC #2 integration test gap (medium priority) — suggest the Documentation agent notes this as a potential follow-up test in the WP completion notes."
+      ]
+    }
+  ]
+}

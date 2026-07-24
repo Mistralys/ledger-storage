@@ -1,0 +1,194 @@
+{
+  "work_package_id": "WP-010",
+  "work_package_file": "work/WP-010.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "preflight-orchestrator.js no longer contains duplicate local implementations of mcp-dist-fresh or orchestrator-venv detection logic.",
+      "met": true
+    },
+    {
+      "criterion": "node scripts/cli.js preflight produces identical pass/fail output for all checks compared to before this WP.",
+      "met": true
+    },
+    {
+      "criterion": "checkEnv, checkNoConflict, and checkApiKey are not modified.",
+      "met": true
+    },
+    {
+      "criterion": "Import direction is one-way: preflight-orchestrator.js to health-checks.js; never the reverse.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-29T21:55:33Z",
+      "completed_at": "2026-05-29T21:57:55Z",
+      "duration_ms": 142000,
+      "summary": [
+        "Imported HEALTH_CHECKS from ./lib/health-checks.js in preflight-orchestrator.js.",
+        "Added module-level references: hcMcpDist, hcMcpDistFresh, hcOrcVenv (found by id).",
+        "Replaced local orchestrator-venv detection (fs.existsSync(VENV_DIR)) with hcOrcVenv.detect().",
+        "Replaced local mcp-dist detection (dist exists + latestMtime mtime comparison) with hcMcpDist.detect() + hcMcpDistFresh.detect(). Removed local latestMtime helper and MCP_SRC/MCP_DIST_SENTINEL constants.",
+        "checkEnv, checkNoConflict, checkApiKey untouched. 80 tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "scripts/preflight-orchestrator.js"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 80,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-29T21:57:55Z",
+          "note": "MCP_SRC and MCP_DIST_SENTINEL constants removed from preflight since detection logic delegated to health-checks. VENV_DIR kept because it is still used for the orchestrate binary path check (venvBin)."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-29T22:03:14Z",
+      "completed_at": "2026-05-29T22:04:19Z",
+      "duration_ms": 65000,
+      "summary": [
+        "All 4 acceptance criteria verified and met.",
+        "AC-1: latestMtime helper and MCP_SRC/MCP_DIST_SENTINEL constants are removed. Detection delegated to hcMcpDist.detect(), hcMcpDistFresh.detect(), hcOrcVenv.detect(). grep confirms no local duplicate logic.",
+        "AC-2: Preflight smoke test (--json) confirms 4 checks all pass with correct output: venv (orchestrate binary found), env (API key configured), mcp-dist (up to date), no-conflict. checkVenv() correctly retains orchestrate binary check as preflight-specific.",
+        "AC-3: checkEnv (line 135), checkNoConflict (line 184), checkApiKey (lines 67-303) are all present and untouched.",
+        "AC-4: health-checks.js contains only a comment mentioning 'preflight flows' — no import back to preflight-orchestrator.js. Import is strictly one-way.",
+        "Regression: 80/80 workspace tests pass."
+      ],
+      "metrics": {
+        "tests_passed": 80,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-29T22:04:19Z",
+          "note": "AC-1: latestMtime, MCP_SRC, and MCP_DIST_SENTINEL are all absent from preflight-orchestrator.js (grep confirms no matches). Detection correctly delegates to hcMcpDist.detect(), hcMcpDistFresh.detect(), hcOrcVenv.detect()."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-29T22:04:19Z",
+          "note": "AC-2: Preflight smoke test (--json) produces correct 4-check output with all passing. checkVenv() correctly keeps the orchestrate binary check as a preflight-specific step while delegating venv-dir check to health-checks."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-29T22:04:19Z",
+          "note": "AC-4: health-checks.js has no import from preflight-orchestrator.js. The only reference to 'preflight' in health-checks.js is a comment. One-way import confirmed."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-29T22:14:24Z",
+      "completed_at": "2026-05-29T22:15:09Z",
+      "duration_ms": 45000,
+      "summary": [
+        "Code review PASS. Reviewed scripts/preflight-orchestrator.js HEALTH_CHECKS delegation refactoring. Detection logic correctly delegates to hcMcpDist/hcMcpDistFresh/hcOrcVenv; VENV_DIR retained for preflight-specific venvBin() usage; one-way import confirmed; no duplicate mtime logic. One low-priority suggestion (null guard on .find() returns). No blocking issues."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "scripts/preflight-orchestrator.js"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 80,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-29T22:15:09Z",
+          "note": "hcMcpDist, hcMcpDistFresh, hcOrcVenv are resolved via HEALTH_CHECKS.find() at module load time. If a health-check ID were renamed in health-checks.js, the find() would return undefined and the subsequent .detect() call would throw TypeError at runtime. Current IDs are stable, but a future ID rename would be a silent latent bug. Consider adding assertive guards (e.g. if (!hcMcpDist) throw new Error('health-check mcp-dist not found')) to fail fast at startup rather than at the first preflight run."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-29T22:15:09Z",
+          "note": "VENV_DIR retention is correct: venvBin() still uses it for the preflight-specific orchestrate binary check. The developer comment on this point is accurate and sufficient."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-29T22:15:09Z",
+          "note": "No blocking issues. All 4 ACs confirmed met. Refactoring is clean: duplicate mtime logic eliminated, one-way import maintained, checkVenv() cleanly separates shared vs preflight-specific detection."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-29T22:21:24Z",
+      "completed_at": "2026-05-29T22:21:43Z",
+      "duration_ms": 19000,
+      "summary": [
+        "No documentation changes required. WP-010 is a pure internal refactoring (preflight-orchestrator.js delegates to health-checks.js). Existing AGENTS.md description remains accurate. No documentation-forward items from code review."
+      ],
+      "artifacts": {
+        "files_modified": []
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-29T22:21:43Z",
+          "note": "No documentation changes required. WP-010 is a pure internal refactoring — preflight-orchestrator.js delegates duplicate detection logic to health-checks.js with no behavioral changes. The AGENTS.md entry for scripts/preflight-orchestrator.js accurately describes its purpose and no documentation-forward was raised during code review."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-29T22:21:43Z",
+  "last_updated": "2026-05-29T22:21:43Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-29T21:57:55Z",
+      "notes": [
+        "WP-010 complete. Added HEALTH_CHECKS import; extracted hcMcpDist, hcMcpDistFresh, hcOrcVenv references. checkVenv() delegates venv-dir existence to hcOrcVenv.detect(); keeps orchestrate binary check (preflight-specific). checkMcpDist() delegates both existence and staleness to hcMcpDist.detect()/hcMcpDistFresh.detect(); removed local latestMtime helper and duplicate mtime logic. checkEnv, checkNoConflict, checkApiKey unchanged. preflight smoke test: all checks pass. 80 tests pass."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-29T22:04:19Z",
+      "notes": [
+        "WP-010 QA PASS. All 4 ACs verified. Preflight smoke test: 4/4 checks pass (venv, env, mcp-dist, no-conflict). No duplicate detection logic. One-way import confirmed. 80/80 workspace tests pass. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-29T22:15:09Z",
+      "notes": [
+        "WP-010 code-review PASS. No changes applied. Refactoring is clean and correct. One low-priority suggestion left for future improvement: add null guards on HEALTH_CHECKS.find() references to fail fast on ID rename. 80/80 tests pass. Ready for documentation."
+      ]
+    }
+  ]
+}

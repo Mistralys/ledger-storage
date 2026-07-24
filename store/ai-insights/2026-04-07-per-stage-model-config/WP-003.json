@@ -1,0 +1,303 @@
+{
+  "work_package_id": "WP-003",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-002"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "Config no longer has model_name, provider, or get_chat_model()",
+      "met": true
+    },
+    {
+      "criterion": "Config.stage_models is populated from persona metadata",
+      "met": true
+    },
+    {
+      "criterion": "Config.resolve_model_for_stage() returns the correct model slug per stage",
+      "met": true
+    },
+    {
+      "criterion": "--model CLI flag is removed",
+      "met": true
+    },
+    {
+      "criterion": "MODEL_NAME env var is ignored (no crash if present)",
+      "met": true
+    },
+    {
+      "criterion": "API key validation works per model slug",
+      "met": true
+    },
+    {
+      "criterion": "All existing tests updated and passing",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-07T16:04:00Z",
+      "completed_at": "2026-04-07T16:12:40Z",
+      "duration_ms": 520000,
+      "summary": [
+        "Rewrote orchestrator/src/config.py: removed model_name, provider, get_chat_model(), _resolve_provider(), _model_is_anthropic(), _model_is_google(), _ANTHROPIC_PREFIXES, _GOOGLE_PREFIXES. Added stage_models: dict[str,str] field, resolve_model_for_stage() method, and _validate_model_api_keys() helper. load_config() now calls extract_persona_model_slugs() for per-stage model slugs and validates API keys per unique slug. MODEL_NAME env var is silently ignored.",
+        "Removed --model CLI flag from orchestrator/src/cli.py and the args.model → os.environ block. Added stage_models=dict(config.stage_models) to the run_start JSONL log entry.",
+        "Updated orchestrator/src/nodes/__init__.py: create_stage_node() now calls _app_config.resolve_model_for_stage(stage) before the try block, passes resolved_model to create_deep_agent(). Added model field to stage_start, stage_complete, and stage_error log entries.",
+        "Updated orchestrator/src/utils/logging.py: _build_stream_console_line() now appends [model] to stage_start console output.",
+        "Updated orchestrator/.env.example: removed MODEL_NAME lines, added comment explaining persona-metadata-driven model selection.",
+        "Updated all 5 test files: test_config.py (_BASE_ENV no longer has MODEL_NAME; added TestStageModels, TestResolveModelForStage, TestApiKeyValidation with 13 new tests); test_cli.py (replaced test_model_option with test_model_rejected; removed args.model from defaults check); test_graph.py (_MockConfig now uses stage_models + resolve_model_for_stage); test_nodes.py (_FakeConfig, _CaptureConfig, _NoCaptureConfig use stage_models + resolve_model_for_stage; added model-field tests for stage_start/stage_complete/stage_error); test_tool_wrappers.py (both _FakeConfig stubs updated).",
+        "Full test run: 758 passed, 7 skipped, 0 failed (was 745 + 13 new tests)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/config.py",
+          "orchestrator/src/cli.py",
+          "orchestrator/src/nodes/__init__.py",
+          "orchestrator/src/utils/logging.py",
+          "orchestrator/.env.example",
+          "orchestrator/tests/test_config.py",
+          "orchestrator/tests/test_cli.py",
+          "orchestrator/tests/test_graph.py",
+          "orchestrator/tests/test_nodes.py",
+          "orchestrator/tests/test_tool_wrappers.py"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T16:12:40Z",
+          "note": "config.py: _validate_model_api_keys() iterates stage_models once to deduplicate slugs before key checks, which is efficient. However, the error message lists one entry per (stage, slug) pair before deduplication is applied — dedup is applied per slug but the 'missing' list could still show multiple stages per slug. Low priority since the message remains informative."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T16:12:40Z",
+          "note": "nodes/__init__.py: resolve_model_for_stage() is called before the try block, so a KeyError for an unrecognised stage name would propagate as an uncaught exception (not a stage_error log entry). This is intentional — it is a programming error — but worth noting for future maintainers."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T16:12:40Z",
+          "note": "cli.py: stage_models is serialised to a plain dict for the run_start event. If the Config.stage_models ordering ever matters for display, using dict(sorted(config.stage_models.items())) would produce deterministic JSONL output."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-07T16:13:05Z",
+      "completed_at": "2026-04-07T16:16:39Z",
+      "duration_ms": 214000,
+      "summary": [
+        "All 7 acceptance criteria verified. 758 tests pass (7 skipped, 0 failed). Build clean.",
+        "AC1: Config.model_name/provider/get_chat_model()/_resolve_provider()/_model_is_anthropic()/_model_is_google() confirmed absent at runtime via hasattr checks.",
+        "AC2: Config.stage_models populated from real persona metadata — 9 slugs including planner=claude-opus-4-6, pm=claude-opus-4-6, and developer/qa/reviewer/docs/security_auditor/release_engineer/synthesis=claude-sonnet-4-6.",
+        "AC3: resolve_model_for_stage() returns correct slug for all VALID_STAGES; raises KeyError for unknown stages (programming error, by design).",
+        "AC4: --model CLI flag correctly rejected with SystemExit(2) — parser reports unrecognized arguments.",
+        "AC5: MODEL_NAME env var silently ignored — load_config() uses persona metadata slugs, not MODEL_NAME; test_model_name_env_var_is_ignored passes.",
+        "AC6: _validate_model_api_keys deduplicates slugs, raises OSError for missing Anthropic key with claude slugs, raises OSError for missing Google key with gemini slugs, passes with correct key(s) present.",
+        "AC7: 13 new tests (TestStageModels, TestResolveModelForStage, TestApiKeyValidation in test_config.py; test_model_rejected in TestArgsParser; model-field tests in TestNodeSuccessPath/TestNodeErrorHandling); all 758 pass.",
+        "Stage JSONL events verified: stage_start, stage_complete, stage_error all include model field; run_start includes stage_models dict; _build_stream_console_line appends [model] on stage_start.",
+        "Edge case: stage_start entry without model field renders without stray brackets (safe).",
+        "Integration: extract_persona_model_slugs reads real workspace persona YAML files correctly — stdlib-only YAML parser handles all metadata fields."
+      ],
+      "metrics": {
+        "test_coverage": "AC-complete",
+        "tests_passed": 758,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T16:16:39Z",
+          "note": "config.py _validate_model_api_keys: the missing[] list records one entry per (stage, model_slug) before the dedup seen-set check, so the same slug could theoretically appear twice only if the seen-set did not prevent it. The seen-set correctly prevents double-reporting per slug — behaviour is accurate, wording in prior Developer note is slightly off but the code is correct."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T16:16:39Z",
+          "note": "persona_models.py extract_persona_model_slugs returns 9 entries (including planner and synthesis, which are orchestrating). load_config() passes these directly to Config.stage_models without filtering to VALID_STAGES. This is intentional — synthesis node uses create_stage_node and calls resolve_model_for_stage('synthesis'), which needs to be in stage_models. Design is correct."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T16:16:39Z",
+          "note": "No code coverage gaps found. All 3 JSONL event types (stage_start, stage_complete, stage_error) include the model field. Console output for stage_start tested with and without model field — both paths handled gracefully."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-07T16:17:08Z",
+      "completed_at": "2026-04-07T16:19:28Z",
+      "duration_ms": 140000,
+      "summary": [
+        "Reviewed 5 modified source files (config.py, cli.py, nodes/__init__.py, utils/logging.py, utils/persona_models.py) plus .env.example. All 10 OWASP categories evaluated. 0 Critical, 0 High, 0 Medium findings. 2 Low/Info observations recorded. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T16:19:28Z",
+          "note": "A02/A07 — config.py _validate_model_api_keys(): bool(os.environ.get(\"ANTHROPIC_API_KEY\")) evaluates to True for whitespace-only values (e.g. ANTHROPIC_API_KEY=\"   \"), allowing a malformed key to pass pre-flight validation and fail later at the first LLM API call with an authentication error. Not exploitable in a developer-local tool context; produces confusing UX rather than a security vulnerability. Remediation (optional): add .strip() before bool() check."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T16:19:28Z",
+          "note": "A03 — persona_models.py extract_persona_model_slugs(): model_slug values are read from developer-owned YAML files and passed directly to create_deep_agent(model=...). The deepagents/LangChain SDK receives the slug as an API model identifier (HTTP JSON body field), not as a shell argument or URL component. No injection surface exists in the current implementation. If the model slug ever flows into a subprocess command or URL outside the SDK in future, input validation against a slug allowlist (e.g. the set of known model IDs from workflow-manifest.json) should be added at that boundary."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T16:19:28Z",
+          "note": "A09 — cli.py run_start JSONL event includes stage_models dict (model slug strings only, no API key values). Confirmed safe — json.dumps serialises slug identifiers like \"claude-sonnet-4-6\", not credentials. No sensitive data in any new log field (model in stage_start/stage_complete/stage_error, stage_models in run_start)."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-07T16:19:54Z",
+      "completed_at": "2026-04-07T16:22:50Z",
+      "duration_ms": 176000,
+      "summary": [
+        "Code-review PASS for WP-003 per-stage model configuration. Reviewed all 5 modified source files plus the new persona_models.py utility. Architecture is clean and well-aligned with workspace philosophy: persona metadata drives model selection, Config.stage_models is an inspectable plain dict, and resolve_model_for_stage() is intentionally minimal. No blocking issues found.",
+        "Applied one Fix-Forward improvement: config.py _validate_model_api_keys() — added .strip() to both os.environ.get() calls for ANTHROPIC_API_KEY and GOOGLE_API_KEY so whitespace-only values no longer silently pass pre-flight validation. Non-behavioral for real API keys; 82 test_config.py tests confirm no regressions.",
+        "All 7 acceptance criteria were verified by QA and confirmed passing. The deferred import pattern for persona_models inside load_config() is consistent with the existing codebase practice. Stage error path correctly includes resolved_model in log entries since the variable is captured before the try block. The stdlib-only YAML parser in persona_models.py is appropriate for the simple scalar field extraction required."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/config.py",
+          "orchestrator/src/cli.py",
+          "orchestrator/src/nodes/__init__.py",
+          "orchestrator/src/utils/logging.py",
+          "orchestrator/src/utils/persona_models.py",
+          "orchestrator/tests/test_config.py",
+          "orchestrator/tests/test_cli.py",
+          "orchestrator/tests/test_graph.py",
+          "orchestrator/tests/test_nodes.py",
+          "orchestrator/tests/test_tool_wrappers.py"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-07T16:22:50Z",
+          "note": "config.py _validate_model_api_keys(): changed bool(os.environ.get('ANTHROPIC_API_KEY')) and bool(os.environ.get('GOOGLE_API_KEY')) to bool(os.environ.get(..., '').strip()). A whitespace-only value (e.g. ANTHROPIC_API_KEY='   ') previously evaluated to True and would pass pre-flight validation, then fail later at the first API call with an auth error. The fix surfaces the problem immediately at load_config() time instead. Non-behavioral for valid API keys (no test changes needed; 82 test_config.py tests confirmed passing)."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-04-07T16:22:50Z",
+          "note": "[documentation-forward] persona_models.py extract_persona_model_slugs(): the glob pattern [1-9]-*.yaml only matches single-digit role file prefixes. If a 10th role is added (10-something.yaml), it will be silently skipped. Document this constraint in the function docstring or in constraints.md so future maintainers know to update the pattern when role count exceeds 9."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-04-07T16:22:50Z",
+          "note": "[documentation-forward] load_config() docstring notes ValueError as a possible raise but does not describe from where. The primary source is extract_persona_model_slugs() raising ValueError when default_model_slug is absent from _shared.yaml. Adding a cross-reference to that function in the ValueError docstring would improve discoverability."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T16:22:50Z",
+          "note": "No blocking or significant quality issues found. Code is readable, consistent with existing patterns, and well-tested. The implementation is not over-engineered: resolve_model_for_stage() is a 1-line dict lookup by design, and the YAML parsing in persona_models.py is appropriately scoped to the simple scalar fields actually used."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-07T16:23:15Z",
+      "completed_at": "2026-04-07T16:27:51Z",
+      "duration_ms": 276000,
+      "summary": [
+        "Updated orchestrator/README.md: removed MODEL_NAME from the .env example block, removed the MODEL_NAME row from the Environment Variable Reference table, replaced the 'auto-detected via MODEL_NAME prefix tiebreaker' paragraph with an accurate description of persona-metadata-driven model selection, removed --model from the common CLI examples, removed the --model MODEL option from the CLI Reference, updated the src/config.py folder overview entry, removed the 'configuration error: MODEL_NAME is not set' troubleshooting entry, and removed the 'Both ANTHROPIC_API_KEY and GOOGLE_API_KEY are set' MODEL_NAME tiebreaker entry.",
+        "Updated orchestrator/docs/public-api.md: removed the get_chat_model() row, updated the Config entry to describe stage_models and capture_dialogues, updated load_config() to cross-reference extract_persona_model_slugs(), added new rows for Config.stage_models, Config.resolve_model_for_stage(), extract_persona_model_slugs(), and VALID_STAGES. Fixed a pre-existing formatting bug (missing pipe after get_chat_model row).",
+        "Updated orchestrator/docs/jsonl-log-schema.md: added the 'model' field to the Full Field Reference table (present on stage_start, stage_complete, stage_error), added 'stage_models' field (present on run_start), updated the Action Values table rows for stage_start/stage_complete/stage_error to include model, updated run_start row to include stage_models, and updated the three JSON examples to show the model field.",
+        "Addressed documentation-forward (1): added a Notes section to extract_persona_model_slugs() docstring in orchestrator/src/utils/persona_models.py documenting the [1-9]-*.yaml glob pattern single-digit constraint and the update requirement if role count exceeds 9. Also propagated this constraint note to orchestrator/docs/agents/project-manifest/api-surface.md.",
+        "Addressed documentation-forward (2): updated load_config() docstring in orchestrator/src/config.py to cross-reference src.utils.persona_models.extract_persona_model_slugs as the primary source of ValueError. Also updated the module docstring to reflect stage_models instead of 'auto-detected LLM provider'."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/README.md",
+          "orchestrator/docs/public-api.md",
+          "orchestrator/docs/jsonl-log-schema.md",
+          "orchestrator/src/config.py",
+          "orchestrator/src/utils/persona_models.py",
+          "orchestrator/docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T16:27:51Z",
+          "note": "public-api.md had a pre-existing formatting bug: the get_chat_model() row was missing the leading pipe delimiter, causing it to render as a broken table continuation. Fixed as part of the table rewrite."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T16:27:51Z",
+          "note": "No documentation gaps remain unresolved. Both reviewer-forwarded items are addressed: (1) glob pattern documented in source docstring, agent manifest api-surface.md, and constraints.md via api-surface reference; (2) ValueError cross-reference added to load_config() docstring."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-07T16:27:51Z",
+  "last_updated": "2026-04-07T16:27:51Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-07T16:12:40Z",
+      "notes": [
+        "WP-003 implementation complete. All 7 acceptance criteria met. 758 tests pass (13 new tests added). Key changes: Config.stage_models replaces model_name/provider; Config.resolve_model_for_stage() is the per-stage resolver; MODEL_NAME env var is silently ignored; --model CLI flag removed (now parser error); stage_start/stage_complete/stage_error JSONL events include model field; run_start includes stage_models map; console output shows model on stage_start. QA should verify: (1) load_config() behavioural integration with realistic .env values, (2) stage_models keys match VALID_STAGES, (3) the new console output format in _build_stream_console_line()."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-04-07T16:16:39Z",
+      "notes": [
+        "WP-003 QA PASS. All 7 ACs verified, 758 tests pass. Key review focus areas for Security Auditor: (1) _validate_model_api_keys uses os.environ.get() — no subprocess injection surface; (2) persona YAML parsing is stdlib-only, no arbitrary code execution; (3) model slug is passed to create_deep_agent — verify downstream use does not construct unsanitised shell commands or URLs from the slug; (4) stage_models dict is serialised to JSONL via json.dumps — safe."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-07T16:19:28Z",
+      "notes": [
+        "WP-003 security audit PASS. 0 Critical/High/Medium findings across all 5 modified source files. Three Low/Info observations recorded (whitespace-only API key UX edge case; model slug SSRF note for future maintainers; JSONL log field confirmation). All 7 ACs verified as met. Reviewer can proceed with code-review pipeline."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-07T16:22:50Z",
+      "notes": [
+        "WP-003 code-review PASS. One Fix-Forward applied: added .strip() to ANTHROPIC_API_KEY and GOOGLE_API_KEY env reads in _validate_model_api_keys() — resolves the whitespace-only API key UX edge case flagged by the Security Auditor. All 7 ACs confirmed met. Two documentation-forward items logged for the Documentation agent: (1) persona_models.py glob pattern constraint [1-9]-*.yaml needs documenting; (2) load_config() ValueError raise docs should cross-reference extract_persona_model_slugs(). No structural or behavioral changes required."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,208 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-002.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "KnowledgeStoreManager.moveInsight() exists as a public method with signature async moveInsight(id: number, sourceFilter: { scope: InsightScope; project_slug?: string }, targetScope: InsightScope, targetProjectSlug?: string): Promise<Insight>.",
+      "met": true
+    },
+    {
+      "criterion": "The method completes the full promote/move operation under a single withLock span — no second lock acquisition occurs.",
+      "met": true
+    },
+    {
+      "criterion": "The method calls atomicWriteJson directly inside the lock callback (not writeGlobalStore()/writeProjectStore(), which would deadlock).",
+      "met": true
+    },
+    {
+      "criterion": "The moved insight is validated with InsightSchema.parse(...) before writing.",
+      "met": true
+    },
+    {
+      "criterion": "All six unit tests (global→project, project→global, not-found, id+scope+updated_at, source emptied, target next_id) pass.",
+      "met": true
+    },
+    {
+      "criterion": "All existing tests pass with zero regressions.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-29T15:14:45Z",
+      "completed_at": "2026-05-29T15:18:02Z",
+      "duration_ms": 197000,
+      "summary": [
+        "Implemented KnowledgeStoreManager.moveInsight() as a public method on the storage class. The method performs the full promote/move operation (resolve source → find insight → construct target insight with new id/scope/updated_at → atomicWriteJson target → splice source → atomicWriteJson source) under a single withLock(knowledgeDir) span, eliminating the TOCTOU window. The moved insight is validated with InsightSchema.parse() before writing. Added six unit tests: happy path global→project, happy path project→global, not-found throws, new id+correct scope+updated_at, source emptied, target next_id incremented. All 76 knowledge-store tests pass and all 2659 suite-wide tests pass with zero regressions."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/storage/knowledge-store.ts",
+          "mcp-server/tests/storage/knowledge-store.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-29T15:18:02Z",
+          "note": "In moveInsight(), the source store path is found by breaking out of the search loop on first match. This is correct and intentional for sourceFilter cases that resolve to a single store (scope+slug pair). However, for the hypothetical case where sourceFilter resolves to multiple project stores (scope: 'project' without project_slug), only the first matching store is searched. The WP spec states that _storePathsForFilter returns a single-element array for a specific scope+slug pair, so this is fine for the intended usage. A JSDoc note clarifying this assumption would be a low-effort improvement."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-29T15:18:02Z",
+          "note": "The now() function in timestamp.ts truncates to whole seconds (no milliseconds). The moveInsight() test for updated_at had to work around this by avoiding a sub-millisecond comparison. This is a well-known trade-off in the codebase but could cause flaky tests in other contexts if not remembered. Consider adding a comment in timestamp.ts noting the second-level precision."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-29T15:18:24Z",
+      "completed_at": "2026-05-29T15:19:36Z",
+      "duration_ms": 72000,
+      "summary": [
+        "Full Verification Stack completed. All 6 ACs verified against the implementation. 76 knowledge-store unit tests pass. 2659 suite-wide tests pass with zero regressions. Edge cases confirmed correct: target next_id incremented by exactly 1 (AC invariant 3 from handoff notes), original insight absent from source after move (invariant 2), moved insight id sourced from target store's next_id (invariant 1), scope/project_slug correct for both directions (invariant 4). Single-lock constraint (AC2) and atomicWriteJson-direct usage (AC3) confirmed by code inspection. InsightSchema.parse() validation present before write (AC4). Method signature matches spec (AC1)."
+      ],
+      "metrics": {
+        "test_coverage": "76/76 knowledge-store unit tests; 2659/2659 suite-wide",
+        "tests_passed": 2659,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-29T15:19:36Z",
+          "note": "Build check: TypeScript compiles cleanly — all 76 knowledge-store tests ran without any import or type errors, confirming the public method signature is correctly typed and exported."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-29T15:19:36Z",
+          "note": "Edge case — source-equals-target scenario: moveInsight() does not guard against moving an insight to the same store it already lives in (e.g., global→global). In that scenario the method would silently succeed, writing the insight to the target with a new id and removing it from the source (which is the same file), but reading stale data for the second atomicWriteJson call. This scenario is not part of the WP spec and has no test, but is worth noting for a future defensive guard."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-29T15:19:36Z",
+          "note": "Edge case — concurrent moves: two concurrent moveInsight() calls for the same source insight id are serialized correctly by withLock. The second call will throw 'Insight with id N not found' after the first removes the insight — correct behavior, no race condition possible."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-29T15:20:02Z",
+      "completed_at": "2026-05-29T15:21:17Z",
+      "duration_ms": 75000,
+      "summary": [
+        "Code review PASS. moveInsight() is well-implemented, architecturally sound, and consistent with all established codebase patterns. Single-lock constraint (AC2), atomicWriteJson-direct usage (AC3), InsightSchema validation (AC4), and the public method signature (AC1) all verified. One Fix-Forward applied: captured the now() timestamp into a const movedAt before constructing movedInsight, eliminating the redundant double now() call between movedInsight.updated_at and targetStore.last_updated (non-behavioral, readability improvement — consistent with addInsight pattern). All 76 tests pass post-fix. One documentation-forward gap tagged for the Documentation agent."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/storage/knowledge-store.ts",
+          "mcp-server/tests/storage/knowledge-store.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-29T15:21:17Z",
+          "note": "Fix-Forward applied in moveInsight(): extracted the two sequential now() calls (lines 369 and 374) into a single const movedAt = now() captured once before InsightSchema.parse(). Reused movedAt for both movedInsight.updated_at and targetStore.last_updated. Non-behavioral change — both calls truncate to whole seconds so the values were identical in practice. Aligns with the addInsight() convention and removes the subtle implication that the timestamps might differ. All 76 tests pass."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-05-29T15:21:17Z",
+          "note": "[documentation-forward] moveInsight() JSDoc @throws block does not mention the pre-lock guard: 'throws Error if targetScope === \"project\" and targetProjectSlug is absent'. The @warning about nested lock deadlock is present, but the parameter-validation throw is undocumented. Add a @throws entry to match the guard at line 322."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-29T15:21:17Z",
+          "note": "Design note (no action required): The same-store move scenario (e.g. moving an insight from global→global) is not guarded against. In that case moveInsight() silently succeeds but the second atomicWriteJson overwrites the target (which is the same file) with stale in-memory data, potentially losing the first write. This is out of scope for WP-002 and QA has already noted it — flagging here for architectural awareness. A future defensive guard (throw if sourceStorePath === targetStorePath) would cost one line and prevent data loss in that edge case."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-29T15:21:17Z",
+          "note": "The _storePathsForFilter helper is called by moveInsight() with a sourceFilter that always includes an explicit scope (and optionally project_slug), so it will always return a single-element array. The loop structure in moveInsight() accommodates the multi-path case but effectively always runs for one iteration. This is fine — it reuses the shared helper cleanly and leaves the door open for future sourceFilter relaxation without touching the core logic."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-29T15:21:36Z",
+      "completed_at": "2026-05-29T15:24:54Z",
+      "duration_ms": 198000,
+      "summary": [
+        "Resolved the [documentation-forward] gap from the code review: the JSDoc @throws entry for the targetProjectSlug pre-lock guard was already present in knowledge-store.ts at line 312 (added during implementation). Updated api-surface.md with three changes: (1) expanded the KnowledgeStoreManager locking strategy description to list moveInsight() as a lock-acquiring method and added a cross-store behavior note; (2) added the full moveInsight() method signature to the KnowledgeStoreManager class block between updateInsight and deleteInsight; (3) removed a stale 'deferred to WP-002' comment from the extended handleMoveKnowledge entry. Note: handleMoveKnowledge in gui/api.ts still uses the add-first-then-delete two-step pattern (not moveInsight()) — the existing non-atomic warning in api-surface.md is correct and was not changed. CTX context files regenerated successfully (mcp-server/manifest.md and mcp-server/source-storage.md updated)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          ".context/mcp-server/manifest.md",
+          ".context/mcp-server/source-storage.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-29T15:24:54Z",
+          "note": "The [documentation-forward] JSDoc @throws entry for the targetProjectSlug guard was already present in knowledge-store.ts (line 312) from the implementation pipeline — no change was needed in the source file. The documentation gap was in api-surface.md, which did not document the moveInsight() method at all."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-29T15:24:54Z",
+          "note": "handleMoveKnowledge (gui/api.ts) still uses the legacy add-first-then-delete two-step (addInsight + deleteInsight separately) rather than the new atomic moveInsight(). The existing non-atomic warning in api-surface.md is accurate. If a future WP migrates handleMoveKnowledge to use moveInsight(), the api-surface.md handleMoveKnowledge entry will need to be updated to remove the non-atomic warning and the Add-first-then-delete note."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-29T15:24:54Z",
+  "last_updated": "2026-05-29T15:24:54Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-29T15:18:02Z",
+      "notes": [
+        "moveInsight() is ready for QA. Key invariants to verify: (1) the returned insight has an id sourced from the target store's next_id, not the source's; (2) the original insight is completely absent from the source store after the move; (3) the target store's next_id is incremented by exactly 1; (4) the moved insight has the correct scope and project_slug (undefined for global). The method signature is async moveInsight(id: number, sourceFilter: { scope: InsightScope; project_slug?: string }, targetScope: InsightScope, targetProjectSlug?: string): Promise<Insight>."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-29T15:19:36Z",
+      "notes": [
+        "All 6 ACs met and verified by test execution. moveInsight() is clean, well-documented, and correctly implemented. One low-priority design note: moving an insight to the same store it already belongs to (same scope+slug) is not guarded, but is out of scope for this WP. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-29T15:21:17Z",
+      "notes": [
+        "Code review PASS. One Fix-Forward applied (non-behavioral now() consolidation in moveInsight — tests still green). One documentation-forward gap tagged: moveInsight() @throws is missing the pre-lock targetProjectSlug guard. Documentation agent should: (1) resolve the [documentation-forward] JSDoc @throws gap, (2) review any README/API surface docs if moveInsight is part of the public API surface."
+      ]
+    }
+  ]
+}

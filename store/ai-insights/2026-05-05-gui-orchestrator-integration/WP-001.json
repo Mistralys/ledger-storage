@@ -1,0 +1,356 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "register() creates the queue file if it does not exist and appends a correctly shaped entry.",
+      "met": true
+    },
+    {
+      "criterion": "register() with existing entries preserves all prior entries.",
+      "met": true
+    },
+    {
+      "criterion": "unregister() removes only the entry with the matching ID.",
+      "met": true
+    },
+    {
+      "criterion": "unregister() is a silent no-op for unknown IDs or missing files.",
+      "met": true
+    },
+    {
+      "criterion": "Both functions acquire an exclusive lock on .run-queue.lock before read/write.",
+      "met": true
+    },
+    {
+      "criterion": "Atomic write: no partial content is observable in the queue file.",
+      "met": true
+    },
+    {
+      "criterion": "No external dependencies beyond stdlib + existing filelock.py.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-05T11:31:27Z",
+      "completed_at": "2026-05-05T11:35:24Z",
+      "duration_ms": 237000,
+      "summary": [
+        "Implemented orchestrator/src/utils/run_queue.py with register() and unregister() functions.",
+        "register() appends a correctly shaped entry (id, pid, planPath, expectedSlug, startedAt, status) to orchestrator/logs/.run-queue.json, creating the file and logs directory if missing. Atomic write via .tmp + rename.",
+        "unregister() removes the entry with the matching UUID; silent no-op for missing file or unknown ID. Both functions acquire an exclusive lock via filelock.py before any read/write.",
+        "Modified orchestrator/src/cli.py: added entry_id: str | None = None initializer before the outer try, lazy-imported run_queue and called register() after run_start is logged, added guarded unregister() call in the finally block alongside lock cleanup.",
+        "Created orchestrator/tests/test_run_queue.py with 12 tests covering all acceptance criteria. Full suite: 978 passed, 0 failures. Ruff clean."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/utils/run_queue.py",
+          "orchestrator/src/cli.py",
+          "orchestrator/tests/test_run_queue.py"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T11:35:24Z",
+          "note": "run_queue.py acquires the lock via os.open() on the lock file, which is consistent with how filelock.py uses raw file descriptors. The pattern matches the orchestrator's existing conventions cleanly."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T11:35:24Z",
+          "note": "The _read_queue() helper silently returns [] for corrupt JSON, which is intentional and matches the plan spec. A future observability improvement could log a warning via the standard logging module on corrupt-file recovery."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T11:35:24Z",
+          "note": "No observations — code in the touched files is clean and consistent."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-05T11:39:00Z",
+      "completed_at": "2026-05-05T11:40:33Z",
+      "duration_ms": 93000,
+      "summary": [
+        "All 7 acceptance criteria verified. 12 targeted tests pass in 0.03 s; full suite: 978 passed, 6 skipped, 0 failures. cli.py integration confirmed: entry_id initialised before outer try, register() called after run_start is logged, unregister() guarded in finally. No external dependencies beyond stdlib + filelock.py. Atomic write (tmp+rename) verified. No regressions introduced."
+      ],
+      "metrics": {
+        "test_coverage": "12/12 targeted tests",
+        "tests_passed": 978,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T11:40:33Z",
+          "note": "In unregister(), a `return` inside the try block when the entry is not found still triggers the finally block in Python, so the lock is correctly released. The behaviour is correct; the comment in the code accurately describes this."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T11:40:33Z",
+          "note": "_LOCK_FILE.parent.mkdir() in register() is redundant since _LOGS_DIR.mkdir() already creates the same directory. Harmless; no action needed."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T11:40:33Z",
+          "note": "No observations — code is clean and consistent with orchestrator conventions."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "FAIL",
+      "started_at": "2026-05-05T11:42:18Z",
+      "completed_at": "2026-05-05T11:46:29Z",
+      "duration_ms": 251000,
+      "summary": [
+        "[FAIL] One blocking issue found in cli.py: the run_queue.register() call is unguarded — an OSError from non-blocking lock contention (filelock.py uses LK_NBLCK / LOCK_NB) propagates through _run() uncaught and crashes the orchestrator process with an unhandled exception when two concurrent runs start simultaneously on the same workspace. unregister() is correctly guarded with try/except in the finally block; register() must be guarded symmetrically. run_queue.py and test_run_queue.py are high quality — architecture, locking, atomic write, and tests all reviewed and approved. Only cli.py integration needs rework."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/utils/run_queue.py",
+          "orchestrator/src/cli.py",
+          "orchestrator/tests/test_run_queue.py"
+        ]
+      },
+      "comments": [
+        {
+          "type": "blocking",
+          "priority": "high",
+          "timestamp": "2026-05-05T11:46:29Z",
+          "note": "BLOCKING — cli.py line ~574: run_queue.register() is unguarded against OSError. filelock.py's lock_exclusive() uses non-blocking mode (LOCK_NB / LK_NBLCK), which raises OSError immediately if the queue lock is held by another process. If two orchestrators start concurrently on the same workspace (different plans), one will raise OSError inside register(), which propagates through _run() (no except clause on the outer try, only a finally), exits asyncio.run(), and is not caught by main()'s `except KeyboardInterrupt` — resulting in an unhandled exception crash. Fix: wrap the register() call in try/except, log a warning on failure, and allow the run to continue with entry_id = None. The unregister() call in the finally block is already correctly guarded — register() must match this pattern."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T11:46:29Z",
+          "note": "run_queue.py: _LOCK_FILE.parent.mkdir(parents=True, exist_ok=True) on line ~86 is a no-op since _LOGS_DIR.mkdir() immediately above creates the same directory. Harmless dead code. Recommend removing it during rework to eliminate confusion for future readers. (Also flagged by QA.)"
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T11:46:29Z",
+          "note": "run_queue.py: The locking pattern (os.open + lock_exclusive + unlock + os.close) is internally consistent with filelock.py, but diverges from the pattern used in cli.py (open(lock_path, 'w') + fileno()). Both are correct and cross-platform, but the inconsistency is worth noting. No action required; documenting for awareness."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-05T11:46:29Z",
+          "note": "[documentation-forward] orchestrator/docs/agents/project-manifest/api-surface.md does not yet list run_queue.py as a public utility module. Add entries for: QUEUE_FILE constant (public, Path), register(pid, plan_path, slug, started_at) -> str, and unregister(entry_id) -> None. The module-level docstring already describes the queue entry shape — the manifest entry can reference it."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T11:46:29Z",
+          "note": "test_run_queue.py: Tests are well-structured, high signal-to-noise, and cover all 7 ACs cleanly. The patch.object pattern for redirecting _LOGS_DIR, QUEUE_FILE, and _LOCK_FILE to tmp_path is the correct isolation approach. No test changes needed for the blocking fix in cli.py (that fix is in integration code, not in run_queue.py itself)."
+        }
+      ]
+    },
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-05T11:47:57Z",
+      "completed_at": "2026-05-05T11:48:45Z",
+      "duration_ms": 48000,
+      "summary": [
+        "Rework: wrapped run_queue.register() call in cli.py in a try/except Exception block, logging a warning on failure and allowing the run to continue with entry_id = None. Matches the pattern of the existing unregister() guard in the finally block.",
+        "Optional cleanup: removed the redundant _LOCK_FILE.parent.mkdir() call in run_queue.py register() — _LOCK_FILE.parent is _LOGS_DIR, which is already created by the preceding _LOGS_DIR.mkdir() call.",
+        "Full test suite: 978 passed, 6 skipped, 0 failures. Ruff clean on both modified files."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/cli.py",
+          "orchestrator/src/utils/run_queue.py"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T11:48:45Z",
+          "note": "The try/except Exception guard on register() in cli.py now mirrors the unregister() guard in the finally block exactly — both catch Exception broadly and continue without propagating. This is intentional: run queue tracking is a best-effort side-channel and must never abort a run."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-05T11:49:07Z",
+      "completed_at": "2026-05-05T11:50:17Z",
+      "duration_ms": 70000,
+      "summary": [
+        "Rework QA PASS. The single blocking issue from the previous code-review has been correctly addressed: run_queue.register() in cli.py is now wrapped in try/except Exception with a warning log, matching the existing unregister() guard pattern in the finally block. entry_id initialized to None at line 502 before the outer try; register() guard at lines 574-581; unregister() guard at lines 776-781 unchanged and correct.",
+        "Redundant _LOCK_FILE.parent.mkdir() removed from run_queue.py (confirmed absent via grep).",
+        "Targeted suite: 12/12 passed in 0.04s. Full suite: 978 passed, 6 skipped, 0 failures. Ruff clean on both modified files."
+      ],
+      "metrics": {
+        "test_coverage": "12/12 targeted tests",
+        "tests_passed": 978,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T11:50:17Z",
+          "note": "register() guard in cli.py symmetrically matches unregister() guard — both catch Exception broadly and continue without propagating. Correct: run queue tracking is best-effort and must never abort a run."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T11:50:17Z",
+          "note": "No observations — rework is clean and targeted. No scope creep introduced."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-05T11:50:42Z",
+      "completed_at": "2026-05-05T11:52:11Z",
+      "duration_ms": 89000,
+      "summary": [
+        "Second-pass review (focused on cli.py rework). Blocking issue from prior review is fully resolved: run_queue.register() is now wrapped in try/except Exception with a log.warning() call, matching the best-effort pattern of the unregister() guard in the finally block. entry_id is initialized to None before the outer try (line 502); if register() fails, entry_id stays None and the if entry_id is not None guard in the finally block correctly prevents a phantom unregister() call. No scope creep introduced. run_queue.py and test_run_queue.py remain approved from prior pass. Redundant _LOCK_FILE.parent.mkdir() confirmed absent from run_queue.py. PASS."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/cli.py",
+          "orchestrator/src/utils/run_queue.py"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T11:52:11Z",
+          "note": "cli.py register() guard: log.warning() does not pass exc_info=True. If a non-OSError exception is raised (e.g., an ImportError from a broken import, or a UUID-generation edge case), the cause is swallowed silently. Adding exc_info=True to the warning would aid future debugging at zero cost. Not blocking — the guard is correct as-is."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T11:52:11Z",
+          "note": "cli.py unregister() guard in finally: uses bare `except Exception: pass` with no log statement. An asymmetry exists: register() failure is logged, unregister() failure is silent. A stale queue entry (from unregister failing) is more user-visible than a missing registration, so surfacing the failure at DEBUG level would improve observability. Low priority — not blocking."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-05T11:52:11Z",
+          "note": "[documentation-forward] orchestrator/docs/agents/project-manifest/api-surface.md does not yet list run_queue.py as a public utility module. Add entries for: QUEUE_FILE constant (public, Path), register(pid, plan_path, slug, started_at) -> str, and unregister(entry_id) -> None. Carried forward from prior review pass."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T11:52:11Z",
+          "note": "No additional observations — rework is surgically targeted and introduces no new concerns. Code quality across all three files (run_queue.py, cli.py, test_run_queue.py) is high."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-05T11:53:25Z",
+      "completed_at": "2026-05-05T11:54:39Z",
+      "duration_ms": 74000,
+      "summary": [
+        "Added `src/utils/run_queue.py` entry to orchestrator/docs/agents/project-manifest/api-surface.md, addressing the documentation-forward item raised (and carried forward) by both code-review passes. The new section documents: `QUEUE_FILE` public constant (Path to `orchestrator/logs/.run-queue.json`), `register(pid, plan_path, slug, started_at) -> str`, and `unregister(entry_id) -> None`, including the queue entry JSON shape and the best-effort CLI integration pattern. No other documentation gaps were identified — the implementation files (`run_queue.py`, `cli.py`) have clear inline docstrings, and the existing manifest (`file-tree.md`) already covers the orchestrator utility module conventions."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-05T11:54:39Z",
+          "note": "Addressed documentation-forward from code-review (both passes): api-surface.md now lists run_queue.py with QUEUE_FILE, register(), and unregister() including the queue entry shape and best-effort integration pattern."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T11:54:39Z",
+          "note": "Two low-priority observability improvements noted by the Reviewer (exc_info=True on register() warning; DEBUG log on unregister() failure) are not documentation items — they are code-level fix-forward candidates. No documentation action required."
+        }
+      ]
+    }
+  ],
+  "rework_counts": {
+    "implementation": 1,
+    "qa": 1,
+    "code-review": 1
+  },
+  "status_changed_at": "2026-05-05T11:54:39Z",
+  "last_updated": "2026-05-05T11:54:39Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-05T11:35:24Z",
+      "notes": [
+        "WP-001 is complete. run_queue.py is in orchestrator/src/utils/run_queue.py and all 7 acceptance criteria are verified by tests/test_run_queue.py (12 tests, all passing). cli.py integration is in place: entry_id initialized before the outer try, register() called after run_start, unregister() guarded in finally. Ready for QA."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-05T11:40:33Z",
+      "notes": [
+        "WP-001 QA PASS. All 7 AC verified via 12 unit tests. Full suite: 978 passed, 0 failures. Implementation is clean with no external deps and correct atomic write + locking semantics. Ready for code-review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Developer",
+      "timestamp": "2026-05-05T11:46:29Z",
+      "notes": [
+        "FAIL — rework required in orchestrator/src/cli.py only. run_queue.py and test_run_queue.py are approved as-is. Specific fix needed: wrap the run_queue.register() call (lines ~574-578) in a try/except block, log a warning on failure, and continue with entry_id = None. Pattern to follow: the existing unregister() guard in the finally block (lines ~773-776). Optional cleanup: remove the redundant _LOCK_FILE.parent.mkdir() in run_queue.py register() function. No new tests required for the cli.py guard — the existing test suite covers run_queue.py behaviour; the guard change in cli.py is a defensive wrapper, not new logic."
+      ]
+    },
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-05T11:48:45Z",
+      "notes": [
+        "Rework addressed the single blocking issue from code-review: run_queue.register() in cli.py is now guarded with try/except, logging a warning on failure and continuing with entry_id = None. run_queue.py cleanup: redundant _LOCK_FILE.parent.mkdir() removed. 978/978 tests pass, ruff clean. Ready for re-review."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-05T11:50:17Z",
+      "notes": [
+        "WP-001 QA PASS (rework). All 7 AC verified. The blocking register() guard issue raised by code-review is fixed. Full suite: 978 passed, 0 failures, ruff clean. Ready for code-review (second pass on cli.py change only — run_queue.py and test_run_queue.py remain approved from prior review)."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-05T11:52:11Z",
+      "notes": [
+        "WP-001 code-review PASS (second pass). The blocking register() guard issue is fixed and verified. All 7 AC are met. run_queue.py and test_run_queue.py are high quality. One documentation gap remains open: api-surface.md needs a run_queue.py entry (documented as documentation-forward comment). Minor low-priority observability improvements logged (exc_info on register warning; DEBUG log on unregister failure) — both are fix-forward candidates for Documentation or a future Developer pass, not blockers. Ready for documentation pipeline."
+      ]
+    }
+  ]
+}

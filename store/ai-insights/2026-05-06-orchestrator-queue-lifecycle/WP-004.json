@@ -1,0 +1,216 @@
+{
+  "work_package_id": "WP-004",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "Alive process + JSONL with stage_start + no project → effectiveStatus: 'started'",
+      "met": true
+    },
+    {
+      "criterion": "Alive process + JSONL with only run_start + no project → effectiveStatus: 'pending'",
+      "met": true
+    },
+    {
+      "criterion": "Dead process + JSONL with stage_start + no project → effectiveStatus: 'dead'",
+      "met": true
+    },
+    {
+      "criterion": "killQueueEntry and dismissQueueEntry still work (use default hasLogActivity = false)",
+      "met": true
+    },
+    {
+      "criterion": "All existing AC-2 through AC-8 tests pass unchanged",
+      "met": true
+    },
+    {
+      "criterion": "Entries that complete are still excluded from results (AC-6 preserved)",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-06T11:26:02Z",
+      "completed_at": "2026-05-06T11:29:40Z",
+      "duration_ms": 218000,
+      "summary": [
+        "Extracted computeEffectiveStatus to src/gui/queue/compute-effective-status.ts with an enhanced signature: computeEffectiveStatus(alive, projectExists, hasLogActivity=false). New rule: alive+hasLogActivity+no project → 'started' (was previously 'pending').",
+        "Updated getQueue() in orchestrator-manager.ts to pass progressResult.hasStageActivity as the third argument. killQueueEntry and dismissQueueEntry remain on the two-argument form so they retain the conservative (pre-WP-004) behavior.",
+        "Updated module-level comment in orchestrator-manager.ts to document the new transition rule. Re-exported EffectiveStatus type from the new module for backward compatibility.",
+        "Created tests/gui/queue/compute-effective-status.test.ts with 6 pure unit tests covering all 3 new AC transitions plus backward-compat defaults. All 2169 tests pass across 72 test files."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/gui/queue/compute-effective-status.ts",
+          "mcp-server/gui/orchestrator-manager.ts",
+          "mcp-server/tests/gui/queue/compute-effective-status.test.ts"
+        ]
+      },
+      "metrics": {
+        "test_coverage": "6 new unit tests in compute-effective-status.test.ts",
+        "tests_passed": 2169,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-06T11:29:40Z",
+          "note": "computeEffectiveStatus extracted from gui/orchestrator-manager.ts into src/gui/queue/compute-effective-status.ts following the same pattern as resolve-progress.ts. orchestrator-manager.ts now imports and re-exports it. The function gained a third optional parameter hasLogActivity (default false) that is passed as progressResult.hasStageActivity in getQueue() but left at default in killQueueEntry/dismissQueueEntry per spec."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-06T11:29:40Z",
+          "note": "The alive+hasLogActivity rule promotes a queue entry to 'started' before project-ledger.json is created. This is observable via the GUI but not via killQueueEntry (which uses default hasLogActivity=false and still sees the entry as pending). This asymmetry is intentional per the spec but worth a comment near the kill function for future readers."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-06T11:32:52Z",
+      "completed_at": "2026-05-06T11:33:40Z",
+      "duration_ms": 48000,
+      "summary": [
+        "Verified all 6 ACs for WP-004 (computeEffectiveStatus log-activity detection).",
+        "AC-1: computeEffectiveStatus(true, false, true) → 'started' — confirmed in source and test.",
+        "AC-2: computeEffectiveStatus(true, false, false) → 'pending' — confirmed in source and test.",
+        "AC-3: computeEffectiveStatus(false, false, true) → 'dead' — confirmed in source and test.",
+        "AC-4: killQueueEntry (line 380) and dismissQueueEntry (line 430) both call computeEffectiveStatus with 2 args, correctly using default hasLogActivity=false — confirmed.",
+        "AC-5: Full suite 2169/2169 pass — no regressions.",
+        "AC-6: synthesisGenerated exclusion logic in getQueue() is unchanged — confirmed.",
+        "TypeScript compiles cleanly. All 6 dedicated compute-effective-status tests pass.",
+        "Bonus coverage: projectExists-always-wins rule tested across all 4 alive/hasLogActivity combinations."
+      ],
+      "metrics": {
+        "test_coverage": "6 unit tests covering all ACs + backward-compat projectExists cases",
+        "tests_passed": 2169,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-06T11:33:40Z",
+          "note": "computeEffectiveStatus is a clean pure function with correct priority order: projectExists → alive+hasLogActivity → alive → dead. Bonus test confirms projectExists always wins over hasLogActivity in all 4 combinations (false/false, true/false, true/true, false/true). This is thorough."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-05-06T11:33:40Z",
+          "note": "The asymmetry between getQueue() (passes hasStageActivity) and killQueueEntry/dismissQueueEntry (use 2-arg default) is intentional and verified in tests. A comment near those kill/dismiss functions would prevent future maintainers from accidentally passing hasLogActivity. Developer noted this as a low-priority improvement — agreed."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-06T11:36:22Z",
+      "completed_at": "2026-05-06T11:37:15Z",
+      "duration_ms": 53000,
+      "summary": [
+        "Reviewed computeEffectiveStatus (src/gui/queue/compute-effective-status.ts): pure module with zero I/O, correctly typed EffectiveStatus union, exhaustive JSDoc documenting all four transition rules in priority order, correct default parameter on hasLogActivity. Exemplary extraction.",
+        "Reviewed orchestrator-manager.ts call sites: getQueue() (line 234) correctly passes progressResult.hasStageActivity; killQueueEntry (line 380) and dismissQueueEntry (line 430) correctly use 2-arg form. Import and re-export of EffectiveStatus verified.",
+        "Found Fix-Forward issue: both kill and dismiss had comment 'Recompute effective status — same logic as getQueue()' which is inaccurate — they intentionally omit hasLogActivity. Applied fix: replaced with accurate comments explaining the intentional omission and its rationale.",
+        "Reviewed tests/gui/queue/compute-effective-status.test.ts: 6 focused pure unit tests, no I/O, labelled arguments for readability. 'projectExists always wins' case comprehensively tests all 4 alive/hasLogActivity combinations in a single test. Clean."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/gui/queue/compute-effective-status.ts",
+          "mcp-server/gui/orchestrator-manager.ts",
+          "mcp-server/tests/gui/queue/compute-effective-status.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-06T11:37:15Z",
+          "note": "Applied Fix-Forward: corrected the misleading comment 'Recompute effective status — same logic as getQueue()' in both killQueueEntry (line ~380) and dismissQueueEntry (line ~427). The comment falsely implied these callers use the same logic as getQueue(), but they intentionally omit the hasLogActivity argument (defaulting to false) for conservative kill/dismiss eligibility. Updated both comments to explicitly document the intentional omission and the reason, so future maintainers do not accidentally pass hasStageActivity to these paths."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-06T11:37:15Z",
+          "note": "computeEffectiveStatus.ts is an exemplary pure module: zero I/O, exhaustive JSDoc on every parameter, transition rules listed in priority order in both the JSDoc and the code body. The default parameter on hasLogActivity elegantly covers the backward-compat requirement without separate function signatures."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-06T11:37:15Z",
+          "note": "[documentation-forward] computeEffectiveStatus is now an exported pure function in src/gui/queue/compute-effective-status.ts with its own module. The mcp-server api-surface.md should document its signature (alive, projectExists, hasLogActivity=false), return type EffectiveStatus, and the four priority-ordered transition rules. Also document that EffectiveStatus is re-exported from gui/orchestrator-manager.ts for backward compatibility."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-06T11:39:13Z",
+      "completed_at": "2026-05-06T11:41:18Z",
+      "duration_ms": 125000,
+      "summary": [
+        "Addressed the documentation-forward item: added computeEffectiveStatus to api-surface.md with full JSDoc documenting the function signature (alive, projectExists, hasLogActivity?=false), return type EffectiveStatus, and all 4 priority-ordered transition rules.",
+        "Updated the EffectiveStatus type entry in api-surface.md to reference its canonical source (src/gui/queue/compute-effective-status.ts) and the backward-compat re-export from gui/orchestrator-manager.ts.",
+        "Updated file-tree.md: added compute-effective-status.ts to src/gui/queue/ listing with annotation; updated orchestrator-manager.ts annotation to mention the new re-export; added compute-effective-status.test.ts to tests/gui/queue/ listing with annotation; corrected orchestrator-manager.test.ts test count from 69 → 77 (reflecting the 7 WP-003 AC-6 tests added by the Developer pipeline)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/file-tree.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-06T11:41:18Z",
+          "note": "Documentation-forward item fully addressed. computeEffectiveStatus now appears in api-surface.md with full JSDoc (transition rules in priority order, hasLogActivity default, ProgressResolution.hasStageActivity relationship). EffectiveStatus comment updated to reference its source module and the backward-compat re-export."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-06T11:41:18Z",
+  "last_updated": "2026-05-06T11:41:18Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-06T11:29:40Z",
+      "notes": [
+        "computeEffectiveStatus is now in src/gui/queue/compute-effective-status.ts (pure, no I/O). orchestrator-manager.ts imports it and re-exports EffectiveStatus for backward compatibility.",
+        "getQueue() passes progressResult.hasStageActivity to computeEffectiveStatus. killQueueEntry and dismissQueueEntry call with two args only (defaults to hasLogActivity=false), so their behavior is unchanged.",
+        "6 new unit tests in tests/gui/queue/compute-effective-status.test.ts cover AC-1/2/3 and default behavior. All 2169 tests pass."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-06T11:33:40Z",
+      "notes": [
+        "All 6 ACs verified. computeEffectiveStatus is pure, correctly extracted to src/gui/queue/compute-effective-status.ts. orchestrator-manager.ts correctly passes progressResult.hasStageActivity in getQueue() and uses 2-arg form in kill/dismiss. TypeScript clean, 2169/2169 tests pass. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-06T11:37:15Z",
+      "notes": [
+        "All 6 ACs verified PASS. Fix-Forward applied: corrected misleading 'same logic as getQueue()' comments in killQueueEntry and dismissQueueEntry to accurately document the intentional 2-arg call. Documentation-Forward: add computeEffectiveStatus and EffectiveStatus re-export to api-surface.md."
+      ]
+    }
+  ]
+}

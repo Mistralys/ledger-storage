@@ -1,0 +1,162 @@
+{
+  "work_package_id": "WP-006",
+  "work_package_file": "work/WP-006.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-004"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "Created WP has assigned_to: null regardless of any assigned_to input",
+      "met": true
+    },
+    {
+      "criterion": "blocked_by is set on a BLOCKED-initial-status WP; absent on READY-initial-status WP",
+      "met": true
+    },
+    {
+      "criterion": "Cycle detection: A → B → A rejected with clear error",
+      "met": true
+    },
+    {
+      "criterion": "Empty string in acceptance_criteria rejected",
+      "met": true
+    },
+    {
+      "criterion": "Whitespace-only string in acceptance_criteria rejected",
+      "met": true
+    }
+  ],
+  "revision": 1,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-02-27T17:50:30Z",
+      "completed_at": "2026-02-27T17:51:36Z",
+      "summary": [
+        "Changed assigned_to to null in wpDetail and wpSummary inside createWorkPackage (§9b.1 soft-deprecation: input accepted silently, ignored at creation)",
+        "Added unmetDeps tracking during initialStatus determination to identify the first unmet dependency",
+        "Set wpDetail.blocked_by when initialStatus === 'BLOCKED' with type: 'dependency', description, and blocking_work_package",
+        "Added hasCycle(newId, deps, allWps) pure BFS function at module scope above createWorkPackage",
+        "Called hasCycle before step 6; throws 'Dependency cycle detected: WP ${wpId} would create a circular dependency.' on cycle",
+        "Added acceptance_criteria whitespace validation loop before step 6; throws on empty or whitespace-only criterion",
+        "Updated existing 'sets assigned_to from tool input' test to assert null (spec change)",
+        "Added 7 new integration tests for all 5 WP-006 acceptance criteria (assigned_to:null, blocked_by on BLOCKED, no blocked_by on READY, cycle detection, empty/whitespace rejection)",
+        "All 697 tests pass, 0 TypeScript errors"
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/tools/work-package.ts",
+          "mcp-server/tests/tools/work-package.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-02-27T17:52:00Z",
+          "note": "The step numbering comments in createWorkPackage (// 5. Create acceptance criteria, // 6. Create WP detail, // 7. Create WP summary, // 8. Update root index, // 9. Write both files, // 10. Read back) were shifted by two (new steps 3b and 5 inserted) and updated accordingly. A future cleanup could consolidate the inline numbering into a cleaner flow comment."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T17:52:00Z",
+          "note": "hasCycle performs a BFS rather than DFS — both are correct for cycle detection on a DAG, but DFS is more commonly used in textbooks. The BFS approach is fine here and arguably easier to read; no action needed."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-02-27T17:53:55Z",
+      "completed_at": "2026-02-27T17:54:49Z",
+      "summary": [
+        "Build check: 0 TypeScript errors",
+        "AC-1: assigned_to is null on WP detail and root index summary regardless of input — verified in 2 tests",
+        "AC-2: blocked_by present on BLOCKED-initial WP (type='dependency', blocking_work_package set); absent on READY-initial WP — verified in 2 tests",
+        "AC-3: cycle detection rejects A->B->A with 'Dependency cycle detected: WP X would create a circular dependency.' — verified in 1 test",
+        "AC-4: empty string in acceptance_criteria rejected — verified in 1 test",
+        "AC-5: whitespace-only string in acceptance_criteria rejected — verified in 1 test",
+        "Edge-case: BFS traverses transitive deps correctly (hasCycle with empty deps returns false immediately)",
+        "Edge-case: criterion.trim() handles all whitespace character types (tab, newline, etc.)",
+        "Regression: 697/697 tests pass, 0 failures"
+      ],
+      "metrics": {
+        "tests_passed": 697,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T17:55:00Z",
+          "note": "mcp-server/src/tools/work-package.ts (hasCycle): The BFS cycle detector can only catch forward-reference cycles — e.g., new WP-X depends on WP-A, which already lists WP-X in its dependency chain. It cannot detect cycles among freshly created WPs that don't yet exist in allWps. This is the correct behavior for sequential creation workflows, but worth documenting: hasCycle is a forward-reference guard, not a general-purpose cycle detector for in-flight batch creation."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T17:55:10Z",
+          "note": "mcp-server/src/tools/work-package.ts (createWorkPackage step 5): acceptance_criteria whitespace validation iterates the array and throws on first invalid criterion, but the error message does not indicate which criterion (index or value) was rejected. Low impact but a debug-quality improvement would be to include the index: 'Acceptance criteria[2] cannot be empty or whitespace-only.'"
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-02-27T17:57:33Z",
+      "completed_at": "2026-02-27T17:58:14Z",
+      "summary": [
+        "Reviewed hasCycle BFS implementation, createWorkPackage guard ordering, assigned_to:null enforcement, blocked_by conditional assignment, and acceptance_criteria whitespace validation.",
+        "No blocking issues found. All five acceptance criteria verified through code reading and cross-checking with tests.",
+        "Guard ordering is correct: dependency existence (step 3) precedes cycle detection (step 3b) to prevent hasCycle from traversing unknown IDs that could cause silent misses.",
+        "unmetDeps[0] approach for blocked_by is consistent with single-blocker schema design; non-blocking improvement noted."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T18:05:00Z",
+          "note": "mcp-server/src/tools/work-package.ts (line 200, hasCycle): The BFS traversal is clean, pure, and correctly placed at module scope. The visited Set prevents infinite loops on pre-existing cycles in the DAG. One edge case: hasCycle traverses WorkPackageSummary.dependencies from the stored root index, so if a prior WP was seeded with a forward-reference dependency (e.g. WP-001 depends on not-yet-created WP-003), hasCycle will follow that edge. This is the correct and intended behavior for the A→B→A cycle test, but worth documenting: the function trusts that allWps is the current root index state."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T18:05:10Z",
+          "note": "mcp-server/src/tools/work-package.ts (line 309, blocked_by assignment): blocked_by.blocking_work_package is set to unmetDeps[0] — only the first unmet dependency is recorded. When multiple deps are incomplete, only one appears in the blocker context. This matches the single-blocker design of the Blocker schema but could leave agents confused when there are N>1 unmet deps. A future enhancement could use description to list all unmet deps, e.g. 'Unmet deps: WP-001, WP-003'."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T18:05:20Z",
+          "note": "mcp-server/src/tools/work-package.ts (step 5, acceptance_criteria validation): criterion.trim() correctly handles all whitespace types. The error message does not include the failing criterion index. QA flagged this; no further action required unless debugging DX becomes a concern."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-02-27T18:00:04Z",
+      "completed_at": "2026-02-27T18:05:19Z",
+      "summary": [
+        "Updated api-surface.md: ledger_create_work_package now documents assigned_to soft-deprecation (always null on creation), blocked_by auto-assignment for BLOCKED-initial WPs, hasCycle() BFS cycle detection with error format, and acceptance_criteria whitespace validation.",
+        "Updated constraints.md: Added constraint 46 (assigned_to always null), constraint 47 (blocked_by auto-set for BLOCKED WPs), constraint 48 (cycle detection via hasCycle() BFS, forward-reference caveat), constraint 49 (acceptance criteria whitespace validation)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/constraints.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T00:00:00Z",
+          "note": "No gaps found — all four createWorkPackage behavioral changes documented clearly in api-surface.md description and four new constraints (46-49) in constraints.md."
+        }
+      ]
+    }
+  ]
+}

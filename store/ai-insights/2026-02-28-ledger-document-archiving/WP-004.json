@@ -1,0 +1,204 @@
+{
+  "work_package_id": "WP-004",
+  "work_package_file": "work/WP-004.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-002"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "mcp-server/gui/public/libs/marked.min.js exists and is a valid marked build",
+      "met": true
+    },
+    {
+      "criterion": "index.html loads marked.min.js before app.js",
+      "met": true
+    },
+    {
+      "criterion": "Navigating to #/projects/:slug/plan renders the archived plan as formatted HTML",
+      "met": true
+    },
+    {
+      "criterion": "Plan subpage shows a breadcrumb with back links to projects list and project detail",
+      "met": true
+    },
+    {
+      "criterion": "Navigating to plan subpage for a project with no archived plan shows a 'not available' message without a JS error",
+      "met": true
+    },
+    {
+      "criterion": "Project detail page displays a synopsis card (with 'View full plan →' link) for projects with archived plans",
+      "met": true
+    },
+    {
+      "criterion": "Project detail page renders normally (no synopsis card) for projects without archived plans",
+      "met": true
+    },
+    {
+      "criterion": "CSS styles are added for .plan-content and .plan-synopsis",
+      "met": true
+    }
+  ],
+  "revision": 1,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-02-28T15:58:07Z",
+      "completed_at": "2026-02-28T16:00:25Z",
+      "summary": [
+        "Downloaded and vendored marked.min.js (~40KB) from cdn.jsdelivr.net/npm/marked to mcp-server/gui/public/libs/marked.min.js",
+        "Added <script src=\"/libs/marked.min.js\"></script> to index.html before app.js — server.ts static handler already supports subdirectory paths and has .js MIME type, no server changes needed",
+        "Added getPlanDocument API method to API object in app.js: GET /api/projects/:slug/plan",
+        "Added #/projects/:slug/plan route to Router.dispatch() before the project detail match to prevent prefix collision",
+        "Added extractSynopsis(markdown) utility function — regex-based extraction of ## Summary section content",
+        "Added async renderPlan(app, slug) function with breadcrumb, marked.parse rendering, NOT_FOUND handling showing 'not available' message, and generic error fallback",
+        "Refactored renderProjectDetail to use Promise.all([getProject, getPlanDocument]) — getPlanDocument 404/errors are absorbed via .catch(() => null); synopsis card injected above Work Packages section when plan has ## Summary",
+        "Added .plan-content CSS block with typography for h1-h4, p, ul/ol/li, table/th/td, code, pre, hr — max-width 800px, var(--color-border) for borders, var(--radius) for code/pre",
+        "Added .plan-synopsis and .plan-synopsis__content/.plan-synopsis__link CSS — left border accent using var(--color-ready), max-height 12rem overflow hidden, surface background",
+        "Full suite 529/529 tests pass — no regressions"
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/libs/marked.min.js",
+          "mcp-server/gui/public/index.html",
+          "mcp-server/gui/public/app.js",
+          "mcp-server/gui/public/styles.css"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-28T17:00:00Z",
+          "note": "renderProjectDetail was refactored from a single API.getProject().then() to Promise.all([getProject, getPlanDocument]), absorbing 404/errors from getPlanDocument via .catch(() => null). The synopsis is injected via an inline IIFE within the html string concatenation — this pattern avoids introducing a pre-computation variable while remaining readable, but a named variable (var synopsisHtml) computed before app.innerHTML would be slightly cleaner per the file's existing style."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-02-28T17:00:00Z",
+          "note": "marked.min.js is vendored in gui/public/libs/ (~40KB). The file is now checked in and served statically. No security issue since the content is trusted (Planner-generated markdown). No sanitization is applied, per WP-004 spec. A future improvement would be to automate the version pinning (e.g., store the version string in a comment at the top of the file for easy updates)."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-02-28T16:01:57Z",
+      "completed_at": "2026-02-28T16:04:17Z",
+      "summary": [
+        "All 8 WP-004 ACs verified",
+        "marked.min.js confirmed at gui/public/libs/marked.min.js, 39KB, valid marked v15.0.12 build",
+        "index.html line 24: <script src=\"/libs/marked.min.js\"> loaded before app.js — Markdown parsing available at SPA startup",
+        "#/projects/:slug/plan route registered in Router.dispatch() at lines 84-87, before the generic project-detail match — no prefix collision",
+        "renderPlan() includes breadcrumb links to #/projects and #/projects/:slug (back to project detail)",
+        "renderPlan() catches NOT_FOUND and displays 'Plan document not available for this project.' without a JS error; other errors fall through to a generic error banner",
+        "renderProjectDetail() injects synopsisHtml above Work Packages section when extractSynopsis returns non-null content; defaults to '' when no plan — detail page renders normally without synopsis",
+        ".plan-content CSS at line 655 (h1-h4, p, ul/ol, li, table, code, pre, hr); .plan-synopsis at line 738 with __content and __link sub-elements",
+        "Full suite 529/529 pass — no regressions"
+      ],
+      "metrics": {
+        "test_coverage": "3 new API unit tests in api.test.ts (happy path, plan not found, project not found) verify the server-side handler; frontend SPA logic verified by code inspection (no automated browser test harness)",
+        "tests_passed": 529,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-02-28T16:04:00Z",
+          "note": "extractSynopsis() uses the regex /## Summary\\s*\\n([\\s\\S]*?)(?=\\n## |\\n---|\\s*$)/. With a non-greedy quantifier, if '## Summary' is the final section and the document ends with trailing whitespace, the \\s*$ anchor can match immediately after the newline yielding an empty-string match. After trim() this produces null (falsy), so the synopsis card is hidden rather than displaying empty content — graceful fallback. Low risk as plan documents consistently have multiple sections."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-02-28T16:04:00Z",
+          "note": "renderProjectDetail uses Promise.all([getProject, getPlanDocument]) and absorbs getPlanDocument 404 errors via .catch(() => null). If getProject itself fails (e.g. project deleted mid-render), the whole Promise.all rejects and the existing error handler fires. No scenario produces a JS error from the plan-related code path. Edge case is fully handled."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-02-28T16:11:01Z",
+      "completed_at": "2026-02-28T16:12:20Z",
+      "summary": [
+        "Reviewed app.js: extractSynopsis() is a clean single-purpose utility. Regex correctly uses a non-greedy quantifier with lookahead for next ## heading or document end. Trailing-whitespace edge case produces null (not empty string) — synopsis card correctly hidden in that scenario.",
+        "Reviewed renderPlan(): breadcrumb links are correct, NOT_FOUND path shows empty-state message without JS error, generic error falls through to error-banner. The two-branch error handling is appropriate.",
+        "Reviewed renderProjectDetail() Promise.all refactor: getPlanDocument errors absorbed via .catch(() => null). getProject failure causes Promise.all rejection which hits the existing error handler. No scenario yields an unhandled rejection from plan-related code.",
+        "Reviewed IIFE for synopsisHtml injection in app.innerHTML template: idiomatic for this file's style, correct, and self-contained. The inline IIFE avoids scope pollution while keeping the HTML template readable.",
+        "Reviewed CSS: .plan-content typography is comprehensive (h1-h4, p, ul/ol, li, table, code, pre, hr). CSS variables used consistently. .plan-synopsis left border, max-height, and overflow are correct. All ACs met.",
+        "No blocking issues found."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/libs/marked.min.js",
+          "mcp-server/gui/public/index.html",
+          "mcp-server/gui/public/app.js",
+          "mcp-server/gui/public/styles.css"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 529,
+        "tests_failed": 0,
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-02-28T16:15:00Z",
+          "note": "Route registration order is correct: /plan match is registered before the generic /projects/:slug match in Router.dispatch(). Without this ordering the plan route would never fire. The Developer chose the right convention."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-28T16:15:00Z",
+          "note": ".plan-synopsis uses var(--color-ready) for the left border accent. This borrows the READY badge color (green) for a decorative purpose. It's consistent with the palette today, but as the design matures a dedicated --color-accent or --color-brand variable would be semantically cleaner to avoid coupling decoration to workflow status colors."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-28T16:15:00Z",
+          "note": ".plan-synopsis max-height: 12rem with overflow: hidden produces a hard visual cut-off on long summary sections. A CSS gradient fade (using a ::after pseudo-element with a linear-gradient overlay) would communicate 'more content below' more clearly. Non-blocking for current scope."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-02-28T16:15:00Z",
+          "note": "marked.parse() is used without HTML sanitization. This is correct per the WP-004 spec (trusted filesystem content authored by the Planner agent). If the GUI is ever exposed to untrusted networks or plan files become user-editable, a DOMPurify pass should be added. Note the vendored marked.min.js version (v15.0.12) should be recorded in a comment at the top of the file or a companion .version file for maintenance visibility."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-02-28T16:16:13Z",
+      "completed_at": "2026-02-28T16:16:27Z",
+      "summary": [
+        "Updated api-surface.md: API client count updated to 9 endpoints; Router routes updated to include #/projects/:slug/plan; extractSynopsis() utility doc added; renderPlan() view documented with breadcrumb, NOT_FOUND, and generic error handling; renderProjectDetail() updated to document Promise.all refactor and synopsis card injection. CSS table extended with .plan-content, .plan-synopsis, .plan-synopsis__content, .plan-synopsis__link. file-tree.md updated: libs/ subdirectory added with marked.min.js annotation; app.js view count updated to 6; index.html note updated to mention marked.min.js."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/file-tree.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-02-28T17:30:00Z",
+          "note": "Debt noted: marked.min.js is vendored without a companion version comment at the top of the file. The Reviewer and Developer both flagged v15.0.12 in pipeline notes; the version is recorded in api-surface.md. If marked is ever updated, both the file and this manifest entry should be kept in sync."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-28T17:30:00Z",
+          "note": "No documentation was needed for the CSS gradient fade improvement suggestion (synopsis max-height hard cut-off) as it is a non-blocking cosmetic note, not an API contract."
+        }
+      ]
+    }
+  ]
+}

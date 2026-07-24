@@ -1,0 +1,247 @@
+{
+  "work_package_id": "WP-004",
+  "work_package_file": "work/WP-004.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "CHUNKS_DIR is exported from constants.ts with value 'orchestrator/chunks'.",
+      "met": true
+    },
+    {
+      "criterion": "handleListChunks() returns structured entries matching the {wp_id}-{stage}-r{N}.jsonl convention, or an empty array when the directory is absent.",
+      "met": true
+    },
+    {
+      "criterion": "handleGetChunkFile() returns raw JSONL content for valid filenames and rejects path traversal attempts (returns 404).",
+      "met": true
+    },
+    {
+      "criterion": "The filename allowlist regex accepts .jsonl files with alphanumeric/hyphen/underscore characters and rejects everything else.",
+      "met": true
+    },
+    {
+      "criterion": "All API tests pass, including path traversal defence tests.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-10T15:21:24Z",
+      "completed_at": "2026-04-10T15:24:42Z",
+      "duration_ms": 198000,
+      "summary": [
+        "Added CHUNKS_DIR = 'orchestrator/chunks' constant to constants.ts with full JSDoc matching the DIALOGUES_DIR pattern.",
+        "Added handleListChunks(ledgerRoot, slug, wpId?) to gui/api.ts: lists .jsonl files in orchestrator/chunks/, parses {WP_ID}-{stage}-r{N}.jsonl filenames, supports optional wpId filter with WP_ID_RE validation, returns [] on absent directory.",
+        "Added handleGetChunkFile(ledgerRoot, slug, filename) to gui/api.ts: returns raw JSONL content with slug validation, CHUNK_FILENAME_RE allowlist (/^[A-Za-z0-9_-]+\\.jsonl$/), and defence-in-depth path prefix check mirroring handleGetDialogueFile() exactly.",
+        "Added handleListChunks and handleGetChunkFile exports to the test import block, plus CHUNKS_DIR to the constants import.",
+        "Added 17 new tests covering: empty directory, alphabetical sort, wpId filter, invalid slug, non-.jsonl exclusion, invalid wpId injection, filename convention parsing, file content retrieval, path traversal rejection (../secret.jsonl), slash in filename, non-existent file, underscore filenames, wrong extension (.md), no extension, and console.warn logging on rejection.",
+        "All 1760 tests pass (58 test files), zero regressions."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/utils/constants.ts",
+          "mcp-server/gui/api.ts",
+          "mcp-server/tests/gui/api.test.ts"
+        ]
+      },
+      "metrics": {
+        "test_coverage": "N/A",
+        "tests_passed": 1760,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T15:24:42Z",
+          "note": "DIALOGUE_FILENAME_RE and CHUNK_FILENAME_RE are now two separate but identical regexes (/^[A-Za-z0-9_-]+\\.(md|jsonl)$/). If a third file-type handler is ever added, it would be worth extracting a shared SAFE_FILENAME_BASE_RE and composing the extension-specific patterns from it to avoid silent divergence."
+        },
+        {
+          "type": "refactor",
+          "priority": "low",
+          "timestamp": "2026-04-10T15:24:42Z",
+          "note": "WP_ID_RE (/^WP-\\d+$/) is a module-level constant in api.ts shared by both the dialogue and chunk list handlers. It is well-placed and DRY; no action needed beyond noting it is shared correctly."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-10T15:24:42Z",
+          "note": "isNodeError() is defined at the bottom of api.ts after the functions that call it. TypeScript hoists function declarations but not const arrow functions — however, since isNodeError is declared with `function`, hoisting works correctly. Still, moving it above its first call site (handleListDialogues) would match the module's top-to-bottom readability convention."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-10T15:34:44Z",
+      "completed_at": "2026-04-10T15:37:21Z",
+      "duration_ms": 157000,
+      "summary": [
+        "Full Verification Stack passed — no issues found.",
+        "Build: `tsc --noEmit` exits clean with zero diagnostics.",
+        "AC1 verified: `export const CHUNKS_DIR = 'orchestrator/chunks' as const` present in constants.ts line 119.",
+        "AC2 verified: CHUNK_PARSE_RE correctly parses {WP_ID}-{stage}-r{N}.jsonl into structured ChunkEntry; ENOENT/ENOTDIR both return []; tested with multi-hyphen stage names (e.g. 'code-review', 'release-engineering') — all parse correctly.",
+        "AC3 verified: `handleGetChunkFile` returns raw UTF-8 content for valid filenames; path traversal ('../secret.jsonl') is blocked first by CHUNK_FILENAME_RE, then by the defence-in-depth `sep`-boundary prefix check.",
+        "AC4 verified: CHUNK_FILENAME_RE = /^[A-Za-z0-9_-]+\\.jsonl$/ correctly rejects: empty string, '.jsonl' (no base), space, uppercase extension (.JSONL), slash-in-name, '.md', no extension.",
+        "AC5 verified: 1,795/1,795 tests pass across 59 test files (net +35 from 1,760 reported — includes WP-005 tests that also landed). All 17 new chunk handler tests pass individually.",
+        "Regression: full suite clean — zero regressions in any existing API handler, schema, or utility test.",
+        "Edge-case stress: (1) empty-string wpId is correctly falsy-checked and treated as 'no filter' — safe. (2) Very long filenames (255+ chars) are allowed by the regex — correct behaviour, no length limit is documented or needed. (3) wpId='WP-0' (single digit) is accepted by WP_ID_RE — consistent with the same regex used by dialogue handlers, so no divergence introduced."
+      ],
+      "metrics": {
+        "test_coverage": "N/A",
+        "tests_passed": 1795,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T15:37:21Z",
+          "note": "CHUNK_PARSE_RE uses a greedy `.+` for the stage group, which correctly handles hyphenated stage names like 'code-review' and 'release-engineering' (greedy match, then backtracks to the last '-r\\d+' segment). This is the right approach and works correctly for all real pipeline stage names."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T15:37:21Z",
+          "note": "No filename length limit is enforced on chunk filenames. The regex accepts arbitrarily long strings. This matches the dialogue handler's behaviour and is acceptable for a local server; not a security concern given the strict character allowlist."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T15:37:21Z",
+          "note": "No code coverage metric is available (project uses ts-node/vitest without a coverage reporter enabled). All branching paths are exercised manually via the test suite, but a future addition of `@vitest/coverage-v8` would confirm 100% branch coverage for the two new handlers."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-10T15:44:04Z",
+      "completed_at": "2026-04-10T15:45:15Z",
+      "duration_ms": 71000,
+      "summary": [
+        "[PASS] Code review complete. The implementation is clean, architecturally sound, and consistent with all existing patterns in gui/api.ts. No blocking issues found. All five acceptance criteria confirmed met through direct code inspection."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/utils/constants.ts",
+          "mcp-server/gui/api.ts",
+          "mcp-server/tests/gui/api.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T15:45:15Z",
+          "note": "DIALOGUE_FILENAME_RE (/^[A-Za-z0-9_-]+\\.md$/) and CHUNK_FILENAME_RE (/^[A-Za-z0-9_-]+\\.jsonl$/) share an identical base pattern but differ by extension — this is correct by design. The Developer's note calling them 'identical' was imprecise; they are deliberately parallel. If a third handler is added, extracting a shared base pattern would reduce risk of silent divergence, but this is a low-priority future consideration only."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T15:45:15Z",
+          "note": "isNodeError() is declared as a `function` declaration at the bottom of api.ts, below all call sites. JavaScript/TypeScript correctly hoists function declarations, so there is no runtime issue. Relocating it above handleListDialogues() would improve top-to-bottom readability and match the module's convention of declaring helpers before use — low-priority Fix-Forward candidate for a future cleanup pass."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T15:45:15Z",
+          "note": "The CHUNK_PARSE_RE regex uses a greedy `.+` for the stage group (/^(WP-\\d+)-(.+)-r\\d+\\.jsonl$/). This correctly handles multi-hyphen stage names like 'code-review' and 'release-engineering' because the greedy match backtracks to the last '-r{N}' segment. Well-reasoned design — no change needed."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-10T15:45:15Z",
+          "note": "[documentation-forward] The ChunkEntry interface, handleListChunks(), and handleGetChunkFile() are exported from gui/api.ts but are not yet documented in any API reference or README. The Documentation agent should add entries covering: (1) ChunkEntry shape and its fields, (2) handleListChunks() — parameters, return shape, filter behaviour, and the directory-absent case, (3) handleGetChunkFile() — parameters, security model (double guard), and error codes returned."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-10T16:26:00Z",
+      "completed_at": "2026-04-10T16:27:53Z",
+      "duration_ms": 113000,
+      "summary": [
+        "Documented ChunkEntry interface, handleListChunks(), and handleGetChunkFile() in mcp-server/README.md, addressing the [documentation-forward] item from the code-review pipeline.",
+        "Added orchestrator/chunks/ to the storage tree diagram and as a new Data Model entry (item 4) alongside the existing dialogues/ entry.",
+        "Updated the GUI Backend Modules table to list the chunk handlers row alongside the dialogue handlers row.",
+        "Added a full 'Chunk API handlers' subsection after the existing Dialogue API handlers section, covering: ChunkEntry shape, handleListChunks() parameters/return/filter/absent-directory behaviour, handleGetChunkFile() parameters/security model (dual-layer guard: CHUNK_FILENAME_RE allowlist + path-prefix escape check) and error codes, and the CHUNKS_DIR cross-language coupling note.",
+        "Ran ctx generate — all 31 documents regenerated cleanly (exit 0), including .context/mcp-server/overview.md which now reflects the updated README."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/README.md",
+          ".context/mcp-server/overview.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T16:27:53Z",
+          "note": "[documentation-forward] addressed: ChunkEntry shape, handleListChunks() (parameters, return shape, filter behaviour, directory-absent case), and handleGetChunkFile() (parameters, dual-layer security model, error codes) are now documented in the 'Chunk API handlers' subsection of mcp-server/README.md."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T16:27:53Z",
+          "note": "Added CHUNKS_DIR cross-language coupling note to the README to make it explicit that this constant must stay in sync with the Python orchestrator's ChunkWriter output path."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-10T16:27:53Z",
+  "last_updated": "2026-04-10T16:27:53Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-10T15:24:42Z",
+      "notes": [
+        "All 5 acceptance criteria are met and verified by 17 new tests plus the full existing suite (1760 total, 0 failures).",
+        "The chunk handlers are exact mirrors of handleListDialogues/handleGetDialogueFile — same security pattern, same error codes, same WP_ID_RE reuse.",
+        "CHUNKS_DIR is imported in api.ts from constants.ts and re-exported via the existing constants import chain; consumers can import it the same way DIALOGUES_DIR is imported.",
+        "No server.ts route wiring was added — WP-004 scope is handlers + constant only. Route registration is out of scope for this WP."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-10T15:37:21Z",
+      "notes": [
+        "All 5 ACs verified PASS. 1,795/1,795 tests pass (59 files), zero regressions.",
+        "CHUNKS_DIR constant, handleListChunks, and handleGetChunkFile are clean, well-documented, and follow the existing dialogue-handler patterns exactly.",
+        "Security posture is strong: double guard (regex allowlist + path-prefix check) for handleGetChunkFile, WP_ID_RE validation for the optional wpId filter in handleListChunks.",
+        "Minor observations for reviewer awareness: (1) DIALOGUE_FILENAME_RE and CHUNK_FILENAME_RE are two identical-but-separate regexes — low-priority refactor candidate. (2) isNodeError() is declared below its call sites but correctly hoisted as a `function` declaration. (3) WP_ID_RE accepts single-digit WP IDs (WP-0) — consistent with the dialogue handler, no issue."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-10T15:45:15Z",
+      "notes": [
+        "All 5 ACs confirmed PASS through direct code review. Implementation is architecturally clean and follows the existing dialogue-handler patterns exactly. No blocking issues. Security posture is strong: CHUNK_FILENAME_RE allowlist + path-prefix defence-in-depth in handleGetChunkFile; WP_ID_RE validation in handleListChunks. One [documentation-forward] item tagged: ChunkEntry, handleListChunks, and handleGetChunkFile need API reference documentation entries."
+      ]
+    },
+    {
+      "from_agent": "Documentation",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-04-10T16:27:53Z",
+      "notes": [
+        "WP-004 documentation complete. mcp-server/README.md updated with ChunkEntry type, handleListChunks() and handleGetChunkFile() API reference, storage tree diagram, Data Model section, and GUI Backend Modules table. CTX files regenerated cleanly."
+      ]
+    }
+  ]
+}

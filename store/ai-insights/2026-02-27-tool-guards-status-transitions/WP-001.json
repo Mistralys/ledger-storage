@@ -1,0 +1,166 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "isValidStatusTransition('CANCELLED', 'CANCELLED') returns false",
+      "met": true
+    },
+    {
+      "criterion": "isValidStatusTransition('COMPLETE', 'CANCELLED') returns true",
+      "met": true
+    },
+    {
+      "criterion": "isValidStatusTransition('IN_PROGRESS', 'READY') returns true",
+      "met": true
+    },
+    {
+      "criterion": "All previously passing validator tests continue to pass",
+      "met": true
+    },
+    {
+      "criterion": "getLegalTransitions('COMPLETE') includes 'CANCELLED'",
+      "met": true
+    },
+    {
+      "criterion": "getLegalTransitions('IN_PROGRESS') includes 'READY'",
+      "met": true
+    }
+  ],
+  "revision": 1,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-02-27T16:35:42Z",
+      "completed_at": "2026-02-27T16:40:49Z",
+      "summary": [
+        "Fixed isValidStatusTransition() self-transition guard: changed `if (from === to) return true` to `return from !== 'CANCELLED'` so CANCELLED→CANCELLED is rejected (terminal status).",
+        "Added IN_PROGRESS→READY transition to isValidStatusTransition() case 'IN_PROGRESS' (unclaim path, spec §21.13).",
+        "Added COMPLETE→CANCELLED transition to isValidStatusTransition() case 'COMPLETE' (PM-only path).",
+        "Updated getLegalTransitions() in work-package.ts: IN_PROGRESS now lists READY, COMPLETE now lists CANCELLED.",
+        "Updated UpdateWorkPackageStatusSchema .describe() string to document all new legal transitions.",
+        "Updated JSDoc comment in validators.ts to document new transitions.",
+        "Updated validators.test.ts: renamed same-status no-op test, flipped IN_PROGRESS→READY expectation, added CANCELLED→CANCELLED rejected test, added CANCELLED→any rejected test, added COMPLETE→CANCELLED allowed test.",
+        "Updated cancelled-status.test.ts: flipped COMPLETE→CANCELLED test from false to true per spec.",
+        "All 624 tests pass, 0 TypeScript errors."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/schema/validators.ts",
+          "mcp-server/src/tools/work-package.ts",
+          "mcp-server/tests/schema/validators.test.ts",
+          "mcp-server/tests/tools/cancelled-status.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-02-27T17:41:00Z",
+          "note": "tests/tools/cancelled-status.test.ts contained a test asserting COMPLETE→CANCELLED is NOT valid, which contradicts the spec. This pre-existing test was silently masking the missing transition. Consider adding a manifest note or test comment explaining the spec rationale (PM-only cancellation of complete WPs) to prevent future regressions."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T17:41:00Z",
+          "note": "The `getLegalTransitions()` helper in work-package.ts is duplicated from the switch in `isValidStatusTransition()`. A derived approach (querying the validator for each target status) would eliminate drift risk, but the current duplication is low-risk given the small enum size."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-02-27T16:59:03Z",
+      "completed_at": "2026-02-27T17:01:51Z",
+      "summary": [
+        "All 6 acceptance criteria verified against source code and live test execution.",
+        "645/645 tests pass — no regressions (21 net-new tests added by Developer).",
+        "Targeted validator and cancelled-status test suites (35 tests) all pass with verbose confirmation of each AC scenario.",
+        "Edge cases confirmed: all CANCELLED→X transitions rejected, COMPLETE→COMPLETE same-status no-op is intentional per spec."
+      ],
+      "metrics": {
+        "test_coverage": "All AC scenarios explicitly exercised",
+        "tests_passed": 645,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T18:01:30Z",
+          "note": "COMPLETE→COMPLETE same-status returns true (no-op) — consistent with spec's 'non-CANCELLED statuses allow self-transitions as no-ops'. Low risk."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T18:01:30Z",
+          "note": "No observations — code is clean and consistent. Implementation aligns with JSDoc, test names include spec reference (§21.13), and COMPLETE→CANCELLED test comment documents PM-only rationale clearly."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-02-27T17:03:43Z",
+      "completed_at": "2026-02-27T17:04:39Z",
+      "summary": [
+        "Reviewed validators.ts, work-package.ts, validators.test.ts, and cancelled-status.test.ts.",
+        "The self-transition guard refactor (`return from !== 'CANCELLED'`) is correct and elegant — single-point-of-change for the no-op rule without duplicating the terminal check.",
+        "getLegalTransitions() helper is in sync with isValidStatusTransition() for all new transitions (IN_PROGRESS→READY, COMPLETE→CANCELLED).",
+        "The UpdateWorkPackageStatusSchema .describe() string fully documents all new legal transitions including the new paths.",
+        "Test coverage is thorough: each new transition has a positive test, each rejected path has a negative test, and the CANCELLED self-transition rejection is explicitly isolated.",
+        "No blocking issues found. Code is maintainable, correct, and consistent with the JSDoc and spec references."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T18:10:00Z",
+          "note": "getLegalTransitions() in work-package.ts is a string-formatting helper that duplicates the switch logic from isValidStatusTransition(). It's only used in error messages so drift risk is low, but a future refactor deriving it from the validator (e.g., iterating WorkPackageStatus values and calling isValidStatusTransition) would make this zero-drift. Not blocking — low enum size makes manual sync acceptable."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T18:10:00Z",
+          "note": "The self-transition guard `return from !== 'CANCELLED'` elegantly handles the non-CANCELLED no-op case but relies on the reader understanding that CANCELLED is the only terminal self-transition-rejected status. The existing JSDoc comment on isValidStatusTransition covers this, so it's fine. No action required."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T18:10:00Z",
+          "note": "No observations — code is clean and consistent. All changes are minimal, targeted, and correctly scoped to the acceptance criteria. Pre-existing test-masking issue was caught and corrected (cancelled-status.test.ts COMPLETE→CANCELLED flip)."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-02-27T17:09:24Z",
+      "completed_at": "2026-02-27T17:11:08Z",
+      "summary": [
+        "Updated constraints.md (constraint 11): added IN_PROGRESS→READY (unclaim path, §21.13) and COMPLETE→CANCELLED (PM-only) rows to the transition table; corrected terminal-status note to 'CANCELLED is the only fully terminal status' (COMPLETE now has one outward transition).",
+        "Updated api-surface.md (ledger_update_work_package_status special rules): added IN_PROGRESS→READY bullet; extended →CANCELLED valid-sources list to include COMPLETE.",
+        "Updated data-flows.md (Pattern 4 State Machine): replaced minimal 4-line ASCII diagram with a complete transition table covering all 12 legal transitions; updated terminal-status note."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/constraints.md",
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/data-flows.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T17:10:00Z",
+          "note": "No observations — constraints.md, api-surface.md, and data-flows.md all accurately reflect the new transition rules. The Pattern 4 diagram was significantly expanded to be comprehensive rather than illustrative, which improves agent onboarding accuracy."
+        }
+      ]
+    }
+  ]
+}

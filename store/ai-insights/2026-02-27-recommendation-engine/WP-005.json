@@ -1,0 +1,201 @@
+{
+  "work_package_id": "WP-005",
+  "work_package_file": "work/WP-005.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "getDocumentationAction implements all 7+1b priorities from §14.5 in correct order",
+      "met": true
+    },
+    {
+      "criterion": "REWORK (Priority 4) fires before WRITE_DOCS (Priority 6)",
+      "met": true
+    },
+    {
+      "criterion": "FINALIZE_WP validates all three conditions: doc PASS, all criteria met, freshness (doc completed_at >= impl started_at)",
+      "met": true
+    },
+    {
+      "criterion": "UPDATE_CRITERIA fires when freshness passes but at least one criterion is not met",
+      "met": true
+    },
+    {
+      "criterion": "Freshness check uses documentation completed_at vs implementation started_at",
+      "met": true
+    },
+    {
+      "criterion": "MARK_COMPLETE removed; FINALIZE_WP replaces it everywhere",
+      "met": true
+    },
+    {
+      "criterion": "All 11 test cases pass",
+      "met": true
+    },
+    {
+      "criterion": "npx tsc --noEmit passes",
+      "met": true
+    },
+    {
+      "criterion": "npx vitest run passes (no regressions)",
+      "met": true
+    }
+  ],
+  "revision": 1,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-02-27T22:49:49Z",
+      "completed_at": "2026-02-27T22:55:00Z",
+      "summary": [
+        "Rewrote getDocumentationAction with full 7+1b per-WP priority algorithm (§14.5): P1=BLOCK_FOR_REWORK_LIMIT (rework_counts.documentation), P1b=WAIT_FOR_UPSTREAM_REWORK_LIMIT (implementation|qa|code-review), P2=RESUME_OR_CANCEL, P3=CONTINUE_PIPELINE, P4=REWORK(self, guarded by !hasNewUpstreamPassSince), P5=FINALIZE_WP (doc PASS + all criteria met + freshness), P5b=UPDATE_CRITERIA (doc PASS + fresh + criteria incomplete), P6=WRITE_DOCS, P7=CLAIM_WP",
+        "Removed MARK_COMPLETE; replaced with FINALIZE_WP (3-condition check: doc pipeline PASS + all acceptance_criteria.met===true + doc completed_at >= latest impl started_at)",
+        "Added freshness check using parseTimestamp(doc.completed_at) >= parseTimestamp(latestImpl.started_at)",
+        "P4 guard added: REWORK only fires when !hasNewUpstreamPassSince('code-review','documentation') so that a new code-review cycle routes to WRITE_DOCS instead",
+        "Added 11 Documentation test cases to workflow-next-action.test.ts covering all priority paths",
+        "TypeScript clean (npx tsc --noEmit), 764/764 tests passing"
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/tools/workflow-next-action.ts",
+          "mcp-server/tests/tools/workflow-next-action.test.ts"
+        ]
+      },
+      "metrics": {
+        "test_coverage": "11 new test cases for Documentation action paths",
+        "tests_passed": 764,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-02-27T23:54:00Z",
+          "note": "P4 required an undocumented guard: !hasNewUpstreamPassSince('code-review','documentation') — without it, spec test 5 (REWORK expected) and spec test 10 (WRITE_DOCS expected) cannot both pass. The guard was deduced from the test expectations and matches the semantic intent: rework only when there is no fresh code-review trigger; otherwise hand off to WRITE_DOCS for a fresh run. The WP-005 spec should document this guard explicitly."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T23:54:00Z",
+          "note": "getDocumentationAction is now 130 lines in a per-WP loop, consistent with QA and Reviewer rewrites. As noted for WP-004, a shared parameterised helper would reduce duplication across all five agent actions once WP-005 is complete."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-02-27T22:59:18Z",
+      "completed_at": "2026-02-27T23:00:13Z",
+      "summary": [
+        "Independent build: npx tsc --noEmit clean.",
+        "All 11 Documentation action logic tests pass (BLOCK_FOR_REWORK_LIMIT, WAIT_FOR_UPSTREAM_REWORK_LIMIT x2, CONTINUE_PIPELINE, REWORK P4, FINALIZE_WP, UPDATE_CRITERIA, WRITE_DOCS stale fallthrough, WRITE_DOCS first-run, WRITE_DOCS re-engagement, CLAIM_WP).",
+        "MARK_COMPLETE confirmed fully absent from src/ via grep.",
+        "Freshness check logic verified: parseTimestamp(doc.completed_at) >= parseTimestamp(impl.started_at).",
+        "P4 REWORK guard verified: suppressed when new code-review PASS available, correctly routing to WRITE_DOCS.",
+        "764/764 tests pass — no regressions."
+      ],
+      "metrics": {
+        "test_coverage": "11 new test cases for Documentation action paths; 764/764 full suite",
+        "tests_passed": 764,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T23:00:00Z",
+          "note": "Empty acceptance_criteria array evaluates allCriteriaMet=false due to the 'length > 0' guard. This means FINALIZE_WP never fires for empty-criteria WPs; they would return UPDATE_CRITERIA instead. This is defensive behavior and WPs always have AC in practice, but worth noting if zero-criteria WPs ever appear."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T23:00:00Z",
+          "note": "No issues found. P4 guard logic (!hasNewUpstreamPassSince) correctly prevents REWORK from firing when a new code-review cycle should trigger WRITE_DOCS re-engagement. FINALIZE_WP three-condition check is correctly implemented."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-02-27T23:05:02Z",
+      "completed_at": "2026-02-27T23:06:06Z",
+      "summary": [
+        "Reviewed getDocumentationAction in mcp-server/src/tools/workflow-next-action.ts. Full 7+1b per-WP priority algorithm is correctly implemented per §14.5.",
+        "P1 (BLOCK_FOR_REWORK_LIMIT): documentation rework count checked directly from reworkCounts map.",
+        "P1b (WAIT_FOR_UPSTREAM_REWORK_LIMIT): iterates ['implementation','qa','code-review'] via for loop — returns on first match.",
+        "P4 (REWORK): correctly guarded with !hasNewUpstreamPassSince('code-review','documentation') so that a fresh code-review cycle routes to WRITE_DOCS instead of REWORK. Behavior is correct; spec documentation gap noted.",
+        "Freshness check: parseTimestamp(doc.completed_at).getTime() >= parseTimestamp(impl.started_at).getTime() using .at(-1) on filtered pipeline arrays. Correct per spec.",
+        "FINALIZE_WP 3-condition check: doc PASS + all AC met (with length > 0 guard) + isFresh. UPDATE_CRITERIA fires when fresh but AC not fully met.",
+        "MARK_COMPLETE confirmed absent from src/ per QA.",
+        "P7 CLAIM_WP uses canStartWorkPackage guard rather than hasDependencyBlocked at loop level — functionally correct but architecturally inconsistent with peer action functions. Flagged as medium-priority improvement.",
+        "All 11 ACs met. 764/764 tests passing. 4 non-blocking observations recorded."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/tools/workflow-next-action.ts",
+          "mcp-server/tests/tools/workflow-next-action.test.ts"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 764,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-02-28T00:30:00Z",
+          "note": "getDocumentationAction omits the hasDependencyBlocked(wpDetail, rootIndex) skip guard that every other action function (getDeveloperAction, getQaAction, getReviewerAction) applies at the top of the WP loop. This is functionally safe because: (a) BLOCKED WPs are skipped at the loop header, (b) P7 explicitly guards with canStartWorkPackage, and (c) IN_PROGRESS WPs are already dependency-validated. However, the architectural inconsistency means future developers aligning Documentation against the other action functions may miss this difference. Recommend adding hasDependencyBlocked consistent with peers, or documenting the intentional deviation in a comment on the loop."
+        },
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-02-28T00:30:00Z",
+          "note": "P4 REWORK guard (!hasNewUpstreamPassSince(pipelines, 'code-review', 'documentation')) was deduced from test expectations rather than specified in the WP-005 spec. The guard is semantically correct: Documentation self-reworks only when there is no fresh code-review trigger (which would route to WRITE_DOCS instead). The WP spec should be updated to document this guard explicitly so future developers understand the intent."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-28T00:30:00Z",
+          "note": "allCriteriaMet uses a length > 0 guard, so FINALIZE_WP never fires for zero-criteria WPs (UPDATE_CRITERIA fires instead). This matches the QA observation. The behavior is intentional and defensive. All production WPs have AC, so no immediate risk; the guard should be noted in the spec for zero-AC edge case handling."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-02-28T00:30:00Z",
+          "note": "P1b for Documentation iterates over ['implementation', 'qa', 'code-review'] in a for loop rather than using the inline OR pattern of Reviewer P1b. Both are correct; the loop is more extensible for future upstream type additions. The variation is acceptable but adds one more instance of an inline string array (same as the allPipelineTypes comment from WP-002)."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-02-27T23:11:02Z",
+      "completed_at": "2026-02-27T23:11:46Z",
+      "summary": [
+        "Updated getDocumentationAction in api-surface.md: expanded to full 7+1b algorithm (P1 BLOCK_FOR_REWORK_LIMIT, P1b WAIT_FOR_UPSTREAM_REWORK_LIMIT across all 3 upstream types, P2 RESUME_OR_CANCEL, P3 CONTINUE_PIPELINE, P4 REWORK with !hasNewUpstreamPassSince guard, P5 FINALIZE_WP with 3-condition freshness check, P5b UPDATE_CRITERIA, P6 WRITE_DOCS, P7 CLAIM_WP).",
+        "Updated Documentation agent-specific logic in data-flows.md Flow 7 from stub to full algorithm including FINALIZE_WP and UPDATE_CRITERIA.",
+        "Updated Documentation batch description in data-flows.md Flow 9.",
+        "Added FINALIZE_WP, UPDATE_CRITERIA, WAIT_FOR_REWORK, WAIT_FOR_UPSTREAM_REWORK_LIMIT to the return action type enum in Flow 7."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/data-flows.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-02-28T00:00:00Z",
+          "note": "getDocumentationAction one-liner comment expanded to full 7+1b algorithm in api-surface.md. FINALIZE_WP and UPDATE_CRITERIA are new action types not previously documented anywhere — added to both api-surface.md and the Flow 7 return type enum in data-flows.md. MARK_COMPLETE (removed) was not referenced in the existing docs so no cleanup was needed. P4 REWORK guard (!hasNewUpstreamPassSince) documented explicitly as it was an undocumented implementation detail flagged by Developer."
+        }
+      ]
+    }
+  ]
+}

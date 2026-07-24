@@ -1,0 +1,136 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "getProjectStatus() self-healing acquires at most 1 lock (down from 3) when multiple repairs are needed simultaneously",
+      "met": true
+    },
+    {
+      "criterion": "All self-healing operations (field corrections, version backfill, forward-compat warning, pipeline ordering warnings, synthesis timestamp repair comment) are applied within a single lock-write cycle",
+      "met": true
+    },
+    {
+      "criterion": "The synthesis timestamp repair comment is deduplicated using the same pre-lock + in-lock pattern as the forward-compat warning — repeated getProjectStatus() calls do not produce duplicate repair comments",
+      "met": true
+    },
+    {
+      "criterion": "All existing self-healing tests in project-lifecycle.test.ts continue to pass without modification (behavioral equivalence)",
+      "met": true
+    },
+    {
+      "criterion": "New test verifies single writeRootIndex call when multiple repairs fire simultaneously",
+      "met": true
+    },
+    {
+      "criterion": "New test verifies synthesis timestamp repair comment deduplication across repeated calls",
+      "met": true
+    }
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-17T16:07:53Z",
+      "completed_at": "2026-03-17T16:10:21Z",
+      "summary": [
+        "Consolidated 3 sequential withLock() calls in getProjectStatus() self-healing into a single lock scope",
+        "Moved validatePipelineOrdering() call outside the lock (it only reads WP detail files)",
+        "Added pre-lock + in-lock deduplication for synthesis timestamp repair comment, mirroring the forward-compat warning pattern",
+        "All self-healing operations now execute in one atomic lock-read-write cycle: status/counter corrections, synthesis_generated_at backfill, ledger_version backfill, forward-compat warning, pipeline ordering warnings, and synthesis repair comment",
+        "Added 2 new tests: single writeRootIndex call verification via spy, and synthesis repair comment deduplication across 3 repeated calls"
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/tools/project-lifecycle.ts",
+          "mcp-server/tests/tools/project-lifecycle.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T16:10:21Z",
+          "note": "No observations — the self-healing code in the touched region is clean and the consolidation was straightforward. The pre-existing separation into 3 lock scopes was the only issue, now resolved."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-17T16:25:28Z",
+      "completed_at": "2026-03-17T16:27:56Z",
+      "summary": [
+        "Verified lock consolidation: getProjectStatus() uses exactly 1 withLock() call (line 370), down from 3 sequential locks",
+        "Confirmed all self-healing operations (status/counter corrections, synthesis_generated_at backfill, ledger_version backfill, forward-compat warning, pipeline ordering warnings, synthesis repair comment) execute within a single lock-write cycle",
+        "Verified synthesis timestamp repair comment deduplication uses pre-lock + in-lock pattern (lines 363-364, 379-380), matching the forward-compat warning pattern",
+        "All 1418 tests pass across 44 test files, including all existing self-healing tests in project-lifecycle.test.ts",
+        "Confirmed new test verifies single writeRootIndex call via vi.spyOn (lines 1727-1760)",
+        "Confirmed new test verifies synthesis repair comment dedup across 3 repeated calls (lines 1763-1808)"
+      ],
+      "metrics": {
+        "tests_passed": 1418,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T16:27:56Z",
+          "note": "No observations -- the lock consolidation is clean. The pre-lock + in-lock deduplication pattern for both forward-compat warning and synthesis repair comment is consistent and correct."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-17T16:29:11Z",
+      "completed_at": "2026-03-17T16:30:18Z",
+      "summary": [
+        "Reviewed lock consolidation in getProjectStatus(): 3 sequential withLock() calls correctly collapsed into a single lock scope (line 370)",
+        "Verified TOCTOU symmetry: fresh re-read under lock (line 372) with freshHealed recomputation prevents race conditions",
+        "Confirmed pre-lock + in-lock deduplication pattern for synthesis repair comment (lines 362-364, 379-380) mirrors the forward-compat warning pattern — consistent and correct",
+        "validatePipelineOrdering correctly moved outside lock scope — it only reads WP detail files, not root index",
+        "New tests (writeRootIndex spy at lines 1727-1760, dedup at lines 1763-1811) are well-structured and test the right invariants"
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T16:30:18Z",
+          "note": "The consolidated lock block (lines 370-436) handles 6 distinct repair categories cleanly. The needsAnyWrite guard at line 382 prevents unnecessary disk writes when conditions resolve between the pre-lock check and in-lock re-read — good defensive programming."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-17T16:31:38Z",
+      "completed_at": "2026-03-17T16:36:23Z",
+      "summary": [
+        "Updated data-flows.md Flow 9 to reflect consolidated single-lock self-healing: replaced the 3 separate withLock scopes with a single lock scope that handles all repairs (status/counter corrections, legacy version backfill, forward-compat warning, pipeline ordering warnings, synthesis timestamp repair comment) with TOCTOU-symmetric re-checking",
+        "Updated api-surface.md ledger_get_project_status description to reflect consolidated lock scope and clearSynthesisState usage",
+        "Updated data-flows.md inline synthesis_generated clearing references to use clearSynthesisState()"
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/data-flows.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T16:36:23Z",
+          "note": "Documentation accurately reflects the lock consolidation. The data-flows.md Flow 9 pseudocode now shows the single-lock pattern with pre-lock computation and in-lock re-checking, matching the actual implementation."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-03-17T16:36:23Z"
+}

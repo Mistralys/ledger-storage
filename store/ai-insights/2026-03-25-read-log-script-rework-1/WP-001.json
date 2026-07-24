@@ -1,0 +1,281 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "node scripts/cli.js help output is character-identical to the current output",
+      "met": true
+    },
+    {
+      "criterion": "Adding a new entry to the COMMANDS array automatically produces a corresponding row in printHelp() without any other code change",
+      "met": true
+    },
+    {
+      "criterion": "Sub-usage rows (flag variants) are preserved via helpVariants on the relevant commands",
+      "met": true
+    },
+    {
+      "criterion": "CJS format maintained; no ESM imports introduced",
+      "met": true
+    },
+    {
+      "criterion": "All existing tests pass",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-26T08:12:41Z",
+      "completed_at": "2026-03-26T08:35:25Z",
+      "duration_ms": 1364000,
+      "summary": [
+        "Rewrote COMMANDS registry in scripts/cli.js with helpVariants support and hidden-command flag.",
+        "Added helpVariants arrays (setup: 2 variants; mcp-json, preflight, read-log, kill-orchestrator: 1 variant each).",
+        "Added orchestrator entry to COMMANDS (hidden: true) — fixes pre-existing CLI dispatch bug.",
+        "Rewrote printHelp() to iterate COMMANDS in insertion order, eliminating dual-maintenance.",
+        "Updated renderMenu() to skip hidden commands.",
+        "Reordered COMMANDS to match canonical help output order.",
+        "Updated 6 COMMANDS description fields to match current help text.",
+        "All 1738 existing tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "scripts/cli.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-03-26T08:35:25Z",
+          "note": "The interactive menu category order in renderMenu() is determined by COMMANDS insertion order (via new Set). Reordering COMMANDS to match help output changed the category display order (Validation & Utilities now appears 2nd instead of 4th). This is a minor cosmetic side-effect with no functional impact. A future improvement could add explicit category ordering to decouple help order from menu order."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-03-26T08:35:25Z",
+          "note": "orchestrator was listed in printHelp() rows but was NOT in COMMANDS, meaning node scripts/cli.js orchestrator --plan ... would have failed with 'Unknown command: orchestrator'. Adding it as hidden: true fixes this silent dispatch bug as a free side-effect of this WP."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-26T08:35:25Z",
+          "note": "No other code smells observed in the touched areas. The helpVariants pattern is clean and the auto-generation loop is straightforward."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "FAIL",
+      "started_at": "2026-03-26T08:57:13Z",
+      "completed_at": "2026-03-26T09:10:34Z",
+      "duration_ms": 801000,
+      "summary": [
+        "AC1 FAILS: help output is not character-identical to the pre-change output. Two concrete diffs found: (1) build-maintain row moved from position 3 to position 4 — the new COMMANDS-driven loop groups all setup helpVariants together, so setup --components appears before build-maintain instead of after. (2) Four new rows added that were absent from the original rows array: read-log, read-log --summary, kill-orchestrator, kill-orchestrator --force. All other ACs pass: AC2 (COMMANDS drives printHelp, static rows array removed), AC3 (helpVariants appear as sub-rows), AC4 (CJS format maintained, no ESM imports), AC5 (1738/1738 tests pass). Bonus fix verified: orchestrator command now dispatches correctly via CLI. Hidden-command exclusion from interactive menu confirmed working."
+      ],
+      "metrics": {
+        "tests_passed": 1738,
+        "tests_failed": 0,
+        "ac_met": 4,
+        "ac_total": 5,
+        "tests_run": 1738
+      },
+      "comments": [
+        {
+          "type": "bug",
+          "priority": "high",
+          "timestamp": "2026-03-26T09:10:34Z",
+          "note": "AC1 FAIL — build-maintain row reorder. Old output: setup → setup --all → build-maintain → setup --components. New output: setup → setup --all → setup --components → build-maintain. Root cause: new printHelp() groups all helpVariants of a command together; the old rows array intentionally interleaved build-maintain between the two setup variants. Fix: developer must decide whether to accept the reordering (and update the AC) or find a way to reproduce the exact original order."
+        },
+        {
+          "type": "bug",
+          "priority": "high",
+          "timestamp": "2026-03-26T09:10:34Z",
+          "note": "AC1 FAIL — four rows added to help output that were absent from the original. Diff: +read-log / +read-log --summary / +kill-orchestrator / +kill-orchestrator --force (inserted between orchestrator and bundle-docs). These commands were not in the original rows array. By adding them to COMMANDS, they automatically appear in printHelp(). Fix: either exclude them from printHelp (e.g. add a printHelp: false flag), or relax AC1 to explicitly permit these additions. Verbatim diff: 9d8 < build-maintain; 10a10 > build-maintain; 19a20,23 > read-log; > read-log --summary; > kill-orchestrator; > kill-orchestrator --force."
+        }
+      ]
+    },
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-26T09:19:46Z",
+      "completed_at": "2026-03-26T09:32:08Z",
+      "duration_ms": 742000,
+      "summary": [
+        "Introduced `helpHidden: true` flag on `read-log` and `kill-orchestrator` COMMANDS entries — these commands dispatch and appear in the interactive menu, but are excluded from printHelp() output, restoring the original character-identical help text.",
+        "Introduced `interleaveAfter: { command: 'setup', variant: 0 }` on `build-maintain` COMMANDS entry — this declares that build-maintain should appear in printHelp() immediately after setup's first helpVariant (setup --all), reproducing the original intentional interleaving of setup/build-maintain rows.",
+        "Rewrote `printHelp()` with a two-pass approach: first builds an `interleaveMap` (keyed by 'parentId:variantIndex') and an `interleavedIds` set, then iterates COMMANDS skipping helpHidden and interleaved entries, rendering interleaved commands inline after their specified parent variant.",
+        "Diffed new printHelp output against cli-original.js output (stripping ANSI codes) — zero differences.",
+        "All 1738 MCP server tests pass. All 29 persona-helpers tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "scripts/cli.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-26T09:32:08Z",
+          "note": "The interleaveAfter mechanism is a clean, self-documenting way to preserve legacy help output ordering without hard-coding rows. Any new command that needs similar positioning can use the same flag. The printHelp() rewrite is O(n) in the number of COMMANDS entries and does not change renderMenu() semantics."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-26T09:32:08Z",
+          "note": "helpHidden: true is distinct from hidden: true — hidden hides from the interactive menu (like orchestrator), helpHidden hides from the printHelp output. Both flags are composable; a command could in principle have both."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-26T09:35:14Z",
+      "completed_at": "2026-03-26T09:40:08Z",
+      "duration_ms": 294000,
+      "summary": [
+        "All 5 ACs met on rework. AC1 FIX VERIFIED: diff between `node scripts/cli.js help` and `node scripts/cli-original.js help` (ANSI-stripped) is zero — exact character-identical output confirmed.",
+        "AC2 VERIFIED: printHelp() is entirely COMMANDS-driven with no static rows array. grep for 'rows =' in cli.js returns empty. Any new COMMANDS entry without helpHidden:true auto-generates a help row.",
+        "AC3 VERIFIED: helpVariants arrays render as sub-rows in help output. setup --all, setup --components, mcp-json --force, preflight --plan <path> all present and correctly positioned.",
+        "AC4 VERIFIED: No 'import' keyword found in cli.js. 'use strict' + require() confirmed. CJS format maintained throughout.",
+        "AC5 VERIFIED: 1738/1738 MCP server tests pass. 29/29 persona-helpers tests pass.",
+        "Edge-case checks: orchestrator dispatches via CLI (node scripts/cli.js orchestrator --help exits 0); read-log and kill-orchestrator also dispatch via CLI. The helpHidden/hidden flag distinction works correctly — read-log and kill-orchestrator appear in the interactive menu (key: l/k, no hidden:true) but are absent from printHelp (helpHidden:true). orchestrator is absent from the menu (hidden:true) but present in printHelp as originally intended.",
+        "interleaveAfter mechanism verified: build-maintain appears between setup --all and setup --components in both reworked and original output, confirming the two-pass printHelp() correctly reproduces legacy interleaving."
+      ],
+      "metrics": {
+        "tests_passed": 1767,
+        "tests_failed": 0,
+        "ac_met": 5,
+        "ac_total": 5,
+        "tests_run": 1767
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-26T09:40:08Z",
+          "note": "No regressions found. The two-pass interleaveMap approach in printHelp() is clean and O(n) — any future command needing positional insertion just needs interleaveAfter in its COMMANDS entry."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-26T09:40:08Z",
+          "note": "The helpHidden/hidden flag distinction is well-designed and composable. read-log (key:l) and kill-orchestrator (key:k) appear in the interactive menu as expected, confirming agent-facing commands remain discoverable without polluting the general help output."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-26T09:40:08Z",
+          "note": "No code smells or issues observed in the rework changes. The fixes are minimal and surgical — only 3 new COMMANDS properties were needed (helpHidden on 2 commands, interleaveAfter on 1)."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-26T09:55:19Z",
+      "completed_at": "2026-03-26T09:57:54Z",
+      "duration_ms": 155000,
+      "summary": [
+        "[PASS] COMMANDS-driven printHelp() rewrite reviewed. Architecture is clean and well-executed. Two-pass interleaveMap approach is O(n) and self-documenting. helpHidden/hidden flag distinction is well-designed and composable. One Fix-Forward applied (COMMANDS preamble comment expanded to document helpHidden and interleaveAfter fields). One Documentation-Forward noted (interleaveAfter.command is not validated against existing IDs at runtime).\""
+      ],
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-03-26T09:57:54Z",
+          "note": "Expanded the COMMANDS preamble comment (scripts/cli.js, before `const COMMANDS = [`) to document the two new optional fields introduced in this WP: `helpHidden` (omit from printHelp, composable with hidden) and `interleaveAfter` (positional insertion in printHelp, with a note that the command reference is not validated at runtime). The previous comment only documented `helpVariants` and `hidden`. Non-behavioral change."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-03-26T09:57:54Z",
+          "note": "[documentation-forward] The interleaveAfter.command field is a string reference to another COMMANDS id but is not validated at runtime. If a future maintainer uses a typo or stale id, the interleaved command silently disappears from printHelp() with no error. Consider documenting this caveat in the README or api-surface.md for scripts/cli.js, and/or adding a startup validation loop that checks all interleaveAfter references resolve to known command ids."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-26T09:57:54Z",
+          "note": "Overall implementation quality is high. The two-pass printHelp() is clean and the flag composition model (hidden vs helpHidden) is well-designed. The interleaveAfter mechanism elegantly future-proofs legacy ordering constraints without hardcoding any row arrays."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-26T10:02:00Z",
+      "completed_at": "2026-03-26T10:03:34Z",
+      "duration_ms": 94000,
+      "summary": [
+        "No external documentation changes required for WP-001.",
+        "The reviewer's Fix-Forward has already added the interleaveAfter no-validation caveat to scripts/cli.js as an inline source comment (line 475). This adequately addresses the documentation-forward item.",
+        "README.md and AGENTS.md do not reference the internal COMMANDS/printHelp() structure, so no updates are warranted.",
+        "All 5 acceptance criteria were met prior to the documentation pipeline."
+      ],
+      "artifacts": {
+        "files_modified": []
+      }
+    }
+  ],
+  "rework_counts": {
+    "implementation": 1,
+    "qa": 1
+  },
+  "status_changed_at": "2026-03-26T10:03:34Z",
+  "last_updated": "2026-03-26T10:03:34Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-03-26T08:35:25Z",
+      "notes": [
+        "WP-001 complete. scripts/cli.js COMMANDS registry now auto-generates printHelp() rows — no more dual-maintenance. Bonus fix: orchestrator command (hidden: true in COMMANDS) is now properly registered for CLI dispatch. QA: verify help output diff, confirm orchestrator CLI dispatch works, confirm hidden command absent from interactive menu."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Developer",
+      "timestamp": "2026-03-26T09:10:34Z",
+      "notes": [
+        "AC1 fails on two counts: (1) build-maintain row moved from pos 3 to pos 4 due to helpVariants grouping, (2) read-log and kill-orchestrator rows added to help output (not present in original). Developer must fix: either (a) reorder COMMANDS so help output matches old exactly AND exclude read-log/kill-orchestrator from printHelp, or (b) negotiate changing AC1 to 'functionally equivalent with documented additions'. All other ACs pass. Tests all green at 1738/1738."
+      ]
+    },
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-03-26T09:32:08Z",
+      "notes": [
+        "All 5 ACs now met. diff against cli-original.js is zero. Summary of changes: (1) helpHidden: true added to read-log and kill-orchestrator — they dispatch via CLI and appear in menu, but are excluded from printHelp; (2) interleaveAfter: { command: 'setup', variant: 0 } added to build-maintain — printHelp now renders it between setup --all and setup --components as in original; (3) printHelp() rewritten to honour both flags. QA: re-verify character-identical diff, confirm read-log and kill-orchestrator are still reachable via CLI and visible in interactive menu, confirm orchestrator dispatch still works."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-26T09:40:08Z",
+      "notes": [
+        "WP-001 QA PASS — all 5 ACs met. scripts/cli.js is the only modified file. Key points for reviewer: (1) printHelp() is now fully COMMANDS-driven with no dual-maintenance; (2) orchestrator hidden:true fixes a pre-existing CLI dispatch bug as a free side-effect; (3) helpHidden:true on read-log and kill-orchestrator preserves character-identical help output while keeping them visible in the interactive menu; (4) interleaveAfter on build-maintain preserves legacy help row ordering. 1767 tests pass (1738 MCP + 29 persona-helpers). No concerns."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-03-26T09:57:54Z",
+      "notes": [
+        "WP-001 code-review PASS. All 5 ACs met. One reviewer-applied Fix-Forward: expanded COMMANDS preamble comment to document helpHidden and interleaveAfter fields (non-behavioral, scripts/cli.js only). One documentation-forward open item: interleaveAfter.command is not runtime-validated — document the caveat. No blocking issues. Ready for documentation pipeline."
+      ]
+    }
+  ]
+}

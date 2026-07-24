@@ -1,0 +1,243 @@
+{
+  "work_package_id": "WP-006",
+  "work_package_file": "work/WP-006.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-003"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "GET /api/repos returns all declared repositories from the registry file.",
+      "met": true
+    },
+    {
+      "criterion": "POST /api/repos creates a new repository entry with validated id (slug regex), unique id, and no folder_names conflicts; returns 400 with clear error on conflict.",
+      "met": true
+    },
+    {
+      "criterion": "PUT /api/repos/:repoId updates label, folder_names, and vision fields; enforces folder_name uniqueness across all entries.",
+      "met": true
+    },
+    {
+      "criterion": "DELETE /api/repos/:repoId removes the entry from the registry without deleting any project data.",
+      "met": true
+    },
+    {
+      "criterion": "GET /api/repos/:repoId returns the full repository entry or 404 if not found.",
+      "met": true
+    },
+    {
+      "criterion": "Folder names are unique across all repository entries — the API rejects create/update operations that would violate this constraint.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-06-05T09:18:22Z",
+      "completed_at": "2026-06-05T09:23:35Z",
+      "duration_ms": 313000,
+      "summary": [
+        "Created mcp-server/gui/api-repos.ts: domain-split handler module following the api-knowledge.ts pattern, exporting handleListRepos, handleGetRepo, handleCreateRepo, handleUpdateRepo, handleDeleteRepo.",
+        "handleListRepos: loads registry via loadRegistry(), maps entries to RepoListItem shape (id, label, folder_names, has_vision, created_at, last_modified). Returns [] on empty/absent registry.",
+        "handleGetRepo: loads registry, finds entry by id, throws NOT_FOUND (404) for unknown repoId.",
+        "handleCreateRepo: validates body via RepoCreateBodySchema (Zod .strict()), enforces id uniqueness, enforces folder_name uniqueness via assertNoFolderNameConflicts(), defaults vision to all-null, persists via saveRegistry(). Returns 201 with the new entry.",
+        "handleUpdateRepo: loads registry, checks NOT_FOUND, validates body via RepoUpdateBodySchema (.strict()), enforces folder_name uniqueness excluding the entry being updated (self-conflict allowed), merges partial updates, sets last_modified. Persists via saveRegistry().",
+        "handleDeleteRepo: loads registry, checks NOT_FOUND, filters out the entry, persists. Returns { deleted: true }. Does NOT delete any project files.",
+        "Wired into mcp-server/gui/server.ts: import block added, three body-free routes in matchRoute() (GET /api/repos, GET /api/repos/:repoId, DELETE /api/repos/:repoId), two body-parsing routes in handleRequest() (POST /api/repos returns 201, PUT /api/repos/:repoId returns 200). Route summary comment updated.",
+        "Created mcp-server/tests/gui/api-repos.test.ts: 46 tests covering all 6 ACs — CRUD operations, validation, folder name conflict rejection, 404 for missing repos, has_vision computation, persistence verification, error shape.",
+        "TypeScript compilation: zero errors (tsc --noEmit).",
+        "Full test suite: 3046 tests pass, zero failures, zero regressions."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/api-repos.ts",
+          "mcp-server/gui/server.ts",
+          "mcp-server/tests/gui/api-repos.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T09:23:35Z",
+          "note": "api-repos.ts does not re-export the Zod schemas (RepoCreateBodySchema, RepoUpdateBodySchema) with explicit export — they are exported for test use but could be marked @internal in JSDoc if the intent is for handler use only. Low risk: the schemas are consumed only in tests for now."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T09:23:35Z",
+          "note": "handleUpdateRepo with an empty body ({}) is accepted as valid (all fields optional) and produces a no-op update that still sets last_modified. This is correct per the WP spec but may surprise callers expecting a 400 on a completely empty update. Could add a guard clause requiring at least one field to be present if the product team later decides it's confusing."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-06-05T09:23:35Z",
+          "note": "POST /api/repos returns 201 Created (not 200), consistent with REST conventions. The existing knowledge and project mutation handlers return 200 uniformly. This is the correct HTTP practice but is a mild inconsistency with the rest of the server's mutation responses. The server.ts body-parsing block for POST /api/repos explicitly passes 201, so this is intentional and traceable."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-06-05T09:24:08Z",
+      "completed_at": "2026-06-05T09:26:07Z",
+      "duration_ms": 119000,
+      "summary": [
+        "All 6 acceptance criteria verified through 46 unit tests — 46/46 pass. Full regression suite: 3046/3046 tests pass (zero regressions). TypeScript compiles clean (tsc --noEmit, exit 0).",
+        "AC-1 (GET /api/repos): handleListRepos returns [] on empty registry and full RepoListItem array when entries exist, including has_vision boolean, created_at, last_modified.",
+        "AC-2 (POST /api/repos): handleCreateRepo validates id via SLUG_REGEX, rejects duplicate id and empty label/folder_names, enforces folder_name uniqueness, defaults vision to all-null, returns created entry. Server wires it with HTTP 201.",
+        "AC-3 (PUT /api/repos/:repoId): handleUpdateRepo supports partial updates (label/folder_names/vision), preserves unchanged fields, always sets last_modified, persists correctly. Rejects empty label, empty folder_names array, and unknown fields.",
+        "AC-4 (DELETE /api/repos/:repoId): handleDeleteRepo removes only the named entry from registry, leaving other entries untouched. Does NOT delete any project data. Released folder_names become reusable. Returns { deleted: true }.",
+        "AC-5 (GET /api/repos/:repoId): handleGetRepo returns full RepositoryEntry for known id, throws NOT_FOUND (→ 404) for unknown or when registry is empty.",
+        "AC-6 (folder_name uniqueness): assertNoFolderNameConflicts() blocks create and update operations that would introduce a folder_name already owned by another entry. Error message identifies the conflicting name(s). Self-conflict on update (re-setting existing names) is correctly allowed via excludeId.",
+        "Route wiring verified in server.ts: GET, DELETE wired in matchRoute(); POST (/api/repos, 201) and PUT (/api/repos/:repoId, 200) as explicit body-parsing early-return blocks in handleRequest(). apiErrorToStatus maps NOT_FOUND→404 and VALIDATION_ERROR→400 correctly."
+      ],
+      "metrics": {
+        "test_coverage": "46/46 WP-006 tests; 3046/3046 full suite",
+        "tests_passed": 46,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T09:26:07Z",
+          "note": "handleUpdateRepo with an empty body {} is a no-op update that still bumps last_modified. Correct per WP spec (all fields optional), but callers may find it surprising. Worth a product decision if a minimum-one-field guard is desired."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-06-05T09:26:07Z",
+          "note": "POST /api/repos returns 201 Created while all other mutation routes return 200. Intentional and correctly documented in server.ts comments. Mild inconsistency with the rest of the server, but correct REST practice."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T09:26:07Z",
+          "note": "No edge-case test for URL-encoded repoId in GET/DELETE route handlers (e.g., repo%2Did). decodeURIComponent is called at the server.ts routing level, so it works at runtime, but there is no unit-level test exercising the decode path. Low risk — hyphens in IDs are valid SLUG_REGEX matches and wouldn't normally be percent-encoded."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-06-05T09:26:26Z",
+      "completed_at": "2026-06-05T09:28:08Z",
+      "duration_ms": 102000,
+      "summary": [
+        "Reviewed api-repos.ts, server.ts (repo-related sections), and api-repos.test.ts against all four review dimensions (Maintainability, Best Practices, Performance, Future Context). No blocking issues found.",
+        "Maintainability: Excellent. Domain-split pattern is consistent with api-knowledge.ts. Functions are single-purpose, well-named, and fully JSDoc'd. assertNoFolderNameConflicts is a clean, testable helper. toListItem is a pure shape-conversion function with no side effects.",
+        "Best Practices: Strong. Zod .strict() schemas guard both POST and PUT bodies. The double-parse approach (safeParse → RepositoryEntrySchema.parse) is belt-and-suspenders and matches the project convention. created_at is never mutated in handleUpdateRepo. The validationError helper reduces throw-site boilerplate.",
+        "Performance: No concerns. loadRegistry/saveRegistry on each request is the established project pattern for a small JSON registry file.",
+        "Future Context / Technical Debt: The repoPutMatch regex in handleRequest() is a hardcoded literal; the GET/DELETE repos routes use the segment-based matchRoute() instead. This is intentional (body-parsing routes must be in handleRequest), correctly commented, and matches the same pattern used by PATCH /api/knowledge/:id and POST /api/knowledge/:id/move — no concern.",
+        "Fix-Forward applied: Added @internal documentation to both exported Zod schemas (RepoCreateBodySchema, RepoUpdateBodySchema) clarifying their test-only export intent. Non-behavioral — no logic changed.",
+        "Documentation-Forward: The RepoListItem interface and has_vision computed field would benefit from an explicit entry in any API reference doc that gets generated for this server. Flagged for Documentation agent."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/api-repos.ts",
+          "mcp-server/gui/server.ts",
+          "mcp-server/tests/gui/api-repos.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-06-05T09:28:08Z",
+          "note": "Added '@internal' JSDoc note to the exported RepoCreateBodySchema and RepoUpdateBodySchema comments in api-repos.ts. These schemas are exported so tests can construct validated shapes directly, but are not part of the stable public API. The clarification prevents future consumers from treating the export as a committed interface. No logic was changed."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-06-05T09:28:08Z",
+          "note": "[documentation-forward] The RepoListItem interface (has_vision boolean computed from the three vision horizon fields) is not self-discoverable from the REST API surface without reading the source. If an API reference document exists or is planned for the GUI server endpoints, add an entry for GET /api/repos and GET /api/repos/:repoId that documents the RepoListItem vs RepositoryEntry shape distinction and explains that has_vision is a server-computed convenience field."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T09:28:08Z",
+          "note": "handleUpdateRepo accepts an empty body {} as a valid no-op that still bumps last_modified. Flagged by both Developer and QA as a known design decision. If the product team later decides a minimum-one-field guard is desirable, the fix is a single z.refine() added to RepoUpdateBodySchema. No action needed now."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-06-05T09:28:29Z",
+      "completed_at": "2026-06-05T09:32:16Z",
+      "duration_ms": 227000,
+      "summary": [
+        "Reviewed all implementation, QA, and code-review pipeline artifacts for WP-006. Addressed the documentation-forward from the Reviewer: added a full 'GUI API — Repository Endpoints' section to api-surface.md documenting all 5 handler functions (handleListRepos, handleGetRepo, handleCreateRepo, handleUpdateRepo, handleDeleteRepo) with explicit HTTP route tables, the RepoListItem vs RepositoryEntry shape distinction, and the server-computed has_vision convenience boolean.",
+        "Updated file-tree.md: added api-repos.ts entry (with full export summary) after api-knowledge.ts, added api-repos.test.ts entry in the tests/gui/ section, updated server.ts annotation to reflect the new /api/repos routes in both dispatch tiers.",
+        "Added constraint 61 to constraints.md: documents the domain-split rule for gui/api-repos.ts, the 201 vs 200 intent for POST /api/repos, and the @internal status of the exported Zod schemas — following the same structure as constraint 58 for api-knowledge.ts."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/file-tree.md",
+          "mcp-server/docs/agents/project-manifest/constraints.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T09:32:16Z",
+          "note": "The documentation-forward from the Reviewer (RepoListItem vs RepositoryEntry shape distinction and has_vision computed field) has been fully addressed in api-surface.md with a dedicated shape-distinction subsection and inline notes in the route table."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T09:32:16Z",
+          "note": "No changes were needed to the root README.md or mcp-server/README.md — those documents describe the MCP tool API surface and high-level architecture, not the GUI REST endpoints. The gui/api.ts handler count reference in README.md ('23 MCP tools') was not affected by this change."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-06-05T09:32:16Z",
+  "last_updated": "2026-06-05T09:32:16Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-06-05T09:23:35Z",
+      "notes": [
+        "All 6 acceptance criteria are met and verified by 46 unit tests (zero failures). TypeScript compiles clean, full 3046-test suite passes with zero regressions.",
+        "AC-1 (GET list): returns all entries as RepoListItem shapes with has_vision convenience boolean. AC-2 (POST create): validates id via SLUG_REGEX, enforces unique id and folder_name uniqueness, returns 201. AC-3 (PUT update): partial update — only supplied fields overwritten; folder_name uniqueness check excludes the entry being updated so no self-conflict. AC-4 (DELETE): removes declaration only, no project data touched. AC-5 (GET single): returns full RepositoryEntry or 404. AC-6 (folder_name uniqueness): assertNoFolderNameConflicts() helper enforces uniqueness across all entries on create and update.",
+        "The POST /api/repos route returns HTTP 201 (Created) — intentionally different from the uniform 200 used by other mutation endpoints; this is the correct REST practice and is noted in code comments.",
+        "Route wiring is in server.ts: body-free routes in matchRoute(), body-parsing routes (POST, PUT) as explicit early-return blocks in handleRequest() before the general dispatch."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-06-05T09:26:07Z",
+      "notes": [
+        "All 6 ACs met and verified. 46 dedicated tests + 3046 full suite — zero failures, zero regressions. TypeScript clean.",
+        "Implementation is consistent with the domain-split pattern (api-knowledge.ts): handlers in api-repos.ts, imported and routed in server.ts.",
+        "Minor notes for Reviewer consideration: (1) empty-body PUT is a valid no-op by spec — may want a min-one-field guard in future; (2) POST returns 201 unlike other mutation endpoints (intentional, per REST best practice); (3) no test for URL-encoded repoId — low risk but worth noting."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-06-05T09:28:08Z",
+      "notes": [
+        "All 6 ACs confirmed met. No blocking issues. One Fix-Forward applied: added @internal JSDoc to exported Zod schemas (RepoCreateBodySchema, RepoUpdateBodySchema) to clarify test-only export intent — non-behavioral.",
+        "One documentation-forward tagged: GET /api/repos and GET /api/repos/:repoId should document the RepoListItem vs RepositoryEntry shape distinction and the server-computed has_vision convenience field in any API reference doc.",
+        "Implementation quality is high — consistent with the api-knowledge.ts domain-split pattern. No rework needed."
+      ]
+    }
+  ]
+}

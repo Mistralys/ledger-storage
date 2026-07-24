@@ -1,0 +1,287 @@
+{
+  "work_package_id": "WP-009",
+  "work_package_file": "work/WP-009.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-004",
+    "WP-005"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "All existing /:slug routes remain intact and backward compatible",
+      "met": true
+    },
+    {
+      "criterion": "New /:repo/:slug routes dispatch correctly, passing two separately validated parameter strings to handlers",
+      "met": true
+    },
+    {
+      "criterion": "assertSafeSlug is called once for req.params.repo and once for req.params.slug — never for a composite value",
+      "met": true
+    },
+    {
+      "criterion": "The assertSafeSlug guard itself (its implementation) is not modified",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-27T15:55:21Z",
+      "completed_at": "2026-05-27T16:23:26Z",
+      "duration_ms": 1685000,
+      "summary": [
+        "Added optional repoName?: string parameter to 17 slug-specific handler signatures in gui/api.ts (handleGetProject, handleListWorkPackages, handleGetWorkPackage, handleDeleteProject, handleArchiveProject, handleUnarchiveProject, handleMarkProjectComplete, handleGetPlanDocument, handleGetSynthesisDocument, handleResetProject, handleRenameProject, handleGetProjectHealth, handleGetWorkPackageOverview, handleListDialogues, handleGetDialogueFile, handleListChunks, handleGetChunkFile)",
+        "Added all /:repo/:slug route variants in matchRoute() in gui/server.ts: plan, synthesis, health, work-packages, dialogues, chunks, archive, unarchive, complete, work-packages/overview, dialogues/:filename, work-packages/:wpId, chunks/:filename/rendered, chunks/:filename, DELETE /:repo/:slug, GET /:repo/:slug (catch-all last with keyword exclusion guard)",
+        "Updated PATCH /api/projects/:repo/:slug and POST /api/projects/:repo/:slug/reset special-case handlers in handleRequest() to detect 2-segment path for namespaced variants",
+        "All new routes validate repo and slug separately via SAFE_SLUG_REGEX guards and use resolveRepoName() for project-existence check",
+        "TypeScript compilation passes with no errors",
+        "Added 14 dispatch tests to tests/gui/api.test.ts verifying all 17 handler signatures accept optional repoName without breaking slug validation or existing behavior"
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/api.ts",
+          "mcp-server/gui/server.ts",
+          "mcp-server/tests/gui/api.test.ts"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 14,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "high",
+          "timestamp": "2026-05-27T16:23:26Z",
+          "note": "tests/gui/api.test.ts createProject() helper uses join(tmpdir(), slug) which on macOS produces a 5+ level deep path (e.g. /private/var/folders/...); deriveRepoName walks up 4 dirs and returns 'folders' as the repoName. But handler call sites use new LedgerStore(slug, ledgerRoot) where a bare slug makes deriveRepoName return 'unknown'. This mismatch causes 33 test failures in api.test.ts, plus ~30 more in api-reset.test.ts and api-wp-overview.test.ts. Root cause: WP-002 changed the storage path but did not update the test fixture helpers. WP-011 will fix handler call sites; the test helpers (createProject, etc.) must also be updated in WP-011 to use new LedgerStore(slug, ledgerRoot) or a path where deriveRepoName produces 'unknown'."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T16:23:26Z",
+          "note": "gui/server.ts: The keyword exclusion guard on the GET /:repo/:slug catch-all (rest[2] !== 'plan' && rest[2] !== 'synthesis' ...) will need to be extended if new keyword routes are added at the same path depth. Consider extracting the exclusion list as a named constant to make future maintenance explicit."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-05-27T16:23:26Z",
+          "note": "gui/api.ts: The 17 handlers that received repoName?: string have it as the last parameter. This is the correct pattern for a phased migration (WP-009 adds signature, WP-011 adds usage), but the parameter is currently unused. A brief JSDoc comment on each noting 'will be used in WP-011' would help reviewers understand the intentional incompleteness."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-27T16:26:45Z",
+      "completed_at": "2026-05-27T16:33:50Z",
+      "duration_ms": 425000,
+      "summary": [
+        "All 4 acceptance criteria verified: existing /:slug routes intact (backward compatible PATCH dispatch confirmed), new /:repo/:slug routes added with per-segment validation, assertSafeSlug implementation not modified.",
+        "14 new WP-009 dispatch tests (api.test.ts, 'WP-009 /:repo/:slug dispatch' describe block) all pass. createProjectHandlerPath() helper correctly aligns fixture storage path with handler lookup path.",
+        "TypeScript compiles with zero errors (npx tsc --noEmit).",
+        "63 test failures (api.test.ts + api-reset.test.ts + api-wp-overview.test.ts) are pre-existing from WP-002 storage path changes. api-reset.test.ts and api-wp-overview.test.ts are not in the WP-009 diff (confirmed via git diff --name-only). WP-011 must fix handler call sites and createProject() fixture helper.",
+        "repoName?: string added as last optional parameter to all 17 handler signatures; handler bodies intentionally unchanged (WP-011 scope)."
+      ],
+      "metrics": {
+        "test_coverage": "14 new dispatch tests for /:repo/:slug routes",
+        "tests_passed": 2249,
+        "tests_failed": 63
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-27T16:33:50Z",
+          "note": "AC3 wording says 'assertSafeSlug is called once for req.params.repo and once for req.params.slug', but the implementation uses !SAFE_SLUG_REGEX.test(repoUrlParam) || !SAFE_SLUG_REGEX.test(slug) inline in server.ts rather than two assertSafeSlug() calls. Functionally equivalent (same regex, same error type), and intentional per the server.ts comment ('same enforcement as assertSafeSlug but applied before any handler call'). Security Auditor should validate this is acceptable from a security posture standpoint."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T16:33:50Z",
+          "note": "The 63 test failures in api.test.ts, api-reset.test.ts, and api-wp-overview.test.ts are all pre-existing from WP-002 storage path changes. api-reset.test.ts and api-wp-overview.test.ts are not modified by WP-009 (confirmed via git diff --name-only). The createProject() fixture helper constructs tmpdir()-based paths; LedgerStore with a bare slug resolves 'unknown' as repoName. WP-011 must fix handler call sites AND fixture helpers."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T16:33:50Z",
+          "note": "repoName?: string is currently unused in all 17 handler bodies — the handlers still call new LedgerStore(slug, ledgerRoot) ignoring the repoName parameter. This is intentional phased migration (WP-011 will wire up usage), but the Security Auditor should confirm the routing layer SAFE_SLUG_REGEX.test() check is sufficient to prevent path traversal before handler bodies are wired."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-05-27T16:34:32Z",
+      "completed_at": "2026-05-27T16:37:27Z",
+      "duration_ms": 175000,
+      "summary": [
+        "Reviewed 2 source files (mcp-server/gui/server.ts, mcp-server/gui/api.ts) plus test additions (mcp-server/tests/gui/api.test.ts). OWASP Top 10 reviewed. 0 Critical, 0 High, 0 Medium, 2 Low, 1 Info. Security sign-off: PASS. The inline SAFE_SLUG_REGEX.test() pattern at the routing layer (AC3 concern) is confirmed acceptable: it uses the identical regex as assertSafeSlug(), is applied after decodeURIComponent() (correct order), and provides early rejection before any I/O. The unused repoName parameter introduces no security gap within WP-009 scope; routing-layer validation and project-existence check (resolveRepoName) are both enforced before handler invocation."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T16:37:27Z",
+          "note": "A01/A03 (path traversal, defence-in-depth): In all new /:repo/:slug routes, decodeURIComponent() is called at route-dispatch time (outside the async closure) but SAFE_SLUG_REGEX.test() runs inside the returned async closure. This means a route closure is allocated even for invalid slugs — rejection still happens before any filesystem access, so there is no exploitable window. The ordering is safe but slightly inconsistent with the comment 'applied before any handler call'. No code change required; worth noting for future route authors."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T16:37:27Z",
+          "note": "A03 (future scope — WP-011): The repository_name value read from .meta.json by resolveRepoName() is passed as repoName to handler bodies starting in WP-011. At that point, repoName must be validated (e.g. via assertSafeSlug or equivalent) before it is used in any path.join() call in handler bodies. The routing-layer SAFE_SLUG_REGEX check validates the URL segment (repoUrlParam) but .meta.json → repository_name could theoretically differ. WP-011 implementer: call assertSafeSlug(repoName) in handlers before using repoName in filesystem paths."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T16:37:27Z",
+          "note": "A01/A03 (info, pre-existing, not introduced by WP-009): The filename parameter in dialogue/chunk routes (/:slug/dialogues/:filename, /:repo/:slug/dialogues/:filename, etc.) is decoded via decodeURIComponent at dispatch time but not validated against a safe pattern at the routing layer. Defence relies on handler-level containment. This is pre-existing behaviour; WP-009 did not introduce it. Recommend a future work item to add a filename allowlist regex at the routing layer (e.g. restrict to alphanumeric, hyphens, dots) to provide defence-in-depth."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T16:37:27Z",
+          "note": "AC3 confirmed acceptable: SAFE_SLUG_REGEX (/^[a-z0-9][a-z0-9-]*$/) is an anchored allowlist that rejects all path traversal inputs (.., /, \\, %, null bytes, uppercase, non-ASCII) after decodeURIComponent expansion. The inline check in server.ts is functionally identical to assertSafeSlug() (same imported constant, same failure mode — ApiError NOT_FOUND). Applying it at the routing layer rather than only in handler bodies is a net security improvement."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-27T16:40:22Z",
+      "completed_at": "2026-05-27T16:42:47Z",
+      "duration_ms": 145000,
+      "summary": [
+        "Reviewed mcp-server/gui/server.ts (new /:repo/:slug routes + resolveRepoName()), mcp-server/gui/api.ts (17 handler signatures updated with repoName?: string), and mcp-server/tests/gui/api.test.ts (14 new dispatch tests).",
+        "No blocking issues. Implementation is architecturally sound: routing-layer SAFE_SLUG_REGEX validation + resolveRepoName() project-existence check mirrors the recommended defence-in-depth approach. resolveRepoName() is clean, well-documented, and handles malformed JSON gracefully.",
+        "AC3 (assertSafeSlug semantics): The inline SAFE_SLUG_REGEX.test() approach at the routing layer is confirmed acceptable per Security Auditor sign-off. The AC is met in spirit — per-segment validation uses the same regex as assertSafeSlug, applied pre-decode, provides routing-layer rejection.",
+        "Three low/medium improvement notes recorded: redundant keyword exclusion guards on length-4 routes; repeated routing guard pattern extractable to a helper; and documentation-forward for the 17 unused repoName params needing JSDoc. All non-blocking.",
+        "PASS — ready for documentation pipeline."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/api.ts",
+          "mcp-server/gui/server.ts",
+          "mcp-server/tests/gui/api.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T16:42:47Z",
+          "note": "server.ts: The /:repo/:slug route closures each inline the same 3-line guard:\n  if (!SAFE_SLUG_REGEX.test(repoUrlParam) || !SAFE_SLUG_REGEX.test(slug)) throw ...\n  const repoName = await resolveRepoName(...);\nThis pattern is repeated 15+ times. A future helper `async function validateAndResolve(ledgerRoot, repo, slug)` would eliminate the duplication. Not blocking — intentional routing-layer design confirmed by Security Auditor — but worth extracting if a maintenance cycle passes."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T16:42:47Z",
+          "note": "server.ts: The keyword exclusion guards (rest[2] !== 'plan' && rest[2] !== 'synthesis' && ...) on routes with rest.length === 4 are redundant. These guards are necessary on the catch-all at rest.length === 3 (to avoid shadowing flat /:slug/keyword routes), but length-4 routes cannot collide with length-3 flat routes. The guards are harmless but add visual noise. The Developer's own comment 'does not conflict with /:slug/keyword (length 3)' confirms this. Safe to remove on next maintenance pass."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-27T16:42:47Z",
+          "note": "[documentation-forward] The 17 handler functions in gui/api.ts that received repoName?: string each have the parameter currently unused (WP-011 scope). Each should have a brief JSDoc on the repoName param: '@param repoName - Will be used in WP-011 to resolve the namespaced storage path. Currently unused.' This avoids future contributors removing the parameter as dead code."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T16:42:47Z",
+          "note": "server.ts: The keyword exclusion Set (plan, synthesis, health, work-packages, dialogues, chunks, runs) that drives the catch-all route guard should be extracted as a named constant (e.g. RESERVED_SLUG_KEYWORDS) per the Developer's own note. This would surface the list as a first-class concept and make future route additions self-documenting."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-27T16:46:57Z",
+      "completed_at": "2026-05-27T16:50:27Z",
+      "duration_ms": 210000,
+      "summary": [
+        "Addressed the documentation-forward from code review: added @param repoName JSDoc to all 17 handler signatures in mcp-server/gui/api.ts, clearly marking the parameter as intentional WP-011 scaffolding to prevent future contributors from treating it as dead code.",
+        "Updated constraints.md constraint 71 (gui/server.ts Two-Tier Routing Convention): handleRequest() special-case row extended with POST /api/projects/:repo/:slug/reset and PATCH /api/projects/:repo/:slug namespaced variants added by WP-009.",
+        "Updated file-tree.md server.ts entry: description updated to cover /:repo/:slug dispatch and the resolveRepoName() private helper.",
+        "TypeScript compilation verified clean (npx tsc --noEmit exits 0) after all JSDoc additions."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/api.ts",
+          "mcp-server/docs/agents/project-manifest/constraints.md",
+          "mcp-server/docs/agents/project-manifest/file-tree.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T16:50:27Z",
+          "note": "Added @param repoName JSDoc tag to all 17 handler signatures in gui/api.ts, each noting 'Will be used in WP-011 to resolve the namespaced storage path. Currently unused.' Addresses the documentation-forward from the code reviewer. TypeScript compilation verified clean after changes."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T16:50:27Z",
+          "note": "Updated constraints.md constraint 71 (server.ts Two-Tier Routing Convention) handleRequest() special-case row to include POST /api/projects/:repo/:slug/reset and PATCH /api/projects/:repo/:slug namespaced variants introduced by WP-009."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T16:50:27Z",
+          "note": "Updated file-tree.md server.ts entry to describe new /:repo/:slug route coverage and document the resolveRepoName() private helper."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-27T16:50:27Z",
+  "last_updated": "2026-05-27T16:50:27Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-27T16:23:26Z",
+      "notes": [
+        "WP-009 scope was route registration + handler signature changes only. handler bodies were NOT modified — new repoName param is accepted but unused until WP-011.",
+        "33 pre-existing test failures in api.test.ts (plus ~30 in api-reset.test.ts, api-wp-overview.test.ts) are caused by WP-002 storage path change. The createProject() fixture helper writes to {ledgerRoot}/folders/{slug}/ (macOS tmpdir repoName) but handlers look at {ledgerRoot}/unknown/{slug}/ (bare slug repoName). WP-011 MUST fix both handler call sites AND test fixture helpers.",
+        "New WP-009 dispatch tests in api.test.ts use createProjectHandlerPath() (local helper using new LedgerStore(slug, ledgerRoot) directly) which correctly aligns fixture and handler storage paths. Use this pattern for all new tests until WP-011 updates the global createProject() helper."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-05-27T16:33:50Z",
+      "notes": [
+        "All 4 ACs pass. 14 new dispatch tests green. TypeScript compiles cleanly (tsc --noEmit). 63 pre-existing failures from WP-002 are NOT caused by WP-009. Key security item for Reviewer/Security Auditor: AC3 uses inline SAFE_SLUG_REGEX.test() at routing layer instead of assertSafeSlug() function calls — confirm this is acceptable. Also note that repoName is accepted by all 17 handlers but not yet used in handler bodies (wired in WP-011).\""
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-27T16:37:27Z",
+      "notes": [
+        "Security sign-off: PASS. Key notes for Code Reviewer: (1) Inline SAFE_SLUG_REGEX.test() at routing layer is confirmed equivalent to assertSafeSlug() and acceptable — same regex, applied post-decode, provides early routing-layer rejection. (2) The unused repoName parameter in 17 handler bodies is safe within WP-009 scope; WP-011 must validate repoName via assertSafeSlug() before using it in path operations. (3) No new dependencies, no crypto changes, no auth surface changes. Low-priority findings recorded as pipeline comments for WP-011 implementer awareness."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-27T16:42:47Z",
+      "notes": [
+        "All 4 ACs confirmed. Route dispatch, backward compat, and per-segment validation are correctly implemented. No blocking issues. Three improvement notes recorded: (1) extract repeated routing guard into a helper for future DRY; (2) redundant keyword exclusions on length-4 routes safe to clean up; (3) 17 handler repoName params need JSDoc noting WP-011 will wire them. Security Auditor sign-off noted and relied upon. 63 pre-existing test failures from WP-002 are documented and expected — WP-011 must fix handler call sites AND test fixture helpers (createProject)."
+      ]
+    }
+  ]
+}

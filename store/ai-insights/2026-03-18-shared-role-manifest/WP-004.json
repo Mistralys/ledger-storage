@@ -1,0 +1,208 @@
+{
+  "work_package_id": "WP-004",
+  "work_package_file": "work/WP-004.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "config.py loads from shared/workflow-manifest.json; no hardcoded routing constants remain",
+      "met": true
+    },
+    {
+      "criterion": "supervisor.py derives role maps and status sets from config; no hardcoded role/status values remain",
+      "met": true
+    },
+    {
+      "criterion": "The derived _ROLES list includes all 7 pipeline roles (PM, Developer, QA, Security Auditor, Reviewer, Release Engineer, Documentation)",
+      "met": true
+    },
+    {
+      "criterion": "python -m pytest in orchestrator passes",
+      "met": true
+    },
+    {
+      "criterion": "Import-time error with clear message if manifest is missing",
+      "met": true
+    }
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-18T13:17:18Z",
+      "completed_at": "2026-03-18T13:54:25Z",
+      "summary": [
+        "Rewrote orchestrator/src/config.py routing constants section: added `_load_workflow_manifest()` helper that reads `shared/workflow-manifest.json` at import time and raises ImportError with a clear path message if missing or malformed. All 8 routing constants (PIPELINE_PREREQUISITES, PIPELINE_AGENT_MAP, NEXT_STAGE_MAP, STAGE_TO_PIPELINE, PIPELINE_TO_STAGE, PERSONA_FILES, VALID_STAGES, PIPELINE_TYPES) are now derived from the manifest. Added 3 new public constants: ROLE_IDS (name→id for all roles), PIPELINE_ROLE_NAMES (ordered list of non-orchestrating role names), and WP_TERMINAL_STATUSES (manifest-derived frozenset).",
+        "Updated orchestrator/src/supervisor.py: imported ROLE_IDS, PIPELINE_ROLE_NAMES, VALID_STAGES, WP_TERMINAL_STATUSES from config. Derived all 8 _DEST_* constants (including new _DEST_SECURITY_AUDITOR and _DEST_RELEASE_ENGINEER) from ROLE_IDS. Replaced hardcoded _TERMINAL_STATUSES with WP_TERMINAL_STATUSES. Replaced hardcoded _ROLE_STAGE_MAP dict with manifest-derived version covering all 7 non-orchestrating roles. Moved _ROLES from a local variable inside supervisor_node to a module-level constant derived from PIPELINE_ROLE_NAMES — now includes Security Auditor and Release Engineer. Added RUN_SECURITY_AUDIT and RUN_RELEASE_ENGINEERING to _DISPATCH_ACTIONS.",
+        "All 219 existing tests pass unchanged. Import-time error confirmed: missing manifest raises ImportError with the expected path message."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/config.py",
+          "orchestrator/src/supervisor.py"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 219,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-03-18T13:54:25Z",
+          "note": "orchestrator/tests/test_supervisor.py: The `_derive_next_action` test helper only handles 4 pipeline stages (implementation, qa, code-review, documentation) — it silently ignores security-audit and release-engineering. Now that the supervisor queries Security Auditor and Release Engineer, parameterized test cases for RUN_SECURITY_AUDIT → security_auditor and RUN_RELEASE_ENGINEERING → release_engineer routing are missing from TestDirectActionRouting."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-18T13:54:25Z",
+          "note": "orchestrator/src/supervisor.py: `_DISPATCH_ACTIONS` is still a hardcoded frozenset documenting the known MCP action vocabulary. Once the manifest gains an action vocabulary section, this could also be derived. The forward-compat warning path already handles unknown actions gracefully, so this is low urgency."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-03-18T13:54:25Z",
+          "note": "orchestrator/src/config.py: Module-level private vars `_roles`, `_pipelines`, `_chain_roles` are visible at import level alongside public constants. A future cleanup could move them into a structured helper function, but this does not affect correctness."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-18T13:54:25Z",
+          "note": "orchestrator/src/config.py: VALID_STAGES now correctly excludes `synthesis` (orchestrating=true in manifest), whereas previously it included synthesis via `frozenset(PERSONA_FILES)`. VALID_STAGES is defined but never imported elsewhere, so this is a non-breaking semantic correction."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-18T15:35:57Z",
+      "completed_at": "2026-03-18T15:40:58Z",
+      "summary": [
+        "All 5 acceptance criteria verified with runtime evidence. config.py loads the manifest at import time via _load_workflow_manifest() and derives all 8 routing constants from manifest roles and pipelines. supervisor.py derives all _DEST_* constants from ROLE_IDS, _TERMINAL_STATUSES from WP_TERMINAL_STATUSES, and _ROLES/_ROLE_STAGE_MAP from PIPELINE_ROLE_NAMES. Runtime output confirmed PIPELINE_ROLE_NAMES = [PM, Developer, QA, Security Auditor, Reviewer, Release Engineer, Documentation] (7 roles). pytest: 219 passed, 1 pre-existing skip. AC5 manually tested: ImportError raised with a path-specific message when manifest is absent. No regressions detected."
+      ],
+      "metrics": {
+        "tests_passed": 219,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-18T15:40:58Z",
+          "note": "VALID_STAGES is imported in supervisor.py (line 25) but never referenced in the code body. It's a public constant from config.py that the supervisor currently has no use for. Either remove the import or add a usage (e.g., assert-based guard to catch unknown stage destinations). Does not affect correctness or test coverage."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-18T15:40:58Z",
+          "note": "WP_TERMINAL_STATUSES in config.py uses a hardcoded set filter (`if s in {\"COMPLETE\", \"CANCELLED\"}`) to select terminal statuses from the manifest vocabulary. This is partially manifest-derived rather than fully derived. A dedicated `statuses.terminal_work_package` field in the manifest would be the cleanest approach, but the current implementation is functionally correct and low-risk."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-18T15:40:58Z",
+          "note": "No improvement — code is clean and consistent. All 219 tests pass (1 pre-existing conditional skip). Runtime verification confirms all 7 pipeline roles are present in PIPELINE_ROLE_NAMES and all routing constants are correctly derived from the manifest."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-18T15:58:17Z",
+      "completed_at": "2026-03-18T16:21:16Z",
+      "summary": [
+        "Code review PASS. Both config.py and supervisor.py are clean, correct, and maintainable. The manifest-derivation approach is internally consistent with the import-time error being actionable. All four review dimensions satisfied: Maintainability (descriptive names, clear docstrings, logical constant grouping), Best Practices (Path API usage, from __future__ annotations, PEP-8 UPPERCASE constants, diagnostic error messages), Performance (all routing constants computed once at import time, no per-iteration overhead), Future Context (new manifest roles automatically propagate to all routing constants without code changes)."
+      ],
+      "metrics": {
+        "tests_passed": 219,
+        "tests_failed": 0,
+        "blocking_issues": 0,
+        "non_blocking_suggestions": 4
+      },
+      "comments": [
+        {
+          "type": "suggestion",
+          "priority": "low",
+          "timestamp": "2026-03-18T16:21:16Z",
+          "note": "supervisor.py line 25: VALID_STAGES is imported from config but never referenced in the function body. Remove the import to eliminate unused-import noise and cognitive overhead. Both Developer and QA flagged this; confirmed: no usage found anywhere in the file body."
+        },
+        {
+          "type": "suggestion",
+          "priority": "low",
+          "timestamp": "2026-03-18T16:21:16Z",
+          "note": "config.py line 82: `_chain_roles` filters by `r[\"id\"] != \"planner\"` rather than by `r.get(\"orchestrating\")`. This is intentional — Synthesis must remain in the chain so NEXT_STAGE_MAP includes the `docs → synthesis` link. The existing comment (line 80) does not explain why Synthesis is intentionally kept. Recommend adding: '# Synthesis is kept here so NEXT_STAGE_MAP includes the docs → synthesis terminal link.' This prevents a future contributor from silently breaking the chain by switching to orchestrating=False filtering."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-03-18T16:21:16Z",
+          "note": "config.py: module-level private accumulators `_roles`, `_pipelines`, `_chain_roles` are visible alongside public constants. No correctness impact; a future cleanup could scope them inside a builder function. Low urgency — already flagged by Developer."
+        },
+        {
+          "type": "suggestion",
+          "priority": "low",
+          "timestamp": "2026-03-18T16:21:16Z",
+          "note": "config.py: WP_TERMINAL_STATUSES uses a hardcoded set filter ({\"COMPLETE\", \"CANCELLED\"}) on the manifest's work_package vocabulary. Functionally correct and low-risk. A `statuses.terminal_work_package` field in the manifest would make this fully derived. Already flagged by QA."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-18T16:32:13Z",
+      "completed_at": "2026-03-18T16:39:41Z",
+      "summary": [
+        "Removed stale 'Known limitation' block from orchestrator/README.md Architecture section (it stated supervisor polled only 5 roles and config.py hardcoded a 6-stage chain — both resolved by WP-004). Updated config.py Folder Overview description to reflect manifest-derivation. Updated test count from 216 to 219 in two places (README and running-tests section).",
+        "Updated orchestrator/docs/supervisor-routing.md Standard Routing section: extended priority order to all 7 non-orchestrating roles (Security Auditor and Release Engineer added), updated dispatch map to include security_auditor and release_engineer destinations, added RUN_SECURITY_AUDIT and RUN_RELEASE_ENGINEERING to the _DISPATCH_ACTIONS comment, removed 'Known limitation (WP-007)' block, updated routing note to mention _ROLE_STAGE_MAP is now manifest-derived.",
+        "Updated orchestrator/docs/public-api.md: added make_security_auditor_node and make_release_engineer_node to Stage Node Factories table; expanded Configuration section to document all public routing constants from config.py (PIPELINE_PREREQUISITES, PIPELINE_AGENT_MAP, PIPELINE_ROLE_NAMES, ROLE_IDS, WP_TERMINAL_STATUSES, NEXT_STAGE_MAP, STAGE_TO_PIPELINE, PIPELINE_TO_STAGE, PERSONA_FILES, PIPELINE_TYPES) with types and manifest-derivation notes."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/README.md",
+          "orchestrator/docs/supervisor-routing.md",
+          "orchestrator/docs/public-api.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-18T16:39:41Z",
+          "note": "No observations — documentation accurately reflects the implementation. All three files were out of date due to the previously-documented 'Known limitation' blocks now being resolved by this WP."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-03-18T16:39:41Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-03-18T13:54:25Z",
+      "notes": [
+        "All 5 acceptance criteria are met and verified. Key changes: config.py now loads from shared/workflow-manifest.json at import time; supervisor.py derives all routing constants from config and correctly queries all 7 pipeline roles including Security Auditor and Release Engineer. 219/219 tests pass."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-18T15:40:58Z",
+      "notes": [
+        "WP-004 QA passed. All 5 ACs verified with runtime evidence. Tests: 219 passed, 1 pre-existing skipped. No regressions."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-03-18T16:21:16Z",
+      "notes": [
+        "WP-004 code review PASS. No blocking issues. 4 low-priority non-blocking suggestions documented (3 carried over from Developer/QA, 1 new: clarifying comment on _chain_roles Synthesis preservation intent). Implementation is solid — 219/219 tests pass, manifest-derivation approach is correct and future-proof."
+      ]
+    }
+  ]
+}

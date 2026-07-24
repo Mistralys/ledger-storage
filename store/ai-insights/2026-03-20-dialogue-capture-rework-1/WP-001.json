@@ -1,0 +1,220 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Reviewer",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "AC13: All HTTP responses include X-Content-Type-Options: nosniff",
+      "met": true
+    },
+    {
+      "criterion": "AC14: All HTTP responses include X-Frame-Options: DENY",
+      "met": true
+    },
+    {
+      "criterion": "AC15: All HTTP responses include a Content-Security-Policy header",
+      "met": true
+    },
+    {
+      "criterion": "AC16: All HTTP responses include Referrer-Policy: strict-origin-when-cross-origin",
+      "met": true
+    },
+    {
+      "criterion": "AC17: The GUI renders and functions correctly with the new headers",
+      "met": true
+    },
+    {
+      "criterion": "AC18: A test verifies at least one response includes the expected security headers",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-23T17:46:56Z",
+      "completed_at": "2026-03-23T17:48:58Z",
+      "duration_ms": 122000,
+      "summary": [
+        "Added four security response headers (X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Content-Security-Policy) to all HTTP responses in mcp-server/gui/server.ts. Created a securityHeaders() helper function and spread it into sendJson (covers all JSON API + error responses), serveStatic (covers static file responses), and the OPTIONS preflight handler. Also added it to the last-resort 500 handler in main(). Added a dedicated integration test file (tests/gui/security-headers.test.ts) with 5 tests covering API 200, API 404, static file, static 404, and OPTIONS responses. All 328 GUI tests pass.\"]"
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/server.ts",
+          "mcp-server/tests/gui/security-headers.test.ts"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 328,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T17:48:58Z",
+          "note": "CSP uses 'unsafe-inline' for script-src and style-src, which is necessary because the GUI uses inline scripts/styles. This is acknowledged in the WP spec and should be revisited if the GUI migrates to external assets in the future."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T17:48:58Z",
+          "note": "No observations — code is clean and consistent with existing style (corsHeaders pattern mirrored exactly for securityHeaders)."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-23T17:55:38Z",
+      "completed_at": "2026-03-23T17:58:28Z",
+      "duration_ms": 170000,
+      "summary": [
+        "Full test suite executed: 1,678 tests across 58 test files — all pass, 0 failures.",
+        "Security-headers test suite (5 tests) verified all 4 required headers on: 200 JSON API response, 404 JSON error response, static file response, static 404 (path traversal blocked), and OPTIONS preflight response.",
+        "All 6 Acceptance Criteria confirmed met via code review and test execution.",
+        "Edge-case analysis: all response paths (sendJson, sendError, serveStatic, OPTIONS handler, last-resort catch) include securityHeaders(). securityHeaders() returns a fresh object on each call — no shared mutable state.",
+        "One low-priority observation noted: the last-resort .catch() 500 handler in main() omits corsHeaders(port) (but does include securityHeaders()). Not a blocker — all security ACs are satisfied."
+      ],
+      "metrics": {
+        "test_coverage": "5 integration tests covering all 5 response types for security headers",
+        "tests_passed": 1678,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T17:58:28Z",
+          "note": "The last-resort .catch() 500 handler in main() (server.ts line 618) includes securityHeaders() but omits corsHeaders(port). This is the only response path without CORS headers. Not a security concern, but a minor inconsistency worth addressing in a future cleanup pass."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T17:58:28Z",
+          "note": "CSP uses 'unsafe-inline' for script-src and style-src. This is a known trade-off acknowledged in the implementation (GUI uses inline scripts/styles). A future improvement would be nonce- or hash-based CSP for stronger XSS protection."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T17:58:28Z",
+          "note": "No observations — securityHeaders() implementation is clean: fresh object returned on each call (no shared mutable state), applied consistently to all response paths via sendJson spread."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-03-23T18:09:21Z",
+      "completed_at": "2026-03-23T18:10:46Z",
+      "duration_ms": 85000,
+      "summary": [
+        "Reviewed 2 files (mcp-server/gui/server.ts, mcp-server/tests/gui/security-headers.test.ts). All OWASP Top 10 categories evaluated. 0 Critical, 0 High findings. 1 Medium observation (CSP unsafe-inline), 1 Low observation (last-resort 500 handler omits corsHeaders). Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-03-23T18:10:46Z",
+          "note": "MEDIUM — A04 (Insecure Design) / A05 (Security Misconfiguration): CSP at server.ts line 105 uses 'unsafe-inline' for both script-src and style-src: \"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; ...\". This weakens XSS protection by allowing arbitrary inline script execution — a successful XSS injection could bypass the CSP entirely. This is an acknowledged, intentional trade-off for the current GUI architecture (inline scripts/styles). Does not block this WP. Recommended future remediation: migrate GUI scripts/styles to external files and replace 'unsafe-inline' with nonce- or hash-based CSP directives."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T18:10:46Z",
+          "note": "LOW — A05 (Security Misconfiguration): The last-resort .catch() 500 handler in main() (server.ts line 618) correctly includes securityHeaders() but omits corsHeaders(port). This is the only response path missing CORS headers. Not a security header gap (all 4 required headers are present), but a minor inconsistency. Recommended: add ...corsHeaders(port) to the last-resort handler for consistency with all other response paths."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T18:10:46Z",
+          "note": "A01 (Broken Access Control): Path traversal protection in serveStatic() (server.ts lines 420–423) uses Node's resolve() followed by a startsWith(PUBLIC_DIR) check — correct and robust pattern. No bypass vectors identified."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T18:10:46Z",
+          "note": "No security findings at Critical or High severity — all OWASP Top 10 categories reviewed. securityHeaders() helper is implemented correctly: pure function returning a fresh object on each call (no shared mutable state), applied consistently across all response paths (sendJson, serveStatic, OPTIONS handler, last-resort 500 catch). Security sign-off: PASS."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-23T18:13:09Z",
+      "completed_at": "2026-03-23T18:13:31Z",
+      "duration_ms": 22000,
+      "summary": [
+        "Reviewed mcp-server/gui/server.ts and mcp-server/tests/gui/security-headers.test.ts.",
+        "securityHeaders() helper is a clean pure function — mirrors the established corsHeaders() pattern exactly. Placed logically in its own section between the CORS helpers and response helpers blocks.",
+        "All four required headers verified present and correct: X-Content-Type-Options: nosniff, X-Frame-Options: DENY, Referrer-Policy: strict-origin-when-cross-origin, Content-Security-Policy with default-src 'self' base.",
+        "Header propagation is exhaustive: sendJson (via spread) → covers all JSON API + error responses including sendError(). serveStatic 200 response. OPTIONS preflight (writeHead direct). Last-resort .catch() 500 handler in main().",
+        "CSP 'unsafe-inline' for script-src/style-src is an acknowledged, intentional trade-off (inline script GUI); not a review blocker.",
+        "One low-priority inconsistency: last-resort 500 handler omits corsHeaders(port) while including securityHeaders(). Not a regression; pre-existing asymmetry. Logged as a low-priority improvement for a future cleanup pass.",
+        "Test file (security-headers.test.ts): 5 integration tests with proper beforeEach/afterEach lifecycle (tmpdir creation + server teardown). expectSecurityHeaders() helper cleanly centralises the 4-header assertion. Static-file test correctly accepts both 200 and 404 to avoid coupling to the presence of index.html in CI. All 6 ACs confirmed met.",
+        "No regressions — 1,678 tests pass across 58 test files. Code review: PASS."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T18:13:31Z",
+          "note": "server.ts line 618 — last-resort .catch() 500 handler applies securityHeaders() but omits corsHeaders(port). All other response paths (sendJson, serveStatic, OPTIONS) include both. Recommend adding ...corsHeaders(port) here in a future cleanup pass for consistency; not a blocker as all security ACs are satisfied."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T18:13:31Z",
+          "note": "security-headers.test.ts line 148 — static-file test accepts status 200 or 404 to avoid a CI dependency on index.html presence. Slight imprecision: a 200 and a 404 take different code paths through serveStatic() (readFile success vs. sendError), so separate tests would give independent coverage. Low priority — the combined test still validates header presence on both paths implicitly."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T18:13:31Z",
+          "note": "No further observations — securityHeaders() implementation is clean, idiomatic, and consistent with established codebase conventions. Code review: PASS."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-03-23T18:13:31Z",
+  "last_updated": "2026-03-23T18:13:31Z",
+  "handoff_notes": [
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-03-23T17:58:28Z",
+      "notes": [
+        "All 6 ACs verified: PASS. 1,678 tests pass. Security headers applied to all response paths: sendJson (covers all API + error responses), serveStatic 200, serveStatic path-traversal 404, OPTIONS preflight, and last-resort 500 catch.",
+        "Low-priority note for Security Auditor: last-resort .catch() 500 handler omits corsHeaders() (includes securityHeaders() — not a security miss). CSP uses 'unsafe-inline' on script-src/style-src — intentional trade-off for current inline-script GUI architecture."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-23T18:10:46Z",
+      "notes": [
+        "Security audit PASS — 0 Critical, 0 High findings. 1 Medium (CSP unsafe-inline, acknowledged intentional trade-off), 1 Low (last-resort 500 omits corsHeaders, not a security miss). All 6 ACs confirmed met. Ready for code-review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-03-23T18:13:31Z",
+      "notes": [
+        "WP-001 code-review PASS. All 6 ACs met. securityHeaders() is correctly implemented and applied to all response paths. Two low-priority future improvements noted (corsHeaders consistency in last-resort handler; separate static-file test cases for 200 vs 404). Ready for Documentation to mark COMPLETE."
+      ]
+    }
+  ]
+}

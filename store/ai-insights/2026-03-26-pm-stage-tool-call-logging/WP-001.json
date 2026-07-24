@@ -1,0 +1,226 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "Function signature matches: log_tool_calls(tools: list[Any], stage: str, wp_id: str, logger: WorkflowLogger | None) -> list[Any]",
+      "met": true
+    },
+    {
+      "criterion": "Emitted event contains action: 'tool_call', tool_name, tool_wp_id, and level: 'DEBUG'",
+      "met": true
+    },
+    {
+      "criterion": "Calling log_tool_calls() twice on the same tool list does not stack wrappers (sentinel check)",
+      "met": true
+    },
+    {
+      "criterion": "When logger is None, no error is raised and tools function normally",
+      "met": true
+    },
+    {
+      "criterion": "Tool call arguments are NOT included in the emitted event (privacy constraint)",
+      "met": true
+    },
+    {
+      "criterion": "Original ainvoke return value is forwarded unchanged",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-26T12:55:18Z",
+      "completed_at": "2026-03-26T12:58:44Z",
+      "duration_ms": 206000,
+      "summary": [
+        "Implemented log_tool_calls() in orchestrator/src/utils/tool_wrappers.py following the established sentinel pattern.",
+        "Uses _orig_ainvoke_log sentinel for idempotency — stacking is impossible even when the same tool instances are reused.",
+        "Extracts work_package_id from both flat-dict and ToolCall {'args': {...}} input structures without logging the full argument payload.",
+        "Emits tool_call event with stage, wp_id, action, tool_name, tool_wp_id, level:DEBUG fields via logger.stream_entry().",
+        "Returns tools unchanged (no wrapping) when logger is None.",
+        "Updated module docstring to document the third wrapper function and its design notes.",
+        "Added TYPE_CHECKING guard for WorkflowLogger import to avoid any runtime circular-import risk.",
+        "All 50 existing tests pass; no regressions."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/utils/tool_wrappers.py"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-26T12:58:44Z",
+          "note": "No observations — code in tool_wrappers.py is clean and consistent. The three wrapper functions follow an identical sentinel pattern; if a fourth wrapper is ever added, extracting a shared _wrap_ainvoke(tool, sentinel_attr, async_factory) helper would reduce boilerplate. Not worth doing for three wrappers."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-26T13:05:50Z",
+      "completed_at": "2026-03-26T13:09:22Z",
+      "duration_ms": 212000,
+      "summary": [
+        "All 6 acceptance criteria verified via 34 new unit tests added to orchestrator/tests/test_tool_wrappers.py.",
+        "AC1 (signature): inspect.signature confirms (tools, stage, wp_id, logger) with list return — PASS.",
+        "AC2 (emitted event fields): action='tool_call', tool_name, tool_wp_id, level='DEBUG' all present; verified for both flat-dict and ToolCall nested-dict input — PASS.",
+        "AC3 (idempotency/no stacking): sentinel _orig_ainvoke_log prevents closure stacking; double and triple wrap yields exactly one original ainvoke call and one event — PASS.",
+        "AC4 (None logger): returns tools unchanged, no sentinel set, original ainvoke works normally — PASS.",
+        "AC5 (privacy constraint): event keys are exactly {stage, wp_id, action, tool_name, tool_wp_id, level}; payload data never leaks — PASS.",
+        "AC6 (return value forwarded): string, dict, None, and sentinel returns all forwarded identity-preserving — PASS.",
+        "Regression: 50 pre-existing tests all pass; 560 tests across all non-graph modules pass with 1 pre-existing skip.",
+        "Pre-existing graph test failures (9) are due to missing aiosqlite module in this environment — unrelated to WP-001."
+      ],
+      "metrics": {
+        "tests_passed": 84,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-26T13:09:22Z",
+          "note": "No issues found — implementation is clean and consistent with the sentinel pattern used by inject_project_path and restrict_to_wp. Edge cases (None input, non-dict input, unnamed tools, empty tool list) all handled correctly."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-26T13:09:22Z",
+          "note": "test_graph.py has 9 pre-existing failures due to missing aiosqlite in this environment. Not caused by WP-001 changes and not regressions."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-03-26T13:14:32Z",
+      "completed_at": "2026-03-26T13:16:26Z",
+      "duration_ms": 114000,
+      "summary": [
+        "Reviewed orchestrator/src/utils/tool_wrappers.py (log_tool_calls function) and orchestrator/tests/test_tool_wrappers.py. 0 Critical, 0 High findings. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-26T13:16:26Z",
+          "note": "No security findings — all OWASP Top 10 categories reviewed; no Critical or High issues identified. A03 (Injection): tool_wp_id from user-controlled input flows into stream_entry(), which uses json.dumps(ensure_ascii=False) — all special characters properly escaped, no JSONL injection possible. A04 (Insecure Design): privacy constraint correctly enforced — only tool.name and work_package_id are captured; full argument payload explicitly excluded. A08 (Integrity): _orig_ainvoke_log sentinel + object.__setattr__ is the established Pydantic-bypass pattern used consistently by all three wrappers; idempotency prevents closure stacking. No new third-party dependencies introduced."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-26T13:16:57Z",
+      "completed_at": "2026-03-26T13:18:44Z",
+      "duration_ms": 107000,
+      "summary": [
+        "Code review PASS. log_tool_calls() is clean, consistent with the established sentinel pattern, and correctly implements all 6 acceptance criteria.",
+        "Maintainability: naming is precise and intentional (_stage_wp_id vs tool_wp_id distinction is correct). _log: Any annotation is the right trade-off given TYPE_CHECKING-only WorkflowLogger import.",
+        "Best practices: closure-variable-capture-via-default-arg pattern correctly solves the late-binding loop problem. object.__setattr__ Pydantic bypass is established module convention. Event emitted before await _orig() as required.",
+        "Performance: tool.name captured as _tool_name outside the closure and passed as default argument — zero extraneous work in the hot path.",
+        "Future context: Three wrappers are coherently structured. Developer note on _wrap_ainvoke helper at four wrappers is accurate — no premature abstraction here.",
+        "One documentation-forward item: wrapper chain ordering (inject_project_path → restrict_to_wp → log_tool_calls) is implicit in the docstring but should be surface-documented in api-surface.md for future contributors."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-26T13:18:44Z",
+          "note": "No observations — code is clean and consistent. The three wrapper functions use an identical sentinel+closure-default-arg pattern; log_tool_calls() is a natural third member of that family."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-03-26T13:18:44Z",
+          "note": "[documentation-forward] The intended wrapper application order (inject_project_path → restrict_to_wp → log_tool_calls) is only implied by the log_tool_calls() docstring ('typically already wrapped by inject_project_path and restrict_to_wp'). The orchestrator api-surface.md or README should document this as an explicit chain contract so future contributors applying wrappers know the canonical ordering."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-26T13:20:44Z",
+      "completed_at": "2026-03-26T13:23:51Z",
+      "duration_ms": 187000,
+      "summary": [
+        "Updated four orchestrator documentation files to reflect the new log_tool_calls() function.",
+        "architecture.md: Expanded MCP Tool Wrapping section to document log_tool_calls(), the canonical three-wrapper chain (inject_project_path → restrict_to_wp → log_tool_calls), and Design Properties table; added tool_call to JSONL Log Entry Types table.",
+        "public-api.md: Added log_tool_calls() with full signature and wrapper chain note to the Utilities table.",
+        "jsonl-log-schema.md: Added tool_call to the Action Values table.",
+        "api-surface.md: Added tool_call to JSONL Event Types (new tool_wrappers.py subsection) and added a full tool_wrappers.py subsection to Utilities documenting all three wrappers, their sentinels, and the canonical application order.",
+        "Addressed the documentation-forward item from the Reviewer: canonical wrapper chain ordering is now explicitly documented in api-surface.md, architecture.md, and public-api.md."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/docs/architecture.md",
+          "orchestrator/docs/public-api.md",
+          "orchestrator/docs/jsonl-log-schema.md",
+          "orchestrator/docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-26T13:23:51Z",
+          "note": "No documentation gaps found beyond the reviewer-forwarded item. The architecture.md, public-api.md, jsonl-log-schema.md, and api-surface.md were all consistent with each other after updates — no conflicting descriptions encountered."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-03-26T13:23:51Z",
+  "last_updated": "2026-03-26T13:23:51Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-03-26T12:58:44Z",
+      "notes": [
+        "log_tool_calls() is implemented and importable. All 6 acceptance criteria met. No regressions in the existing 50-test suite. Function is ready to be wired into create_stage_node() (WP-003) and tested (WP-005)."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-03-26T13:09:22Z",
+      "notes": [
+        "All 6 AC verified via 34 new unit tests — all pass. 560 non-graph tests pass with zero regressions. Modified files: orchestrator/tests/test_tool_wrappers.py (34 new tests for log_tool_calls). Implementation in orchestrator/src/utils/tool_wrappers.py is production-ready."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-26T13:16:26Z",
+      "notes": [
+        "All 6 AC confirmed PASS. No security issues found. Implementation reviewed at orchestrator/src/utils/tool_wrappers.py — log_tool_calls() is clean, privacy-respecting, idempotent, and ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-03-26T13:18:44Z",
+      "notes": [
+        "All 6 AC met. Code is production-ready. One documentation-forward item: document the canonical wrapper chain ordering (inject_project_path → restrict_to_wp → log_tool_calls) in api-surface.md or the orchestrator README. No blocking issues."
+      ]
+    }
+  ]
+}

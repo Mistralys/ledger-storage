@@ -1,0 +1,251 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-002.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "enums.ts derives all 4 Zod enums from the manifest; no hardcoded status arrays remain (except ARCHIVED extension)",
+      "met": true
+    },
+    {
+      "criterion": "constants.ts derives roles from the manifest; no hardcoded role arrays remain",
+      "met": true
+    },
+    {
+      "criterion": "New ROLE_IDS map and SPEC_VERSION are exported",
+      "met": true
+    },
+    {
+      "criterion": "All TypeScript union types remain narrow (not string)",
+      "met": true
+    },
+    {
+      "criterion": "npm run build in mcp-server succeeds",
+      "met": true
+    }
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-18T12:44:34Z",
+      "completed_at": "2026-03-18T13:16:48Z",
+      "summary": [
+        "Refactored mcp-server/src/schema/enums.ts: all 4 Zod enums (ProjectStatus, WorkPackageStatus, PipelineStatus, BlockerType) now derive VALUES from shared/workflow-manifest.json at module-load time. ARCHIVED preserved as local extension to ProjectStatus. CommentPriority remains hardcoded (not a spec-level construct). Narrow union types preserved via `as unknown as [...]` tuple assertions since TypeScript widens JSON array imports to string[].",
+        "Refactored mcp-server/src/utils/constants.ts: AGENT_ROLES derived from manifest roles[].name, ORCHESTRATING_ROLES from roles with orchestrating=true, SPEC_VERSION from manifest spec_version. New ROLE_IDS map (role name → role ID) exported. AgentRole and OrchestratingRole union types defined explicitly as they cannot be inferred from widened JSON imports. All existing exports preserve their names and semantics.",
+        "Key technical finding: TypeScript module: Node16 does not support `with { type: 'json' }` import attributes; plain resolveJsonModule import used instead. Also, TypeScript widens JSON string arrays to string[], preventing literal type inference — explicit type annotations required for type narrowness.",
+        "Build (npm run build) succeeds. All 1433 tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/schema/enums.ts",
+          "mcp-server/src/utils/constants.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-18T13:16:48Z",
+          "note": "TypeScript module:Node16 restricts JSON import syntax — `with { type: 'json' }` is unsupported; `resolveJsonModule` plain imports are the only option. If the project ever upgrades to `module: NodeNext`, JSON imports with assertions would become available and could simplify the type narrowing pattern."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-18T13:16:48Z",
+          "note": "TypeScript widening of JSON arrays (string[] instead of tuple with literals) forces explicit type annotations for enum narrowness. A future alternative: define a Zod schema for the manifest and parse it once at startup to recover narrow types. This would also add runtime validation that the manifest matches the expected shape."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "FAIL",
+      "started_at": "2026-03-18T15:26:53Z",
+      "completed_at": "2026-03-18T15:35:24Z",
+      "summary": [
+        "All 5 acceptance criteria are technically met: build passes, 1433 tests pass (via Vitest), all 4 Zod enums derive values from the manifest, ROLE_IDS/SPEC_VERSION are exported, and union types are narrow. However, a regression was discovered: the compiled dist/index.js fails to start on Node.js 22+ when invoked directly via `node`. Both modified files (enums.js, constants.js) emit bare `import from '...workflow-manifest.json'` without the required `with { type: 'json' }` attribute. This is the only path broken — VS Code deployment via `tsx src/index.ts` is unaffected. The orchestrator production path (`orchestrator/src/config.py` line 338: `mcp_server_cmd: list[str] = ['node', str(mcp_server_script)]`) is broken. Before this WP, no files in dist imported JSON, so this is a newly introduced regression."
+      ],
+      "metrics": {
+        "tests_passed": 1433,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "bug",
+          "priority": "high",
+          "timestamp": "2026-03-18T15:35:24Z",
+          "note": "REGRESSION: `node dist/index.js` fails with `ERR_IMPORT_ATTRIBUTE_MISSING` on Node.js 22+ (tested on v25.8.1). Both `dist/schema/enums.js` and `dist/utils/constants.js` emit `import workflowManifest from '../../../shared/workflow-manifest.json'` without `with { type: 'json' }`. Node.js ESM requires this attribute for JSON file imports. VS Code deployment (tsx src/index.ts via .mcp.json) is unaffected. The orchestrator (`orchestrator/src/config.py` line 338: `[\"node\", str(mcp_server_script)]`) is broken. This was NOT a pre-existing issue — before this WP, no files in dist imported JSON. FIX: Replace the static import in both `enums.ts` and `constants.ts` with a `createRequire` pattern: `import { createRequire } from 'module'; const _require = createRequire(import.meta.url); const workflowManifest = _require('../../../shared/workflow-manifest.json') as typeof import('../../../shared/workflow-manifest.json');`. Alternative: upgrade tsconfig to `module: NodeNext` (which supports `with { type: 'json' }` syntax) but this is a larger change. The `createRequire` approach is the smallest, lowest-risk fix."
+        },
+        {
+          "type": "edge-case",
+          "priority": "medium",
+          "timestamp": "2026-03-18T15:35:24Z",
+          "note": "Tuple type assertions (`as unknown as ['READY', 'IN_PROGRESS', ...]`) in enums.ts are compile-time only. If the manifest's `statuses` arrays are reordered or values renamed, TypeScript will NOT catch the mismatch — the Zod enum gets the runtime values, but the inferred type annotation stays hardcoded. This is acceptable per the developer's design choice, but a future improvement would be to parse the manifest with a Zod schema to get narrow inferred types dynamically."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-03-18T15:35:24Z",
+          "note": "The `AgentRole` and `OrchestratingRole` union types in constants.ts are hardcoded as TypeScript literal unions (required due to JSON import widening). If a role is added to the manifest but not to both the union type AND the manifest file, TypeScript will not catch the drift. The existing test coverage (work-package.test.ts verifying all non-orchestrating AGENT_ROLES appear in CLAIMABLE_ROLES) provides partial protection, but a dedicated unit test that asserts `AGENT_ROLES.length === AgentRole union member count` would be more explicit."
+        }
+      ]
+    },
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-18T15:45:01Z",
+      "completed_at": "2026-03-18T15:48:26Z",
+      "summary": [
+        "Rework: replaced bare JSON ESM imports (`import workflowManifest from '...json'`) with `createRequire(import.meta.url)` pattern in both mcp-server/src/schema/enums.ts and mcp-server/src/utils/constants.ts. The compiled output no longer emits bare JSON imports, fixing ERR_IMPORT_ATTRIBUTE_MISSING on Node.js 22+. All module behavior, types, and test assertions are unchanged. Build passes. 1433/1433 tests pass. node dist/index.js confirmed to start cleanly."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/schema/enums.ts",
+          "mcp-server/src/utils/constants.ts"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 1433,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-18T15:48:26Z",
+          "note": "Replaced `import workflowManifest from '...workflow-manifest.json'` with `createRequire(import.meta.url)` pattern in both enums.ts and constants.ts. The compiled dist/*.js no longer emits bare JSON ESM imports, resolving the ERR_IMPORT_ATTRIBUTE_MISSING error on Node.js 22+. Runtime verified: `node dist/index.js` starts cleanly showing 'Server v1.12.0 started successfully'."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-18T15:49:42Z",
+      "completed_at": "2026-03-18T15:54:48Z",
+      "summary": [
+        "Rework QA pass. All 5 acceptance criteria verified. The previously-failed AC (node dist/index.js crashes with ERR_IMPORT_ATTRIBUTE_MISSING on Node.js 22+) is resolved: both dist/schema/enums.js and dist/utils/constants.js now use createRequire(import.meta.url) with no bare ESM JSON imports. Runtime values verified: ProjectStatus=[READY, IN_PROGRESS, COMPLETE, BLOCKED, ARCHIVED], WorkPackageStatus=[READY, IN_PROGRESS, COMPLETE, BLOCKED, CANCELLED], PipelineStatus=[IN_PROGRESS, PASS, FAIL], BlockerType=[dependency, decision, external, technical], AGENT_ROLES=9 roles, ROLE_IDS=9 entries, SPEC_VERSION=2.4.1. Build passes. All 1433 tests pass. Server starts cleanly with v1.12.0 startup message."
+      ],
+      "metrics": {
+        "tests_passed": 1433,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-18T15:54:48Z",
+          "note": "Previously-flagged high-priority bug (ERR_IMPORT_ATTRIBUTE_MISSING) is confirmed resolved. dist/schema/enums.js and dist/utils/constants.js both emit createRequire pattern with no bare JSON ESM import statements."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-03-18T15:54:48Z",
+          "note": "Tuple type assertions (as unknown as [...]) in enums.ts are compile-time only — manifest reordering would not be caught by TypeScript. Acceptable per design; noted for future Zod-schema parsing improvement."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-18T15:54:48Z",
+          "note": "No observations beyond the previously-noted items — code is clean, consistent, and the fix is minimal and correct."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-18T15:55:27Z",
+      "completed_at": "2026-03-18T15:58:07Z",
+      "summary": [
+        "Code review PASS. Both modified files (enums.ts and constants.ts) are clean, well-structured, and correctly implement manifest-derived constants. The createRequire pattern is the appropriate solution for the Node.js 22+ ESM+JSON constraint and the dist output confirms no bare JSON ESM imports remain. All acceptance criteria are met. Three non-blocking observations recorded (see comments)."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-18T15:58:07Z",
+          "note": "ROLE_IDS is exported from constants.ts but has no consumers yet in the TypeScript mcp-server codebase. The orchestrator has a parallel Python derivation at orchestrator/src/config.py:115 (`ROLE_IDS = {r['name']: r['id'] for r in _roles}`). These two will naturally diverge if roles change. A future improvement: emit a generated JSON artifact from the MCP server build step that the orchestrator (and any other consumers) import, eliminating the duplicate derivation."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-18T15:58:07Z",
+          "note": "No dedicated unit tests for the manifest-derivation path of the new ROLE_IDS map. Existing tests exercise AGENT_ROLES and SPEC_VERSION indirectly, but a direct assertion (expect(AGENT_ROLES).toHaveLength(9), expect(ROLE_IDS['Project Manager']).toBe('pm')) would catch manifest path resolution failure or corruption at test time rather than at runtime."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-18T15:58:07Z",
+          "note": "The hardcoded AgentRole and OrchestratingRole union types in constants.ts create a manual synchronization requirement with the manifest roles[].name array. This is a known, acceptable limitation given TypeScript's JSON import widening behavior (documented in the file's block comment). The existing work-package.test.ts check (non-orchestrating AGENT_ROLES appear in CLAIMABLE_ROLES) provides one layer of protection. No action required — recording for future awareness."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-18T16:24:07Z",
+      "completed_at": "2026-03-18T16:31:47Z",
+      "summary": [
+        "Updated mcp-server/docs/agents/project-manifest/api-surface.md Constants section: rewrote to reflect manifest-derivation for AGENT_ROLES, ORCHESTRATING_ROLES, and SPEC_VERSION via createRequire(import.meta.url); added ROLE_IDS documentation (manifest-derived map of role name → role ID); corrected SPEC_VERSION from stale '2.4.0' to current '2.4.1'; clarified that AgentRole and OrchestratingRole are explicit hardcoded unions (not typeof AGENT_ROLES[number]) due to TypeScript JSON import widening; extended SPEC_VERSION importer note to include forward-compat warning usage in getProjectStatus().",
+        "Updated mcp-server/docs/agents/project-manifest/file-tree.md: updated enums.ts annotation to read 'derived from shared/workflow-manifest.json'; updated constants.ts annotation to enumerate AGENT_ROLES, ROLE_IDS, SPEC_VERSION, ORCHESTRATING_ROLES as manifest-derived exports."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/file-tree.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-18T16:31:47Z",
+          "note": "No observations — documentation accurately reflects the implementation. The createRequire pattern, manifest-derivation approach, and TypeScript widening constraints are all documented clearly in the updated Constants section."
+        }
+      ]
+    }
+  ],
+  "rework_counts": {
+    "implementation": 1,
+    "qa": 1
+  },
+  "status_changed_at": "2026-03-18T16:31:47Z",
+  "handoff_notes": [
+    {
+      "from_agent": "QA",
+      "to_agent": "Developer",
+      "timestamp": "2026-03-18T15:35:24Z",
+      "notes": [
+        "QA bounced WP-002 for one regression: `node dist/index.js` fails on Node.js 22+ due to bare JSON imports in the compiled output of enums.ts and constants.ts (ERR_IMPORT_ATTRIBUTE_MISSING). All 5 ACs pass; all 1433 tests pass. The orchestrator deployment path using `node dist/index.js` is broken. Recommended fix: replace `import workflowManifest from '...json'` with a createRequire-based load in both source files. This restores dist compatibility without changing any behavior, types, or tests."
+      ]
+    },
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-03-18T15:48:26Z",
+      "notes": [
+        "Rework complete. The only change from the QA-failed pipeline is replacing the static JSON ESM import with createRequire in both source files. All 1433 tests pass. node dist/index.js starts cleanly on Node.js 25.8.1 (v22+ compatible). dist/schema/enums.js and dist/utils/constants.js now use `_require(...)` not bare `import ... from '*.json'`."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-18T15:54:48Z",
+      "notes": [
+        "WP-002 QA PASS. All 5 ACs met. Node.js 22+ production path (node dist/index.js) confirmed working. Both modified files (mcp-server/src/schema/enums.ts, mcp-server/src/utils/constants.ts) correctly use createRequire pattern. 1433/1433 tests pass. Build clean. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-03-18T15:58:07Z",
+      "notes": [
+        "WP-002 code-review PASS. All 5 ACs met. createRequire pattern correctly resolves ERR_IMPORT_ATTRIBUTE_MISSING regression. enums.ts and constants.ts are clean and well-documented. Three non-blocking observations logged (ROLE_IDS no current TS consumers, no dedicated manifest-derivation unit test, AgentRole union manual sync). Ready for Documentation."
+      ]
+    }
+  ]
+}

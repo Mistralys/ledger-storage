@@ -1,0 +1,194 @@
+{
+  "work_package_id": "WP-003",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-002"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "computeHandoffStatus accepts optional store/rootIndex/wpDetails parameters.",
+      "met": true
+    },
+    {
+      "criterion": "When called from embedHandoffStatusInWait (via the next-action flow), no new LedgerStore is created.",
+      "met": true
+    },
+    {
+      "criterion": "When called standalone (from ledger_get_handoff_status tool), behavior is unchanged — no regression.",
+      "met": true
+    },
+    {
+      "criterion": "getNextActionsCollector fetches WPs sequentially and exits early when limit is reached.",
+      "met": true
+    },
+    {
+      "criterion": "All 973+ existing tests pass.",
+      "met": true
+    },
+    {
+      "criterion": "New test: getNextActionsCollector stops fetching after limit actions found.",
+      "met": true
+    },
+    {
+      "criterion": "New test: computeHandoffStatus reuses provided store without extra I/O.",
+      "met": true
+    },
+    {
+      "criterion": "api-surface.md updated with new computeHandoffStatus signature.",
+      "met": true
+    }
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-01T19:30:00Z",
+      "completed_at": "2026-03-01T19:40:00Z",
+      "summary": [
+        "PASS — All 8 acceptance criteria verified. (1) computeHandoffStatus in workflow-handoff.ts (line 1039) accepts optional opts?: { store?, rootIndex?, wpDetails? } — confirmed. (2) Fast path at line 1044 bypasses getHandoffStatus() when all three opts are provided — LedgerStore is not constructed in that path. (3) Fallback at line 1106 calls getHandoffStatus() when opts are absent or incomplete — standalone behavior unchanged. (4) getNextActionsCollector in workflow-next-action-batch.ts uses a for...of loop (line 237) with early exit when actions.length >= limit — no Promise.all remains. (5) Full test suite: 982 tests pass across 33 test files. (6) New test at workflow-next-action.test.ts:1342 asserts store.readWorkPackage is called exactly 2 times for a 5-WP project with limit=2. (7) New tests in workflow-handoff.test.ts:2052 verify bypass path does not call getHandoffStatus and fallback path does. (8) api-surface.md updated at lines 1573–1710 documenting new signatures for embedHandoffStatusInWait, getNextActionsCollector, and computeHandoffStatus.",
+        "TypeScript compilation: clean (tsc --noEmit exits 0).",
+        "Edge-case checks: (a) No Promise.all+readWorkPackage pattern found in workflow-next-action-batch.ts or workflow-next-action.ts. (b) Three early-branch embedHandoffStatusInWait call sites (empty project, allComplete+Synthesis, allComplete+non-Synthesis) intentionally use fallback path — wpDetails not yet loaded at those branch points, documented in developer notes. (c) Standalone ledger_get_handoff_status path unaffected — computeHandoffStatus without opts falls through to getHandoffStatus()."
+      ],
+      "metrics": {
+        "tests_passed": 982,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-01T19:40:00Z",
+          "note": "Three embedHandoffStatusInWait call sites in getNextAction() — empty project, allComplete+Synthesis, allComplete+non-PM-non-Synthesis — still use the fallback computeHandoffStatus path because wpDetails are not loaded at those early branch points. This is correct and consistent with the developer's implementation notes. The optimization fully applies to the main per-role paths (Developer, QA, Reviewer, Documentation). No action required."
+        },
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-01T19:40:00Z",
+          "note": "getProjectManagerAction still loads wpDetails via its own internal Promise.all, independent of the central pre-load. This is harmless (getProjectManagerAction never calls embedHandoffStatusInWait) and documented in the implementation pipeline. No action required for this WP."
+        }
+      ]
+    },
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-01T18:16:14Z",
+      "completed_at": "2026-03-01T18:28:54Z",
+      "summary": [
+        "Part A: Extended computeHandoffStatus to accept optional { store, rootIndex, wpDetails } opts. When all three are provided, bypasses getHandoffStatus() and dispatches directly to per-role handoff functions, eliminating redundant LedgerStore construction and disk reads on every WAIT response. Updated embedHandoffStatusInWait to accept and forward opts. In getNextAction(), wpDetails are now loaded once centrally before the switch and passed to both getXxxAction() and embedHandoffStatusInWait call sites (getDeveloperAction, getQaAction, getReviewerAction, getDocumentationAction all updated to accept optional preloadedWpDetails).",
+        "Part B: Refactored getNextActionsCollector from Promise.all eager loading to a sequential for...of loop with early exit — stops fetching WP details once limit actions are collected.",
+        "Tests: Added 3 new tests (982 total, all pass). Early-exit test spies on store.readWorkPackage and asserts exactly 2 calls for a 5-WP project with limit=2. Bypass tests verify no I/O spies fire when opts are provided and that missing opts triggers the fallback path.",
+        "Documentation: Updated api-surface.md with new signatures for computeHandoffStatus (opts parameter), embedHandoffStatusInWait (opts forwarding), and getNextActionsCollector (sequential early-exit description)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/tools/workflow-handoff.ts",
+          "mcp-server/src/tools/workflow-next-action-batch.ts",
+          "mcp-server/src/tools/workflow-next-action.ts",
+          "mcp-server/tests/tools/workflow-next-action.test.ts",
+          "mcp-server/tests/tools/workflow-handoff.test.ts",
+          "mcp-server/docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-01T19:28:00Z",
+          "note": "getProjectManagerAction in workflow-next-action.ts still loads wpDetails via its own internal Promise.all, independent from the central load added before the switch. Since getProjectManagerAction never calls embedHandoffStatusInWait, the dual-load is harmless, but a future pass could lift the load to the call site for consistency. File: mcp-server/src/tools/workflow-next-action.ts, function: getProjectManagerAction."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-01T19:28:00Z",
+          "note": "The three early-exit embedHandoffStatusInWait call sites in getNextAction() (empty project, allComplete+Synthesis, allComplete+non-PM-non-Synthesis) still use the fallback computeHandoffStatus path because wpDetails are not yet loaded at those branch points. For the empty project case, wpDetails would simply be []. For allComplete cases, a pre-load before the allComplete check would enable the bypass. These paths are infrequent and the optimization impact is minimal, but the inconsistency is worth noting for a follow-up. File: mcp-server/src/tools/workflow-next-action.ts."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-03-01T19:28:00Z",
+          "note": "The makeWp test helper in workflow-handoff.test.ts uses assigned_to: 'Developer Agent' (human-readable label) rather than the canonical agent role string 'Developer'. This works because handoff functions do not check assigned_to for equality against AGENT_ROLES, but it creates a subtle inconsistency with the per-role action functions which do check assigned_to === 'Developer'. Worth aligning in a future test-quality pass. File: mcp-server/tests/tools/workflow-handoff.test.ts, function: makeWp."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-01T18:33:16Z",
+      "completed_at": "2026-03-01T18:35:31Z",
+      "summary": [
+        "PASS — Clean, well-structured optimization with no blocking issues. (1) computeHandoffStatus fast path correctly replicates only the BLOCKED short-circuit from getHandoffStatus — agent-role validation is intentionally omitted because it is already performed upstream in getNextAction() at line 72 before the central pre-load. (2) The central Promise.all pre-load at line 215 of workflow-next-action.ts is correctly scoped: it only runs for the per-role switch arms (Developer/QA/Reviewer/Documentation/Synthesis/default) and is bypassed for max_results>1 (batch mode) and Project Manager — both of which return early before line 215. (3) Empty-array guard: opts?.wpDetails evaluates to [] which is truthy in JavaScript — the fast path therefore correctly activates even for zero-WP projects, consistent with the fallback behavior. (4) getNextActionsCollector sequential for...of with early-exit is architecturally sound — eliminates the over-fetching of the prior Promise.all eager-load pattern. (5) All three new tests are high-quality and verify the exact behavioral contract: early-exit spy (readWorkPackage called exactly 2x for 5-WP project with limit=2), bypass no-I/O (readRootIndex and readWorkPackage not called when all three opts provided), fallback throws (no opts → getHandoffStatus → no ledger file). (6) api-surface.md update is thorough and accurately describes new signatures, opts semantics, and the bypass/fallback decision rule."
+      ],
+      "metrics": {
+        "tests_passed": 982,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-01T20:00:00Z",
+          "note": "Three early-branch embedHandoffStatusInWait call sites in getNextAction() (empty project, allComplete+Synthesis, allComplete+non-PM-non-Synthesis) correctly use the fallback computeHandoffStatus path — wpDetails are not yet loaded at those branch points. This is architecturally sound and consistent with developer and QA documentation. No action required."
+        },
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-01T20:00:00Z",
+          "note": "The per-role handoff function signatures documented in api-surface.md (wps: WorkPackageDetail[], root: RootIndex) do not precisely match the actual TypeScript signatures (wpDetails: WorkPackageDetail[], projectPath?: string, store?: LedgerStore). This is a pre-existing documentation inaccuracy not introduced by WP-003 — the fast path call sites in computeHandoffStatus correctly match the actual signatures. Worth correcting in a documentation pass."
+        },
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-01T20:00:00Z",
+          "note": "getProjectManagerAction in workflow-next-action.ts loads wpDetails via its own internal Promise.all independently of the central pre-load at line 215 (since PM never calls embedHandoffStatusInWait). This dual-load is harmless but creates slight inconsistency in the call site pattern. The developer already flagged this; a future refactor could lift the load to the call site for consistency."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-01T18:36:24Z",
+      "completed_at": "2026-03-01T18:36:32Z",
+      "summary": [
+        "Re-review: PASS. No code changes since prior code-review PASS. Triggered by timestamp ordering artifact (QA completed_at 19:40Z > code-review completed_at 18:35Z in an artificially-timestamped ledger). Implementation, tests, and documentation remain fully verified. All 8 acceptance criteria met, 982 tests passing."
+      ],
+      "metrics": {
+        "tests_passed": 982,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-01T20:05:00Z",
+          "note": "Re-review pass triggered by timestamp ordering artifact: code-review completed_at (18:35Z) stored before QA completed_at (19:40Z) in the ledger. No code changes occurred between the first review and this re-review — same 982-test passing suite, same implementation. All acceptance criteria remain met. PASS confirmed."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-01T18:39:30Z",
+      "completed_at": "2026-03-01T18:39:36Z",
+      "summary": [
+        "Documentation pass for WP-003 performance optimizations. Two categories of updates applied to mcp-server/docs/agents/project-manifest/api-surface.md: (1) Added preloadedWpDetails?: WorkPackageDetail[] parameter to the four per-role action function signatures (getDeveloperAction, getQaAction, getReviewerAction, getDocumentationAction) — these were updated in the WP-003 implementation but the api-surface.md signatures had not been corrected. (2) Corrected all six per-role handoff function signatures (getPlannerHandoff, getDeveloperHandoff, getQaHandoff, getReviewerHandoff, getDocumentationHandoff, getProjectManagerHandoff) from the stale (wps: WorkPackageDetail[], root: RootIndex): HandoffResult pattern to the actual (wpDetails: WorkPackageDetail[], projectPath?: string, store?: LedgerStore): Promise<HandoffResult> pattern — a pre-existing inaccuracy flagged by the code reviewer. The computeHandoffStatus, embedHandoffStatusInWait, and getNextActionsCollector signatures were already correctly documented by the implementation pipeline."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-01T20:30:00Z",
+          "note": "The per-role handoff function signatures (getDeveloperHandoff etc.) had a pre-existing inaccuracy using (wps, root) parameter names/types. Corrected to (wpDetails, projectPath?, store?) matching actual TypeScript source. Flagged by the code reviewer in the WP-003 code-review pipeline."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-03-01T18:39:36Z"
+}

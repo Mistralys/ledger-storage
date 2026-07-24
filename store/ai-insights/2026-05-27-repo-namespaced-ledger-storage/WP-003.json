@@ -1,0 +1,229 @@
+{
+  "work_package_id": "WP-003",
+  "work_package_file": "work/WP-005.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "On first run with old flat layout, all depth-1 project directories are moved to {ledgerRoot}/{repoName}/{slug}/",
+      "met": true
+    },
+    {
+      "criterion": "Projects without repository_name in .meta.json are moved to {ledgerRoot}/unknown/{slug}/",
+      "met": true
+    },
+    {
+      "criterion": "Calling migrateToNamespacedLayout() a second time makes no changes (skips when storage_version >= 2)",
+      "met": true
+    },
+    {
+      "criterion": "withLock is never called with ledgerRoot — the .migration-in-progress sentinel file + synchronous pre-yield timing is used instead",
+      "met": true
+    },
+    {
+      "criterion": "If an individual directory move fails, the original directory is left untouched and the error is surfaced; the storage_version flag is not written",
+      "met": true
+    },
+    {
+      "criterion": "{ledgerRoot}/.migration-state.json is written only after all moves complete successfully",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-27T13:09:40Z",
+      "completed_at": "2026-05-27T13:14:46Z",
+      "duration_ms": 306000,
+      "summary": [
+        "Created mcp-server/src/storage/migrate-namespaced.ts implementing migrateToNamespacedLayout(ledgerRoot: string): Promise<MigrationResult>",
+        "Migration scans depth-1 dirs in ledgerRoot looking for .meta.json — flat-layout projects. For each, reads repository_name (falls back to 'unknown' if absent/null/empty) and moves to {ledgerRoot}/{repoName}/{slug}/",
+        "Idempotency: reads .migration-state.json; skips if storage_version >= 2",
+        "Sentinel file .migration-in-progress written before any moves, removed after (enables crash recovery — re-run is safe)",
+        "Individual move failures: original dir left untouched, error surfaced in result.errors; .migration-state.json NOT written (allows retry on next startup)",
+        "EXDEV cross-device rename fallback: recursive copy-then-delete with top-level verification",
+        "storage_version: 2 written to .migration-state.json only when errors.length === 0",
+        "Wired into mcp-server/src/index.ts: await migrateToNamespacedLayout(ledgerRoot) called after mkdirSync(ledgerRoot, { recursive: true }) and before readConfigFromDisk(configPath), wrapped in try/catch to prevent fatal startup errors",
+        "Created mcp-server/tests/storage/migrate-namespaced.test.ts with 10 tests: clean run, unknown/ fallbacks (absent/null/empty), idempotent second run, state file content, sentinel cleanup, already-namespaced ledger, move-failure preserves original, crash-resume partial migration. All 10 pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/storage/migrate-namespaced.ts",
+          "mcp-server/tests/storage/migrate-namespaced.test.ts",
+          "mcp-server/src/index.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T13:14:46Z",
+          "note": "migrate-namespaced.ts: verifyDirCopied() only checks the top-level entries of src exist in dest, not recursively. For deeply-nested project dirs, a partial copy failure in a sub-dir would not be caught. Consider recursive verification or computing a recursive file count. Low priority since EXDEV cross-device renames are rare in practice (ledger root and temp dirs typically on the same filesystem)."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T13:14:46Z",
+          "note": "index.ts: The migration catch block swallows errors silently (logs to stderr then continues startup). Consider whether a migration failure that leaves the storage layout partially migrated should block startup or emit a more prominent warning. Acceptable tradeoff for now since partial migration is resumable."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-27T13:17:13Z",
+      "completed_at": "2026-05-27T13:18:18Z",
+      "duration_ms": 65000,
+      "summary": [
+        "AC1 verified: migration loop reads .meta.json at depth-1 and moves flat dirs to join(ledgerRoot, repoName, slug) — confirmed in source.",
+        "AC2 verified: repository_name fallback logic is `typeof rn === 'string' && rn.length > 0 ? rn : 'unknown'` — handles absent, null, and empty string correctly.",
+        "AC3 verified: idempotency guard at top of function reads .migration-state.json and returns early if storage_version >= 2.",
+        "AC4 verified: migrate-namespaced.ts has no `withLock` import — only fs/promises, path, and atomicWriteJson. Sentinel-file pattern used instead.",
+        "AC5+AC6 verified: atomicWriteJson for .migration-state.json is only called inside `if (errors.length === 0)` — partial failures leave source intact and skip the state write.",
+        "index.ts wiring verified: migrateToNamespacedLayout(ledgerRoot) called after mkdirSync(ledgerRoot) and before readConfigFromDisk(), wrapped in try/catch. Non-fatal startup error handling is correct.",
+        "All 10 migrate-namespaced.test.ts tests pass. The 63 GUI handler regressions are unchanged (inherited from WP-002, expected, scoped to WP-005+)."
+      ],
+      "metrics": {
+        "tests_passed": 10,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T13:18:18Z",
+          "note": "verifyDirCopied() only checks top-level entries exist in dest, not recursively. A deeply nested partial copy would not be caught. Pre-existing flag from Developer — low severity since EXDEV is rare on single-filesystem setups."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T13:18:18Z",
+          "note": "The null/empty/absent repository_name fallback to 'unknown' is consistent with deriveRepoName() in ledger-root.ts, which is correct. However, if a user has a repo literally named 'unknown', it will collide with the fallback namespace. Consider documenting this as a known constraint in constraints.md."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-27T13:23:56Z",
+      "completed_at": "2026-05-27T13:25:20Z",
+      "duration_ms": 84000,
+      "summary": [
+        "Reviewed migrate-namespaced.ts (migrateToNamespacedLayout), migrate-namespaced.test.ts (10 tests), and index.ts startup wiring. One Fix-Forward applied: expanded verifyDirCopied() docstring to clarify why shallow verification is sufficient given that copyDirRecursive() throws on any failure. Implementation correctly follows the sentinel-file crash-recovery pattern, EXDEV cross-device fallback, and non-fatal startup error handling. All 6 ACs met. No blocking issues."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/storage/migrate-namespaced.ts",
+          "mcp-server/tests/storage/migrate-namespaced.test.ts",
+          "mcp-server/src/index.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-27T13:25:20Z",
+          "note": "verifyDirCopied() docstring was ambiguous about why shallow (non-recursive) verification is sufficient — expanded comment to explain that copyDirRecursive() already propagates all errors via await, making deep re-verification redundant. Non-behavioral docstring change."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T13:25:20Z",
+          "note": "verifyDirCopied() only checks top-level entry existence via access(). This is correct (see Fix-Forward comment above) but worth noting: if a zero-byte copy were somehow possible (e.g., disk quota exhausted mid-write but copyFile returned), the verification would not catch corrupted file content. This scenario is extremely unlikely in practice and acceptable for a migration utility."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T13:25:20Z",
+          "note": "Sentinel file is written with writeFile() (not atomicWriteJson). If the process crashes after writeFile() but before any rename(), the next startup finds the sentinel and re-runs the migration loop. The loop is idempotent (already-moved dirs skipped via dirExists). This is correct and intentional — the sentinel serves as a crash-recovery signal, not a data file."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-05-27T13:25:20Z",
+          "note": "[documentation-forward] constraints.md should document the 'unknown' namespace collision scenario at the migration layer: if a user has a repository literally named 'unknown', projects from that repo AND projects with invalid/absent repository_name will share the {ledgerRoot}/unknown/ namespace, and slug collisions may occur. Add to Known Limitations alongside the LedgerStore.storageDir 'unknown' limitation from WP-002."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-27T13:30:44Z",
+      "completed_at": "2026-05-27T13:32:53Z",
+      "duration_ms": 129000,
+      "summary": [
+        "Updated mcp-server/docs/agents/project-manifest/api-surface.md: added migrateToNamespacedLayout() entry with MigrationResult interface, documenting idempotency guard, sentinel-file crash recovery, EXDEV cross-device fallback, partial failure contract (errors[] vs state write), startup wiring in index.ts, and the withLock constraint.",
+        "Updated mcp-server/docs/agents/project-manifest/file-tree.md: added migrate-namespaced.ts to src/storage/ tree; added .migration-state.json and .migration-in-progress sentinel file to the storage/ledger/ runtime tree; added migrate-namespaced.test.ts to the tests/storage/ listing.",
+        "Updated mcp-server/docs/agents/project-manifest/constraints.md KL-1: expanded from a single LedgerStore.storageDir scenario to cover both the deriveRepoName() fallback (invalid repo root name) and the migrateToNamespacedLayout() fallback (absent/null/empty repository_name, or repo literally named 'unknown'). Both affected components now listed. Mitigation and detection advice updated.",
+        "Reviewer documentation-forward item fully addressed: the migration-layer 'unknown' collision is documented alongside the LedgerStore.storageDir limitation in KL-1."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/file-tree.md",
+          "mcp-server/docs/agents/project-manifest/constraints.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T13:32:53Z",
+          "note": "api-surface.md: added full migrateToNamespacedLayout() entry (MigrationResult interface, idempotency, crash recovery, EXDEV fallback, partial failure contract, startup wiring, withLock constraint) after withLock() in the Storage Layer section."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T13:32:53Z",
+          "note": "file-tree.md: added migrate-namespaced.ts to src/storage/ directory listing; added .migration-state.json and .migration-in-progress sentinel to the storage/ledger/ tree; added migrate-namespaced.test.ts (10 tests) to the tests/storage/ listing."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T13:32:53Z",
+          "note": "constraints.md KL-1 expanded: added the migration-layer collision scenario (migrateToNamespacedLayout uses repository_name from .meta.json; absent/null/empty falls back to 'unknown'; a repo literally named 'unknown' collides with fallback projects). Mitigation and detection advice updated accordingly."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-27T13:32:53Z",
+  "last_updated": "2026-05-27T13:32:53Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-27T13:14:46Z",
+      "notes": [
+        "WP-003 complete. New file: mcp-server/src/storage/migrate-namespaced.ts (exported: migrateToNamespacedLayout(ledgerRoot)). Called from index.ts after mkdirSync(ledgerRoot). All 10 new tests pass.",
+        "NOTE: 63 GUI handler tests still failing (inherited from WP-002 regression — gui/api.ts uses bare slugs for LedgerStore construction). These are expected and will be resolved in WP-005+."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-27T13:18:18Z",
+      "notes": [
+        "WP-003 QA passed. All 6 ACs met. 10/10 migration tests pass. No new regressions introduced — the 63 GUI handler failures are inherited from WP-002 (expected, scoped to WP-005+). Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-27T13:25:20Z",
+      "notes": [
+        "WP-003 code review PASS. One Fix-Forward applied: verifyDirCopied() docstring expanded to explain why shallow verification is sufficient. Implementation is well-structured: idempotency guard, sentinel-file crash recovery, EXDEV cross-device fallback, correct error propagation, and non-fatal startup wiring in index.ts. No blocking issues."
+      ]
+    }
+  ]
+}

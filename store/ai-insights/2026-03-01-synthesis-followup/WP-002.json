@@ -1,0 +1,151 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-002.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "extractLedgerRoot() utility exists and is used at all 5 former normalization sites",
+      "met": true
+    },
+    {
+      "criterion": "propagateDependencyUnblock and propagateDependencyReblock accept an optional store parameter",
+      "met": true
+    },
+    {
+      "criterion": "Call sites in work-package.ts and pipeline.ts pass the existing store where available",
+      "met": true
+    },
+    {
+      "criterion": "Backward compatibility preserved — callers without a store still work",
+      "met": true
+    },
+    {
+      "criterion": "npx tsc --noEmit exits 0",
+      "met": true
+    },
+    {
+      "criterion": "All existing tests pass",
+      "met": true
+    },
+    {
+      "criterion": "api-surface.md updated with new signatures",
+      "met": true
+    }
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-01T19:52:56Z",
+      "completed_at": "2026-03-01T19:56:11Z",
+      "summary": [
+        "Added extractLedgerRoot(val: unknown): string | undefined helper to work-package.ts. Replaces the repeated 5x inline typeof guard with a named utility that also protects against the MCP SDK injecting RequestHandlerExtra objects (constraint 58).",
+        "Extended propagateDependencyUnblock and propagateDependencyReblock signatures: third parameter changed from ledgerRoot?: string to ledgerRootOrOpts?: string | { store: LedgerStore }. When opts.store is provided, construction is skipped and the provided store is used directly. String form preserved for backward compatibility.",
+        "Updated 2 call sites in work-package.ts (propagateDependencyUnblock + propagateDependencyReblock) and 1 in pipeline.ts (propagateDependencyUnblock) to pass { store } instead of ledgerRoot, eliminating the redundant store construction.",
+        "Updated api-surface.md signatures for both functions, added extractLedgerRoot documentation, and corrected a pre-existing doc error where propagateDependencyReblock was shown with a different signature.",
+        "tsc --noEmit exits 0. 982 tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/tools/work-package.ts",
+          "mcp-server/src/tools/pipeline.ts",
+          "mcp-server/docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-03-01T20:00:00Z",
+          "note": "The api-surface.md had an inconsistency before this WP: propagateDependencyReblock was documented with 'store: LedgerStore' as a required 3rd positional argument (not the actual signature). The actual implementation took 'ledgerRoot?: string'. This WP corrected both the implementation and the doc simultaneously."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-01T20:06:07Z",
+      "completed_at": "2026-03-01T20:07:57Z",
+      "summary": [
+        "All 7 acceptance criteria verified.",
+        "Build check (tsc --noEmit) exits 0.",
+        "Full test suite passes: 982 tests across 33 test files with no failures.",
+        "extractLedgerRoot() utility confirmed at all 5 normalization sites (work-package.ts lines 254, 449, 609, 1119, 1275). Both propagate functions updated with ledgerRootOrOpts?: string | { store: LedgerStore }.",
+        "Backward compat preserved via fallthrough to new LedgerStore(). Three call sites (2 in work-package.ts, 1 in pipeline.ts) correctly pass { store }.",
+        "api-surface.md updated with new signatures for propagateDependencyUnblock, propagateDependencyReblock, and extractLedgerRoot.",
+        "No raw typeof _ledgerRoot guards remain in the 5 handler sites. Null protection confirmed (&& ledgerRootOrOpts !== null guard). No regressions."
+      ],
+      "metrics": {
+        "tests_passed": 982,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-01T21:08:00Z",
+          "note": "The _internal.createWorkPackage entry in api-surface.md still says 'guarded by typeof _ledgerRoot === string' even though the implementation now calls extractLedgerRoot() at that site. Minor stale comment — the behaviour is unchanged but the description no longer matches the implementation mechanism."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-01T20:09:40Z",
+      "completed_at": "2026-03-01T20:11:20Z",
+      "summary": [
+        "All 7 acceptance criteria met and independently verified against source.",
+        "extractLedgerRoot() is file-private, correctly typed (val: unknown), and confirmed at all 5 normalization sites (lines 254, 449, 609, 1119, 1275 of work-package.ts).",
+        "The union-type overload (string | { store: LedgerStore }) with null-guarded object check is correct and backward-compatible. The null guard (typeof === 'object' && !== null) is necessary and present in both functions.",
+        "Three call sites pass { store } correctly: propagateDependencyUnblock and propagateDependencyReblock in work-package.ts (update-status handler) and propagateDependencyUnblock in pipeline.ts (completePipeline handler).",
+        "api-surface.md accurately documents the new signatures for propagateDependencyUnblock, propagateDependencyReblock, and extractLedgerRoot.",
+        "982 tests pass, tsc --noEmit exits 0. No blocking issues. Two non-blocking observations recorded as comments."
+      ],
+      "comments": [
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-01T21:30:00Z",
+          "note": "Non-blocking: The store-resolution ternary is duplicated verbatim in both propagateDependencyUnblock and propagateDependencyReblock. A private resolveStore(projectPath, ledgerRootOrOpts) helper would DRY this up without any behavior change. Candidate for next micro-debt pass."
+        },
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-01T21:30:00Z",
+          "note": "Non-blocking: api-surface.md line 1031 (_internal.createWorkPackage comment) still reads 'guarded by typeof _ledgerRoot === string'. Now that updateWorkPackageStatus internally delegates to extractLedgerRoot(), this wording is cosmetically stale — behavior unchanged but mechanism description no longer matches. Follow-up doc touch in a future cleanup."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-01T20:13:12Z",
+      "completed_at": "2026-03-01T20:14:38Z",
+      "summary": [
+        "Updated _internal.createWorkPackage comment in api-surface.md: replaced stale 'guarded by typeof _ledgerRoot === string' with 'normalized via extractLedgerRoot()' to match the WP-002 implementation.",
+        "All other _internal entries that cross-reference createWorkPackage (§58) remain accurate — claimWorkPackage, updateWorkPackageStatus, resetReworkCount, updateAcceptanceCriteria all use the same extractLedgerRoot() mechanism.",
+        "New signatures for propagateDependencyUnblock, propagateDependencyReblock, and extractLedgerRoot were already documented by the implementation pipeline. No further gaps found.",
+        "data-flows.md has no references to computeHandoffStatus. No additional doc files required changes."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-01T20:15:00Z",
+          "note": "The cross-referencing pattern ('Same _ledgerRoot guard as createWorkPackage §58') used by claimWorkPackage, updateWorkPackageStatus, resetReworkCount, and updateAcceptanceCriteria remains correct — they all call extractLedgerRoot() internally, same as createWorkPackage. The pattern cleanly propagates the fix via the single primary comment update."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-03-01T20:14:38Z"
+}

@@ -1,0 +1,191 @@
+{
+  "work_package_id": "WP-003",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "GET /api/server-info returns a 200 JSON response with stale, bootVersions, and diskVersions fields.",
+      "met": true
+    },
+    {
+      "criterion": "Immediately after server start, stale is false and boot/disk versions match.",
+      "met": true
+    },
+    {
+      "criterion": "If any of the three version files are updated on disk after boot, the next GET /api/server-info call returns stale: true with the differing values visible.",
+      "met": true
+    },
+    {
+      "criterion": "The handleRequest() signature change does not break existing callers (particularly test imports, if any).",
+      "met": true
+    },
+    {
+      "criterion": "CORS and security headers are applied to the response (using existing sendJson() helper).",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-14T10:13:25Z",
+      "completed_at": "2026-04-14T10:19:29Z",
+      "duration_ms": 364000,
+      "summary": [
+        "Added GET /api/server-info route to gui/server.ts. Imported captureWorkspaceVersions and WorkspaceVersions from src/utils/workspace-versions.ts. Added optional bootVersions: WorkspaceVersions | null = null parameter to handleRequest() (backward-compatible default preserves all existing callers). In main(), called captureWorkspaceVersions() at startup and passed result into each handleRequest() invocation. The new route compares boot vs disk versions across all three components and returns { stale, bootVersions, diskVersions }. CORS and security headers are applied via existing sendJson() helper. Added 6 integration tests in tests/gui/server-info.test.ts covering all acceptance criteria including stale detection for each component. Full test suite: 60 files / 1815 tests, all passing."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/server.ts",
+          "mcp-server/tests/gui/server-info.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-14T10:19:29Z",
+          "note": "gui/server.ts: The GET /api/server-info route calls captureWorkspaceVersions() synchronously on every request (one readFileSync per version source). Given the 30-second polling interval on the client, this is negligible. If polling frequency ever increases significantly, a short TTL cache (e.g. 5 s) could reduce disk I/O without meaningfully affecting staleness detection accuracy."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-14T10:19:29Z",
+          "note": "gui/server.ts: The handleRequest() boot-versions parameter is positional. If more closure-bound boot data is needed in future, collecting these into a single ServerContext object would keep the signature clean without requiring a new parameter each time."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-14T10:20:02Z",
+      "completed_at": "2026-04-14T10:21:43Z",
+      "duration_ms": 101000,
+      "summary": [
+        "All 5 ACs verified. 6 dedicated integration tests in tests/gui/server-info.test.ts all pass. Full regression suite: 1815 tests across 60 files — zero failures.",
+        "AC1: GET /api/server-info returns 200 JSON with stale/bootVersions/diskVersions — confirmed by test and code inspection.",
+        "AC2: stale is false immediately after start — boot captured once in main() at startup, equals disk on first request.",
+        "AC3: stale: true when any component version differs — all 3 components tested independently with injected stale boot versions.",
+        "AC4: handleRequest() backward-compatible — new bootVersions parameter defaults to null; all 1815 existing tests pass unmodified.",
+        "AC5: CORS and security headers present on response — sendJson() helper injects both; test explicitly checks all five expected headers."
+      ],
+      "metrics": {
+        "test_coverage": "6 dedicated WP-003 tests + 1815 total suite",
+        "tests_passed": 1815,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-14T10:21:43Z",
+          "note": "bootVersions=null fallback in GET /api/server-info calls captureWorkspaceVersions() twice (once for boot, once for disk), always yielding stale:false. This is intentional backward-compat behaviour but worth noting: any caller that omits bootVersions will never observe stale:true. The main() entrypoint always passes a real bootVersions, so this edge case is not reachable in production."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-14T10:21:43Z",
+          "note": "captureWorkspaceVersions() uses synchronous readFileSync for all three version files on every /api/server-info request. At a 30-second polling interval this is negligible; the Developer's suggestion of a short TTL cache applies if polling frequency increases."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-14T10:22:21Z",
+      "completed_at": "2026-04-14T10:24:52Z",
+      "duration_ms": 151000,
+      "summary": [
+        "GET /api/server-info implementation reviewed across gui/server.ts and tests/gui/server-info.test.ts. No blocking issues found. Code is clean, follows all established patterns in server.ts, and is correct. Stale detection logic is straightforward and readable. All ACs satisfied. One low-priority code smell noted (explicit field enumeration in stale check) and one documentation-forward item raised for api-surface.md."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/server.ts",
+          "mcp-server/tests/gui/server-info.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-14T10:24:52Z",
+          "note": "gui/server.ts:554 — The stale computation explicitly enumerates all 3 fields of WorkspaceVersions: `boot.mcpServer !== disk.mcpServer || boot.personas !== disk.personas || boot.orchestrator !== disk.orchestrator`. This is correct today. However, if WorkspaceVersions gains a new field, this line will silently miss it — the developer must manually update both the type definition and this comparison. At minimum, a comment noting this manual-update requirement would help. An alternative is `(Object.keys(disk) as Array<keyof WorkspaceVersions>).some(k => boot[k] !== disk[k])`, which auto-covers future fields without behavioral change today."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-14T10:24:52Z",
+          "note": "[documentation-forward] mcp-server/docs/agents/project-manifest/api-surface.md does not document the new GET /api/server-info endpoint. Add an entry covering: route path, method, response shape ({ stale: boolean, bootVersions: WorkspaceVersions, diskVersions: WorkspaceVersions }), the stale semantics, and the bootVersions=null fallback behaviour for non-production callers."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-14T10:24:52Z",
+          "note": "gui/server.ts — The new route correctly follows the existing 'special case before matchRoute()' pattern (mirroring GET /api/config). Route placement and error-handling structure are consistent with every other special-case handler in the file."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-14T10:25:28Z",
+      "completed_at": "2026-04-14T10:27:44Z",
+      "duration_ms": 136000,
+      "summary": [
+        "Added GET /api/server-info documentation to mcp-server/docs/agents/project-manifest/api-surface.md. The new entry documents the route path, response shape ({ stale, bootVersions, diskVersions }), stale detection semantics, the bootVersions=null fallback behaviour, WorkspaceVersions field sources, synchronous read behaviour, and the special-case handler placement (before matchRoute()). Addressed the documentation-forward item from the code-review pipeline. No other documentation gaps were identified — all five acceptance criteria were fully covered by the implementation and QA pipelines and require no additional doc changes. The client-side API.getServerInfo() wrapper is intentionally absent here; it belongs to a subsequent WP."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-14T10:27:44Z",
+          "note": "api-surface.md: GET /api/server-info is documented inline (comment block + type anatomy) rather than as a function signature, consistent with other inline route handlers that have no dedicated handler function (e.g. how GET /api/config is handled via handleGetConfig but server-info has no equivalent). Pattern is correct and consistent."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-14T10:27:44Z",
+  "last_updated": "2026-04-14T10:27:44Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-14T10:19:29Z",
+      "notes": [
+        "GET /api/server-info is now live. Response shape: { stale: boolean, bootVersions: WorkspaceVersions, diskVersions: WorkspaceVersions }. The stale flag is true when any of mcpServer, personas, or orchestrator version strings differ between boot-time and the current request. Client-side work (API.getServerInfo(), StaleCheck module, stale-check.js, index.html wiring, app.js bootstrap call, and manifest doc updates) is in the remaining WPs."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-14T10:21:43Z",
+      "notes": [
+        "GET /api/server-info endpoint is fully implemented and verified. Route returns { stale, bootVersions, diskVersions } with all CORS/security headers applied. All 5 ACs met, 6 dedicated tests pass, no regressions in the 1815-test suite. Backward compatibility of handleRequest() confirmed. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-14T10:24:52Z",
+      "notes": [
+        "WP-003 code review PASS. Route correctly placed as a special-case handler before matchRoute(), error handling mirrors existing patterns, stale detection logic is readable and correct. One documentation gap: GET /api/server-info needs an entry in api-surface.md (route signature, response shape, stale semantics, null boot-versions fallback). One low-priority improvement noted: explicit field enumeration in the stale check is correct today but will silently miss future WorkspaceVersions fields — worth adding a comment or switching to Object.keys() iteration. Neither finding is blocking. Documentation agent should address the api-surface.md gap."
+      ]
+    }
+  ]
+}

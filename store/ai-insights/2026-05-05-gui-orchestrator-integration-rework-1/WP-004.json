@@ -1,0 +1,162 @@
+{
+  "work_package_id": "WP-004",
+  "work_package_file": "work/WP-005.md",
+  "status": "COMPLETE",
+  "assigned_to": "Reviewer",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "assertSafeQueueId() checks for backslash character",
+      "met": true
+    },
+    {
+      "criterion": "assertSafeWpId() checks for backslash character",
+      "met": true
+    },
+    {
+      "criterion": "All existing tests pass unchanged",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-05T17:03:56Z",
+      "completed_at": "2026-05-05T17:05:36Z",
+      "duration_ms": 100000,
+      "summary": [
+        "Added id.includes('\\\\\\\\') to both assertSafeQueueId() and assertSafeWpId() in api.ts. Added backslash-guard tests to api-orchestrator.test.ts (kill and dismiss handlers) and api.test.ts (handleGetWorkPackage). All 2102 tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/api.ts",
+          "mcp-server/tests/gui/api-orchestrator.test.ts",
+          "mcp-server/tests/gui/api.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T17:05:36Z",
+          "note": "assertSafeQueueId() and assertSafeWpId() now both check for forward-slash, backslash, and '..'. A future hardening option is a strict allowlist regex (e.g. /^[\\w.-]+$/) that would block any non-identifier character by default rather than individual blocklist entries."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-05T17:09:57Z",
+      "completed_at": "2026-05-05T17:10:32Z",
+      "duration_ms": 35000,
+      "summary": [
+        "Verified WP-004 backslash guard. Both assertSafeWpId() (line 113) and assertSafeQueueId() (line 128) now include id.includes('\\\\\\\\') check. Three new tests cover backslash rejection for kill, dismiss, and getWorkPackage handlers. Full MCP suite 2102/2102 pass."
+      ],
+      "metrics": {
+        "test_coverage": "67 files",
+        "tests_passed": 2102,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T17:10:32Z",
+          "note": "Both guard functions confirmed at api.ts lines 113 and 128: id.includes('/') || id.includes('\\\\') || id.includes('..'). Three new backslash tests confirmed: handleOrchestratorKill and handleOrchestratorDismiss in api-orchestrator.test.ts, handleGetWorkPackage in api.test.ts. All assert NOT_FOUND. The allowlist approach suggested by Developer (e.g. /^[\\w.-]+$/) would be a cleaner long-term solution, but the current blocklist is correct and complete for the documented threat model."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-05-05T17:14:59Z",
+      "completed_at": "2026-05-05T17:16:46Z",
+      "duration_ms": 107000,
+      "summary": [
+        "Reviewed mcp-server/gui/api.ts and test files. WP-004 correctly adds backslash guards to assertSafeWpId() and assertSafeQueueId(), but assertSafeSlug() (guarding 14+ handlers with path.join(ledgerRoot, slug, ...)) was not updated. This inconsistency is a Medium A01 (Broken Access Control) finding on Windows — not blocking. 0 Critical, 0 High, 1 Medium (noted). Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-05-05T17:16:46Z",
+          "note": "A01 (Broken Access Control) — Medium: assertSafeSlug() in mcp-server/gui/api.ts (line 97) was NOT updated by WP-004 to include the backslash check. It guards 14+ call sites (lines 505, 586, 615, 652, 694, 739, 784, 818, 844, 927, 1022, 1089, 1167, 1299, 1353, 1428, etc.) that all pass the slug directly to path.join(ledgerRoot, slug, ...). On Windows, a slug containing backslash path components (e.g. 'project\\\\..\\\\..\\\\secret') would be treated as a directory separator by Node.js path.join(), enabling escape from ledgerRoot. While CORS restricts browser-based access to http://localhost:{port}, the server binds to all interfaces (server.listen(port) with no hostname — line 833 of server.ts), so non-browser HTTP clients on the LAN are not constrained by CORS. WP-004 correctly updated 2 of 3 guard functions but missed assertSafeSlug(). Remediation: add id.includes('\\\\\\\\') to assertSafeSlug() alongside the existing '/' and '..' checks — consistent with the pattern applied to assertSafeWpId() and assertSafeQueueId() in this WP. Not blocking: medium severity does not prevent PASS, but should be addressed in a follow-up WP."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T17:16:46Z",
+          "note": "Defence-in-depth: all three guard functions (assertSafeSlug, assertSafeWpId, assertSafeQueueId) use a blocklist approach. As noted by Developer and QA, a strict allowlist regex (e.g. /^[\\\\w.-]+$/) would be more robust — it blocks any unexpected character class by default rather than requiring individual blocklist additions. Recommended for a future hardening pass."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-05T17:21:09Z",
+      "completed_at": "2026-05-05T17:22:19Z",
+      "duration_ms": 70000,
+      "summary": [
+        "All WP-004 ACs met: assertSafeWpId() and assertSafeQueueId() both now include the backslash check, 3 tests added and passing. PASS granted. High-priority architectural observation: assertSafeSlug() (guarding 14+ path.join() call sites) was not updated — creating an inconsistency in the validation layer and a real Windows path-traversal gap. This was outside WP-004 scope but should be addressed in an immediate follow-up."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/api.ts",
+          "mcp-server/tests/gui/api-orchestrator.test.ts",
+          "mcp-server/tests/gui/api.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "high",
+          "timestamp": "2026-05-05T17:22:19Z",
+          "note": "ARCHITECTURAL GAP (echoing Security Auditor's Medium A01 finding): assertSafeSlug() at line 97 is missing slug.includes('\\\\') despite being the sibling guard function that protects 14+ path.join(ledgerRoot, slug, ...) call sites. The three functions (assertSafeSlug, assertSafeWpId, assertSafeQueueId) form a cohesive validation layer and should have identical check sets. On Windows, a backslash in a slug is a real directory separator in path.join(), making this an active path-traversal vector for non-browser HTTP clients on the LAN. The WP-004 ACs did not include assertSafeSlug(), so this is a scope gap in WP-004 planning, not a Developer error. A follow-up WP adding slug.includes('\\\\') to assertSafeSlug() (with a test) is the minimum remediation."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-05T17:22:19Z",
+          "note": "The three guard functions (assertSafeSlug, assertSafeWpId, assertSafeQueueId) are structurally identical in purpose but are now divergent in their check sets after WP-004. Developer and QA both flagged that a strict allowlist regex (/^[\\\\w.-]+$/) would be a more maintainable long-term approach — it eliminates the class of 'missed a blocklist entry' bugs entirely. Recommended for a hardening pass that consolidates all three functions."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-05T17:22:19Z",
+          "note": "[documentation-forward] The JSDoc for assertSafeSlug() (lines 91-97) lists forward-slash and '..' as the two path-traversal vectors, but omits backslash. After the follow-up fix is applied, the JSDoc should be updated to list all three vectors to match assertSafeWpId() and assertSafeQueueId() docstrings."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-05T17:22:19Z",
+  "last_updated": "2026-05-05T17:22:19Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-05T17:05:36Z",
+      "notes": [
+        "Two-character change in api.ts: added id.includes('\\\\\\\\') to both guard functions. Three tests added: one for handleOrchestratorKill with backslash, one for handleOrchestratorDismiss with backslash, one for handleGetWorkPackage with backslash wpId. All 2102 tests pass."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-05-05T17:22:19Z",
+      "notes": [
+        "PASS on defined ACs. High-priority gap: assertSafeSlug() missing the backslash check added to the other two guard functions — 14+ path.join() call sites are unprotected on Windows. Not in WP-004 scope (ACs didn't include assertSafeSlug) but warrants immediate follow-up WP. Documentation agent: update assertSafeSlug() JSDoc after fix is applied."
+      ]
+    }
+  ]
+}

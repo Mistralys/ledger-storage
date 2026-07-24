@@ -1,0 +1,199 @@
+{
+  "work_package_id": "WP-004",
+  "work_package_file": "work/WP-004.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "A normal orchestrator run creates a queue entry after run_start and removes it in the finally block.",
+      "met": true
+    },
+    {
+      "criterion": "A signal-interrupted run (SIGTERM/SIGINT) still unregisters via the finally block.",
+      "met": true
+    },
+    {
+      "criterion": "If register() raises before assigning entry_id, the finally block does not raise NameError.",
+      "met": true
+    },
+    {
+      "criterion": "If the process is killed (SIGKILL), the entry remains in the queue file (expected — cannot execute cleanup).",
+      "met": true
+    },
+    {
+      "criterion": "No regressions in existing CLI behavior.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-05T12:03:04Z",
+      "completed_at": "2026-05-05T12:11:33Z",
+      "duration_ms": 509000,
+      "summary": [
+        "Run queue integration in cli.py was already complete (register() after run_start, unregister() in finally block, entry_id=None guard). WP-004 work was adding test coverage for all 5 acceptance criteria.",
+        "Added TestRunQueueIntegration class (4 tests) to tests/test_cli.py covering: register() order after run_start (AC-1), unregister() on normal exit (AC-1), unregister() on graph-raises error path (AC-2), register() failure leaves entry_id None with no NameError and no spurious unregister() call (AC-3). AC-4 (SIGKILL) is by design — no test possible. AC-5 verified by full regression run: 69/69 pass.",
+        "Updated test module docstring to document the new WP-004 test group."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/tests/test_cli.py"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T12:11:33Z",
+          "note": "tests/test_cli.py module docstring was one WP behind — updated to mention WP-004 run queue tests. Minor maintenance item only."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T12:11:33Z",
+          "note": "cli.py run queue integration (lines ~560-572, ~774-780) is clean and consistent with the project's error-swallowing pattern for non-critical startup steps. No issues observed in the touched files."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-05T12:27:01Z",
+      "completed_at": "2026-05-05T12:28:23Z",
+      "duration_ms": 82000,
+      "summary": [
+        "All 5 acceptance criteria verified. 4 new tests in TestRunQueueIntegration pass; full regression suite (69/69) passes with no failures. Production code in cli.py is correctly structured: entry_id initialized to None before the outer try block, register() called after run_start, unregister() guarded by entry_id is not None in the outer finally, and unregister() itself wrapped in try/except to prevent error masking."
+      ],
+      "metrics": {
+        "test_coverage": "4/4 AC covered by tests (AC-4 untestable by design)",
+        "tests_passed": 69,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T12:28:23Z",
+          "note": "AC-2 is covered by the graph-raises error path test rather than a SIGINT simulation. Both code paths run through the same outer finally block, so coverage is functionally equivalent. A dedicated asyncio.CancelledError test would be belt-and-suspenders but is not required."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T12:28:23Z",
+          "note": "No observations — code is clean and consistent."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-05T12:31:43Z",
+      "completed_at": "2026-05-05T12:33:34Z",
+      "duration_ms": 111000,
+      "summary": [
+        "Reviewed cli.py run queue integration (lines 502, 573–583, 776–780) and all 4 tests in TestRunQueueIntegration.",
+        "entry_id initialized before the outer try block — NameError guard is correct (AC-3).",
+        "register() placed after run_start log entry — ordering is correct (AC-1).",
+        "unregister() in outer finally, guarded by `entry_id is not None`, wrapped in try/except — correct for all exit paths (AC-1, AC-2).",
+        "Duplicate `from src.utils import run_queue` lazy import (register + unregister blocks) is intentional — follows project error-isolation convention; not a defect.",
+        "Test helpers are well-factored. Call-order snapshot technique in test_register_called_after_run_start is correct. instance-method override with # type: ignore[method-assign] is pragmatic for test code.",
+        "asyncio_mode=auto in pyproject.toml — no missing decorators.",
+        "No blocking issues. No fix-forward changes applied. PASS."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/tests/test_cli.py",
+          "orchestrator/src/cli.py"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T12:33:34Z",
+          "note": "The `from src.utils import run_queue` lazy import appears twice — once in the register try/except (line 575) and once in the unregister finally (line 778). This is intentional: each block is self-contained for error isolation. A brief inline comment on the second occurrence (e.g., '# re-import: each guard block is self-contained') would make the intent explicit for future readers."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T12:33:34Z",
+          "note": "test_register_called_after_run_start uses `run_logger.log = _tracking_log  # type: ignore[method-assign]` to intercept calls. This is pragmatic and correct for test code. If mypy noise becomes an issue, replacing with a spec-d MagicMock wrapping the original call would eliminate the suppression without changing test logic."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T12:33:34Z",
+          "note": "No observations beyond the above — code is clean and consistent with project conventions."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-05T12:36:41Z",
+      "completed_at": "2026-05-05T12:41:04Z",
+      "duration_ms": 263000,
+      "summary": [
+        "Reviewed implementation artifacts (orchestrator/tests/test_cli.py — TestRunQueueIntegration class, 4 tests) and reviewer-forwarded notes.",
+        "orchestrator/docs/agents/project-manifest/file-tree.md: added run_queue.py to src/utils/ listing; expanded the tests/ section from 2 entries (conftest.py + checkpoints/) to a full listing of all 25 test files with per-file descriptions, explicitly calling out test_cli.py (run queue integration) and test_run_queue.py.",
+        "orchestrator/README.md: updated test_cli.py row to describe TestRunQueueIntegration (4 tests — AC-1 through AC-3); added missing test_run_queue.py row; updated test counts (825 → 988 total, 455 → 987 non-live); added run_queue.py to the src/utils/ folder overview description.",
+        "api-surface.md already had full run_queue.py documentation from a prior WP — no changes needed there."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/docs/agents/project-manifest/file-tree.md",
+          "orchestrator/README.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T12:41:04Z",
+          "note": "file-tree.md tests/ section was severely truncated (only conftest.py listed) — pre-existing gap from WP-001 and earlier. Expanded to full listing as part of WP-004 documentation."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-05T12:41:04Z",
+  "last_updated": "2026-05-05T12:41:04Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-05T12:11:33Z",
+      "notes": [
+        "Implementation was already in cli.py. WP-004 deliverable is tests/test_cli.py::TestRunQueueIntegration (4 tests, all passing). The implementation in cli.py covers all 5 ACs — QA should verify the test assertions align with the actual code paths described in the ACs.",
+        "All 69 tests in test_cli.py + test_run_queue.py pass. No changes to production code."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-05T12:28:23Z",
+      "notes": [
+        "All 5 ACs verified and passing. Production code (cli.py run queue integration) and tests (test_cli.py::TestRunQueueIntegration) are clean. 69/69 tests pass. No issues to flag for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-05T12:33:34Z",
+      "notes": [
+        "Code review passed. Production code and tests are clean. Two low-priority improvement notes recorded (duplicate import comment, type: ignore in test). No changes required — Documentation agent can proceed directly."
+      ]
+    }
+  ]
+}

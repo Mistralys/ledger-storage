@@ -1,0 +1,217 @@
+{
+  "work_package_id": "WP-004",
+  "work_package_file": "work/WP-002-synth.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-002"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "CompleteSynthesisSchema requires outcome_summary as a string with a .describe() hint matching the plan's guidance (\"A 2–3 sentence summary of what was accomplished, the approach taken, and any notable results or limitations.\").",
+      "met": true
+    },
+    {
+      "criterion": "After calling completeSynthesis() with a valid outcome_summary, the value is present in the project-ledger.json root index file.",
+      "met": true
+    },
+    {
+      "criterion": "After calling completeSynthesis() with a valid outcome_summary, the value is present in the .meta.json enrichment cache.",
+      "met": true
+    },
+    {
+      "criterion": "Calling completeSynthesis() without outcome_summary returns a validation error (Zod rejects the input).",
+      "met": true
+    },
+    {
+      "criterion": "Existing completeSynthesis functionality (setting synthesis_generated: true, transitioning to COMPLETE) continues to work correctly with the new parameter.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-06-05T08:40:44Z",
+      "completed_at": "2026-06-05T08:45:08Z",
+      "duration_ms": 264000,
+      "summary": [
+        "Extended CompleteSynthesisSchema with required outcome_summary string field (with .describe() hint matching plan guidance).",
+        "Updated completeSynthesis() handler to set rootIndex.outcome_summary = args.outcome_summary before writing.",
+        "Updated writeRootIndex() in ledger-store.ts to include outcome_summary in MetaCacheUpdates propagated to .meta.json (using key-presence semantics: 'outcome_summary' in validated).",
+        "Exported CompleteSynthesisSchema from project-lifecycle.ts to enable direct schema validation testing.",
+        "Added 4 tests in project-lifecycle.test.ts covering: Zod rejection when outcome_summary is missing, root index persistence, .meta.json persistence, and backward-compat (existing synthesis_generated/COMPLETE transition continues to work).",
+        "All 2972 tests pass across 99 test files. TypeScript compiles clean."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/tools/project-lifecycle.ts",
+          "mcp-server/src/storage/ledger-store.ts",
+          "mcp-server/tests/tools/project-lifecycle.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T08:45:08Z",
+          "note": "writeRootIndex() uses spread-with-'in'-check (`'outcome_summary' in validated`) for key-presence semantics — consistent with the existing pattern used in writeProjectMeta() for nullable fields. This correctly distinguishes an explicit null from an absent field when propagating to .meta.json."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-06-05T08:45:08Z",
+          "note": "CompleteSynthesisSchema was previously declared as a module-scoped const (not exported). Exporting it brings parity with InitializeProjectSchema and makes it directly testable via safeParse, avoiding the need to cast through `as any` in tests."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-06-05T08:46:04Z",
+      "completed_at": "2026-06-05T08:48:39Z",
+      "duration_ms": 155000,
+      "summary": [
+        "Build check: TypeScript compiles clean (npx tsc --noEmit, exit 0).",
+        "AC1 verified: CompleteSynthesisSchema declares outcome_summary as z.string().describe('A 2–3 sentence summary of what was accomplished, the approach taken, and any notable results or limitations.') — describe() hint matches plan guidance exactly.",
+        "AC2 verified: test 'persists outcome_summary to root index on disk after completeSynthesis' PASS — root.outcome_summary === SAMPLE_SUMMARY after call.",
+        "AC3 verified: test 'persists outcome_summary to .meta.json after completeSynthesis' PASS — meta.outcome_summary === SAMPLE_SUMMARY after call.",
+        "AC4 verified: test 'CompleteSynthesisSchema rejects input when outcome_summary is missing' PASS — Zod issue path includes 'outcome_summary'.",
+        "AC5 verified: test 'existing completeSynthesis functionality still works with outcome_summary present' PASS — synthesis_generated:true, project_status:COMPLETE, synthesis_generated_at defined.",
+        "Regression: full suite 2972/2972 tests pass across 99 test files. Zero regressions.",
+        "Edge case 1: empty string outcome_summary — accepted by Zod (no minLength constraint). Low-risk since the describe() hint guides callers; no AC requires length validation.",
+        "Edge case 2: null outcome_summary — Zod rejects with type error on 'outcome_summary' path. Correct.",
+        "Edge case 3: numeric outcome_summary — Zod rejects. No coercion. Correct.",
+        "Edge case 4: 100k-char outcome_summary — accepted (no maxLength guard). Low-risk; synthesis is a human-authored field with natural length bounds."
+      ],
+      "metrics": {
+        "test_coverage": "4 new WP-004-specific tests + full 2972-test suite regression pass",
+        "tests_passed": 2972,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T08:48:39Z",
+          "note": "outcome_summary has no minLength or maxLength constraint on CompleteSynthesisSchema. An empty string ('') passes Zod validation. This is low-risk (the describe() hint guides callers semantically), but a future hardening pass could add z.string().min(1) to prevent silent empty submissions."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T08:48:39Z",
+          "note": "The 'outcome_summary' in validated key-presence check in writeRootIndex() correctly propagates null to .meta.json without confusion — consistent with the existing nullable-field pattern. No concern."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-06-05T08:49:05Z",
+      "completed_at": "2026-06-05T08:50:21Z",
+      "duration_ms": 76000,
+      "summary": [
+        "[PASS with Fix-Forward] WP-004 implementation is clean, idiomatic, and architecturally sound. All 5 acceptance criteria verified. Applied one non-behavioral Fix-Forward improvement: added outcome_summary echo to the completeSynthesis() success response body so callers receive confirmation of what was persisted. TypeScript compiles clean post-edit."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/tools/project-lifecycle.ts",
+          "mcp-server/src/storage/ledger-store.ts",
+          "mcp-server/tests/tools/project-lifecycle.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-06-05T08:50:21Z",
+          "note": "Fix-Forward applied: added `outcome_summary: rootIndex.outcome_summary` to the completeSynthesis() JSON success response (project-lifecycle.ts ~L806). The submitted value was persisted correctly but not echoed back to the caller. This closes the confirmation loop for the Synthesis agent without changing any stored state or altering QA-validated behavior. TypeScript compiles clean (tsc --noEmit exit 0) post-edit."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T08:50:21Z",
+          "note": "Schema type mismatch worth noting (no action required): CompleteSynthesisSchema declares outcome_summary as z.string() (required, non-nullable), while RootIndexSchema declares it as z.string().nullable().optional(). This is intentional — the input schema enforces that callers must provide a non-null string, while the storage schema is permissive for backward compatibility with legacy records that lack the field. The 'in'-check key-presence pattern in writeRootIndex() correctly bridges the two."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-06-05T08:50:21Z",
+          "note": "[documentation-forward] ledger_complete_synthesis tool documentation should mention the new required outcome_summary parameter — include a description of the expected content (2–3 sentence summary), clarify that it is required (not optional), and note that the value is echoed in the success response and persisted to both project-ledger.json and .meta.json."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-06-05T08:50:41Z",
+      "completed_at": "2026-06-05T08:55:45Z",
+      "duration_ms": 304000,
+      "summary": [
+        "Documented the new required outcome_summary parameter introduced by WP-004 across all relevant documentation surfaces. Addressed the documentation-forward tagged by the Reviewer (code-review pipeline). Updated: (1) mcp-server/src/tools/help-content.ts — added outcome_summary to Required Parameters, Response Fields, and the Example block; (2) mcp-server/docs/agents/project-manifest/api-surface.md — updated ledger_complete_synthesis TypeScript signature, prose description, and RootIndexSchema interface to include outcome_summary; (3) mcp-server/docs/agents/project-manifest/data-flows.md — updated Flow 13c (reset path) and Flow 14 (Synthesis Completion) diagrams and result descriptions; (4) personas/shared/partials/synthesis-output-format.md — added outcome_summary requirement note to the Ledger Finalization step; (5) personas/ledger/src/content/9-synthesis.md (template) — updated Step 9 with outcome_summary parameter and description; (6) personas/ledger/claude-code/9-synthesis.md, personas/ledger/deep-agents/9-synthesis.md, personas/ledger/vs-code/9-synthesis.agent.md — updated MCP tools table description and Step 9 in all three compiled personas; (7) mcp-server/README.md — added outcome_summary to the project lifecycle tool description and the root index field list.\"]"
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/tools/help-content.ts",
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/data-flows.md",
+          "personas/shared/partials/synthesis-output-format.md",
+          "personas/ledger/src/content/9-synthesis.md",
+          "personas/ledger/claude-code/9-synthesis.md",
+          "personas/ledger/deep-agents/9-synthesis.md",
+          "personas/ledger/vs-code/9-synthesis.agent.md",
+          "mcp-server/README.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-06-05T08:55:45Z",
+          "note": "documentation-forward addressed: ledger_complete_synthesis tool docs now fully document the outcome_summary parameter — including its required status, expected content (2–3 sentence summary), dual-persistence to project-ledger.json and .meta.json, and echo in the success response. All three compiled synthesis personas and the shared partials are updated consistently."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T08:55:45Z",
+          "note": "The ledger-doctor personas (claude-code, deep-agents, vs-code, src/content) mention ledger_complete_synthesis in the context of recovery actions. Those references remain accurate — the doctor advises calling the tool to record a missed synthesis; the outcome_summary requirement will be surfaced to the doctor at call time via Zod validation. No changes needed to ledger-doctor personas."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-06-05T08:55:45Z",
+  "last_updated": "2026-06-05T08:55:45Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-06-05T08:45:08Z",
+      "notes": [
+        "WP-004 complete. All 5 acceptance criteria met. outcome_summary is now a required field in CompleteSynthesisSchema, persisted to both project-ledger.json and .meta.json. The schema is exported for direct validation testing. No regressions in the full test suite (2972 tests, 99 files)."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-06-05T08:48:39Z",
+      "notes": [
+        "All 5 AC met, 2972/2972 tests pass. One low-priority observation: no minLength guard on outcome_summary means an empty string is accepted by Zod schema — not a hard failure but worth considering in a future schema hardening pass. Implementation is correct and clean; ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-06-05T08:50:21Z",
+      "notes": [
+        "WP-004 PASS. One Fix-Forward applied: outcome_summary is now echoed in the completeSynthesis() success response body (non-behavioral — no QA re-run needed). One documentation-forward tagged: ledger_complete_synthesis tool docs should document the new required outcome_summary parameter. All 5 AC confirmed met."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,205 @@
+{
+  "work_package_id": "WP-003",
+  "work_package_file": "work/WP-005.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "orchestrator/src/cli.py no longer uses \"Interrupted\" in e substring matching for result determination.",
+      "met": true
+    },
+    {
+      "criterion": "A module-level _was_interrupted flag is declared and set by all three interrupt paths (Interrupted by signal., Interrupted by user., Interrupted during MCP server startup.).",
+      "met": true
+    },
+    {
+      "criterion": "The _is_interrupted result determination uses the _was_interrupted flag instead of substring matching.",
+      "met": true
+    },
+    {
+      "criterion": "No changes to the Python public API (CLI arguments or exit codes).",
+      "met": true
+    },
+    {
+      "criterion": "Existing orchestrator tests pass without modification (regression-free).",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-31T11:21:31Z",
+      "completed_at": "2026-05-31T11:24:38Z",
+      "duration_ms": 187000,
+      "summary": [
+        "Added module-level `_was_interrupted: bool = False` flag in orchestrator/src/cli.py after exit-code constants block, with GIL-safety comment.",
+        "Added single `global _was_interrupted` declaration + per-run reset at the top of `_run()` to handle repeated invocations cleanly.",
+        "Set `_was_interrupted = True` in all three interrupt paths: signal-triggered shutdown (shutdown_event path), KeyboardInterrupt during graph execution, and KeyboardInterrupt during MCP server startup.",
+        "Replaced `any(\"Interrupted\" in e for e in outside_errors)` substring match in _is_interrupted determination with `_was_interrupted` flag.",
+        "Updated constraint 24 in orchestrator/docs/agents/project-manifest/constraints.md to document flag-based INTERRUPTED detection.",
+        "All 1017 existing orchestrator tests pass without modification."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/cli.py",
+          "orchestrator/docs/agents/project-manifest/constraints.md"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 1017,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T11:24:38Z",
+          "note": "orchestrator/src/cli.py: The `_was_interrupted` flag is module-level, which works fine for the current single-threaded use case. If `_run()` were ever called concurrently (e.g. in tests via threading), the reset at the top of `_run()` could race with a concurrent interrupt. Consider using a `threading.local()` or passing the flag through function arguments if concurrent invocation ever becomes a requirement."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-05-31T11:24:38Z",
+          "note": "orchestrator/src/cli.py: The existing `outside_errors` list retains the 'Interrupted by ...' strings for JSONL logging purposes. These strings are harmless and still serve a documentation role in the run log — no change needed, but it's worth knowing that the interrupt message text is now decoupled from result determination."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-31T11:25:30Z",
+      "completed_at": "2026-05-31T11:27:35Z",
+      "duration_ms": 125000,
+      "summary": [
+        "All 5 acceptance criteria verified. The _was_interrupted flag implementation is correct and complete. No substring matching remains. All 1017 orchestrator tests pass (7 skipped). No public API changes detected via git diff. constraints.md updated correctly at line 479-486.\""
+      ],
+      "metrics": {
+        "tests_passed": 1017,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T11:27:35Z",
+          "note": "orchestrator/src/cli.py lines 905 and 914: The two KeyboardInterrupt paths (graph execution interrupt and MCP startup interrupt) have no dedicated test coverage for the _was_interrupted=True assignment. The existing TestSignalInterruptedRun only covers the signal path. This is a pre-existing coverage gap — the WP spec does not require new tests — but could be addressed in a follow-up WP if desired."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T11:27:35Z",
+          "note": "No concerns with the module-level flag approach for the current use case. The per-run reset at the top of _run() (line 602) correctly handles repeated invocations. The GIL comment is accurate."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-31T11:27:55Z",
+      "completed_at": "2026-05-31T11:28:34Z",
+      "duration_ms": 39000,
+      "summary": [
+        "Code review PASS. The flag-based interrupt detection refactor is correct, minimal, and well-scoped. All five acceptance criteria are satisfied. No blocking issues found. One documentation-forward item tagged for the Documentation agent.\""
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/cli.py",
+          "orchestrator/docs/agents/project-manifest/constraints.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T11:28:34Z",
+          "note": "orchestrator/src/cli.py line 86: Declaration placement is correct — after exit-code constants, before the stage-map dict. The GIL comment is accurate and adds useful context for future maintainers."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T11:28:34Z",
+          "note": "orchestrator/src/cli.py lines 601-602: Per-run reset via `global _was_interrupted; _was_interrupted = False` at the top of `_run()` is the right pattern for a module-level flag. Handles repeated invocations cleanly and is easy to locate."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T11:28:34Z",
+          "note": "orchestrator/src/cli.py line 987: The combined `_is_interrupted` expression `_was_interrupted or (bool(interrupt_before) and not outside_errors and not _meta_fatal)` correctly preserves the pre-existing interrupt-on checkpoint logic while replacing only the fragile substring branch. Good surgical change."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-05-31T11:28:34Z",
+          "note": "orchestrator/src/cli.py: The three interrupt paths (lines 881, 905, 914) all correctly set `_was_interrupted = True` before appending to `outside_errors`. Order is correct — flag is set unconditionally even if a subsequent step raises."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-05-31T11:28:34Z",
+          "note": "[documentation-forward] `_run()` docstring (orchestrator/src/cli.py) does not mention the `_was_interrupted` module-level side-effect. A brief note — e.g. 'Sets the module-level `_was_interrupted` flag on any interrupt path; reset to False at entry' — would help future contributors understand the function's observable state mutations."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-31T11:28:51Z",
+      "completed_at": "2026-05-31T11:29:55Z",
+      "duration_ms": 64000,
+      "summary": [
+        "Addressed the code-review documentation-forward item: added a 'Side-effects on module state' section to the _run() docstring in orchestrator/src/cli.py. The section documents that _was_interrupted is reset to False at the top of every invocation and set to True by all three interrupt paths (signal shutdown, KeyboardInterrupt during graph execution, KeyboardInterrupt during MCP startup), and explains its role in result determination.",
+        "No README or other documentation updates were needed — the README already correctly describes the INTERRUPTED result behavior and the constraints.md was already updated by the Developer to document the flag-based approach (constraint 24)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/cli.py"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T11:29:55Z",
+          "note": "The _run() docstring now has a dedicated 'Side-effects on module state' section that gives future contributors a clear map of when _was_interrupted is mutated and why. This directly addresses the documentation-forward item from the code-review pipeline."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-31T11:29:55Z",
+  "last_updated": "2026-05-31T11:29:55Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-31T11:24:38Z",
+      "notes": [
+        "All 5 acceptance criteria met. The `_was_interrupted` flag is set by all three interrupt paths and used in place of substring matching. 1017/1017 orchestrator tests pass. No public API changes."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-31T11:27:35Z",
+      "notes": [
+        "All 5 AC met. Implementation is clean: flag declared at module level (line 86), reset per invocation (line 602), set by all 3 interrupt paths (lines 881, 905, 914), used in result determination (line 987). No substring matching anywhere in the orchestrator codebase. 1017/1017 tests pass. Constraints doc updated correctly. Minor coverage gap for KeyboardInterrupt paths (non-blocking, no new tests required by AC)."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-31T11:28:34Z",
+      "notes": [
+        "All 5 AC confirmed by direct code inspection. Implementation is clean and minimal. One documentation-forward item: _run() docstring should mention the _was_interrupted side-effect (low priority). No blocking issues. Ready for Documentation pipeline."
+      ]
+    }
+  ]
+}

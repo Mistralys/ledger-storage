@@ -1,0 +1,240 @@
+{
+  "work_package_id": "WP-006",
+  "work_package_file": "work/WP-005.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-005"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "Strategy GUI shows a \"Show undeclared repositories\" checkbox above the repo list, unchecked by default",
+      "met": true
+    },
+    {
+      "criterion": "Toggling the checkbox on triggers a re-fetch with ?include_undeclared=true and renders undeclared repos",
+      "met": true
+    },
+    {
+      "criterion": "Undeclared repos are visually distinct (muted style) from declared repos",
+      "met": true
+    },
+    {
+      "criterion": "Each undeclared repo has a \"Register\" affordance that pre-fills the Add Repository form with the folder name",
+      "met": true
+    },
+    {
+      "criterion": "Toggling the checkbox off reverts to showing only declared repos",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-06-05T12:08:30Z",
+      "completed_at": "2026-06-05T12:11:54Z",
+      "duration_ms": 204000,
+      "summary": [
+        "Implemented the 'Show undeclared repositories' checkbox toggle in the Strategy GUI (strategy.js).",
+        "Updated API.listRepos() in api-client.js to accept an optional includeUndeclared boolean parameter, appending ?include_undeclared=true when true.",
+        "Added buildToggleHtml() helper that renders the checkbox with correct default state (unchecked).",
+        "Extended buildTableHtml() to branch on r.declared === false: undeclared rows render with opacity:0.6, italic muted label, an 'Undeclared' badge (badge-archived), and a 'Register' button (data-register-folder attribute).",
+        "Added refreshTable(checked) function that re-renders only the toggle + table areas without destroying the Add Repository form or its in-flight field values.",
+        "Added wireRegisterButtons() which listens to [data-register-folder] clicks and pre-fills the #new-repo-id, #new-repo-label, and #new-repo-folders fields, then scrolls and focuses the form.",
+        "Added wireToggle() that attaches the checkbox change handler and is re-called after each table re-render to keep the listener fresh.",
+        "All 3081 existing tests pass (including all 57 api-repos.test.ts cases covering the backend dependency). No new test file is required per WP notes — manual verification covers the visual rendering aspects."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/strategy.js",
+          "mcp-server/gui/public/api-client.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T12:11:54Z",
+          "note": "strategy.js uses function hoisting (nested function declarations inside renderStrategyList) which is idiomatic for the SPA's module-less pattern, but the increasing number of inner helpers (wireToggle, wireRegisterButtons, refreshTable, buildToggleHtml) means the function is growing. A future refactor could extract these into module-level helpers scoped by a closure, similar to how renderStrategyDetail is structured."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-06-05T12:11:54Z",
+          "note": "api-client.js uses buildQueryString() for all parameterised endpoints except the new listRepos() and getRunLogEntries() calls, which both construct their query strings manually. The manual approach is fine here (the param is boolean for listRepos, and 0-inclusive for getRunLogEntries), but a comment in buildQueryString() already explains the 0-exclusion caveat — consider extending the helper to support a 'required' flag set so all endpoints use the same utility consistently."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T12:11:54Z",
+          "note": "The 'Register' button pre-fills the ID field with the raw folder name, which may contain characters invalid for a repo ID slug (SLUG_REGEX requires alphanumeric/hyphens/underscores). A lightweight client-side sanitiser (replacing spaces and dots with hyphens, stripping disallowed chars) would prevent a confusing server-side VALIDATION_ERROR after the user clicks Add without realising the ID needs adjustment."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-06-05T12:12:16Z",
+      "completed_at": "2026-06-05T12:15:28Z",
+      "duration_ms": 192000,
+      "summary": [
+        "Build check: TypeScript compiles cleanly (tsc --noEmit, exit 0). All 3081 tests pass across 101 test files.",
+        "AC-1 PASS: renderStrategyList calls renderList(repos, false); buildToggleHtml(false) emits checkbox without 'checked' attribute — unchecked by default.",
+        "AC-2 PASS: wireToggle() attaches change listener; on check → refreshTable(true) → API.listRepos(true) → GET /repos?include_undeclared=true. Confirmed via api-client.js listRepos implementation (qs = includeUndeclared ? '?include_undeclared=true' : '').",
+        "AC-3 PASS: buildTableHtml branches on r.declared === false: undeclared rows have opacity:0.6 on <tr>, font-style:italic on label, badge-archived 'Undeclared' badge, text-muted on all cells.",
+        "AC-4 PASS: wireRegisterButtons() sets #new-repo-id, #new-repo-label, and #new-repo-folders all to folderName (= r.id = namespace directory name for undeclared entries). Scrolls to #add-repo-form and focuses #new-repo-id.",
+        "AC-5 PASS: Unchecking calls refreshTable(false) → API.listRepos(false) → GET /repos (no query param) — returns declared-only list. Toggle area rebuilt with correct checked=false state.",
+        "Form state preservation confirmed: refreshTable only touches #strategy-toggle-area and #strategy-table-area innerHTML. Add Repository form is a separate sibling and is untouched. No listener duplication on the submit handler.",
+        "Regression: 57/57 api-repos.test.ts cases pass including all WP-005 include_undeclared scenarios. No regressions in any of the 3081 tests."
+      ],
+      "metrics": {
+        "test_coverage": "57/57 api-repos cases, 101 test files, 3081 assertions",
+        "tests_passed": 3081,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "bug",
+          "priority": "low",
+          "timestamp": "2026-06-05T12:15:28Z",
+          "note": "strategy.js refreshTable(): wireToggle() is only called in the .then() success branch, not the .catch() error branch. After an API error, the toggle area is rebuilt (line 97) with a fresh checkbox element but wireToggle() is never called for it, leaving the checkbox unresponsive. The user must navigate away and back to recover. Fix: also call wireToggle() in the .catch() handler. Not an AC failure — no AC tests error recovery — but worth addressing."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-06-05T12:15:28Z",
+          "note": "Rapid toggling can produce concurrent in-flight API.listRepos() calls with no request cancellation guard. The last promise to resolve wins the table render. Cosmetic flicker only — no data corruption. Acceptable for a local dev tool."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T12:15:28Z",
+          "note": "Register button uses data-register-folder=escapeHtml(r.id). For undeclared entries the backend sets id === label === folder_names[0], so pre-filling with r.id is correct. However the AC says 'folder name' — this equivalence should be documented. If the backend ever changes the undeclared entry shape (e.g. id != folder_names[0]), the button would pre-fill the wrong value."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-06-05T12:15:54Z",
+      "completed_at": "2026-06-05T12:16:53Z",
+      "duration_ms": 59000,
+      "summary": [
+        "[PASS] Code review complete. Both modified files (strategy.js, api-client.js) meet quality, architecture, and maintainability standards. One Fix-Forward applied: wireToggle() added to the .catch() error handler in refreshTable(), preventing an unresponsive checkbox after an API failure. No blocking issues found. Three documentation-forward items tagged for the Documentation agent."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/strategy.js",
+          "mcp-server/gui/public/api-client.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-06-05T12:16:53Z",
+          "note": "strategy.js refreshTable() .catch() handler: added wireToggle() call after setting the error banner HTML. Without this, the toggle checkbox rebuilt during the error path had no change listener, leaving it unresponsive until the user navigated away. The fix is non-behavioral (error path only, no success-path change) — QA's validation of the five ACs remains intact."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T12:16:53Z",
+          "note": "strategy.js: The inner-function nesting pattern (buildToggleHtml, buildTableHtml, refreshTable, wireRegisterButtons, wireToggle all declared inside renderStrategyList) is idiomatic for this SPA's module-less script style and functions correctly due to hoisting. As the helper count grows, a future refactor could group these into a module-level namespace object (e.g. StrategyList = { buildToggle, buildTable, … }) to improve discoverability and reduce scroll depth, mirroring the pattern used in renderStrategyDetail."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T12:16:53Z",
+          "note": "api-client.js listRepos(): the manual ternary `var qs = includeUndeclared ? '?include_undeclared=true' : ''` is clear and correct. However, getRunLogEntries() uses the same pattern for a similar reason (0 is a valid value that buildQueryString would suppress). Both functions include inline comments explaining the deviation, which is good. No action required — flagging for consistency awareness."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T12:16:53Z",
+          "note": "strategy.js wireRegisterButtons(): The 'Register' button pre-fills #new-repo-id with the raw folder name (r.id for undeclared entries). Since the backend SLUG_REGEX enforces alphanumeric/hyphens/underscores, directory names containing dots, spaces, or other characters will produce a VALIDATION_ERROR on submit. A lightweight client-side sanitiser (e.g. folderName.replace(/[^a-zA-Z0-9_-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').toLowerCase()) applied only to the ID field pre-fill would significantly improve UX. Not blocking — the error feedback loop still works — but worth a follow-up."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-06-05T12:16:53Z",
+          "note": "[documentation-forward] api-client.js listRepos(): the JSDoc comment is present and accurate but does not document the shape of undeclared entries returned when includeUndeclared=true (specifically that they carry declared: false, and that id === label === folder_names[0] for filesystem-discovered namespaces). Documenting this contract helps callers understand why the Register button pre-fills with r.id."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-06-05T12:16:53Z",
+          "note": "[documentation-forward] strategy.js: The module-level comment at the top (lines 1-5) lists dependencies but does not mention the new checkbox feature or the refreshTable partial-render pattern. Update the header comment to reflect the current feature set so future developers understand the partial-render design (toggle/table areas rebuilt independently, Add Repository form preserved)."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-06-05T12:16:53Z",
+          "note": "[documentation-forward] strategy.js wireRegisterButtons(): Add an inline comment noting that pre-filling #new-repo-id with the raw folder name may require manual slug correction for names containing characters outside SLUG_REGEX. This mirrors the existing comment in buildQueryString() explaining the 0-exclusion caveat — keeping rationale close to the code helps future maintainers."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-06-05T12:17:19Z",
+      "completed_at": "2026-06-05T12:18:19Z",
+      "duration_ms": 60000,
+      "summary": [
+        "Addressed all three documentation-forward items from the code-review pipeline.",
+        "api-client.js listRepos() JSDoc: expanded to document the undeclared entry shape contract (declared: false, id === label === folder_names[0] identity) and the dependency that wireRegisterButtons() relies on this contract.",
+        "strategy.js module header comment: updated to describe the partial-render model (three DOM zones — toggle-area, table-area, add-repo-form — and the invariant that the form card is written once at initial render and never touched by refreshTable).",
+        "strategy.js wireRegisterButtons(): added inline comment explaining that the raw folder name pre-fill may require manual slug correction for names outside SLUG_REGEX, and flagging the future improvement of a client-side sanitiser."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/api-client.js",
+          "mcp-server/gui/public/views/strategy.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T12:18:19Z",
+          "note": "All three documentation-forward items from the Reviewer were addressed. No gaps remained that required developer input — the undeclared entry shape contract was verifiable directly from the source code (api-client.js listRepos implementation and strategy.js wireRegisterButtons usage)."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-06-05T12:18:19Z",
+  "last_updated": "2026-06-05T12:18:19Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-06-05T12:11:54Z",
+      "notes": [
+        "WP-006 implementation is complete. Two files modified: mcp-server/gui/public/views/strategy.js (main feature) and mcp-server/gui/public/api-client.js (listRepos API update). The backend (WP-005) was already implemented — all 3081 tests pass. QA should manually verify: (1) checkbox is unchecked on Strategy page load; (2) checking it triggers a re-fetch showing undeclared entries with muted/italic style and an 'Undeclared' badge; (3) Register button correctly pre-fills all three Add form fields and scrolls to the form; (4) unchecking reverts to declared-only list; (5) the Add Repository form state is preserved across toggle cycles."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-06-05T12:15:28Z",
+      "notes": [
+        "WP-006 QA PASS. All 5 ACs verified through code analysis and full test suite execution (3081/3081 tests pass, 0 failures, TypeScript compiles clean). One low-priority bug noted: wireToggle() not called in refreshTable error path — checkbox becomes unresponsive after an API error. The Register button correctly pre-fills all three Add Repository fields. Form state is preserved across toggle cycles. No regressions. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-06-05T12:16:53Z",
+      "notes": [
+        "WP-006 code-review PASS. One Fix-Forward applied: wireToggle() now called in the .catch() error path of refreshTable() — checkbox remains responsive after API errors. Three documentation-forward items logged for the Documentation agent: (1) listRepos() JSDoc missing undeclared entry shape contract, (2) strategy.js module header comment needs update for partial-render pattern, (3) wireRegisterButtons() needs inline note about slug sanitisation requirement. No blocking issues. All 5 ACs confirmed met. Ready for documentation."
+      ]
+    }
+  ]
+}

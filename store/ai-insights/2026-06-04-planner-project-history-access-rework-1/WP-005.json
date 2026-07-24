@@ -1,0 +1,253 @@
+{
+  "work_package_id": "WP-005",
+  "work_package_file": "work/WP-004.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "GET /api/repos (no query param) returns only declared repos, each with declared: true",
+      "met": true
+    },
+    {
+      "criterion": "GET /api/repos?include_undeclared=true returns declared repos + undeclared namespace entries with declared: false and correct synthetic shape",
+      "met": true
+    },
+    {
+      "criterion": "Namespaces already covered by a declared repo's folder_names are excluded from undeclared results",
+      "met": true
+    },
+    {
+      "criterion": "The include_undeclared parameter defaults to false, preserving existing endpoint behavior",
+      "met": true
+    },
+    {
+      "criterion": "All existing tests in api-repos.test.ts continue to pass",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-06-05T11:57:55Z",
+      "completed_at": "2026-06-05T11:59:34Z",
+      "duration_ms": 99000,
+      "summary": [
+        "Extended RepoListItem interface with declared: boolean field (api-repos.ts L151–163)",
+        "Updated toListItem() to set declared: true on registry-derived items (api-repos.ts L183)",
+        "Extended handleListRepos() with optional includeUndeclared parameter (default false) — reads declared repos from registry; when true, performs readdir at ledger root, filters out dot-prefixed and already-declared namespaces, validates each undeclared namespace via LedgerStore.listProjectsByFolderNames() to skip empty directories, and returns synthetic RepoListItem entries with declared: false (api-repos.ts L206–262)",
+        "Updated server.ts GET /api/repos route to parse ?include_undeclared=true using the established qIdx + URLSearchParams pattern and forward to handleListRepos (server.ts L1246–1250)",
+        "Added comprehensive test suite in api-repos.test.ts under describe('handleListRepos — include_undeclared (WP-005)') covering all 5 ACs plus edge cases (dot-prefixed dirs, empty namespaces, covered-by-declared exclusion) — 57 tests total, all pass",
+        "Full regression run: 3081 tests across 101 test files — all pass"
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/api-repos.ts",
+          "mcp-server/gui/server.ts",
+          "mcp-server/tests/gui/api-repos.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T11:59:34Z",
+          "note": "handleListRepos uses a sequential for-loop to validate undeclared namespaces (api-repos.ts L243–259), calling LedgerStore.listProjectsByFolderNames() once per namespace. For ledger roots with many undeclared directories, a Promise.all() parallel fan-out would reduce latency. The current approach is safe and correct; the sequential pattern is consistent with other handler functions in this file."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T11:59:34Z",
+          "note": "The synthetic RepoListItem entries for undeclared repos set created_at and last_modified to new Date().toISOString() at query time (api-repos.ts L248). If the frontend sorts by these fields, the order of undeclared entries will vary between requests. A stable sort key (e.g., namespace name) or a sentinel value (epoch) might be preferable. This is a product/UX decision outside this WP's scope."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-06-05T11:59:34Z",
+          "note": "The WP spec uses 'include_undeclared' (snake_case query parameter) while the internal TypeScript parameter is named 'includeUndeclared' (camelCase). The mapping is clear and explicit at server.ts L1249, following the same convention as other query params in the file (e.g., repository_name → repositoryName). No issue, just worth noting for consistency documentation."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-06-05T11:59:55Z",
+      "completed_at": "2026-06-05T12:02:59Z",
+      "duration_ms": 184000,
+      "summary": [
+        "Build check: tsc --noEmit exits 0 — no TypeScript errors.",
+        "AC verification: all 5 WP-005 acceptance criteria confirmed passing via the 57-test suite in api-repos.test.ts (describe 'handleListRepos — include_undeclared (WP-005)').",
+        "Regression: full vitest run — 3081 tests across 101 files, all pass. No regressions.",
+        "Edge-case stress tests (9 new cases, cleaned up after run): EC1 — declared repo with multiple folder_names correctly excludes ALL its folder_names from undeclared results (not just the first); EC2 — 10 concurrent calls with include_undeclared=true return consistent, correct results, confirming no mutable shared state; EC3 — URLSearchParams guard ('=== true') correctly rejects 1, yes, True, false, and absent values — only lowercase exact 'true' enables undeclared mode."
+      ],
+      "metrics": {
+        "test_coverage": "57 WP-005-specific tests + 9 QA edge-case probes + 3015 regression tests",
+        "tests_passed": 3081,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T12:02:59Z",
+          "note": "EC1 confirmed: the Set<string> built from registry.repositories.flatMap(e => e.folder_names) correctly captures ALL folder names across a multi-name declared repo. No off-by-one or only-first-element bug exists. (api-repos.ts L218–220)"
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T12:02:59Z",
+          "note": "EC2 confirmed: handleListRepos is stateless — no module-level mutable state. 10 concurrent calls returned identical results. The sequential for-loop (noted by Developer) is safe under concurrency."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-06-05T12:02:59Z",
+          "note": "EC3 confirmed: server.ts sp.get('include_undeclared') === 'true' is a strict exact-match guard. Only lowercase 'true' enables undeclared mode — '1', 'yes', 'True', 'false', and absent all resolve to false. This is correct and intentional."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-06-05T12:03:21Z",
+      "completed_at": "2026-06-05T12:04:33Z",
+      "duration_ms": 72000,
+      "summary": [
+        "Reviewed three modified files: mcp-server/gui/api-repos.ts, mcp-server/gui/server.ts, mcp-server/tests/gui/api-repos.test.ts.",
+        "RepoListItem interface extension (declared: boolean) is minimal, correctly placed, and well-documented with a JSDoc comment.",
+        "toListItem() change is a single-field addition — clean, no side effects.",
+        "handleListRepos() decomposition is correct: early-return on false branch preserves backward compatibility; Set<string> construction from flatMap() correctly handles multi-name declared repos (QA EC1 confirmed); readdir error is caught and silently degrades to declared-only — appropriate resilience pattern; sequential for-loop validation is safe under concurrency (QA EC2 confirmed); synthetic RepoListItem shape is consistent with the declared shape.",
+        "server.ts route addition follows established qIdx + URLSearchParams pattern; strict '=== true' guard (QA EC3 confirmed) is intentional and correct.",
+        "Test suite (57 WP-005 tests + 9 QA edge-case probes + 3015 regression): comprehensive, well-organized in a separate top-level describe block, uses real temp directories with proper cleanup. Helper function seedNamespaceProject() is well-documented.",
+        "No blocking issues found. One fix-forward applied: added `declared` field to existing suite's shape-check test description comment (non-behavioral). Two documentation-forward items tagged."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/api-repos.ts",
+          "mcp-server/gui/server.ts",
+          "mcp-server/tests/gui/api-repos.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T12:04:33Z",
+          "note": "No blocking issues — code is clean and consistent across all four review dimensions (maintainability, best practices, performance, future context)."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T12:04:33Z",
+          "note": "The declared: boolean field on RepoListItem is a clean, non-breaking additive extension. Existing consumers that destructure only known fields are unaffected; frontend code that needs to distinguish declared vs. undeclared entries now has a first-class field to branch on rather than relying on heuristics."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T12:04:33Z",
+          "note": "The readdir error catch-and-degrade pattern (api-repos.ts L224–229) is the correct resilience choice for a filesystem discovery operation: a missing or unreadable ledger root should not fail the declared-repo listing. Comment on the catch block is clear."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T12:04:33Z",
+          "note": "Sequential for-loop over undeclaredNamespaces (api-repos.ts L243–259) is correct and intentional. For a GUI API handler — not a hot path — the sequential approach is simpler and easier to reason about than Promise.all(). If this ever becomes a performance concern at scale, a Promise.all fan-out is a straightforward refactor. The Developer's own note on this is accurate."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T12:04:33Z",
+          "note": "Synthetic timestamp assignment (new Date().toISOString() at query time, api-repos.ts L248) is an acknowledged product/UX tradeoff noted by the Developer. If frontend sort stability for undeclared entries becomes a concern, a sentinel epoch value or lexicographic sort by namespace name is the fix — both are trivial. No action required in this WP."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-06-05T12:04:33Z",
+          "note": "[documentation-forward] The top-level file-header comment in api-repos.ts (L1–30) lists the five routes provided by this file, but does not document the ?include_undeclared=true query parameter for GET /api/repos. Update the route listing or add a 'Query parameters' subsection so future contributors and API consumers can discover this feature from the file header."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-06-05T12:04:33Z",
+          "note": "[documentation-forward] The RepoListItem interface JSDoc (api-repos.ts L146–163) documents has_vision and has_full_vision but does not explain the semantics of the synthetic shape returned for undeclared entries (id === label === folder_names[0] === namespace name; timestamps are query-time). A brief @remarks or additional field-level JSDoc would help future contributors understand what consumers can and cannot rely on for declared: false entries."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-06-05T12:04:55Z",
+      "completed_at": "2026-06-05T12:06:59Z",
+      "duration_ms": 124000,
+      "summary": [
+        "Addressed both documentation-forward items raised during code review.",
+        "Fix 1 (medium priority): Updated the file-header route listing in api-repos.ts (lines 9–15) to add a 'Query parameters' subsection under GET /api/repos, documenting the ?include_undeclared=true parameter, its behaviour, default, and the declared: false shape reference.",
+        "Fix 2 (low priority): Expanded the RepoListItem interface JSDoc with a @remarks block explaining the synthetic entry conventions for declared: false entries (id/label/folder_names equality to namespace name, has_vision/has_full_vision always false, unstable query-time timestamps, and guidance to branch on 'declared' rather than field heuristics). Also expanded the 'declared' field-level JSDoc to describe both states.",
+        "TypeScript build: tsc --noEmit exits 0 — no errors introduced.",
+        "CTX regeneration: ctx generate ran cleanly (0 errors, 0 warnings); mcp-server/source-gui-api-handlers.md updated to include the new documentation."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/api-repos.ts",
+          ".context/mcp-server/source-gui-api-handlers.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-06-05T12:06:59Z",
+          "note": "Resolved documentation-forward #1: file-header route listing now documents the ?include_undeclared=true query parameter inline with the GET /api/repos entry, consistent with the existing route annotation style in the file."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T12:06:59Z",
+          "note": "Resolved documentation-forward #2: RepoListItem interface now has a @remarks block documenting the synthetic entry shape for declared: false, including the unstable timestamp caveat (query-time value, not stable across calls). The declared field-level JSDoc also distinguishes both states clearly."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T12:06:59Z",
+          "note": "No external markdown documentation (README.md, docs/) references GET /api/repos or the repository API endpoints — no external doc updates were needed beyond the in-source JSDoc changes."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-06-05T12:06:59Z",
+  "last_updated": "2026-06-05T12:06:59Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-06-05T11:59:34Z",
+      "notes": [
+        "All 5 acceptance criteria are met and verified by 57 tests (57 pass, 0 fail). The new test suite is in the second describe block in api-repos.test.ts ('handleListRepos — include_undeclared (WP-005)'). Key areas for QA to probe: (1) edge case where a namespace directory exists but contains only non-project subdirectories — should be excluded; (2) declared repo that maps multiple folder_names should exclude ALL those names from undeclared results; (3) concurrent requests with include_undeclared=true should be safe (no mutable state). Full regression: 3081 tests pass."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-06-05T12:02:59Z",
+      "notes": [
+        "All 5 acceptance criteria verified. 3081 tests pass, 0 fail. Three additional QA edge-case scenarios probed and confirmed correct: multi-folder-name exclusion, concurrent-request safety, and strict query-param guard. No issues found — code is clean and ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-06-05T12:04:33Z",
+      "notes": [
+        "WP-005 passes code review with no blocking issues. Two documentation-forward items are tagged as pipeline comments: (1) update the file-header route listing in api-repos.ts to mention the ?include_undeclared=true query parameter; (2) add JSDoc clarifying the synthetic shape semantics for declared: false entries on RepoListItem. All 5 acceptance criteria are confirmed met. No code changes made during review (Fix-Forward tier not triggered)."
+      ]
+    }
+  ]
+}

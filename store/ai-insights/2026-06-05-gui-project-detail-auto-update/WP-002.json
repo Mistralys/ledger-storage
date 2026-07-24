@@ -1,0 +1,229 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "_snapshotProjectState produces a JSON-serializable object from realistic getProject and getWorkPackageOverview mock responses",
+      "met": true
+    },
+    {
+      "criterion": "The diff function correctly classifies WP count changes and COMPLETE/ARCHIVED project transitions as structural changes",
+      "met": true
+    },
+    {
+      "criterion": "The diff function correctly classifies status badge, pipeline stage, synthesis_generated, health badge, and timing changes as data-only changes",
+      "met": true
+    },
+    {
+      "criterion": "All unit tests in project-detail-snapshot.test.ts and project-detail-diff.test.ts pass",
+      "met": true
+    },
+    {
+      "criterion": "Snapshot and diff functions are exported/exposed for testability following the existing GUI test pattern (via window or module-scoped access in jsdom)",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-06-09T16:58:37Z",
+      "completed_at": "2026-06-09T17:02:37Z",
+      "duration_ms": 240000,
+      "summary": [
+        "Added _snapshotProjectState() function to project-detail.js — extracts a flat, JSON-serializable state object from API.getProject and API.getWorkPackageOverview responses, capturing project status, last_updated, synthesis_generated, per-WP statuses and pipeline stages (flattened to { type, status, agent, rework_count }), and a health field initialised to null.",
+        "Added _diffProjectState(prev, next) function to project-detail.js — classifies snapshot pairs as 'none' (no change), 'data' (patchable in-place), or 'structural' (requires full re-render). Structural triggers: WP count change or project transition to COMPLETE/ARCHIVED. Data triggers: all other value changes including status badge, per-WP status/pipeline-stage changes, synthesis_generated, health (including null→value), and last_updated.",
+        "Created tests/gui/project-detail-snapshot.test.ts — 15 unit tests covering snapshot shape, metadata extraction, missing-field handling, WP status capture across all 5 statuses, overview enrichment, graceful edge cases, and determinism.",
+        "Created tests/gui/project-detail-diff.test.ts — 21 unit tests covering no-change detection, all structural triggers (WP count ±, COMPLETE/ARCHIVED transitions), all data-only triggers (non-terminal status, WP status/pipeline, synthesis_generated both directions, health null→value and value change, last_updated, multiple simultaneous data changes), structural dominance, and round-trip with _snapshotProjectState.",
+        "All 36 new tests pass; full suite of 3141 tests passes with zero regressions."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/project-detail.js",
+          "mcp-server/tests/gui/project-detail-snapshot.test.ts",
+          "mcp-server/tests/gui/project-detail-diff.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-09T17:02:37Z",
+          "note": "project-detail.js now spans ~1,340 lines with multiple large nested closures (pollQueue inside getRunLogs.then, renderRunsList inside pollQueue). A future refactor splitting the orchestrator-runs logic into a named module-level function accepting sorted/repo/slug/activeFilename would improve testability (the existing code has a self-referential comment noting this on line ~851). Out of scope for WP-002."
+        },
+        {
+          "type": "refactor",
+          "priority": "low",
+          "timestamp": "2026-06-09T17:02:37Z",
+          "note": "The health-badge update at line ~788 in renderProjectDetail directly patches DOM via closure rather than calling _patchHealthBadge. Making it use _patchHealthBadge would keep the DOM patching consistent; deferred to WP-003 which wires the full polling loop."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-06-09T17:02:37Z",
+          "note": "STAGE_ABBREV map at line 98 is a plain var object with no JSDoc comment, while all surrounding functions have block comments. Minor inconsistency; harmless."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-06-09T17:02:56Z",
+      "completed_at": "2026-06-09T17:05:20Z",
+      "duration_ms": 144000,
+      "summary": [
+        "Verified _snapshotProjectState and _diffProjectState implementation in project-detail.js against all 5 acceptance criteria.",
+        "Ran targeted test suite: 36 tests across project-detail-snapshot.test.ts (15 tests) and project-detail-diff.test.ts (21 tests) — all PASS.",
+        "Ran full regression suite: 103 test files, 3141 tests — all PASS, zero regressions.",
+        "Performed 7 additional edge-case stress tests: null project input, empty meta, 100-WP scale, undefined rework_count (same both sides → 'none'), rework_count 0→1 (→ 'data' via pipeline stage change), truthy coercion on synthesis_generated, and rework_count=0 falsy-coercion check — all behaved correctly.",
+        "Both functions declared as module-scope var function declarations (AC5: globalThis-accessible via vm.runInThisContext). Test exposure pattern matches existing gui test files."
+      ],
+      "metrics": {
+        "test_coverage": "36 new tests; 3141 total",
+        "tests_passed": 3141,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-09T17:05:20Z",
+          "note": "_snapshotProjectState uses `s.rework_count || 0` in the pipeline stage mapping. This correctly handles the rework_count=0 case (0 || 0 = 0), but would also silently coerce null/undefined to 0 rather than preserving the raw value. Harmless given the API always emits integers, but a future hardening pass could use `s.rework_count != null ? s.rework_count : 0` for explicitness."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-09T17:05:20Z",
+          "note": "_diffProjectState iterates over nextIds when comparing per-WP statuses, meaning a WP present in prev but absent in next is not tracked per-field — only the wpCount mismatch captures the structural change. This is correct behaviour (count mismatch fires structural before per-WP diffing matters), but is worth documenting in the JSDoc for future maintainers."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-09T17:05:20Z",
+          "note": "No test currently exercises the case where a WP appears in the overview result but has a null work_package_id. The guard `if (!entry || !entry.work_package_id) return;` handles it silently. A defensive test for this would round out edge coverage, but is not required by any AC."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-06-09T17:05:44Z",
+      "completed_at": "2026-06-09T17:07:14Z",
+      "duration_ms": 90000,
+      "summary": [
+        "Code review PASS. Both _snapshotProjectState and _diffProjectState are clean, well-scoped pure functions with accurate JSDoc. The implementation follows the file's var-based declaration convention and the existing GUI test pattern. No blocking issues found.",
+        "Applied one Fix-Forward: expanded the _diffProjectState JSDoc to document the per-WP iteration order (nextIds vs prevIds) and the intentional structural-wins-first behaviour, addressing the low-priority QA observation.",
+        "Tests are comprehensive: 36 tests across two files following the established vm.runInThisContext + globalThis exposure pattern. No gaps of concern.",
+        "Two documentation-forward items identified for the Documentation agent."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/project-detail.js",
+          "mcp-server/tests/gui/project-detail-snapshot.test.ts",
+          "mcp-server/tests/gui/project-detail-diff.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-06-09T17:07:14Z",
+          "note": "Expanded the _diffProjectState JSDoc (lines 492–509) to add a NOTE block explaining the per-WP iteration order (iterates nextIds only) and the intentional structural-wins-first design. This documents the edge case flagged by QA: a WP present in prev but absent in next is not tracked per-field because the wpCount structural check fires first. Non-behavioral change — no runtime logic altered."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-06-09T17:07:14Z",
+          "note": "[documentation-forward] The makeProject helper is duplicated between project-detail-snapshot.test.ts and project-detail-diff.test.ts. Consider documenting a shared test-helper pattern in the GUI testing guidelines, or extract it into a shared fixture file (e.g., tests/gui/fixtures/project-detail-helpers.ts) to prevent future drift."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-06-09T17:07:14Z",
+          "note": "[documentation-forward] STAGE_ABBREV (line 98) is an undocumented plain var object. All surrounding functions have block comments; this map should have a JSDoc comment explaining its purpose (maps pipeline stage type strings to display abbreviations) and noting that any new pipeline type added to the ledger must also be added here to avoid silent fallback to slice(0,3).toUpperCase()."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-06-09T17:07:36Z",
+      "completed_at": "2026-06-09T17:09:39Z",
+      "duration_ms": 123000,
+      "summary": [
+        "Addressed both documentation-forward items from code review.",
+        "1. Added a JSDoc block comment to STAGE_ABBREV in project-detail.js explaining its role (maps ledger pipeline type strings to display abbreviations), the fallback behaviour (slice(0,3).toUpperCase()), and the maintenance contract (any new pipeline type added to the ledger must also be added here to avoid a raw-slice badge label in the GUI).",
+        "2. Updated tests/gui/README.md: added project-detail-snapshot.test.ts and project-detail-diff.test.ts to the examples table, and added a new 'Shared Test Helpers — Per-File vs. Shared Fixture' section documenting the makeProject/makeSnapshot duplication, when to prefer inline vs. shared helpers/fixtures, and how to extract to tests/gui/helpers/ if needed.",
+        "3. Ran ctx generate from workspace root — both mcp-server/source-gui-frontend.md and mcp-server/tests.md regenerated cleanly; all 31 CTX documents rebuilt with no errors."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/project-detail.js",
+          "mcp-server/tests/gui/README.md",
+          ".context/mcp-server/source-gui-frontend.md",
+          ".context/mcp-server/tests.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-09T17:09:39Z",
+          "note": "STAGE_ABBREV documentation-forward fully resolved: JSDoc block added explaining purpose, fallback behaviour, and maintenance contract. All surrounding functions now have consistent block-comment coverage."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-09T17:09:39Z",
+          "note": "makeProject helper duplication addressed via README guidance rather than a code change: the two-file duplication is minor and the shared fixture pattern is documented with an actionable example for when extraction becomes warranted. No fixture file created — extraction would be premature for two files."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-06-09T17:09:39Z",
+  "last_updated": "2026-06-09T17:09:39Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-06-09T17:02:37Z",
+      "notes": [
+        "Both functions are declared as module-scope var functions in project-detail.js and are therefore visible on globalThis inside vm.runInThisContext — matching the exposure pattern used by all other tested functions in this file.",
+        "_snapshotProjectState returns health: null by default; WP-003 polling code should call API.getProjectHealth and assign the result to snapshot.health before running diffs.",
+        "_diffProjectState uses JSON.stringify for deep-equality of pipelineStages arrays — this is intentional (cheap, no DOM, handles nested objects). The change descriptor shape is { type, changes: { [key]: { from, to } } }.",
+        "last_updated timing changes are classified as data-only — explicitly tested in project-detail-diff.test.ts to satisfy AC 3."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-06-09T17:05:20Z",
+      "notes": [
+        "All 5 ACs verified: implementation is clean, tests are comprehensive, and zero regressions introduced.",
+        "The `_snapshotProjectState` health field is intentionally null (async population deferred to WP-003 polling loop).",
+        "_diffProjectState structural dominance (structural wins over data) is correct and tested.",
+        "Minor low-priority observations logged as improvements — none are blockers for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-06-09T17:07:14Z",
+      "notes": [
+        "All 5 ACs confirmed met. Code review PASS with one Fix-Forward applied (JSDoc documentation of per-WP iteration order — non-behavioral).",
+        "Two documentation-forward items are open: (1) STAGE_ABBREV needs a JSDoc block comment explaining its role and maintenance contract; (2) makeProject helper duplication between snapshot and diff test files is worth noting in the GUI testing guidelines.",
+        "No rework required — hand off to Documentation agent."
+      ]
+    }
+  ]
+}

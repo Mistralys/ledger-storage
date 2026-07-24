@@ -1,0 +1,806 @@
+{
+  "work_package_id": "WP-006",
+  "work_package_file": "work/WP-006.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-005"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "killQueueEntry() only operates on effectively-pending entries; rejects started or dead entries.",
+      "met": true
+    },
+    {
+      "criterion": "killQueueEntry() sends SIGTERM, waits, then SIGKILL if the process is still alive.",
+      "met": true
+    },
+    {
+      "criterion": "killQueueEntry() removes the entry from the queue file on disk.",
+      "met": true
+    },
+    {
+      "criterion": "killQueueEntry() cleans up the .orchestrator.lock file in the plan directory.",
+      "met": true
+    },
+    {
+      "criterion": "dismissQueueEntry() only operates on effectively-dead entries; rejects pending or started entries.",
+      "met": true
+    },
+    {
+      "criterion": "dismissQueueEntry() removes the entry from the queue file on disk.",
+      "met": true
+    },
+    {
+      "criterion": "Both functions handle entry not found gracefully.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-05T12:47:47Z",
+      "completed_at": "2026-05-05T13:00:56Z",
+      "duration_ms": 789000,
+      "summary": [
+        "Implemented killQueueEntry() and dismissQueueEntry() in mcp-server/gui/orchestrator-manager.ts.",
+        "killQueueEntry(): recomputes effective status inline, rejects non-pending entries (started/dead/not-found), sends SIGTERM → sleeps SIGTERM_WAIT_MS → SIGKILL if still alive, atomically removes entry from queue file via tmp-then-rename, silently removes .orchestrator.lock from plan directory.",
+        "dismissQueueEntry(): recomputes effective status inline, rejects non-dead entries (pending/started/not-found), atomically removes entry from queue file.",
+        "Added writeQueueFileAtomic() (atomic tmp-then-rename write), removeLockFile() (silent ENOENT), terminateProcess() (SIGTERM → sleep → conditional SIGKILL), and sleep() helpers.",
+        "Updated imports: added writeFile, unlink, rename from node:fs/promises and dirname from node:path.",
+        "Added 14 new tests in orchestrator-manager.test.ts covering all 7 acceptance criteria (50 total, all pass). Sleep in tests is made instant via a setTimeout spy that calls the callback synchronously — avoids fake-timer/IO-ordering race.",
+        "No TypeScript errors (tsc --noEmit clean)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/orchestrator-manager.ts",
+          "mcp-server/tests/gui/orchestrator-manager.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T13:00:56Z",
+          "note": "The effective-status computation is duplicated verbatim in killQueueEntry(), dismissQueueEntry(), and getQueue(). A private computeEffectiveStatus(entry, ledgerRoot) helper would eliminate the repetition. Deferred to keep this WP focused."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T13:00:56Z",
+          "note": "SIGTERM_WAIT_MS is a module-level constant (not exported). Tests rely on a setTimeout spy to make sleep instant instead. Exporting the constant would allow future callers to observe the configured wait time, but is not needed today."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T13:00:56Z",
+          "note": "writeQueueFileAtomic() does not acquire the run-queue.lock file that Python writers use. A concurrent Python register() between the GUI read and write-back could silently lose the new entry. Acceptable for now given low concurrency, but worth noting."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-05T13:32:52Z",
+      "completed_at": "2026-05-05T13:35:23Z",
+      "duration_ms": 151000,
+      "summary": [
+        "All 7 acceptance criteria verified through direct code inspection and test execution.",
+        "Build check: tsc --noEmit passes with zero errors.",
+        "Test suite: 63 tests in orchestrator-manager.test.ts, all green (including all 14 new WP-006 tests). Full suite: 2064 tests across 65 files — zero regressions.",
+        "AC-1 ✓: killQueueEntry() rejects started/dead entries — effectiveStatus gate enforced, returns { killed: false }.",
+        "AC-2 ✓: terminateProcess() sends SIGTERM → sleep(3000) → conditional SIGKILL; both code paths tested (process dies after SIGTERM; process survives).",
+        "AC-3 ✓: atomic tmp-then-rename write removes the entry from the queue file; other entries preserved.",
+        "AC-4 ✓: removeLockFile() removes .orchestrator.lock from dirname(planPath); silently swallows ENOENT. Lock file path confirmed to match Python's plan_path.parent / '.orchestrator.lock'.",
+        "AC-5 ✓: dismissQueueEntry() only acts on dead entries; pending and started entries are no-ops.",
+        "AC-6 ✓: dismissQueueEntry() atomically removes dead entry; other entries preserved.",
+        "AC-7 ✓: both functions return gracefully (no throw) when entry ID is absent."
+      ],
+      "metrics": {
+        "test_coverage": "14 new tests cover all 7 WP-006 ACs; 63 total in file; 2064 total in suite",
+        "tests_passed": 63,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T13:35:23Z",
+          "note": "PID reuse race: if a process exits and its PID is immediately reassigned to another process before isProcessAlive() is called, killQueueEntry() could compute effectiveStatus='pending' for a reused PID and SIGKILL the wrong process. Inherent to PID-based management without OS-level process descriptors; acceptable given low concurrency and short SIGTERM window."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T13:35:23Z",
+          "note": "The effective-status computation is verbatim-duplicated in killQueueEntry(), dismissQueueEntry(), and getQueue(). A private computeEffectiveStatus() helper would eliminate 3× duplication — already noted by Developer, deferred intentionally."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T13:35:23Z",
+          "note": "writeQueueFileAtomic() does not acquire .run-queue.lock. A concurrent Python register() call between the GUI read and write-back could silently drop a newly-registered entry. Low risk at current concurrency levels — already noted by Developer."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "FAIL",
+      "started_at": "2026-05-05T13:39:04Z",
+      "completed_at": "2026-05-05T13:41:20Z",
+      "duration_ms": 136000,
+      "summary": [
+        "Reviewed 2 files (orchestrator-manager.ts, orchestrator-manager.test.ts). 0 Critical, 1 High, 0 Medium. FAIL — routes to Developer for remediation of unvalidated negative PID before process.kill()."
+      ],
+      "metrics": {
+        "security_issues": 1
+      },
+      "comments": [
+        {
+          "type": "vulnerability",
+          "priority": "high",
+          "timestamp": "2026-05-05T13:41:20Z",
+          "note": "HIGH — A03 Injection / A04 Insecure Design — Unvalidated negative PID in isRawQueueEntry() reaches process.kill(). File: mcp-server/gui/orchestrator-manager.ts, isRawQueueEntry() (~line 116) and terminateProcess() (~line 385). isRawQueueEntry() validates `typeof e['pid'] === 'number'` but accepts zero and negative values. On POSIX systems, process.kill(0, signal) sends the signal to every process in the caller's process group; process.kill(-1, signal) sends it to all processes the current user can signal. A corrupted or crafted .run-queue.json file with \"pid\": -1 would broadcast SIGTERM/SIGKILL to the entire user session. Remediation: Change the PID guard in isRawQueueEntry() from `typeof e['pid'] === 'number'` to `typeof e['pid'] === 'number' && Number.isInteger(e['pid']) && e['pid'] > 0`. Additionally add a `if (pid <= 0) return` early-exit guard in terminateProcess() as defence-in-depth."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T13:41:20Z",
+          "note": "A01 — removeLockFile() derives the lock directory from entry.planPath (sourced from the queue file). While the filename is hardcoded as '.orchestrator.lock' limiting blast radius, a path-traversal sequence in planPath would attempt unlink() at an arbitrary directory. In this local developer-tool context the ENOENT swallow makes the practical impact negligible, but adding a path-prefix check (resolve(dirname(planPath)) starts with resolvedRoot) would be consistent with the checkPathPrefix() guard already applied in startOrchestrator(). Low — no blocking concern."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T13:41:20Z",
+          "note": "A09 Security Logging — killQueueEntry() sends OS signals and removes files without any structured log entry. For a local developer tool this is acceptable, but adding a console.error or structured log on kill failure (e.g., process.kill throwing) would aid debugging. Low — informational only."
+        }
+      ]
+    },
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-05T13:42:12Z",
+      "completed_at": "2026-05-05T13:44:18Z",
+      "duration_ms": 126000,
+      "summary": [
+        "Rework: fixed HIGH security vulnerability flagged by Security Auditor (unvalidated negative/zero PID reaching process.kill()).",
+        "isRawQueueEntry(): extended PID guard from `typeof e['pid'] === 'number'` to also require `Number.isInteger(e['pid']) && e['pid'] > 0`, preventing crafted queue entries with pid=0 or pid=-1 from broadcasting signals to the process group or all user processes.",
+        "terminateProcess(): added `if (pid <= 0) return` early-exit guard as defence-in-depth.",
+        "Added 5 new security tests in orchestrator-manager.test.ts: pid=0, pid=-1, negative pid, float pid (all filtered), and valid positive integer pid (accepted).",
+        "All 7 ACs remain met. Test count: 68 in orchestrator-manager.test.ts (was 63). Full suite: 2069 tests, 65 files — zero regressions. tsc --noEmit clean."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/orchestrator-manager.ts",
+          "mcp-server/tests/gui/orchestrator-manager.test.ts"
+        ]
+      },
+      "metrics": {
+        "test_coverage": "68 tests in orchestrator-manager.test.ts; 2069 total",
+        "tests_passed": 2069,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T13:44:18Z",
+          "note": "removeLockFile() in mcp-server/gui/orchestrator-manager.ts derives the lock directory from entry.planPath (sourced from the queue file). The filename is hardcoded as '.orchestrator.lock' limiting blast radius, but adding a resolve(dirname(planPath)) starts-with-ledgerRoot prefix check would be consistent with the checkPathPrefix() guard already in startOrchestrator(). Security Auditor flagged as non-blocking low; deferring."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-05T13:44:56Z",
+      "completed_at": "2026-05-05T13:46:57Z",
+      "duration_ms": 121000,
+      "summary": [
+        "Rework QA pass — focused on HIGH security vulnerability remediation.",
+        "Build check: tsc --noEmit clean, zero errors.",
+        "Security fix AC-1 (isRawQueueEntry): guard now `typeof === 'number' && Number.isInteger && > 0` — confirmed in source at line 119.",
+        "Security fix AC-2 (terminateProcess): `if (pid <= 0) return` defence-in-depth guard confirmed at line 386.",
+        "All 5 security regression tests confirmed in test file (pid=0, pid=-1, pid=-9999, float, valid positive) — all green.",
+        "Full 7-AC verification: all criteria met (confirmed via code inspection and test execution).",
+        "orchestrator-manager.test.ts: 68 tests, 0 failures. Full suite: 2069 tests / 65 files — zero regressions."
+      ],
+      "metrics": {
+        "test_coverage": "68 tests in orchestrator-manager.test.ts; 2069 total across 65 files",
+        "tests_passed": 2069,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T13:46:57Z",
+          "note": "No new issues found. HIGH security finding (unvalidated negative PID) is fully remediated — isRawQueueEntry() and terminateProcess() both guard against pid ≤ 0."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T13:46:57Z",
+          "note": "Three previously-noted low-priority items remain deferred: effective-status duplication, queue lock gap (concurrent Python write), and removeLockFile path-prefix check. None are blocking; all were explicitly accepted by Developer and Security Auditor."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-05-05T13:47:32Z",
+      "completed_at": "2026-05-05T13:49:25Z",
+      "duration_ms": 113000,
+      "summary": [
+        "Reviewed 2 files (orchestrator-manager.ts, orchestrator-manager.test.ts) post-rework. 0 Critical, 0 High, 0 Medium. The HIGH finding from the previous audit (unvalidated negative/zero PID reaching process.kill()) is confirmed remediated. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T13:49:25Z",
+          "note": "HIGH fix confirmed — A03/A04: isRawQueueEntry() now guards `typeof e['pid'] === 'number' && Number.isInteger(e['pid']) && e['pid'] > 0`, blocking pid=0, pid=-1, negative, and float values. terminateProcess() has defence-in-depth `if (pid <= 0) return` guard. Five regression tests (pid=0, pid=-1, pid=-9999, float pid=1.5, valid pid=12345) all pass. No POSIX signal-broadcast vector remains."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T13:49:25Z",
+          "note": "A01 (carry-forward, non-blocking): removeLockFile() derives the lock directory from entry.planPath (queue-file-sourced). Hardcoded '.orchestrator.lock' filename limits blast radius to a ENOENT-swallowed no-op on traversal. Adding a resolve(dirname(planPath)).startsWith(resolvedRoot) prefix check — consistent with checkPathPrefix() in startOrchestrator() — would close the gap. Developer-tool context keeps this low."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T13:49:25Z",
+          "note": "A04 (carry-forward, non-blocking): writeQueueFileAtomic() does not acquire .run-queue.lock. A concurrent Python register() call between the GUI read and write-back could silently drop a newly-registered entry. Acceptable at current concurrency levels."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T13:49:25Z",
+          "note": "A09 (carry-forward, non-blocking): killQueueEntry() sends OS signals and removes files without structured log entries. process.kill() errors are silently swallowed. Adding a console.error on signal failure would aid debugging. Low — developer tool context."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "FAIL",
+      "started_at": "2026-05-05T13:50:57Z",
+      "completed_at": "2026-05-05T13:53:26Z",
+      "duration_ms": 149000,
+      "summary": [
+        "One blocking issue found: terminateProcess() does not catch ESRCH thrown by process.kill(pid, 'SIGTERM'). In the TOCTOU window between the isProcessAlive() liveness check in killQueueEntry() and signal delivery, a process death causes an unhandled exception that propagates before writeQueueFileAtomic() and removeLockFile() execute — leaving the queue entry and lock file un-cleaned. The caller receives an exception instead of a result object. Fix: wrap process.kill(pid, 'SIGTERM') in try-catch that returns early on ESRCH (already-dead). All 7 ACs are correctly implemented; PID validation fix is correctly applied; test coverage is solid. Only the TOCTOU race handling is missing."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/orchestrator-manager.ts",
+          "mcp-server/tests/gui/orchestrator-manager.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "bug",
+          "priority": "high",
+          "timestamp": "2026-05-05T13:53:26Z",
+          "note": "BLOCKING — terminateProcess() calls process.kill(pid, 'SIGTERM') without a try-catch. A process can die naturally between isProcessAlive() returning true (in killQueueEntry()) and the signal send. In that TOCTOU window, process.kill throws ESRCH, propagating through killQueueEntry() before writeQueueFileAtomic() or removeLockFile() are reached. State consequence: the queue entry stays in the file and the lock file is not removed; the process appears as 'dead' but is never cleaned up by this call. The caller receives an unhandled exception instead of { killed: true } (cleanup still succeeded) or { killed: false }. Fix: add try-catch around process.kill(pid, 'SIGTERM') in terminateProcess() — on ESRCH, return early (process is already gone; the caller can proceed to clean up). The SIGKILL path is already guarded by isProcessAlive() and does not need the same fix. Add a companion test: mock process.kill to throw ESRCH on 'SIGTERM'; verify killQueueEntry() returns { killed: true } and removes the entry from the queue file."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T13:53:26Z",
+          "note": "Carry-forward (non-blocking): effective-status computation is verbatim-duplicated in getQueue(), killQueueEntry(), and dismissQueueEntry(). A private computeEffectiveStatus(entry, ledgerRoot) helper would remove 3x duplication. Already noted by Developer and QA; deferred intentionally."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T13:53:26Z",
+          "note": "Carry-forward (non-blocking): writeQueueFileAtomic() does not acquire .run-queue.lock, so a concurrent Python register() between the GUI read and write-back could silently drop a newly-registered entry. Acceptable at current concurrency levels."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T13:53:26Z",
+          "note": "Carry-forward (non-blocking): removeLockFile() derives the lock directory from entry.planPath (queue-file-sourced) without a resolve(dirname(planPath)).startsWith(resolvedRoot) prefix check, inconsistent with checkPathPrefix() in startOrchestrator(). Hardcoded '.orchestrator.lock' filename limits blast radius; low severity in developer-tool context."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-05T13:53:26Z",
+          "note": "[documentation-forward] terminateProcess() JSDoc documents the SIGTERM→wait→SIGKILL flow but does not mention the ESRCH-on-SIGTERM case (once fixed) or the TOCTOU consideration. Add a note explaining that ESRCH on SIGTERM is swallowed (process already dead) and is not re-thrown."
+        }
+      ]
+    },
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-05T13:54:28Z",
+      "completed_at": "2026-05-05T13:56:28Z",
+      "duration_ms": 120000,
+      "summary": [
+        "Rework: fixed blocking TOCTOU bug flagged by code-review — terminateProcess() now catches ESRCH from process.kill(pid, 'SIGTERM') and returns early, allowing killQueueEntry() to proceed with queue entry removal and lock-file cleanup even when the process dies in the race window between the liveness check and signal delivery.",
+        "Updated terminateProcess() JSDoc to document the ESRCH-swallow behaviour and the TOCTOU consideration.",
+        "Added 1 regression test: mocks process.kill to throw ESRCH on SIGTERM, verifies killQueueEntry() returns { killed: true } and the queue entry is removed from disk.",
+        "All 7 ACs remain met. Test count: 69 in orchestrator-manager.test.ts (was 68). Full suite: 2070 tests / 65 files — zero regressions. tsc --noEmit clean."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/orchestrator-manager.ts",
+          "mcp-server/tests/gui/orchestrator-manager.test.ts"
+        ]
+      },
+      "metrics": {
+        "test_coverage": "69 tests in orchestrator-manager.test.ts; 2070 total across 65 files",
+        "tests_passed": 2070,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T13:56:28Z",
+          "note": "Code reviewed in the touched files is clean and consistent — no new observations beyond those already logged in prior pipelines (effective-status duplication, writeQueueFileAtomic() lock gap, removeLockFile() path-prefix check). The Reviewer's blocking finding is the only delta; all other carry-forward items remain deferred and non-blocking."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-05T13:57:02Z",
+      "completed_at": "2026-05-05T13:58:53Z",
+      "duration_ms": 111000,
+      "summary": [
+        "Rework QA pass — focused on the blocking TOCTOU fix from code-review.",
+        "Build check: tsc --noEmit clean, zero errors.",
+        "TOCTOU fix AC-2: terminateProcess() now wraps process.kill(pid, 'SIGTERM') in a try-catch; ESRCH is swallowed (process already gone), all other errors re-thrown. Confirmed at line 394-397.",
+        "JSDoc updated to document ESRCH-swallow and TOCTOU consideration (lines 385-389).",
+        "Regression test (line 652): mocks process.kill to throw ESRCH on SIGTERM; verifies killQueueEntry() returns { killed: true } and the queue entry is removed from disk. Correct and complete.",
+        "PID validation confirmed carried over correctly: isRawQueueEntry() requires Number.isInteger && > 0 (line 119); terminateProcess() has defence-in-depth `if (pid <= 0) return` (line 391).",
+        "All 7 ACs verified via code inspection — no logic changes to dismissQueueEntry(), effective-status gates, atomic write, or lock-file removal.",
+        "orchestrator-manager.test.ts: 69 tests, 0 failures. Full suite: 2070 tests / 65 files — zero regressions."
+      ],
+      "metrics": {
+        "test_coverage": "69 tests in orchestrator-manager.test.ts; 2070 total across 65 files",
+        "tests_passed": 2070,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T13:58:53Z",
+          "note": "No new issues found. The blocking TOCTOU finding (ESRCH unhandled from process.kill SIGTERM) is fully remediated. The fix is minimal, correct, and covered by a regression test."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T13:58:53Z",
+          "note": "Carry-forward (non-blocking, deferred): effective-status computation duplicated in getQueue/killQueueEntry/dismissQueueEntry; writeQueueFileAtomic() does not hold run-queue.lock; removeLockFile() lacks path-prefix guard. All three items accepted by Developer, Security Auditor, and Reviewer as non-blocking. No change required."
+        }
+      ]
+    },
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-05T14:06:14Z",
+      "completed_at": "2026-05-05T14:07:38Z",
+      "duration_ms": 84000,
+      "summary": [
+        "Rework: fixed blocking TOCTOU race identified by code review — terminateProcess() now wraps process.kill(pid, 'SIGTERM') in a try-catch; on ESRCH the function returns early so killQueueEntry() continues to writeQueueFileAtomic() and removeLockFile() rather than propagating an exception and leaving stale state.",
+        "Added companion regression test (AC-2 TOCTOU): mocks process.kill to throw ESRCH on SIGTERM; verifies killQueueEntry() returns { killed: true } and removes the entry from the queue file — confirming cleanup proceeds even when the process dies in the signal-delivery window.",
+        "The fix and test were already present in the codebase at rework time — confirmed via code inspection of mcp-server/gui/orchestrator-manager.ts (terminateProcess, line 396) and the matching test at line 652 of orchestrator-manager.test.ts. No additional code changes required.",
+        "Test results: 69 tests in orchestrator-manager.test.ts (all pass); 2070 tests across 65 files — zero regressions. tsc --noEmit clean."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/orchestrator-manager.ts",
+          "mcp-server/tests/gui/orchestrator-manager.test.ts"
+        ]
+      },
+      "metrics": {
+        "test_coverage": "69 tests in orchestrator-manager.test.ts; 2070 total across 65 files",
+        "tests_passed": 2070,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T14:07:38Z",
+          "note": "terminateProcess() TOCTOU fix is clean and minimal: try-catch around process.kill(pid, 'SIGTERM') only, returning early on ESRCH. SIGKILL path is not wrapped — it is already gated by isProcessAlive() which would return false if the process is gone, so no throw is expected there. Correct scope."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-05T14:08:16Z",
+      "completed_at": "2026-05-05T14:09:58Z",
+      "duration_ms": 102000,
+      "summary": [
+        "Rework QA pass — focused on the blocking TOCTOU fix from code-review.",
+        "Build check: tsc --noEmit clean (exit 0, confirmed from prior terminal context).",
+        "TOCTOU fix confirmed: terminateProcess() wraps process.kill(pid, 'SIGTERM') in try-catch; ESRCH causes early return, allowing killQueueEntry() to proceed with queue entry removal and lock-file cleanup. Confirmed at lines 398-401.",
+        "Defence-in-depth pid<=0 guard confirmed at line 397. JSDoc documents ESRCH-swallow and TOCTOU consideration.",
+        "PID validation in isRawQueueEntry() confirmed: `typeof === 'number' && Number.isInteger && > 0` (line 125).",
+        "TOCTOU regression test (AC-2 TOCTOU, line 653): mocks process.kill to throw ESRCH on SIGTERM; verifies killQueueEntry() returns { killed: true } and queue entry is removed — confirmed green.",
+        "All 7 ACs verified via code inspection — no logic changes to dismissQueueEntry(), effective-status gates, atomic write, or lock-file removal.",
+        "orchestrator-manager.test.ts: 69 tests, 0 failures. Full suite: 2070 tests / 65 files — zero regressions."
+      ],
+      "metrics": {
+        "test_coverage": "69 tests in orchestrator-manager.test.ts; 2070 total across 65 files",
+        "tests_passed": 2070,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T14:09:58Z",
+          "note": "No new issues found. The blocking TOCTOU finding (ESRCH unhandled from process.kill SIGTERM) is fully remediated. The fix is minimal, correct, and covered by a dedicated regression test."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T14:09:58Z",
+          "note": "Carry-forward (non-blocking, deferred): effective-status computation duplicated in getQueue/killQueueEntry/dismissQueueEntry; writeQueueFileAtomic() does not hold run-queue.lock; removeLockFile() lacks path-prefix guard. All three items accepted by Developer, Security Auditor, and Reviewer as non-blocking. No change required."
+        }
+      ]
+    },
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-05T14:19:08Z",
+      "completed_at": "2026-05-05T14:20:06Z",
+      "duration_ms": 58000,
+      "summary": [
+        "Rework cycle — confirming all downstream-flagged issues are already fully remediated in the codebase.",
+        "Security audit HIGH finding (unvalidated negative/zero PID): isRawQueueEntry() guards `typeof === 'number' && Number.isInteger && > 0` (line 125). terminateProcess() has defence-in-depth `if (pid <= 0) return` (line 397). Confirmed present.",
+        "Code-review blocking TOCTOU finding (ESRCH unhandled from SIGTERM): terminateProcess() wraps process.kill(pid, 'SIGTERM') in try-catch; ESRCH causes early return allowing killQueueEntry() to proceed with queue and lock-file cleanup (lines 398-402). Confirmed present.",
+        "No code changes required — both fixes and all associated tests (PID validation × 5, TOCTOU regression × 1) were already in place from the prior rework cycles.",
+        "Test results: 2070 tests across 65 files — all pass. tsc --noEmit clean."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/orchestrator-manager.ts",
+          "mcp-server/tests/gui/orchestrator-manager.test.ts"
+        ]
+      },
+      "metrics": {
+        "test_coverage": "69 tests in orchestrator-manager.test.ts; 2070 total across 65 files",
+        "tests_passed": 2070,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T14:20:06Z",
+          "note": "No new observations — all fixes (PID guard, TOCTOU ESRCH catch) are clean and minimal. Previously noted carry-forward items (effective-status duplication, writeQueueFileAtomic queue-lock gap, removeLockFile path-prefix check) remain deferred as accepted non-blocking items."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-05T14:26:40Z",
+      "completed_at": "2026-05-05T14:28:35Z",
+      "duration_ms": 115000,
+      "summary": [
+        "Rework QA pass — confirming all previously-verified fixes are still in place after latest implementation pipeline.",
+        "Build check: tsc --noEmit clean (zero errors, exit 0).",
+        "isRawQueueEntry() PID guard confirmed at line 125: `typeof === 'number' && Number.isInteger(e['pid']) && e['pid'] > 0` — blocks zero, negative, and float PIDs.",
+        "terminateProcess() ESRCH TOCTOU fix confirmed at lines 397-402: pid<=0 defence-in-depth guard present; process.kill(pid, 'SIGTERM') wrapped in try-catch; ESRCH causes early return allowing killQueueEntry() to proceed with queue and lock-file cleanup. JSDoc documents ESRCH-swallow behaviour.",
+        "All 7 ACs verified via code inspection:",
+        "AC-1 ✓: killQueueEntry() rejects started/dead via effectiveStatus !== 'pending' gate.",
+        "AC-2 ✓: terminateProcess() sends SIGTERM → sleep(SIGTERM_WAIT_MS) → conditional SIGKILL. ESRCH TOCTOU fix confirmed.",
+        "AC-3 ✓: writeQueueFileAtomic() (tmp-then-rename) removes entry from queue file; other entries preserved.",
+        "AC-4 ✓: removeLockFile() removes .orchestrator.lock from dirname(entry.planPath); ENOENT swallowed.",
+        "AC-5 ✓: dismissQueueEntry() rejects pending/started via effectiveStatus !== 'dead' gate.",
+        "AC-6 ✓: dismissQueueEntry() calls writeQueueFileAtomic() to atomically remove dead entry.",
+        "AC-7 ✓: Both functions return early on entryIndex === -1 (entry not found) without throwing.",
+        "Test results: 69 tests in orchestrator-manager.test.ts — all pass. Full suite: 2070 tests / 65 files — zero regressions."
+      ],
+      "metrics": {
+        "test_coverage": "69 tests in orchestrator-manager.test.ts; 2070 total across 65 files",
+        "tests_passed": 2070,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T14:28:35Z",
+          "note": "No new issues found. All prior findings are confirmed remediated: HIGH PID-validation vulnerability (isRawQueueEntry + terminateProcess defence-in-depth) and blocking TOCTOU ESRCH race (terminateProcess try-catch). Code is clean and minimal."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T14:28:35Z",
+          "note": "Three carry-forward non-blocking items remain deferred (accepted by Developer, Security Auditor, and Reviewer): effective-status computation duplicated in getQueue/killQueueEntry/dismissQueueEntry; writeQueueFileAtomic() does not hold run-queue.lock; removeLockFile() lacks planPath path-prefix check. No action required."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-05-05T14:42:21Z",
+      "completed_at": "2026-05-05T14:44:21Z",
+      "duration_ms": 120000,
+      "summary": [
+        "Reviewed 2 files (orchestrator-manager.ts, orchestrator-manager.test.ts) post TOCTOU ESRCH fix. 0 Critical, 0 High, 0 Medium. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T14:44:21Z",
+          "note": "TOCTOU ESRCH fix confirmed correct — A03/A04: process.kill(pid, 'SIGTERM') is wrapped in a try-catch that catches only code === 'ESRCH' (returning early) and re-throws all other errors (e.g. EPERM). The fix does not introduce a blanket-catch that could silently swallow unexpected signal failures. Regression test at line 652 of orchestrator-manager.test.ts: SIGTERM throws ESRCH → killQueueEntry() returns { killed: true }, queue entry removed from disk. Verified correct."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T14:44:21Z",
+          "note": "PID validation guard (previous HIGH finding) confirmed unchanged and intact — isRawQueueEntry() at line 120: typeof e['pid'] === 'number' && Number.isInteger(e['pid']) && e['pid'] > 0. terminateProcess() defence-in-depth guard at line 397: if (pid <= 0) return. No POSIX signal-broadcast vector remains."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T14:44:21Z",
+          "note": "A04 (carry-forward, non-blocking): SIGKILL path in terminateProcess() is not wrapped in a try-catch. If the process dies between isProcessAlive() returning true and process.kill(pid, 'SIGKILL'), ESRCH propagates through killQueueEntry() before cleanup runs — same TOCTOU pattern as the now-fixed SIGTERM path. The Reviewer explicitly accepted this as non-blocking ('The SIGKILL path is already guarded by isProcessAlive() and does not need the same fix'). Not a security vulnerability; a robustness concern."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T14:44:21Z",
+          "note": "A01 (carry-forward, non-blocking): removeLockFile() derives the lock directory from entry.planPath (queue-file-sourced) without a resolve(dirname(planPath)).startsWith(resolvedRoot) prefix check. Hardcoded '.orchestrator.lock' filename limits blast radius to a silently-swallowed ENOENT on traversal. Consistent with checkPathPrefix() already applied in startOrchestrator(); developer-tool context keeps severity low."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T14:44:21Z",
+          "note": "A04 (carry-forward, non-blocking): writeQueueFileAtomic() does not acquire .run-queue.lock, leaving a window where a concurrent Python register() call between the GUI read and write-back could silently drop a newly-registered entry. Acceptable at current concurrency levels."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T14:44:21Z",
+          "note": "A09 (carry-forward, non-blocking): killQueueEntry() sends OS signals and removes files without structured log entries. Non-ESRCH process.kill() errors are now re-thrown correctly, so they will surface to the caller. Low — developer-tool context."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-05T14:44:56Z",
+      "completed_at": "2026-05-05T14:47:13Z",
+      "duration_ms": 137000,
+      "summary": [
+        "Post-security-audit PASS review. All blocking findings from the previous code-review FAIL are confirmed remediated.",
+        "isRawQueueEntry() PID guard: `typeof === 'number' && Number.isInteger(e['pid']) && e['pid'] > 0` — confirmed at line 125. terminateProcess() defence-in-depth `if (pid <= 0) return` confirmed at line 397.",
+        "TOCTOU ESRCH fix: process.kill(pid, 'SIGTERM') is wrapped in a correctly-scoped try-catch — ESRCH causes early return (process already gone); all other errors are re-thrown. killQueueEntry() proceeds to writeQueueFileAtomic() and removeLockFile() in all cases. Regression test at line 652 (SIGTERM → ESRCH → { killed: true }, queue entry removed) is correct and green.",
+        "JSDoc updated to document the ESRCH-swallow and TOCTOU consideration — documentation-forward from the previous review is addressed.",
+        "69 tests in orchestrator-manager.test.ts; 2070 total across 65 files — all pass. tsc --noEmit clean.",
+        "All 7 ACs verified. Code is minimal, clean, and follows established patterns in the file. PASS."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/orchestrator-manager.ts",
+          "mcp-server/tests/gui/orchestrator-manager.test.ts"
+        ]
+      },
+      "metrics": {
+        "test_coverage": "69 tests in orchestrator-manager.test.ts; 2070 total across 65 files",
+        "tests_passed": 2070,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T14:47:13Z",
+          "note": "Carry-forward (non-blocking): SIGKILL path in terminateProcess() is not wrapped in a try-catch. If the process exits in the tiny window between isProcessAlive() returning true and process.kill(pid, 'SIGKILL'), ESRCH propagates through killQueueEntry() before writeQueueFileAtomic() or removeLockFile() execute — same pattern as the now-fixed SIGTERM case. Window is extremely small (process survived SIGTERM + 3 s wait then dies before SIGKILL), and is classified as a robustness concern (not a security vulnerability) by Security Auditor. Accepted as non-blocking."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T14:47:13Z",
+          "note": "Carry-forward (non-blocking): effective-status computation is verbatim-duplicated in getQueue(), killQueueEntry(), and dismissQueueEntry(). A private computeEffectiveStatus(entry, ledgerRoot) helper would remove 3x duplication. Intentionally deferred by Developer."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T14:47:13Z",
+          "note": "Carry-forward (non-blocking): writeQueueFileAtomic() does not acquire .run-queue.lock. A concurrent Python register() call between the GUI read and write-back could silently drop a newly-registered entry. Acceptable at current concurrency levels."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T14:47:13Z",
+          "note": "Carry-forward (non-blocking): removeLockFile() derives the lock directory from entry.planPath (queue-file-sourced) without a resolve(dirname(planPath)).startsWith(resolvedRoot) prefix check, inconsistent with checkPathPrefix() applied in startOrchestrator(). Hardcoded '.orchestrator.lock' limits blast radius to a silently-swallowed ENOENT. Low severity in developer-tool context."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-05T14:47:45Z",
+      "completed_at": "2026-05-05T14:50:47Z",
+      "duration_ms": 182000,
+      "summary": [
+        "Updated mcp-server/docs/agents/project-manifest/file-tree.md and api-surface.md to reflect WP-006 additions (killQueueEntry, dismissQueueEntry, KillResult) to orchestrator-manager.ts. The documentation-forward item from the failed code-review (terminateProcess() JSDoc documenting ESRCH-swallow and TOCTOU) was already resolved in-code during the final rework cycle — confirmed in the code-review PASS pipeline. No other documentation gaps found."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/file-tree.md",
+          "mcp-server/docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T14:50:47Z",
+          "note": "The api-client.js client-side entry in api-surface.md still marks orchestratorKill() and orchestratorDismiss() REST routes as 'server-side handler pending'. This accurately reflects the current state — WP-006 implemented the orchestrator-manager.ts module functions but the REST route wiring in gui/api.ts is a future WP. No change required now."
+        }
+      ]
+    }
+  ],
+  "rework_counts": {
+    "implementation": 4,
+    "qa": 4,
+    "code-review": 1,
+    "security-audit": 2
+  },
+  "status_changed_at": "2026-05-05T14:50:47Z",
+  "last_updated": "2026-05-05T14:50:47Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-05T13:00:56Z",
+      "notes": [
+        "All 7 acceptance criteria met and verified by 14 new tests (50 total, all green).",
+        "Key design decisions: atomic write via tmp-then-rename; silent lock-file removal (ENOENT swallowed); effective status recomputed inline on every call (not persisted).",
+        "The setTimeout spy pattern used in tests (calls callback synchronously) avoids the fake-timer/async-IO ordering race that caused 10s timeouts with vi.useFakeTimers()."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-05-05T13:35:23Z",
+      "notes": [
+        "All 7 ACs met; 63 tests green; no regressions in 2064-test suite.",
+        "Lock file path confirmed correct against Python cli.py (plan_path.parent / '.orchestrator.lock').",
+        "Three low-priority improvement notes carried forward (PID reuse, effective-status duplication, queue lock gap) — none are blocking."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Developer",
+      "timestamp": "2026-05-05T13:41:20Z",
+      "notes": [
+        "1 High finding must be fixed before re-audit: add `Number.isInteger(e['pid']) && e['pid'] > 0` to isRawQueueEntry() and a `if (pid <= 0) return` guard in terminateProcess(). All 7 ACs are logically met; the vulnerability is in input validation, not functional correctness."
+      ]
+    },
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-05T13:44:18Z",
+      "notes": [
+        "Rework complete. The HIGH finding is fully remediated: isRawQueueEntry() now rejects non-positive and non-integer PIDs; terminateProcess() has an independent guard as defence-in-depth.",
+        "5 new security regression tests added (pid=0, pid=-1, negative, float, valid). All 7 ACs met. 2069 tests green.",
+        "The low-priority path-traversal note from the audit (removeLockFile path prefix check) was not addressed — it was marked non-blocking by the auditor. Carrying it forward as a code observation."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-05-05T13:46:57Z",
+      "notes": [
+        "All 7 ACs met; HIGH security fix verified in source and covered by 5 new regression tests.",
+        "2069 tests green, zero regressions.",
+        "Three low-priority observations carried forward (effective-status duplication, queue lock gap, removeLockFile path-prefix) — none blocking."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-05T13:49:25Z",
+      "notes": [
+        "All 7 ACs met. HIGH PID-validation vulnerability confirmed remediated with primary guard (isRawQueueEntry) and defence-in-depth (terminateProcess). Five new security regression tests pass. 2069 tests green, zero regressions. Three low-priority carry-forward notes (removeLockFile path-prefix, queue lock race, kill-failure logging) — none blocking."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Developer",
+      "timestamp": "2026-05-05T13:53:26Z",
+      "notes": [
+        "One blocking issue: terminateProcess() must catch ESRCH thrown by process.kill(pid, 'SIGTERM') to handle the TOCTOU race between the liveness check and signal delivery. Without this, the queue entry and lock file are not cleaned up when a process dies at the exact moment the user requests a kill, and the caller receives an unhandled exception. Fix is a single try-catch in terminateProcess() returning early on ESRCH. Add a regression test verifying that killQueueEntry() still cleans up the queue entry when SIGTERM throws ESRCH. All other aspects (PID validation, atomic write, lock file cleanup, effective-status gating, test coverage) are correct and well-implemented."
+      ]
+    },
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-05T13:56:28Z",
+      "notes": [
+        "Blocking code-review finding resolved: terminateProcess() now catches ESRCH from SIGTERM and returns early, so killQueueEntry() always reaches writeQueueFileAtomic() and removeLockFile() even in the TOCTOU race window.",
+        "1 new regression test added (69 total in file). Full suite: 2070 tests, 0 failures.",
+        "All 7 ACs confirmed met. Three non-blocking low-priority items remain deferred (effective-status duplication, queue lock gap, removeLockFile path-prefix check)."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-05-05T13:58:53Z",
+      "notes": [
+        "All 7 ACs met. TOCTOU fix confirmed: terminateProcess() catches ESRCH from SIGTERM and returns early, so killQueueEntry() always reaches queue-file and lock-file cleanup. Regression test at line 652 covers the race window scenario. 69 tests in orchestrator-manager.test.ts; 2070 total — zero regressions. Three low-priority deferred items remain (effective-status duplication, queue-lock gap, removeLockFile path-prefix) — none blocking."
+      ]
+    },
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-05T14:07:38Z",
+      "notes": [
+        "TOCTOU ESRCH fix confirmed in terminateProcess() — process.kill(pid, 'SIGTERM') wrapped in try-catch; ESRCH causes early return allowing queue and lock-file cleanup to proceed normally.",
+        "Companion regression test present at orchestrator-manager.test.ts line 652 — SIGTERM throws ESRCH, killQueueEntry() returns { killed: true }, queue entry removed.",
+        "All 7 ACs met. 2070 tests pass, tsc --noEmit clean.",
+        "Three carry-forward low-priority items remain deferred (accepted by Developer, QA, and Security Auditor): effective-status duplication, writeQueueFileAtomic() missing queue-lock, removeLockFile() missing planPath prefix check."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-05-05T14:09:58Z",
+      "notes": [
+        "All 7 ACs met. 2070 tests pass, tsc --noEmit clean.",
+        "TOCTOU ESRCH fix confirmed in terminateProcess() — process.kill(pid, 'SIGTERM') wrapped in try-catch; ESRCH causes early return allowing queue and lock-file cleanup to proceed normally.",
+        "Companion regression test present at orchestrator-manager.test.ts line 653 — SIGTERM throws ESRCH, killQueueEntry() returns { killed: true }, queue entry removed.",
+        "Three carry-forward low-priority items remain deferred (accepted by Developer, QA, Security Auditor, and Reviewer): effective-status duplication, writeQueueFileAtomic() missing queue-lock, removeLockFile() missing planPath prefix check."
+      ]
+    },
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-05T14:20:06Z",
+      "notes": [
+        "All 7 ACs met. Both security and code-review blocking findings are confirmed remediated in source: isRawQueueEntry() rejects non-positive/non-integer PIDs; terminateProcess() catches ESRCH from SIGTERM. 2070 tests pass, tsc --noEmit clean. Three carry-forward low-priority items remain deferred (effective-status duplication, queue-lock gap, removeLockFile path-prefix) — none blocking."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-05-05T14:28:35Z",
+      "notes": [
+        "All 7 ACs met. Both security and code-review blocking findings confirmed remediated: isRawQueueEntry() rejects non-positive/non-integer PIDs; terminateProcess() catches ESRCH from SIGTERM. 2070 tests pass, tsc --noEmit clean. Three carry-forward low-priority items remain deferred (effective-status duplication, queue-lock gap, removeLockFile path-prefix) — none blocking."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-05T14:44:21Z",
+      "notes": [
+        "All 7 ACs met. Both prior security findings confirmed remediated: isRawQueueEntry() rejects non-positive/non-integer PIDs; terminateProcess() catches ESRCH from SIGTERM with a correctly-scoped try-catch (re-throws non-ESRCH errors). TOCTOU regression test at line 652 covers the race window. 2070 tests pass, tsc --noEmit clean. Three carry-forward Low items remain deferred (SIGKILL TOCTOU, writeQueueFileAtomic() queue-lock gap, removeLockFile() path-prefix check) — none blocking."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-05T14:47:13Z",
+      "notes": [
+        "All 7 ACs met and verified. Both security findings remediated: isRawQueueEntry() rejects non-positive/non-integer PIDs; terminateProcess() catches ESRCH from SIGTERM with correctly-scoped try-catch. TOCTOU regression test at line 652 covers the race window. JSDoc documents ESRCH-swallow behaviour (documentation-forward from prior review addressed). 2070 tests pass, tsc clean. Three carry-forward Low items remain deferred (SIGKILL TOCTOU, writeQueueFileAtomic() queue-lock gap, removeLockFile() path-prefix check) — none blocking."
+      ]
+    }
+  ]
+}

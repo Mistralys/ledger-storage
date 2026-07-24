@@ -1,0 +1,177 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "PIPELINE_AGENT_MAP[args.type] === args.agent_role is now a passing condition in the IN_PROGRESS branch of begin-work.ts",
+      "met": true
+    },
+    {
+      "criterion": "getProjectManagerAction accepts an optional wpDetails parameter; when provided, the internal Promise.all disk fetch is skipped",
+      "met": true
+    },
+    {
+      "criterion": "The call site in the switch statement passes pre-loaded wpDetails to getProjectManagerAction",
+      "met": true
+    },
+    {
+      "criterion": "A named getSynthesisAction() function exists and the switch case delegates to it",
+      "met": true
+    },
+    {
+      "criterion": "No behavioral change to any existing functionality",
+      "met": true
+    }
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-02T08:33:26Z",
+      "completed_at": "2026-03-02T09:15:36Z",
+      "summary": [
+        "Fix 1: Relaxed the IN_PROGRESS guard in begin-work.ts — now accepts both the current assignee and the legitimate pipeline-type owner (PIPELINE_AGENT_MAP[type] === agent_role) instead of assignee-only. Resolves cross-agent handoff failures when using ledger_begin_work.",
+        "Fix 2: Added optional preloadedWpDetails parameter to getProjectManagerAction (matching pattern of getDeveloperAction/getQaAction/getReviewerAction/getDocumentationAction); updated the switch call site to pass the top-level pre-loaded wpDetails, eliminating the redundant internal Promise.all fetch.",
+        "Fix 3: Extracted getSynthesisAction() named helper from the inline object literal in the Synthesis switch case, matching the style of all other agent-role helpers.",
+        "Tests: Added 3 new cross-agent handoff tests (QA←Developer-assigned WP, Reviewer←QA-assigned WP, Documentation←Reviewer-assigned WP); narrowed existing rejection test to require both assignment-guard and pipeline-owner-guard to fail simultaneously. All 986 tests pass (983 original + 3 new)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/tools/begin-work.ts",
+          "mcp-server/src/tools/workflow-next-action.ts",
+          "mcp-server/tests/tools/begin-work.test.ts",
+          "mcp-server/docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 986,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-02T10:15:00Z",
+          "note": "begin-work.ts IN_PROGRESS guard: the relaxed compound check (assignee OR pipeline-type owner) is correct. The guard-violations describe block still has a distinct test for the PIPELINE_AGENT_MAP agent-role check via the pipeline-start phase — no redundancy issue, the two tests cover different code paths."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-02T10:15:00Z",
+          "note": "getSynthesisAction() in workflow-next-action.ts is intentionally module-internal (not exported) to keep the public API surface minimal, consistent with other internal helpers in the same file. Should be exported if future agents need direct access."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-02T09:17:55Z",
+      "completed_at": "2026-03-02T09:18:05Z",
+      "summary": [
+        "All 5 acceptance criteria verified by source inspection and test execution.",
+        "Build: tsc clean. All 986 tests pass (33 files, 3.84s). Zero regressions.",
+        "AC1: compound isPipelineOwner guard (PIPELINE_AGENT_MAP[type] === agent_role) confirmed in begin-work.ts IN_PROGRESS branch at lines 125-131.",
+        "AC2: getProjectManagerAction optional preloadedWpDetails param with null-coalescing skip (preloadedWpDetails ?? await Promise.all(...)) confirmed at workflow-next-action.ts line 304.",
+        "AC3: call site at line 218 passes top-level wpDetails to getProjectManagerAction, eliminating redundant disk fetch.",
+        "AC4: named getSynthesisAction() function at line 276 exists (module-internal, consistent with other helpers); switch case delegates via getSynthesisAction() at line 233.",
+        "AC5: zero behavioral regressions — all 983 original tests intact plus 3 new cross-agent handoff tests (QA←Developer, Reviewer←QA, Documentation←Reviewer)."
+      ],
+      "metrics": {
+        "test_coverage": "All AC code paths exercised by existing + new unit tests",
+        "tests_passed": 986,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-02T10:30:00Z",
+          "note": "Edge case verified: undefined wp.assigned_to in IN_PROGRESS branch — compound guard (wp.assigned_to !== agent_role && !isPipelineOwner) evaluates safely; undefined !== 'QA' is true, so isPipelineOwner becomes the sole gate, which is the correct path."
+        },
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-02T10:30:00Z",
+          "note": "MCP server instance connected to the IDE still runs pre-fix compiled code (observed old error message 'Only the assigned agent may start...' vs new 'Only the assigned agent or the legitimate pipeline-type owner...'). Server restart required post-deployment. Deployment concern only, not a code defect."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-02T09:21:23Z",
+      "completed_at": "2026-03-02T09:22:13Z",
+      "summary": [
+        "All three fixes pass review across all four dimensions (Maintainability, Best Practices, Security/Performance, Future Context). No blocking issues found.",
+        "Fix 1: guard logic is minimal, spec-compliant, and correctly scoped. Compound check avoids false rejections while preserving all existing security boundaries. Defence-in-depth via the pipeline-start PIPELINE_AGENT_MAP validation below the gate.",
+        "Fix 2: preloadedWpDetails optional param follows the established pattern of all other getXxxAction helpers. null-coalescing fallback ensures backward compatibility for isolated callers.",
+        "Fix 3: getSynthesisAction() is correctly synchronous — the only action helper that doesn't perform I/O. Switch case handles the sync return with no spurious await.",
+        "986/986 tests pass. Review pipeline itself validated the fix live: ledger_begin_work succeeded for Reviewer→QA handoff after server restart."
+      ],
+      "metrics": {
+        "test_coverage": "All new code paths exercised by 3 cross-agent handoff tests; narrowed rejection test covers the compound-guard boundary precisely",
+        "tests_passed": 986,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-02T09:22:00Z",
+          "note": "Fix 1 — guard logic is minimal and correct. The compound check (wp.assigned_to !== agent_role && !isPipelineOwner) is the smallest spec-compliant change. The inline comment referencing §9.1/§16.5 is an excellent addition. The pipeline-start phase's own PIPELINE_AGENT_MAP validation provides defence-in-depth after the IN_PROGRESS gate, so there is no security regression."
+        },
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-02T09:22:00Z",
+          "note": "Fix 1 — test coverage is precise. The three cross-agent handoff tests each assert claimed:false, pipeline IN_PROGRESS, AND assigned_to updated to the new agent — confirming the pipeline-start phase auto-update ran correctly. The rejection test requires BOTH guards to fail simultaneously (Developer attempting a qa pipeline on a QA-assigned WP), preventing false-positive passes."
+        },
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-02T09:22:00Z",
+          "note": "Fix 2 — preloadedWpDetails ?? await Promise.all(...) null-coalescing is idiomatic and safe. The fallback path ensures the function still works when called in isolation (e.g., from tests), while the happy path eliminates N extra disk reads per PM-role call to get_next_action. No behavioral change."
+        },
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-02T09:22:00Z",
+          "note": "Fix 3 — getSynthesisAction() is correctly synchronous (no async/await needed). All other agent-role helpers are async because they perform I/O; Synthesis is intentionally sync. The switch case handles this correctly with no spurious await. Style-consistency improvement with the correct technical choice."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-03-02T09:22:00Z",
+          "note": "Gold Nugget: the review process itself provided a live meta-validation of Fix 1. The Reviewer agent was blocked by the exact bug under review (old error: 'Only the assigned agent...'), then unblocked after killing the stale MCP server process, and ledger_begin_work succeeded on the first retry — the strongest possible integration test of the fix."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-02T09:22:57Z",
+      "completed_at": "2026-03-02T09:24:41Z",
+      "summary": [
+        "api-surface.md was already updated by the implementation pipeline with all three changes: ledger_begin_work cross-agent handoff guard behavior (IN_PROGRESS: OR compound), getProjectManagerAction optional preloadedWpDetails parameter, and getSynthesisAction() named function. Added v1.8.1 changelog entry to mcp-server/changelog.md documenting the Fixed (begin-work.ts guard relaxation), Changed (workflow-next-action.ts getProjectManagerAction + getSynthesisAction), and Tests sections. README.md tool count unchanged (no new tools). No other documentation gaps found."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/changelog.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-02T09:30:00Z",
+          "note": "api-surface.md was already updated by the implementation pipeline (listed in artifacts). Documentation pass confirmed all three changes are accurately and fully reflected. Changelog entry (v1.8.1) added as the only missing documentation artifact."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-03-02T09:24:41Z"
+}

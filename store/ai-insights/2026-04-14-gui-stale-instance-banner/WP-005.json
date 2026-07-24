@@ -1,0 +1,210 @@
+{
+  "work_package_id": "WP-005",
+  "work_package_file": "work/WP-005.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-004",
+    "WP-002"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "StaleCheck.init() calls API.getServerInfo() immediately and then every 30 seconds.",
+      "met": true
+    },
+    {
+      "criterion": "When server responds with stale: true, a .stale-banner element appears at the very top of the page (before <header>).",
+      "met": true
+    },
+    {
+      "criterion": "The banner lists only the components whose versions differ between boot and disk.",
+      "met": true
+    },
+    {
+      "criterion": "Polling stops after the banner is inserted (no further API calls).",
+      "met": true
+    },
+    {
+      "criterion": "The banner survives SPA route changes (injected into document.body, not #app).",
+      "met": true
+    },
+    {
+      "criterion": "If the API call fails (network error), polling continues silently (no crash, no banner).",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-14T10:38:17Z",
+      "completed_at": "2026-04-14T10:43:27Z",
+      "duration_ms": 310000,
+      "summary": [
+        "Created gui/public/stale-check.js: StaleCheck IIFE module that polls API.getServerInfo() immediately on init() and every 30 seconds thereafter. When stale:true, injects a .stale-banner element into document.body before <header> (SPA-safe), lists only changed components using bootVersions vs diskVersions comparison, stops polling after banner insertion, and silently continues on API errors.",
+        "Added tests/gui/stale-check.test.ts: 10 tests covering all 6 acceptance criteria — immediate poll, 30-second interval, banner insertion position, changed-component listing, polling stop, and silent error handling. All 1826 tests pass.",
+        "Note: WP scope listed mcp-server/gui/public/js/stale-check.js but no js/ subdirectory exists; placed at gui/public/stale-check.js consistent with all other client modules. WP-006 handles HTML/<script> integration."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/stale-check.js",
+          "mcp-server/tests/gui/stale-check.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-14T10:43:27Z",
+          "note": "stale-check.js uses ES5-compatible var/function syntax to match the existing client module convention. If the project ever targets ES6+ exclusively, these modules could be converted to const/let/arrow-functions for consistency."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-14T10:43:27Z",
+          "note": "The WP-005 and WP-006 spec files reference a js/ subdirectory (mcp-server/gui/public/js/) that does not exist; all client scripts live directly at gui/public/. The specs appear to have a copy-paste error in the scope paths."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-14T10:44:00Z",
+      "completed_at": "2026-04-14T10:46:02Z",
+      "duration_ms": 122000,
+      "summary": [
+        "All 6 acceptance criteria verified via code review and 10 dedicated unit tests. Full regression run: 1826/1826 tests pass across 61 test files. No regressions introduced.",
+        "AC1 (immediate poll + 30s interval): init() calls _poll() immediately then sets setInterval with POLL_INTERVAL_MS=30000. Test 'calls API.getServerInfo immediately on init' and 'polls again after 30 seconds' confirm.",
+        "AC2 (banner before <header>): _insertBanner() uses document.body.insertBefore(banner, header) with header = document.querySelector('body > header'). Falls back to firstChild if no <header>. Test 'inserts the banner before <header>' confirms.",
+        "AC3 (changed components only): _detectChanges() iterates COMPONENT_LABELS, compares bootVersions[key] vs diskVersions[key], only appends entries where values differ. Test 'lists only components whose versions differ' confirms Personas and Orchestrator are absent when only mcpServer changed.",
+        "AC4 (polling stops after banner): _stopPolling() is called before _insertBanner() in _poll(). Test 'stops polling after the banner is inserted' advances 60s after stale response and asserts getServerInfo called exactly once.",
+        "AC5 (SPA route survival): Banner is inserted into document.body directly, not #app. Confirmed in _insertBanner() implementation and DOM assertion tests.",
+        "AC6 (silent error on network failure): .catch handler is a no-op. Test 'continues polling silently when the API call rejects' mocks a rejection then verifies no banner and polling resumes on next interval."
+      ],
+      "metrics": {
+        "test_coverage": "10/10 AC-covering tests pass; 1826/1826 total suite tests pass",
+        "tests_passed": 10,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-04-14T10:46:02Z",
+          "note": "Double init() leaks a zombie interval: _intervalId is overwritten without clearing the prior handle, so if init() is called twice before staleness, both intervals fire until only the second is cleaned up by _stopPolling(). The _bannerInserted guard prevents duplicate banners but continued polling violates AC4 in that scenario. WP-006 should ensure init() is called exactly once; optionally add a _stopPolling() guard at the top of init() for defensive safety."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-04-14T10:46:02Z",
+          "note": "_detectChanges() uses `bootVersions && bootVersions[key]` which evaluates to null (not undefined) when bootVersions is null. Since null !== undefined, a null bootVersions object could falsely register a changed component. Not triggerable in practice — server only sets stale:true when both version objects are present — but a stricter null-object guard would be more robust."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-14T10:46:39Z",
+      "completed_at": "2026-04-14T10:48:36Z",
+      "duration_ms": 117000,
+      "summary": [
+        "Code review PASS with two Fix-Forward improvements applied directly.",
+        "The implementation is clean, well-structured, and correctly satisfies all 6 ACs. The IIFE module pattern, ES5 style, and function decomposition (_poll, _stopPolling, _detectChanges, _insertBanner) are consistent with the existing client module convention and show good separation of concerns.",
+        "Fix-Forward #1: Corrected the null-check in _detectChanges. The prior `bootVersions && bootVersions[key]` truthy-check returns null (not undefined) when bootVersions is null, defeating the `!== undefined` guard and risking a false-positive change entry. Replaced with `bootVersions != null ? bootVersions[key] : undefined` which correctly produces undefined for null/undefined objects. Same fix applied to diskVersions.",
+        "Fix-Forward #2: Added `_stopPolling()` at the top of init() to make it idempotent. Without this, a second call to init() before staleness overwrites _intervalId without clearing the first handle, leaving a zombie interval that continues firing indefinitely. The single-character addition is non-behavioral when init() is called once (the intended usage) and removes a latent maintenance hazard before WP-006 wires the call in app.js.",
+        "All 1826 tests pass after both fixes (61 test files, 0 regressions)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/stale-check.js",
+          "mcp-server/tests/gui/stale-check.test.ts"
+        ]
+      },
+      "metrics": {
+        "test_coverage": "1826/1826 pass (61 files)",
+        "tests_passed": 1826,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "medium",
+          "timestamp": "2026-04-14T10:48:36Z",
+          "note": "Fix-Forward: Corrected null-check in _detectChanges(). `bootVersions && bootVersions[key]` short-circuits to null when bootVersions is null, so `boot !== undefined` evaluates to `null !== undefined` → true, risking a false-positive changed-component entry. Changed to `bootVersions != null ? bootVersions[key] : undefined` (and same for diskVersions) so the undefined guard works correctly in all cases."
+        },
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-14T10:48:36Z",
+          "note": "Fix-Forward: Added `_stopPolling()` as first statement in init() to make it idempotent. Without this, calling init() twice before staleness orphans the first interval handle, violating AC4 ('polling stops after banner is inserted') in that scenario. The fix is a single line and has zero impact when init() is called exactly once."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-14T10:48:36Z",
+          "note": "[documentation-forward] stale-check.test.ts uses `vm.runInThisContext(staleCheckJs)` in beforeEach to reset IIFE internal state per test. This pattern is unusual compared to ES module imports — add a comment explaining why it is necessary (IIFE module variables can't be reset via import cache; vm.runInThisContext re-executes the module in the current context, resetting _bannerInserted and _intervalId for each test)."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-14T10:49:19Z",
+      "completed_at": "2026-04-14T10:51:29Z",
+      "duration_ms": 130000,
+      "summary": [
+        "Updated mcp-server/docs/agents/project-manifest/file-tree.md: added stale-check.js entry under gui/public/ with a description of its StaleCheck IIFE behaviour (immediate poll, 30 s interval, banner injection, error silence); added stale-check.test.ts entry under tests/gui/ noting the 10 AC-covering tests and the jsdom + vm.runInThisContext + fake-timer harness.",
+        "Addressed the code-review documentation-forward item: expanded the vm.runInThisContext comment in stale-check.test.ts to explain why IIFE state cannot be reset via the Node module cache and how vm.runInThisContext re-executes the source string in the current V8 context to give each test a fresh module instance."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/file-tree.md",
+          "mcp-server/tests/gui/stale-check.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-14T10:51:29Z",
+          "note": "No README.md update was needed: stale-check.js is an internal Dashboard SPA module with no public API, configuration surface, or user-facing behaviour that requires user documentation. All relevant detail is captured in file-tree.md."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-14T10:51:29Z",
+  "last_updated": "2026-04-14T10:51:29Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-14T10:43:27Z",
+      "notes": [
+        "stale-check.js is at gui/public/stale-check.js (no js/ subdirectory). WP-006 (HTML + app.js wiring) should reference /stale-check.js in the <script> tag and update app.js to call StaleCheck.init() after Router.init()."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-14T10:46:02Z",
+      "notes": [
+        "All 6 AC verified and passing. Two low-priority observations logged (double-init zombie interval, null-object false positive in _detectChanges) — neither blocks the CR. Reviewer should note: (1) stale-check.js is at gui/public/stale-check.js (no js/ subdirectory); WP-006 must reference /stale-check.js in the script tag. (2) Consider adding a _stopPolling() guard at the top of init() to make it idempotent/safe against double-call."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-14T10:48:36Z",
+      "notes": [
+        "All 6 AC confirmed PASS. Two Fix-Forward improvements were applied: (1) null-check correction in _detectChanges — `!= null` ternary replaces the falsy-shortcut pattern; (2) _stopPolling() guard added at the top of init() for idempotency. 1826/1826 tests pass after both fixes. One documentation-forward item logged: vm.runInThisContext pattern in stale-check.test.ts needs an explanatory comment. WP integration note from Developer carries forward: stale-check.js lives at gui/public/stale-check.js (no js/ subdirectory) — WP-006 must reference /stale-check.js in the &lt;script&gt; tag."
+      ]
+    }
+  ]
+}

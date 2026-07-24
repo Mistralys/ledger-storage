@@ -1,0 +1,179 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-004.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "GUI reset sets IN_PROGRESS pipelines to status 'FAIL', auto_cancelled true, adds completed_at and summary 'Auto-cancelled by project reset'",
+      "met": true
+    },
+    {
+      "criterion": "PASS/FAIL pipelines are preserved (not touched by reset)",
+      "met": true
+    },
+    {
+      "criterion": "analyzeProjectForReset() diagnosis output reports orphaned pipeline count",
+      "met": true
+    },
+    {
+      "criterion": "Unit test verifies cleanup behavior with IN_PROGRESS pipelines",
+      "met": true
+    },
+    {
+      "criterion": "Unit test verifies PASS/FAIL pipelines are preserved",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-25T15:01:36Z",
+      "completed_at": "2026-03-25T15:05:52Z",
+      "duration_ms": 256000,
+      "summary": [
+        "Extended applyResetMutations (applyProjectReset) to auto-cancel IN_PROGRESS pipelines before applying WP reset: sets status=FAIL, auto_cancelled=true, completed_at=timestamp, summary=['Auto-cancelled by project reset']. PASS and FAIL pipelines are untouched.",
+        "Extended analyzeProjectForReset to count orphaned (IN_PROGRESS) pipelines per WP (orphaned_pipeline_count on WpResetDiagnosis) and across the project (total_orphaned_pipelines on ProjectResetDiagnosis).",
+        "Added 6 new tests covering the full cleanup behavior. All 1735 tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/utils/project-reset.ts",
+          "mcp-server/tests/utils/project-reset.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "refactor",
+          "priority": "low",
+          "timestamp": "2026-03-25T15:05:52Z",
+          "note": "project-reset.ts has 9 diagnoses pushes, each identical 16-field struct. Extracting a helper like buildDiagnosis(base, extra) would eliminate ~100 lines of repetition. Not in scope but worth a dedicated refactor WP."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-25T15:26:33Z",
+      "completed_at": "2026-03-25T15:28:14Z",
+      "duration_ms": 101000,
+      "summary": [
+        "All 5 acceptance criteria verified and passing. Full test suite: 1735/1735 tests pass across 58 test files (0 regressions). 6 new WP-002-specific tests all pass: orphaned_pipeline_count reporting (0, 1, multi-WP sum), IN_PROGRESS→FAIL auto-cancel on reset, PASS/FAIL pipeline preservation, and skip-action non-interference. Build verified (tsc clean, no errors)."
+      ],
+      "metrics": {
+        "test_coverage": "6 new tests for WP-002 + 1735 total",
+        "tests_passed": 1735,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-25T15:28:14Z",
+          "note": "No observations — code is clean and consistent. The orphaned pipeline cancellation logic in applyProjectReset is a tight, focused loop that only touches IN_PROGRESS pipelines; PASS/FAIL pipelines are untouched by design. The analyzeProjectForReset pure-function contract is maintained. All AC verified through automated tests."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-25T15:43:57Z",
+      "completed_at": "2026-03-25T15:45:46Z",
+      "duration_ms": 109000,
+      "summary": [
+        "Reviewed WP-002: GUI reset orphaned pipeline cleanup in mcp-server/src/utils/project-reset.ts.",
+        "analyzeProjectForReset: orphaned_pipeline_count correctly counted per-WP via p.status === 'IN_PROGRESS' filter; total_orphaned_pipelines correctly accumulated across all WPs. Pure-function contract maintained.",
+        "applyProjectReset: the reset action now iterates wp.pipelines and auto-cancels each IN_PROGRESS pipeline with {status: FAIL, auto_cancelled: true, completed_at: timestamp, summary: ['Auto-cancelled by project reset']} before applying the WP status/assignment reset. Runs under the batchUpdateWorkPackagesWithSync lock on a fresh re-read, so the cleanup covers any pipelines not visible at diagnosis time.",
+        "PASS/FAIL pipelines correctly untouched — the guard is `pipeline.status === 'IN_PROGRESS'` only.",
+        "Spec references §12.5 and §21.68 in code comments are correct and point to sections just added in WP-001.",
+        "Tests: 6 new tests covering count=0, count=1, multi-WP sum, cancel-behavior, PASS/FAIL preservation, skip-action non-interference — complete coverage for all AC.",
+        "Pre-existing gap noted: cancel action does NOT auto-cancel IN_PROGRESS pipelines (§21.14b violation). Out of WP-002 scope — flagged as medium-priority improvement for a follow-up."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-03-25T15:45:46Z",
+          "note": "The 'cancel' action in applyProjectReset (project-reset.ts) does NOT auto-cancel IN_PROGRESS pipelines before setting wp.status = 'CANCELLED'. This violates §21.14b which prescribes: 'When a WP transitions IN_PROGRESS → CANCELLED, any IN_PROGRESS pipelines on the WP are set to FAIL with auto_cancelled = true.' This issue pre-dates WP-002 (the reset path now correctly handles it; the cancel path does not). The cancel action is reachable from the GUI reset modal when a user overrides a suggested 'reset' to 'cancel' — the WP may have orphaned IN_PROGRESS pipelines in that case. Fix: add the same pipeline-cleanup loop to the cancel action path (before setting wp.status = 'CANCELLED'), using the same 4-field update pattern as the reset path."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-25T15:45:46Z",
+          "note": "Developer's own comment about the 9 identical 16-field WpResetDiagnosis pushes in project-reset.ts is well-observed. A buildWpDiagnosis() helper would significantly reduce repetition. Tracked as a pre-existing concern; not introduced by WP-002."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-25T16:42:51Z",
+      "completed_at": "2026-03-25T16:46:07Z",
+      "duration_ms": 196000,
+      "summary": [
+        "Updated mcp-server/docs/agents/project-manifest/api-surface.md to reflect WP-002 additions: (1) added orphaned_pipeline_count field to WpResetDiagnosis, (2) added total_orphaned_pipelines field to ProjectResetDiagnosis, (3) added active_pipeline_stages to WpResetDiagnosis (pre-existing gap), (4) updated analyzeProjectForReset() description to document the new orphaned pipeline counting behavior, (5) updated applyProjectReset() 'reset' action description to document the auto-cancel of IN_PROGRESS pipelines before the status update."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-25T16:46:07Z",
+          "note": "api-surface.md was missing active_pipeline_stages from WpResetDiagnosis — a pre-existing gap added alongside WP-002 new fields. Documented alongside the WP-002 additions."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-03-25T16:46:07Z",
+          "note": "The Reviewer flagged a pre-existing §21.14b violation: the 'cancel' action path in applyProjectReset (project-reset.ts) does NOT auto-cancel IN_PROGRESS pipelines before setting wp.status = 'CANCELLED'. This is outside WP-002 scope but should be tracked as a follow-up WP. The api-surface.md 'cancel' action description currently does not document this gap — a follow-up fix should add a note similar to the 'reset' path's pipeline-cleanup description."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-03-25T16:46:07Z",
+  "last_updated": "2026-03-25T16:46:07Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-03-25T15:05:52Z",
+      "notes": [
+        "WP-002: GUI Reset Clears Orphaned Pipelines — fully implemented and tested.",
+        "Changes: mcp-server/src/utils/project-reset.ts — WpResetDiagnosis gained orphaned_pipeline_count, ProjectResetDiagnosis gained total_orphaned_pipelines; analyzeProjectForReset() counts IN_PROGRESS pipelines per WP and sums total; applyProjectReset() reset branch now cancels IN_PROGRESS pipelines with {status: FAIL, auto_cancelled: true, completed_at, summary: ['Auto-cancelled by project reset']} before applying the status/assignment reset.",
+        "Tests: 6 new tests added in project-reset.test.ts covering count=0, count=1, multi-WP sum, cancel behavior, PASS/FAIL preservation, and skip-action non-interference. All 1735 tests pass.",
+        "No regressions in the full test suite."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-25T15:28:14Z",
+      "notes": [
+        "WP-002 QA PASS. All 5 ACs verified: orphaned_pipeline_count on WpResetDiagnosis and total_orphaned_pipelines on ProjectResetDiagnosis both report correctly; applyProjectReset cancels all IN_PROGRESS pipelines (status=FAIL, auto_cancelled=true, completed_at, summary='Auto-cancelled by project reset') before applying the WP status/assignment reset; PASS/FAIL pipelines are untouched; skip action leaves WPs entirely unmodified. 1735/1735 tests pass, no regressions."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-03-25T15:45:46Z",
+      "notes": [
+        "WP-002 code review PASS. The reset-path pipeline cleanup is correctly implemented: auto_cancelled=true, FAIL status, timestamp, summary set atomically under lock before the WP status update.",
+        "Documentation agent: no documentation gaps found. The implementation comments referencing §12.5 and §21.68 are correct and complete.",
+        "Pre-existing cancel-path gap (§21.14b violation) flagged as medium-priority improvement — consider a follow-up WP or adding to an existing cleanup WP."
+      ]
+    }
+  ]
+}

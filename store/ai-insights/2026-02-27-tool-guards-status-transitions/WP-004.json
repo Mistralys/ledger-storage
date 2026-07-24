@@ -1,0 +1,196 @@
+{
+  "work_package_id": "WP-004",
+  "work_package_file": "work/WP-004.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "CANCELLED → CANCELLED throws",
+      "met": true
+    },
+    {
+      "criterion": "BLOCKED → BLOCKED replaces blocker; non-PM/non-assignee rejected; dependency-to-non-dependency replacement rejected",
+      "met": true
+    },
+    {
+      "criterion": "READY → IN_PROGRESS redirects with claimWorkPackage error message",
+      "met": true
+    },
+    {
+      "criterion": "IN_PROGRESS → BLOCKED auto-cancels IN_PROGRESS pipelines with auto_cancelled: true",
+      "met": true
+    },
+    {
+      "criterion": "IN_PROGRESS → CANCELLED auto-cancels IN_PROGRESS pipelines",
+      "met": true
+    },
+    {
+      "criterion": "IN_PROGRESS → READY clears assigned_to; throws if pipelines IN_PROGRESS",
+      "met": true
+    },
+    {
+      "criterion": "COMPLETE → IN_PROGRESS resets rework_counts, clears synthesis_generated, increments revision",
+      "met": true
+    },
+    {
+      "criterion": "→ COMPLETE freshness check: stale doc PASS rejected; absent timestamps accepted",
+      "met": true
+    },
+    {
+      "criterion": "status_changed_at set on every transition including BLOCKED→BLOCKED",
+      "met": true
+    },
+    {
+      "criterion": "COMPLETE → CANCELLED accepted",
+      "met": true
+    }
+  ],
+  "revision": 1,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-02-27T17:16:27Z",
+      "completed_at": "2026-02-27T17:35:48Z",
+      "summary": [
+        "Implemented all WP-004 requirements in updateWorkPackageStatus: BLOCKED→BLOCKED blocker replacement with PM/assignee guard and dependency-type guard (step 1a); READY→IN_PROGRESS redirect to claimWorkPackage (step 1b); IN_PROGRESS→READY pipeline guard rejecting if active pipeline exists (step 5a); →COMPLETE freshness check verifying doc PASS post-dates impl start (step 5b); status_changed_at set on every transition including BLOCKED→BLOCKED early return (steps 1a and 6); IN_PROGRESS→BLOCKED and IN_PROGRESS→CANCELLED pipeline auto-cancellation with auto_cancelled:true (steps 8a/8b); IN_PROGRESS→READY unclaim clearing assigned_to in both WP detail and root index (step 8c); COMPLETE→IN_PROGRESS resets rework_counts, rework_count, and root.synthesis_generated plus revision increment (step 9). Added _ledgerRoot parameter to updateWorkPackageStatus and propagateDependencyReblock for test isolation. Exported updateWorkPackageStatus via _internal for integration testing. Added 34 new tests (inline replicas + integration). All 679 tests pass, 0 TypeScript errors."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/tools/work-package.ts",
+          "mcp-server/tests/tools/work-package.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-02-27T18:36:00Z",
+          "note": "mcp-server/src/tools/work-package.ts: propagateDependencyReblock previously used withLock(projectPath, ...) as the lock directory. The original code is in the same file as propagateDependencyUnblock which correctly uses ledgerRoot ?? projectPath. The inconsistency meant that in production (where ledgerRoot != projectPath) the two functions stored data at different paths but locked different directories. Fixed to use lockDir = ledgerRoot ?? projectPath for consistency."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-02-27T18:36:00Z",
+          "note": "mcp-server/src/tools/work-package.ts: The stepNumbering in updateWorkPackageStatus has a duplicate '// 9.' comment (one for 'Handle COMPLETE -> IN_PROGRESS' and one for 'Update root index summary'). Renumbered to 9/10/11/12 in this WP, but the original duplication was a minor maintenance hazard for future contributors."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T18:36:00Z",
+          "note": "mcp-server/src/tools/work-package.ts: The BLOCKED→BLOCKED early return (step 1a) bypasses the root index summary status update (step 10). This is intentional since status doesn't change on a BLOCKED→BLOCKED transition, but the code comment could explicitly note this to prevent future confusion about whether the summary update was omitted intentionally."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-02-27T18:36:00Z",
+          "note": "mcp-server/tests/tools/work-package.test.ts: Most guard tests use inline replicas of the production logic rather than calling the real function. This pattern is consistent with the existing test file, but means that if the production code diverges from the replica, the tests will still pass. The integration tests added in this WP partially address this by testing the full function path for side-effect-heavy behaviors."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-02-27T17:36:37Z",
+      "completed_at": "2026-02-27T17:38:51Z",
+      "summary": [
+        "Build check: TypeScript compiles cleanly with 0 errors (tsc).",
+        "Regression: all 679 tests pass across 32 test files.",
+        "AC verification: all 10 acceptance criteria have dedicated passing tests in work-package.test.ts — BLOCKED→BLOCKED permission/dependency guards, READY→IN_PROGRESS redirect, IN_PROGRESS→BLOCKED/CANCELLED auto-cancellation with auto_cancelled:true, IN_PROGRESS→READY pipeline guard + assigned_to clear, COMPLETE→IN_PROGRESS rework reset, freshness check, status_changed_at on all transitions including BLOCKED→BLOCKED early return, COMPLETE→CANCELLED acceptance, CANCELLED→CANCELLED rejection.",
+        "Edge cases verified: freshness check correctly skips auto_cancelled doc pipelines; auto-cancellation code uses filter+for (handles multiple concurrent IN_PROGRESS pipelines, though only single-pipeline tested explicitly); BLOCKED→BLOCKED missing blocked_by throws; BLOCKED→BLOCKED root.last_updated set on early return path."
+      ],
+      "metrics": {
+        "tests_passed": 679,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T17:37:00Z",
+          "note": "mcp-server/tests/tools/work-package.test.ts: The auto-cancellation integration tests (§8a/§8b) each use a single IN_PROGRESS pipeline. The production code correctly handles multiple concurrent pipelines via filter+for, but there is no test exercising simultaneous cancellation of two IN_PROGRESS pipelines. Low risk — code path is straightforward — but a multi-pipeline cancellation test would remove the implicit assumption."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T17:37:00Z",
+          "note": "No blocking issues found. All 10 AC are met and all tests pass. Implementation is clean and well-structured."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-02-27T17:39:24Z",
+      "completed_at": "2026-02-27T17:40:49Z",
+      "summary": [
+        "Reviewed all 10 ACs for updateWorkPackageStatus guard work. Code is structurally sound with clear step comments, consistent _ledgerRoot parameter threading, and well-isolated integration tests. No blocking issues found. Four non-blocking suggestions recorded as comments below."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T18:00:00Z",
+          "note": "mcp-server/src/tools/work-package.ts propagateDependencyReblock (~L851): newly-blocked WPs do not get wpDetail.status_changed_at = now() set. Every status mutation in updateWorkPackageStatus sets status_changed_at (including BLOCKED→BLOCKED early return), but the cascade helper is inconsistent. propagateDependencyUnblock has the same omission, so this is a pre-existing systemic gap — but as new code, propagateDependencyReblock should set it to maintain the 'status_changed_at on every transition' invariant."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T18:01:00Z",
+          "note": "mcp-server/src/tools/work-package.ts steps 8a/8b (L630–L652): Two nearly-identical blocks auto-cancel IN_PROGRESS pipelines for IN_PROGRESS→BLOCKED and IN_PROGRESS→CANCELLED. Only the summary string label differs. Could be unified into a single block: 'if (oldStatus === IN_PROGRESS && (newStatus === BLOCKED || newStatus === CANCELLED))' with a computed label. Minor DRY concern; not worth a rework but worth addressing in a future debt pass."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T18:02:00Z",
+          "note": "mcp-server/src/tools/work-package.ts _internal export (L62): propagateDependencyReblock is not exported via _internal, limiting direct unit-test isolation. Integration coverage via updateWorkPackageStatus is sufficient for now, but exporting it alongside propagateDependencyUnblock would allow targeted tests when the cascade logic grows more complex."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-02-27T18:03:00Z",
+          "note": "mcp-server/src/tools/work-package.ts UpdateWorkPackageStatusSchema status .describe() (L440): The schema description lists all legal transitions but omits BLOCKED → BLOCKED as a valid same-status blocker-replacement operation. Agents scanning the description for supported operations would not know this path exists. Adding '…BLOCKED → BLOCKED (blocker replacement)' to the description improves discoverability."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-02-27T17:41:14Z",
+      "completed_at": "2026-02-27T17:44:41Z",
+      "summary": [
+        "Updated api-surface.md (ledger_update_work_package_status): replaced 5-bullet special rules with comprehensive 10-behavior documentation covering READY→IN_PROGRESS redirect, BLOCKED→BLOCKED replacement guards, IN_PROGRESS→COMPLETE freshness check, IN_PROGRESS→READY unclaim+pipeline guard, pipeline auto-cancellation on IN_PROGRESS→BLOCKED/CANCELLED, COMPLETE→IN_PROGRESS rework state reset, and status_changed_at on every transition.",
+        "Updated data-flows.md (Flow 6): fully rewrote updater function steps to reflect all WP-004 guards (steps 1a BLOCKED→BLOCKED, 1b READY→IN_PROGRESS redirect, 2b freshness check, 4 unclaim pipeline guard, 5 auto-cancellation, 7 status_changed_at, 8 expanded COMPLETE→IN_PROGRESS rework reset).",
+        "Updated constraints.md: amended constraint 39 to document rework state reset on COMPLETE→IN_PROGRESS; added constraints 40-45 covering READY→IN_PROGRESS redirect, IN_PROGRESS→READY unclaim requirements, BLOCKED→BLOCKED guards, pipeline auto-cancellation, freshness check, and status_changed_at enforcement."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/constraints.md",
+          "mcp-server/docs/agents/project-manifest/data-flows.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T17:35:00Z",
+          "note": "No observations — all manifest docs now comprehensively document the WP-004 changes: ledger_update_work_package_status special rules updated with 10 transition behaviors; Flow 6 rewritten with all new guard steps; constraints 39-45 added/updated."
+        }
+      ]
+    }
+  ],
+  "handoff_notes": [
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-02-27T17:40:49Z",
+      "notes": [
+        "All 10 acceptance criteria confirmed met. Four non-blocking suggestions recorded — all low priority, no rework required. WP-004 is approved; proceed to Documentation phase."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,219 @@
+{
+  "work_package_id": "WP-005",
+  "work_package_file": "work/WP-005.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "getQueue() returns [] when the queue file or its parent directory does not exist.",
+      "met": true
+    },
+    {
+      "criterion": "pending + alive + no project → effective status is pending.",
+      "met": true
+    },
+    {
+      "criterion": "pending + alive + project exists → effective status is started.",
+      "met": true
+    },
+    {
+      "criterion": "pending + dead process + no project → effective status is dead.",
+      "met": true
+    },
+    {
+      "criterion": "pending + dead process + project exists → effective status is started.",
+      "met": true
+    },
+    {
+      "criterion": "started + synthesis_generated === true → entry excluded from result.",
+      "met": true
+    },
+    {
+      "criterion": "JSONL progress is resolved with correct human-readable summaries for each event type.",
+      "met": true
+    },
+    {
+      "criterion": "The queue file on disk is never modified by getQueue().",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-05T12:11:43Z",
+      "completed_at": "2026-05-05T12:20:28Z",
+      "duration_ms": 525000,
+      "summary": [
+        "Created mcp-server/gui/orchestrator-manager.ts with: RawQueueEntry / QueueEntry / EffectiveStatus types; QUEUE_FILENAME constant; getQueue() that reads the queue file, checks PID liveness via process.kill(pid,0), checks project-ledger.json existence + synthesis_generated, computes effectiveStatus, resolves JSONL progress, and excludes completed entries. formatProgressEntry() handles 11 JSONL event types.",
+        "Created mcp-server/tests/gui/orchestrator-manager.test.ts with 36 tests covering all 8 ACs. All pass. 1958/1958 full suite tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/orchestrator-manager.ts",
+          "mcp-server/tests/gui/orchestrator-manager.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T12:20:28Z",
+          "note": "gui/orchestrator-manager.ts uses inline readFile() to check project-ledger.json rather than instantiating LedgerStore — avoids pulling in the storage layer and zod validation for a lightweight read path. Future WPs that also need LedgerStore methods may want to unify the pattern."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T12:20:28Z",
+          "note": "isProcessAlive() calls process.kill(pid, 0) with no platform guard. On Windows, process.kill(pid, 0) works correctly (returns true / throws) per Node.js docs, but this was not verified in tests. Consider adding a Windows CI note if the module is ever used in a Windows-hosted environment."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T12:20:28Z",
+          "note": "No observations beyond minor notes above — implementation in the newly created files is clean and consistent with the surrounding codebase conventions."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-05T12:28:33Z",
+      "completed_at": "2026-05-05T12:29:53Z",
+      "duration_ms": 80000,
+      "summary": [
+        "All 8 acceptance criteria verified. 36 new tests in tests/gui/orchestrator-manager.test.ts all pass; full suite 1999/1999. Production module gui/orchestrator-manager.ts is read-only (never modifies queue file), fail-safe on all I/O errors, and correctly implements all 5 lifecycle status transitions + synthesis exclusion + JSONL progress resolution."
+      ],
+      "metrics": {
+        "test_coverage": "8/8 ACs covered by 36 dedicated tests",
+        "tests_passed": 1999,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T12:29:53Z",
+          "note": "isProcessAlive() catches all errors including EPERM (process exists but owned by another user) and returns false, treating a live foreign-owned process as dead. This is an inherent process.kill(pid,0) limitation, acceptable for a non-critical GUI monitoring feature, and was already flagged by the developer."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T12:29:53Z",
+          "note": "No observations beyond the EPERM note above — code is clean and consistent with the surrounding codebase conventions."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-05T12:33:46Z",
+      "completed_at": "2026-05-05T12:34:56Z",
+      "duration_ms": 70000,
+      "summary": [
+        "Reviewed gui/orchestrator-manager.ts (new module, ~310 lines) and tests/gui/orchestrator-manager.test.ts (36 tests covering all 8 ACs).",
+        "Module documentation is excellent: header JSDoc covers queue file location, writer, read-only contract, and all 5 lifecycle transitions.",
+        "Fail-safe pattern is consistently applied: readQueueFile, getProjectLedgerStatus, and resolveProgress all return safe defaults on I/O/parse errors.",
+        "isProcessAlive(pid) uses process.kill(pid,0) zero-signal check; EPERM behaviour (treats live foreign-owned process as dead) is an inherent limitation, already flagged and accepted for this non-critical GUI feature.",
+        "getProjectLedgerStatus two-level fail-safe is correct: I/O error → exists:false; parse error → exists:true, synthesisGenerated:false.",
+        "formatProgressEntry switch covers all 11 JSONL event types + null for heartbeat + null default. Exhaustively tested with 18 pure unit tests.",
+        "resolveProgress walks backwards for last summarisable event; newest-file-first ordering via lexicographic sort on ISO-prefixed filenames is documented and correct.",
+        "getQueue uses Promise.all for parallel project-status + progress resolution per entry — good for latency.",
+        "One minor type-safety gap: isRawQueueEntry does not validate status === 'pending'. Downstream code ignores the raw status field entirely (uses effectiveStatus), so no runtime bug.",
+        "vi.spyOn(process,'kill') returns boolean in mocks but real signature is void — harmless since production code uses try/catch and ignores return value.",
+        "All 8 ACs covered. No blocking issues. PASS."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/orchestrator-manager.ts",
+          "mcp-server/tests/gui/orchestrator-manager.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T12:34:56Z",
+          "note": "isRawQueueEntry() does not validate that status === 'pending'. Entries from Python with unexpected status values would pass the guard. Since getQueue() ignores the raw status field entirely and computes effectiveStatus independently, this is not a runtime bug — but adding the status check would close the type-safety gap."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-05T12:34:56Z",
+          "note": "[documentation-forward] formatProgressEntry() is exported for unit testing but the MCP server api-surface.md does not include it or the new RawQueueEntry / QueueEntry / EffectiveStatus / QUEUE_FILENAME exports. Add signatures and brief descriptions for all public exports from gui/orchestrator-manager.ts."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T12:34:56Z",
+          "note": "No further observations — code is clean, well-documented, and consistent with surrounding codebase conventions."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-05T12:41:17Z",
+      "completed_at": "2026-05-05T12:43:55Z",
+      "duration_ms": 158000,
+      "summary": [
+        "Reviewed implementation artifacts (gui/orchestrator-manager.ts, tests/gui/orchestrator-manager.test.ts) and the reviewer documentation-forward for missing api-surface.md entries.",
+        "mcp-server/docs/agents/project-manifest/api-surface.md: added new '## GUI Orchestrator Manager' section documenting all 6 public exports from gui/orchestrator-manager.ts: QUEUE_FILENAME constant, RawQueueEntry interface, EffectiveStatus type, QueueEntry interface, getQueue() function, formatProgressEntry() function. Includes lifecycle state transition table, fail-safe pattern notes, and progress resolution algorithm.",
+        "mcp-server/docs/agents/project-manifest/file-tree.md: added orchestrator-manager.ts to src/gui/ listing; added orchestrator-manager.test.ts (36 tests) to tests/gui/ listing."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/file-tree.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T12:43:55Z",
+          "note": "Addressed reviewer documentation-forward: added full GUI Orchestrator Manager section to api-surface.md covering all 6 public exports (QUEUE_FILENAME, RawQueueEntry, EffectiveStatus, QueueEntry, getQueue, formatProgressEntry) with signatures, lifecycle table, fail-safe notes, and progress resolution strategy."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-05T12:43:55Z",
+  "last_updated": "2026-05-05T12:43:55Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-05T12:20:28Z",
+      "notes": [
+        "New module: mcp-server/gui/orchestrator-manager.ts — exports getQueue(), formatProgressEntry(), RawQueueEntry, QueueEntry, EffectiveStatus, QUEUE_FILENAME. WP-006 (kill/dismiss) and WP-007 (start) will extend this module.",
+        "36 new tests in tests/gui/orchestrator-manager.test.ts cover all 8 ACs. Full regression run: 1958/1958 pass. No production code outside the new files was changed."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-05T12:29:53Z",
+      "notes": [
+        "All 8 ACs verified. 36/36 new tests pass; full MCP server suite 1999/1999 passes. getQueue() and formatProgressEntry() are production-ready. EPERM edge case is a known limitation, not a defect."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-05T12:34:56Z",
+      "notes": [
+        "Code review passed. New module gui/orchestrator-manager.ts is clean and correct. One documentation-forward recorded: api-surface.md needs entries for all public exports (getQueue, formatProgressEntry, RawQueueEntry, QueueEntry, EffectiveStatus, QUEUE_FILENAME). No code changes required."
+      ]
+    }
+  ]
+}

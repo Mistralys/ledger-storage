@@ -1,0 +1,232 @@
+{
+  "work_package_id": "WP-004",
+  "work_package_file": "work/WP-004.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-002",
+    "WP-003"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "The \"Resume Run\" button appears when: no run is currently active, project status is not COMPLETE or ARCHIVED, run metadata exists with a valid thread_id, dry_run === false, and result !== \"SUCCESS\".",
+      "met": true
+    },
+    {
+      "criterion": "The button does not appear when a run is currently active (pending or started in the queue).",
+      "met": true
+    },
+    {
+      "criterion": "The button does not appear when project status is COMPLETE or ARCHIVED.",
+      "met": true
+    },
+    {
+      "criterion": "The button does not appear when dry_run === true in the metadata.",
+      "met": true
+    },
+    {
+      "criterion": "The button does not appear when result === \"SUCCESS\" in the metadata.",
+      "met": true
+    },
+    {
+      "criterion": "Clicking the button calls API.orchestratorStart(planPath, false, threadId) and the request body contains resumeThreadId set to the metadata file's thread_id.",
+      "met": true
+    },
+    {
+      "criterion": "The button disappears once the queue poll returns a new active run entry.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-31T09:01:25Z",
+      "completed_at": "2026-05-31T09:09:00Z",
+      "duration_ms": 455000,
+      "summary": [
+        "Added API.getRunMetadata(slug) method to api-client.js calling GET /projects/:slug/run-metadata",
+        "Extended API.orchestratorStart() with optional resumeThreadId parameter; included in request body when provided",
+        "Added <div id=\"orch-resume-cell\"></div> placeholder to Orchestrator Runs HTML template in project-detail.js",
+        "Implemented resume button rendering in the no-active-run branch: fetches run metadata, validates conditions (thread_id present, dry_run===false, result!=='SUCCESS', project not COMPLETE/ARCHIVED), creates btn.btn-resume and appends to resume cell",
+        "Click handler: disables button, calls orchestratorStart with resumeThreadId, on success polls queue every 3s via Router._setPolling, re-renders project detail via Router._clearPolling()+renderProjectDetail() once an active queue entry appears",
+        "On API error: re-enables button and shows inline error-banner paragraph in the resume cell",
+        "Added .btn-resume and #orch-resume-cell CSS rules to styles.css with outlined primary-color style and hover fill",
+        "All 1059 existing GUI tests pass with no regressions"
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/api-client.js",
+          "mcp-server/gui/public/views/project-detail.js",
+          "mcp-server/gui/public/styles.css"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T09:09:00Z",
+          "note": "project-detail.js: renderRunsList is a nested closure inside getRunLogs().then() — already noted in a code comment as a refactor candidate. The resume button logic follows the same closure pattern, deepening nesting slightly. A future pass could extract both into module-level helpers taking (sorted, slug, meta, app) params to improve testability."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T09:09:00Z",
+          "note": "api-client.js: orchestratorStart() now has a small body-construction branch. The existing call sites in orchestrator.js pass (planPath, false) without resumeThreadId — the undefined check ensures backward compat. No issues."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-31T09:09:30Z",
+      "completed_at": "2026-05-31T09:12:30Z",
+      "duration_ms": 180000,
+      "summary": [
+        "All 7 acceptance criteria verified. Full test suite passes: 2764 tests across 89 files (zero regressions). AC-1 through AC-5 are enforced by the guard chain at the entry of the resume-cell block; AC-6 confirmed by tracing orchestratorStart(planPath, false, threadId) and the body-construction branch in api-client.js; AC-7 confirmed by the pollResume closure calling Router._clearPolling() + renderProjectDetail() on first active queue entry."
+      ],
+      "metrics": {
+        "test_coverage": "2764/2764 existing tests pass; no new automated tests (WP explicitly accepts manual testing for vanilla-JS SPA)",
+        "tests_passed": 2764,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-05-31T09:12:30Z",
+          "note": "api-client.test.ts does not cover API.getRunMetadata() or the new orchestratorStart(planPath, dryRun, resumeThreadId) three-argument form. Other client methods (e.g. getRunLogs, getRunLogEntries) are tested in that file. A follow-up test case asserting GET /projects/:slug/run-metadata and the body-inclusion of resumeThreadId would close the gap."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T09:12:30Z",
+          "note": "project-detail-runs.test.ts has no test for the resume button rendering path. The WP acknowledges this (manual-only SPA testing), but a jsdom-based test following the existing pattern in that file (stub API.getRunMetadata, assert #orch-resume-btn appears) would give regression protection for the visibility conditions."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T09:12:30Z",
+          "note": "Double-click safety: button is disabled immediately on click — correctly prevents duplicate submissions. Error paths (both result.started falsy and promise reject) both re-enable the button and surface an error-banner — clean UX recovery."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-31T09:13:00Z",
+      "completed_at": "2026-05-31T09:15:26Z",
+      "duration_ms": 146000,
+      "summary": [
+        "Reviewed all three modified files: api-client.js, project-detail.js, styles.css.",
+        "All 7 acceptance criteria verified at the implementation level — guard chain logic is correct and all conditions are evaluated in the right order.",
+        "AC-2 (no button when run is active): confirmed — resume button code lives entirely inside the `else` of `if (activeFilename)`, so it cannot fire while a run is active.",
+        "AC-4/AC-5: dry_run and result guards evaluated after the API call, in the correct promise callback chain.",
+        "AC-6: orchestratorStart(planPath, false, threadId) confirmed; resumeThreadId is conditionally included via `if (resumeThreadId !== undefined) body.resumeThreadId = resumeThreadId` — backward-compatible.",
+        "AC-7: pollResume uses Router._clearPolling() + renderProjectDetail() on first active queue entry — correct teardown and re-render.",
+        "CSS: .btn base class sets `border: 1px solid transparent`; .btn-resume correctly overrides only border-color, giving the outlined primary-color style. .btn-resume:hover { opacity: 1 } correctly overrides the .btn:hover { opacity: 0.85 } fade via cascade order. Dark theme compatibility achieved through CSS variable usage.",
+        "No blocking issues found. Two low-priority observations recorded. One documentation-forward tag for the Documentation agent."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/api-client.js",
+          "mcp-server/gui/public/views/project-detail.js",
+          "mcp-server/gui/public/styles.css"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T09:15:26Z",
+          "note": "project-detail.js (resume button click handler): The error-banner creation block (getElementById + createElement + append) is duplicated verbatim in both the `else` branch (result.started falsy) and the `.catch` handler. Extracting this into a local `showResumeError(msg)` helper would halve the boilerplate and make error path changes a one-touch edit. Non-blocking — behavior is identical in both branches."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T09:15:26Z",
+          "note": "project-detail.js: The pollResume closure checks `effectiveStatus === 'pending' || effectiveStatus === 'started'` to detect a new active entry. This is correct for current queue semantics but is independent of the `activeFilename` check used in the main `pollQueue` path. If a third effectiveStatus ever denotes 'active', both polling closures would need updating. Consider extracting a shared `isActiveQueueEntry(entry)` predicate when either closure is next touched."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-31T09:15:26Z",
+          "note": "[documentation-forward] api-client.js: API.getRunMetadata(slug) and the three-argument form of API.orchestratorStart(planPath, dryRun, resumeThreadId) are not yet covered by api-client.test.ts. The Documentation agent should ensure these two additions are reflected in the API surface documentation and that test coverage recommendations are recorded."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-31T09:16:04Z",
+      "completed_at": "2026-05-31T09:22:18Z",
+      "duration_ms": 374000,
+      "summary": [
+        "Reviewed WP-004 implementation artifacts and all pipeline handoff notes.",
+        "Added `styles.css` — Resume Run button classes section to api-surface.md with a 4-row table documenting `#orch-resume-cell`, `.btn-resume`, `.btn-resume:hover`, and `.btn-resume:disabled` (added in WP-004).",
+        "Added `getRunMetadata(slug)` → `GET /api/projects/:slug/run-metadata` to the `API` client methods list in api-surface.md (inserted after `getRunLogEntries`, before `getDialogues`).",
+        "Updated `orchestratorStart` signature in the `API` methods list from the two-argument form to `orchestratorStart(planPath, dryRun, resumeThreadId?)` with a note on backward compatibility.",
+        "Incremented the REST endpoint count in the `API` methods bullet from 30 to 31.",
+        "Updated `styles.css` annotation in file-tree.md to mention `#orch-resume-cell` and `.btn-resume`/`.btn-resume:hover`/`.btn-resume:disabled`.",
+        "Updated `api-client.test.ts` annotation in file-tree.md to record the new test coverage gap: `getRunMetadata(slug)` and the three-argument `orchestratorStart` form are not yet tested — flagged as a follow-up (per WP-004 QA and code-review forward).",
+        "Addressed the documentation-forward item from the Reviewer: API surface docs now reflect both new client additions."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/file-tree.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T09:22:18Z",
+          "note": "api-surface.md `renderProjectDetail` description does not yet describe the resume button rendering logic (guard chain, pollResume closure, `#orch-resume-cell` DOM insertion, `btn.btn-resume` creation). The description is already very long (several thousand characters on a single line); a dedicated 'Orchestrator Runs section' sub-entry documenting the no-active-run branch, resume conditions, and pollResume teardown would aid maintainability. Deferred as non-blocking — the API client method, CSS classes, and test gap are now fully documented."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T09:22:18Z",
+          "note": "The `project-detail.js` brief annotation in file-tree.md (line ~57) reads `# extractSynopsis, renderPlan, renderSynthesis, renderProjectDetail; STAGE_ABBREV, buildPipelineTrack; showResetModal; archive banner` and does not mention the resume button. A follow-up could add `; resume button (WP-004)` to that line for discoverability."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-31T09:22:18Z",
+  "last_updated": "2026-05-31T09:22:18Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-31T09:09:00Z",
+      "notes": [
+        "WP-004 frontend implementation is complete. All three files modified: api-client.js (getRunMetadata + extended orchestratorStart), project-detail.js (resume button rendering + queue polling), styles.css (btn-resume + orch-resume-cell). The button visibility logic strictly follows all 7 acceptance criteria. Manual QA should verify: (1) button appears for an interrupted run (result not SUCCESS, not dry_run); (2) button does not appear for successful runs, completed/archived projects, or while a run is active; (3) clicking triggers resume and button disappears once the new run appears in the queue."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-31T09:12:30Z",
+      "notes": [
+        "WP-004 passes QA. All 7 ACs verified by code review + full test suite (2764/2764). Two low-priority coverage notes: (1) api-client.test.ts is missing tests for getRunMetadata() and the 3-arg orchestratorStart() form; (2) project-detail-runs.test.ts has no resume button test (WP-accepted gap). No functional issues found — implementation is clean and backward-compatible."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-31T09:15:26Z",
+      "notes": [
+        "WP-004 PASS. Implementation is clean, all 7 ACs verified at code level. Two low-priority improvement notes recorded (duplicated error banner code, shared isActiveQueueEntry predicate suggestion). One documentation-forward tag: api-client.test.ts is missing getRunMetadata() and the 3-arg orchestratorStart() — please add to API surface docs and flag as a follow-up test gap.",
+        "No blocking issues. No Fix-Forward changes applied — no files modified by Reviewer."
+      ]
+    }
+  ]
+}

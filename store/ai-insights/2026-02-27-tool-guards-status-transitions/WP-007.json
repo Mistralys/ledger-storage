@@ -1,0 +1,161 @@
+{
+  "work_package_id": "WP-007",
+  "work_package_file": "work/WP-007.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-004"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "IN_PROGRESS dependent: pipeline auto-cancelled with auto_cancelled: true; WP transitions to BLOCKED",
+      "met": true
+    },
+    {
+      "criterion": "COMPLETE dependent: warning comment added to last pipeline; WP status remains COMPLETE",
+      "met": true
+    },
+    {
+      "criterion": "synthesis_generated reset to false when at least one WP was re-blocked",
+      "met": true
+    },
+    {
+      "criterion": "synthesis_generated NOT changed when no candidates were re-blocked",
+      "met": true
+    },
+    {
+      "criterion": "Existing propagateDependencyReblock tests continue to pass",
+      "met": true
+    }
+  ],
+  "revision": 1,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-02-27T17:50:36Z",
+      "completed_at": "2026-02-27T17:51:51Z",
+      "summary": [
+        "Added IN_PROGRESS pipeline auto-cancellation inside the re-block loop: filters for p.status === 'IN_PROGRESS', sets FAIL/auto_cancelled/completed_at/summary on each",
+        "Added COMPLETE dependent warning block after the re-block loop: reads each COMPLETE WP's detail, finds lastPipeline via .at(-1), appends warning comment with type/priority/timestamp/note",
+        "Added synthesis_generated = false reset on root index when candidates.length > 0 (§21.26)",
+        "synthesis_generated is NOT touched when candidates.length === 0, preserving previous value",
+        "Removed the early-return guard (candidates.length === 0) so COMPLETE-dependent iteration and root write always execute",
+        "Exported propagateDependencyReblock from _internal so it can be called directly in integration tests",
+        "Added 6 new integration tests covering all 5 acceptance criteria plus WP-BLOCKED-transitions confirmation",
+        "All 697 tests pass, 0 TypeScript errors"
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/tools/work-package.ts",
+          "mcp-server/tests/tools/work-package.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T17:53:00Z",
+          "note": "The if (candidates.length === 0) return; early exit was removed from propagateDependencyReblock to allow the COMPLETE-dependent warning and synthesis_generated reset to run even when there are no re-blocked candidates. The function now always runs to the root index write. This is a minor inefficiency for the zero-candidates path (one extra store.readRootIndex + writeRootIndex with no mutations) but ensures correctness without conditional paths."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-02-27T17:53:00Z",
+          "note": "The COMPLETE dependent warning adds comments to the LAST pipeline. If a WP has no pipelines at all (empty array), the warning is silently skipped. This edge case is unlikely in practice (COMPLETE WPs must have passed their documentation pipeline) but could be documented as a known limitation."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-02-27T17:54:58Z",
+      "completed_at": "2026-02-27T17:55:34Z",
+      "summary": [
+        "Build check: 0 TypeScript errors",
+        "AC-1: IN_PROGRESS dependent auto-cancelled (status=FAIL, auto_cancelled=true, completed_at set) and WP transitioned to BLOCKED with blocked_by populated — verified in 2 tests",
+        "AC-2: COMPLETE dependent has warning comment appended to last pipeline; WP status remains COMPLETE — verified in 2 tests",
+        "AC-3: synthesis_generated set to false when candidates.length > 0 — verified in 1 test",
+        "AC-4: synthesis_generated not touched when no candidates re-blocked — verified in 1 test",
+        "AC-5: Full 697-test suite passes; all pre-existing propagateDependencyReblock tests still green",
+        "Edge-case: Multiple active pipelines on same WP all auto-cancelled (loop over activePipelines)",
+        "Edge-case: Root index written unconditionally, so last_updated/pending_work_packages always refreshed",
+        "Regression: 32 test files, 697/697 passed"
+      ],
+      "metrics": {
+        "tests_passed": 697,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T17:56:00Z",
+          "note": "mcp-server/src/tools/work-package.ts (propagateDependencyReblock): When candidates.length === 0 (no re-blocking occurs), the function still reads and writes the root index (to update last_updated and pending_work_packages). This is a minor no-op write on the zero-candidate path. Low impact but a micro-optimization would be to skip the root write when rootIndex was not mutated."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T17:56:10Z",
+          "note": "mcp-server/src/tools/work-package.ts (propagateDependencyReblock): The COMPLETE-dependent warning appends to the last pipeline's comments. If lastPipeline is null (empty pipelines array), the warning is silently dropped. This is a known edge case documented in the implementation pipeline. Since COMPLETE WPs must have passed a documentation pipeline, this scenario is unreachable in normal workflow order."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-02-27T17:58:21Z",
+      "completed_at": "2026-02-27T17:59:08Z",
+      "summary": [
+        "Reviewed propagateDependencyReblock three-phase structure: re-block candidates, warn COMPLETE dependents, reset synthesis_generated.",
+        "No blocking issues found. All five acceptance criteria verified through code reading and test review.",
+        "Filter logic is correct: COMPLETE WPs are excluded from candidates and handled separately, preventing double-processing.",
+        "Candidates/COMPLETE-dependent separation is architecturally clean and avoids the risk of modifying a WP via two paths in the same lock."
+      ],
+      "comments": [
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-02-27T18:10:00Z",
+          "note": "mcp-server/src/tools/work-package.ts (propagateDependencyReblock, line 933): The activePipelines loop correctly iterates all IN_PROGRESS pipelines and sets status=FAIL, auto_cancelled=true, completed_at, and summary. Note that p.summary is replaced entirely (= [...]) rather than appended. Any partial progress notes recorded via ledger_update_pipeline_progress on the pipeline are lost. This is the correct behavior for an auto-cancel (the work is void) but worth documenting as an intentional lossy operation in the function's JSDoc."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T18:10:10Z",
+          "note": "mcp-server/src/tools/work-package.ts (propagateDependencyReblock, phase 2, line 961): The COMPLETE-dependent warning loop calls store.writeWorkPackage for each COMPLETE dependent individually, inside the same lock. This is correct and safe. However, if there are N COMPLETE dependents and M non-terminal dependents, the function performs N+M individual WP writes inside a single lock. At scale (large projects with many dependents), this could potentially slow down the lock hold time. Not a concern today but worth noting for future batched-write optimization."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-02-27T18:10:20Z",
+          "note": "mcp-server/src/tools/work-package.ts (propagateDependencyReblock, ~line 964): lastPipeline null-guard ('if (lastPipeline)') silently drops the warning when a COMPLETE WP has no pipelines. Both Developer and QA documented this. The silent skip is acceptable given COMPLETE WPs must have passed a documentation pipeline in normal workflow order, but a logged warning (or at minimum a JSDoc note) would improve debuggability for out-of-order states."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-02-27T18:00:08Z",
+      "completed_at": "2026-02-27T18:05:33Z",
+      "summary": [
+        "Updated constraints.md: Added constraint 51 documenting propagateDependencyReblock three-phase behavior: Phase 1 re-blocks non-COMPLETE/non-CANCELLED/non-BLOCKED dependents and auto-cancels IN_PROGRESS pipelines; Phase 2 appends warning comment to last pipeline of COMPLETE dependents; Phase 3 resets synthesis_generated when any WPs were re-blocked.",
+        "Updated data-flows.md: propagateDependencyReblock block inside Flow 6 expanded from simple loop to explicit Phase 1/2/3 structure reflecting all new behaviors."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/constraints.md",
+          "mcp-server/docs/agents/project-manifest/data-flows.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T00:00:00Z",
+          "note": "No gaps found — all three phases of propagateDependencyReblock (re-block + auto-cancel, COMPLETE warning, synthesis_generated reset) fully documented in constraint 51 and the updated propagateDependencyReblock block in data-flows.md Flow 6."
+        }
+      ]
+    }
+  ]
+}

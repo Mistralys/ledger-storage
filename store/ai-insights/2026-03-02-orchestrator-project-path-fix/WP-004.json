@@ -1,0 +1,184 @@
+{
+  "work_package_id": "WP-004",
+  "work_package_file": "work/WP-004.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "supervisor.py contains no _route_for_wp, _get_latest_pipeline, or _SKIP_IN_FLIGHT",
+      "met": true
+    },
+    {
+      "criterion": "All routing decisions are delegated to ledger_get_next_action",
+      "met": true
+    },
+    {
+      "criterion": "Supervisor correctly routes IMPLEMENT, REWORK, RUN_QA, REWORK_QA, RUN_REVIEW, WRITE_DOCS, FINALIZE_WP, UPDATE_CRITERIA to correct stages",
+      "met": true
+    },
+    {
+      "criterion": "Supervisor correctly routes RESUME_OR_CANCEL, CONTINUE_PIPELINE, BLOCK_FOR_REWORK_LIMIT, REPAIR_ORPHAN_BLOCKED",
+      "met": true
+    },
+    {
+      "criterion": "PM actions (UNBLOCK_WP, REVIEW_REWORK_LIMIT, REVIEW_STALE, REVIEW_ABANDONED) route to pm stage",
+      "met": true
+    },
+    {
+      "criterion": "Unrecognised action strings are treated as WAIT with warning log",
+      "met": true
+    },
+    {
+      "criterion": "Circuit breaker skips WPs with 3 or more consecutive failures",
+      "met": true
+    },
+    {
+      "criterion": "All roles returning WAIT routes to synthesis",
+      "met": true
+    },
+    {
+      "criterion": "ledger_get_project_status and ledger_list_work_packages calls retained for observability",
+      "met": true
+    },
+    {
+      "criterion": "Existing tests in orchestrator/tests/ pass without regression",
+      "met": true
+    }
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-02T16:47:29Z",
+      "completed_at": "2026-03-02T16:58:14Z",
+      "summary": [
+        "Removed _get_latest_pipeline, _route_for_wp, and _SKIP_IN_FLIGHT from supervisor.py.",
+        "Added _SKIP_ACTIONS, _DISPATCH_ACTIONS, _ROLE_STAGE_MAP module-level constants.",
+        "Replaced hardcoded WP routing loop with ledger_get_next_action per-role loop.",
+        "All 5 roles queried in order; first dispatchable action wins.",
+        "Circuit breaker (3 consecutive failures) preserved.",
+        "Updated test_supervisor.py with _derive_next_action mock helper and ledger_get_next_action tool.",
+        "Updated test_integration.py ScriptedLedger to include ledger_get_next_action mock.",
+        "Updated 4 behavior-changed tests (all-blocked->pm, in-flight->continue, circuit-broken->synthesis).",
+        "162 tests pass, 1 skipped."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/supervisor.py",
+          "orchestrator/tests/test_supervisor.py",
+          "orchestrator/tests/test_integration.py"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-03-02T17:00:00Z",
+          "note": "The behavior change from 'all blocked -> END' to 'all blocked -> pm (REPAIR_ORPHAN_BLOCKED)' and from 'in-flight-only -> END' to 'in-flight -> developer (CONTINUE_PIPELINE)' are intentional improvements aligned with the MCP server's richer decision logic. Tests updated to reflect new behavior."
+        },
+        {
+          "type": "refactor",
+          "priority": "low",
+          "timestamp": "2026-03-02T17:00:00Z",
+          "note": "The _derive_next_action helper in test files replicates routing logic. It could live in a shared test utility module to avoid duplication between test_supervisor.py and test_integration.py."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-02T17:07:52Z",
+      "completed_at": "2026-03-02T17:08:28Z",
+      "summary": [
+        "All 10 ACs verified. _route_for_wp, _get_latest_pipeline, and _SKIP_IN_FLIGHT are fully removed.",
+        "_SKIP_ACTIONS, _DISPATCH_ACTIONS, and _ROLE_STAGE_MAP module-level constants correctly implement the routing table. Unrecognised actions treated as WAIT with warning.",
+        "Circuit breaker (3 consecutive failures), ledger_get_project_status, and ledger_list_work_packages calls all retained.",
+        "162 tests passed, 1 skipped, 0 failures."
+      ],
+      "metrics": {
+        "tests_passed": 162,
+        "tests_failed": 0,
+        "tests_skipped": 1
+      },
+      "comments": [
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-02T17:16:00Z",
+          "note": "BLOCK_FOR_REWORK_LIMIT is correctly in _SKIP_ACTIONS (not a dispatch), as expected — it's a 'circuit breaker triggered' signal from the server, not a task to hand off. REPAIR_ORPHAN_BLOCKED is correctly a PM dispatch. The _derive_next_action test helper duplicates routing logic; lower-priority refactor opportunity to consolidate into a shared test utility."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-02T17:10:58Z",
+      "completed_at": "2026-03-02T17:13:02Z",
+      "summary": [
+        "Excellent refactoring. _SKIP_ACTIONS, _DISPATCH_ACTIONS, and _ROLE_STAGE_MAP module-level constants are clean, readable, and easy to extend.",
+        "Delegation of all routing decisions to ledger_get_next_action is architecturally sound — the MCP server is the authoritative routing source.",
+        "Forward-compatibility guard (unrecognised actions treated as WAIT with warning) is the correct defensive pattern for evolving server vocabularies.",
+        "Circuit breaker (consecutive >= 3) is correctly scoped: fires per-WP, skips but continues to check other WPs/roles, and records errors for observability.",
+        "_call_tool correctly handles both list[TextBlock] and string response shapes from langchain-mcp-adapters.",
+        "Non-blocking: REWORK_QA is dead code in _DISPATCH_ACTIONS (removed from MCP server in prior audit). Non-blocking: _ROLES priority order should carry a comment to prevent accidental reordering.",
+        "No blocking issues found."
+      ],
+      "comments": [
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-02T17:20:00Z",
+          "note": "Non-blocking: REWORK_QA is present in _DISPATCH_ACTIONS but the MCP server no longer emits it (removed in the workflow-specification-audit-fixes2 project). It's dead code. Consider removing it from _DISPATCH_ACTIONS in a future cleanup to keep the routing table in sync with actual server behavior."
+        },
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-02T17:20:00Z",
+          "note": "Non-blocking: The _ROLES list ordering (Project Manager, Developer, QA, Reviewer, Documentation) encodes an implicit dispatch priority. A short comment explaining the intent would prevent accidental reordering in future maintenance."
+        },
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-02T17:20:00Z",
+          "note": "The extra_errors list accumulation pattern is correct: halted-WP errors are surfaced on every Command regardless of final routing destination (early-return or fall-through), ensuring observability even when the circuit breaker skips a WP but another WP IS dispatched."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-02T17:31:55Z",
+      "completed_at": "2026-03-02T17:35:24Z",
+      "summary": [
+        "Rewrote the Supervisor (deterministic router) subsection in Architecture: updated the description to document delegation to ledger_get_next_action as the authoritative routing source; replaced the stale pipeline-state-machine routing table with an action-based table matching _DISPATCH_ACTIONS.",
+        "Rewrote Special Exits: added pre-loop checks ('no WPs → pm', 'all terminal → synthesis') that were missing; removed the inaccurate 'circuit-breaker → __end__' exit (circuit-breaker now skips WPs and falls through to synthesis).",
+        "Rewrote Standard Routing block: replaced the hardcoded per-WP pipeline state machine with the new role-priority dispatch model showing _SKIP_ACTIONS, _DISPATCH_ACTIONS, and _ROLE_STAGE_MAP clearly.",
+        "Fixed Circuit-Breaker subsection: updated the final sentence to accurately reflect that circuit-broken WPs fall through to synthesis rather than routing to __end__.",
+        "Removed REWORK_DOCS from the architecture table since it is not in _DISPATCH_ACTIONS and would be treated as WAIT.",
+        "All 10 acceptance criteria were already marked met by the QA and code-review pipelines."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/README.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-02T19:15:00Z",
+          "note": "This was the most significant README change in this project. The supervisor's routing model changed fundamentally: from a hardcoded per-WP pipeline state machine to a role-based delegation via ledger_get_next_action. Three sections required rewriting: (1) Supervisor description paragraph (new delegation model), (2) Special Exits (added pre-loop exits for no-WPs and all-terminal), (3) Standard Routing block (replaced pipeline state machine with role-based dispatch table). Also corrected: REWORK_DOCS is NOT in _DISPATCH_ACTIONS and is treated as WAIT, so it was removed from the routing table."
+        },
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-02T19:15:00Z",
+          "note": "The architecture routing table in the Supervisor section was simplified: old rows like 'Any pipeline IN_PROGRESS → skip' and 'All WPs BLOCKED → END' are replaced with accurate action-based rows. The 'All WPs BLOCKED → END' behavior no longer holds — orphaned blocked WPs now route to pm via REPAIR_ORPHAN_BLOCKED."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-03-02T17:35:24Z"
+}

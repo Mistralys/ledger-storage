@@ -1,0 +1,122 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "resolveProjectPath({ project_path: '/a', cwd_path: '/b' }) throws an error with message matching MUTUAL_EXCLUSIVITY_PATH_MSG",
+      "met": true
+    },
+    {
+      "criterion": "resolveProjectPath({ project_path: '/a' }) continues to work as before",
+      "met": true
+    },
+    {
+      "criterion": "resolveProjectPath({ cwd_path: '/b' }) continues to work as before",
+      "met": true
+    },
+    {
+      "criterion": "mutuallyExclusivePaths and MUTUAL_EXCLUSIVITY_PATH_MSG remain exported",
+      "met": true
+    },
+    {
+      "criterion": "No changes to function signature or return type",
+      "met": true
+    }
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-05T16:09:20Z",
+      "completed_at": "2026-03-05T16:18:53Z",
+      "summary": [
+        "Added mutual exclusivity guard at the top of resolveProjectPath() in mcp-server/src/utils/path-validator.ts. When both project_path and cwd_path are provided the function now throws new Error(MUTUAL_EXCLUSIVITY_PATH_MSG) before any other logic runs. The existing mutuallyExclusivePaths function and MUTUAL_EXCLUSIVITY_PATH_MSG constant remain exported and unchanged. Added a new test case 'throws when both project_path and cwd_path are provided' in tests/utils/path-validator.test.ts. Updated the obsolete 'prefers project_path over cwd_path when both are provided' test in tests/tools/workflow-next-action.test.ts to reflect the new error-throwing behavior. All 1014 tests pass, TypeScript compiles clean."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/utils/path-validator.ts",
+          "mcp-server/tests/utils/path-validator.test.ts",
+          "mcp-server/tests/tools/workflow-next-action.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-05T16:18:53Z",
+          "note": "The test file tests/tools/workflow-next-action.test.ts had a test 'prefers project_path over cwd_path when both are provided' that documented the old silent-preference behavior. It was updated to test the new error-throwing contract as part of this WP. Consider auditing other tool test files (pipeline.test.ts, work-package.test.ts, etc.) for similar tests that may still document the old behavior—those will become relevant when WP-002 removes the .refine() calls from those schemas."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-05T16:19:17Z",
+      "completed_at": "2026-03-05T16:20:52Z",
+      "summary": [
+        "All 5 acceptance criteria verified. TypeScript compiles clean (tsc --noEmit, exit 0). Full test suite: 1014 tests across 33 files — all pass. The new mutual exclusivity guard in resolveProjectPath() throws Error(MUTUAL_EXCLUSIVITY_PATH_MSG) before any other logic when both project_path and cwd_path are provided (AC1 ✅). Single-path and cwd-only paths continue working (AC2 ✅, AC3 ✅). mutuallyExclusivePaths and MUTUAL_EXCLUSIVITY_PATH_MSG remain exported and covered by their own dedicated describe blocks (AC4 ✅). Function signature and return type unchanged (AC5 ✅). Edge cases confirmed: empty-string project_path with a truthy cwd_path correctly bypasses the guard (falsy short-circuit) and falls through to cwd-path resolution — consistent with mutuallyExclusivePaths semantics; this is tested. Integration-level verification in workflow-next-action.test.ts confirms the MCP tool surfaces the error as isError: true with text matching the mutual exclusivity message pattern. No regressions found."
+      ],
+      "metrics": {
+        "tests_passed": 1014,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-05T16:20:52Z",
+          "note": "Edge-case scrutiny: empty-string project_path ('') with a non-empty cwd_path does not trigger the mutual exclusivity guard because the check uses truthy evaluation ('' && cwd_path is falsy). This is intentional and consistent with mutuallyExclusivePaths behaviour, and is explicitly tested. No issue."
+        },
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-05T16:20:52Z",
+          "note": "Developer's improvement note is well-founded: other tool schemas (pipeline, work-package, etc.) still have .refine(mutuallyExclusivePaths) in their Zod schemas; those become redundant dead code after this WP but cause no functional harm until WP-002 removes them. Out of scope for this WP."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-05T16:21:28Z",
+      "completed_at": "2026-03-05T16:22:12Z",
+      "summary": [
+        "Code review passed. The mutual exclusivity guard is correctly placed at the top of resolveProjectPath(), fails fast before any other logic, reuses MUTUAL_EXCLUSIVITY_PATH_MSG for consistent messaging between runtime and Zod paths, and uses truthy evaluation that is exactly consistent with the pre-existing mutuallyExclusivePaths predicate. The inline comment referencing the bug report provides clear historical context. New unit test is well-placed and asserts using the constant directly. Integration test in workflow-next-action.test.ts correctly verifies both isError:true and message shape. The empty-string edge case is intentional, consistent with mutuallyExclusivePaths semantics, and explicitly covered."
+      ],
+      "comments": [
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-05T16:22:12Z",
+          "note": "The integration test regex /project_path.*cwd_path|cwd_path.*project_path/i is intentionally loose for resilience, which is an acceptable pattern for MCP tool integration tests. Could equally be written against MUTUAL_EXCLUSIVITY_PATH_MSG directly if the constant gets imported into the test file, but the current approach is not a problem."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-05T16:22:12Z",
+          "note": "mutuallyExclusivePaths predicate and its Zod .refine() calls in other tool schemas are now redundant dead-code for the project_path+cwd_path conflict case. They cause no functional harm, but WP-002 cleanup is the correct venue. The exports must remain available for backward-compatible use (e.g., a caller constructing their own Zod schema), so removal should be done carefully in WP-002."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-05T16:22:38Z",
+      "completed_at": "2026-03-05T16:23:55Z",
+      "summary": [
+        "Updated two manifest docs to reflect the new mutual exclusivity runtime guard in resolveProjectPath(). (1) api-surface.md: added step 0 to resolveProjectPath resolution order — 'If BOTH project_path and cwd_path are provided: throws Error(MUTUAL_EXCLUSIVITY_PATH_MSG)' with a note that it is a runtime defence-in-depth guard. (2) constraints.md §57 Rationale: replaced the now-incorrect claim that resolveProjectPath silently prefers project_path with accurate language describing the new throwing behaviour (as of 2026-03-05) while retaining the explanation for why Zod .refine() calls on schemas remain valuable (earlier, schema-layer rejection path). No other docs were stale — all five AC were already met before documentation pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/constraints.md"
+        ]
+      }
+    }
+  ],
+  "status_changed_at": "2026-03-05T16:23:55Z"
+}

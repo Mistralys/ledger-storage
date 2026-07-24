@@ -1,0 +1,142 @@
+{
+  "work_package_id": "WP-003",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Reviewer",
+  "dependencies": [
+    "WP-002"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "handleListRunLogs() accepts an orchestratorLogsDir parameter",
+      "met": true
+    },
+    {
+      "criterion": "handleListRunLogs() calls archiveCompletedLogs() to archive finished-but-not-yet-copied runs",
+      "met": true
+    },
+    {
+      "criterion": "handleListRunLogs() scans both logsDir (ledger storage) and orchestratorLogsDir, merging results with deduplication by filename",
+      "met": true
+    },
+    {
+      "criterion": "Active runs from orchestratorLogsDir are included in the response even when not yet in ledger storage",
+      "met": true
+    },
+    {
+      "criterion": "handleGetRunLog() accepts an orchestratorLogsDir parameter",
+      "met": true
+    },
+    {
+      "criterion": "handleGetRunLog() calls resolveLogSource() to determine the correct directory before calling readLogEntries()",
+      "met": true
+    },
+    {
+      "criterion": "The RunLogEntry response shape ({ filename, is_active }) is unchanged — no frontend-breaking changes",
+      "met": true
+    },
+    {
+      "criterion": "Security guards (filename allowlist, path-escape check) in readLogEntries() apply equally to both source directories",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-24T12:59:46Z",
+      "completed_at": "2026-03-24T13:00:57Z",
+      "duration_ms": 71000,
+      "summary": [
+        "Refactored run-log-handlers.ts to add orchestratorLogsDir support.",
+        "Added archiveCompletedLogs and resolveLogSource to imports from log-resolver.js.",
+        "handleListRunLogs() now accepts orchestratorLogsDir as 3rd required parameter.",
+        "handleListRunLogs() step 2: calls archiveCompletedLogs(logsDir, orchestratorLogsDir, slug) to archive completed runs.",
+        "handleListRunLogs() step 3: scans both logsDir and orchestratorLogsDir with findRunLogs() concurrently via Promise.all.",
+        "Merges via Map<string, RunLogEntry> keyed by filename; live entries inserted first, then archiveEntries overwrite them so logsDir (self-healed) data takes precedence.",
+        "Active runs from orchestratorLogsDir that aren’t yet in logsDir are included in the response (inserted from liveEntries, not overwritten by archiveEntries).",
+        "Result sorted newest-first by filename (timestamp prefix).",
+        "handleGetRunLog() now accepts orchestratorLogsDir as 4th required parameter.",
+        "handleGetRunLog() calls resolveLogSource(logsDir, orchestratorLogsDir, filename) to determine which directory to use.",
+        "readLogEntries() security guards (allowlist + path-escape) apply to whichever directory resolveLogSource() returns.",
+        "RunLogEntry shape ({filename, is_active}) is unchanged."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/gui/handlers/run-log-handlers.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-24T13:00:57Z",
+          "note": "No observations — code is clean and consistent with existing patterns. The Map-based deduplication is an efficient O(n) merge."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-24T13:01:02Z",
+      "completed_at": "2026-03-24T13:01:23Z",
+      "duration_ms": 21000,
+      "summary": [
+        "QA verification of handleListRunLogs() and handleGetRunLog() refactor in run-log-handlers.ts.",
+        "PASS: handleListRunLogs() signature at line 82 includes orchestratorLogsDir: string as 3rd required parameter.",
+        "PASS: archiveCompletedLogs(logsDir, orchestratorLogsDir, slug) called at line 100 before scanning.",
+        "PASS: Promise.all([findRunLogs(logsDir, slug), findRunLogs(orchestratorLogsDir, slug)]) at lines 103-106 scans both dirs concurrently.",
+        "PASS: Map<string, RunLogEntry> deduplication at lines 110-117 — liveEntries first, then archiveEntries overwrite (logsDir takes precedence for self-healed status).",
+        "PASS: Active-only live entries remain in the map from step 1 since archiveEntries won’t contain them.",
+        "PASS: handleGetRunLog() at line 151 accepts orchestratorLogsDir as 4th required parameter.",
+        "PASS: resolveLogSource(logsDir, orchestratorLogsDir, filename) called at line 159 before readLogEntries().",
+        "PASS: readLogEntries() at line 160 called with resolvedDir — security guards apply identically to any resolved directory.",
+        "PASS: RunLogEntry type unchanged — both functions return/use the same type from log-resolver.js.",
+        "All 8 acceptance criteria verified."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-24T13:01:23Z",
+          "note": "No observations — all acceptance criteria verified. The Map-insert-order approach (live first, archive overwrites) is correct: archive wins for completed runs (which may have been self-healed), while active runs unique to orchestratorLogsDir survive from the live pass."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-24T13:01:28Z",
+      "completed_at": "2026-03-24T13:01:42Z",
+      "duration_ms": 14000,
+      "summary": [
+        "Code review of WP-003: handleListRunLogs() and handleGetRunLog() refactor in run-log-handlers.ts.",
+        "APPROVED: Import block updated cleanly — archiveCompletedLogs and resolveLogSource added with no unused imports.",
+        "APPROVED: handleListRunLogs() signature change is backward-compatible in intent: orchestratorLogsDir inserted at position 3 (before optional legacy params) is a breaking change to callers, but WP-004 is specifically tasked with updating the single call site.",
+        "APPROVED: archiveCompletedLogs() call before findRunLogs() ensures completed runs are in logsDir before the listing, minimising the window where a run is visible only in orchestratorLogsDir.",
+        "APPROVED: Promise.all() for concurrent directory scans is correct — no ordering dependency between the two findRunLogs calls.",
+        "APPROVED: Map merge strategy is logically correct: liveEntries first (lower precedence), archiveEntries second (higher precedence for self-healed is_active). Active runs visible only in orchestratorLogsDir are correctly preserved.",
+        "APPROVED: Final sort by filename (newest-first) maintains consistent UI ordering.",
+        "APPROVED: handleGetRunLog() delegates all directory resolution to resolveLogSource() — single responsibility, clean.",
+        "APPROVED: JSDoc on both functions accurately describes the new workflow.",
+        "No blocking concerns. Code is production-ready."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-24T13:01:42Z",
+          "note": "No observations — code quality is high. The only note is that orchestratorLogsDir is now a required parameter at position 3, which is a breaking call-site change. WP-004 handles the single call-site update in server.ts, so this is expected and correct."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-03-24T13:01:42Z",
+  "last_updated": "2026-03-24T13:01:42Z"
+}

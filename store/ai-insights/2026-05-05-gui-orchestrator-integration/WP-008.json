@@ -1,0 +1,298 @@
+{
+  "work_package_id": "WP-008",
+  "work_package_file": "work/WP-008.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-005",
+    "WP-006",
+    "WP-007"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "handleOrchestratorStart validates body.planPath is present and a string.",
+      "met": true
+    },
+    {
+      "criterion": "handleOrchestratorStart forwards dryRun flag correctly.",
+      "met": true
+    },
+    {
+      "criterion": "handleGetOrchestratorQueue returns an array of enriched entries.",
+      "met": true
+    },
+    {
+      "criterion": "handleOrchestratorKill returns { killed: boolean }.",
+      "met": true
+    },
+    {
+      "criterion": "handleOrchestratorDismiss returns 204 on success.",
+      "met": true
+    },
+    {
+      "criterion": "All handlers follow the existing error handling patterns in api.ts.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-05T14:51:17Z",
+      "completed_at": "2026-05-05T14:59:43Z",
+      "duration_ms": 506000,
+      "summary": [
+        "Implemented four orchestrator API route handlers in gui/api.ts: handleOrchestratorStart (validates body.planPath + forwards dryRun), handleGetOrchestratorQueue, handleOrchestratorKill, handleOrchestratorDismiss.",
+        "Added assertSafeQueueId() guard function for path-traversal prevention on queue entry IDs.",
+        "Exported WORKSPACE_ROOT from src/utils/ledger-root.ts to supply workspaceRoot to handleOrchestratorStart.",
+        "Wired all four endpoints in gui/server.ts: GET /api/orchestrator/queue added to matchRoute(); POST /api/orchestrator/start|kill/:id|dismiss/:id added as special-case blocks in handleRequest() with correct body parsing and 204 No Content for dismiss.",
+        "Added 23 unit tests in tests/gui/api-orchestrator.test.ts covering all 6 acceptance criteria. All 639 GUI tests pass with no regressions."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/utils/ledger-root.ts",
+          "mcp-server/gui/api.ts",
+          "mcp-server/gui/server.ts",
+          "mcp-server/tests/gui/api-orchestrator.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T14:59:43Z",
+          "note": "server.ts apiErrorToStatus() in gui/server.ts has no 'CONFLICT' case, so api.ts conflict() errors fall through to 500 status. Pre-existing issue — not introduced by WP-008. A CONFLICT → 409 mapping entry should be added to apiErrorToStatus()."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T14:59:43Z",
+          "note": "handleOrchestratorStart does not thread logsDir through to startOrchestrator() — that function derives its own logs directory from workspaceRoot. The logsDir parameter was removed from the handler signature for cleanliness. No impact since startOrchestrator() uses the canonical path."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-05T15:00:21Z",
+      "completed_at": "2026-05-05T15:02:09Z",
+      "duration_ms": 108000,
+      "summary": [
+        "All 6 acceptance criteria verified via code inspection and test execution.",
+        "23 new unit tests in api-orchestrator.test.ts cover all AC: planPath validation (missing, number, null, non-object body), dryRun forwarding (true/false/default), queue enrichment, kill result shape, dismiss void resolution, and assertSafeQueueId guard.",
+        "TypeScript compilation clean (tsc --noEmit, zero errors).",
+        "Full GUI regression suite: 639 tests / 22 files — all pass.",
+        "server.ts routing verified: POST /api/orchestrator/start parses JSON body and dispatches WORKSPACE_ROOT; GET /api/orchestrator/queue via matchRoute(); kill/:id and dismiss/:id as special-case blocks with correct 200/204 responses.",
+        "decodeURIComponent() called before assertSafeQueueId — URL-encoded path separators (%2F) are decoded first, then caught by the guard. Security posture intact."
+      ],
+      "metrics": {
+        "test_coverage": "23 new tests covering all 6 AC",
+        "tests_passed": 639,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T15:02:09Z",
+          "note": "assertSafeQueueId does not guard against a single '.' ID. Not a real-world concern (no queue entry would have ID '.'), but worth noting. Pre-existing design choice."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T15:02:09Z",
+          "note": "No body size limit on POST /api/orchestrator/start — very large JSON bodies would be read in full. Pre-existing pattern across all POST handlers in server.ts; not introduced by WP-008."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-05-05T15:07:05Z",
+      "completed_at": "2026-05-05T15:09:44Z",
+      "duration_ms": 159000,
+      "summary": [
+        "Reviewed 4 files: gui/api.ts (new handlers + assertSafeQueueId), gui/server.ts (routing blocks), gui/orchestrator-manager.ts (startOrchestrator, killQueueEntry, dismissQueueEntry), src/utils/ledger-root.ts (WORKSPACE_ROOT). All OWASP Top 10 categories reviewed. 0 Critical, 0 High findings. 1 Medium (pre-existing, not introduced by WP-008). Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T15:09:44Z",
+          "note": "A01/A03 — assertSafeQueueId (api.ts:127): guard correctly checks for empty string, '/', and '..'. decodeURIComponent() is called in server.ts BEFORE assertSafeQueueId, so %2F-encoded slashes are decoded first then caught. ID is only used for string equality (findIndex) — not to build a file path — so Windows backslash is not a traversal vector here. Guard is sound."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T15:09:44Z",
+          "note": "A01 — startOrchestrator (orchestrator-manager.ts): planPath from HTTP body passes checkPathPrefix() (resolve()-based containment check) before any stat() call, eliminating TOCTOU path traversal risk. plan-basename and plan-file checks add further constraints. spawn() uses array arguments (no shell), preventing shell injection (A03). No findings."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T15:09:44Z",
+          "note": "A01 — removeLockFile (orchestrator-manager.ts): uses entry.planPath from the queue file (Python-written, not from the HTTP request body). Not directly controllable via the API. Risk is bounded to local file system access, acceptable for a localhost dev tool."
+        },
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-05-05T15:09:44Z",
+          "note": "A04 — readBody() in server.ts (line 164) accumulates all chunks without a size cap. A crafted large POST body to /api/orchestrator/start (or any POST handler) would be read fully into memory before rejection. Pre-existing pattern across all POST handlers — not introduced by WP-008. Recommended fix: add a MAX_BODY_BYTES constant (~1 MB) and reject with 413 when exceeded. Low impact for a localhost tool; medium severity as a design debt item."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T15:09:44Z",
+          "note": "A05 — Security headers (server.ts:107): X-Content-Type-Options, X-Frame-Options: DENY, Referrer-Policy, and Content-Security-Policy are applied to all responses. CORS is restricted to http://localhost:{port}. Error responses return structured JSON without stack traces. Configuration is well-hardened."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T15:09:44Z",
+          "note": "A02/A06 — No new npm dependencies introduced by WP-008. No cryptographic operations. No sensitive data stored or transmitted. No CVE exposure from new code."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T15:09:44Z",
+          "note": "WORKSPACE_ROOT derivation (ledger-root.ts): tsconfig.json sets rootDir: './src' and outDir: './dist', so compiled output is dist/utils/ledger-root.js. join(__dirname, '..', '..') correctly resolves to mcp-server/ in both dev (tsx, runs .ts from src/utils/) and production (dist/utils/). workspaceRoot = join(serverDir, '..') correctly points to ai-insights/ workspace root in both environments. QA concern resolved — no security issue."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T15:09:44Z",
+          "note": "No security findings — all OWASP Top 10 categories reviewed; no Critical or High issues identified."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-05T15:10:20Z",
+      "completed_at": "2026-05-05T15:12:43Z",
+      "duration_ms": 143000,
+      "summary": [
+        "Reviewed 4 files: gui/api.ts (handlers + assertSafeQueueId), gui/server.ts (routing blocks), src/utils/ledger-root.ts (WORKSPACE_ROOT export), tests/gui/api-orchestrator.test.ts (23 tests). All 6 acceptance criteria met. Code is clean, follows established patterns, and is well-tested. PASS — no blocking issues, no fix-forward changes required."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/api.ts",
+          "mcp-server/gui/server.ts",
+          "mcp-server/src/utils/ledger-root.ts",
+          "mcp-server/tests/gui/api-orchestrator.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T15:12:43Z",
+          "note": "handleOrchestratorStart body check (api.ts:1538-1540) does not explicitly guard against array inputs — typeof [] === 'object' && [] !== null passes the first guard, so an array body falls through to the planPath check and produces a slightly misleading error message ('body.planPath is required' rather than 'Request body must be a JSON object'). Error code is still VALIDATION_ERROR (correct). Non-blocking: JSON.parse of a real API request body won't produce a bare array for this endpoint in practice. Fix: add `|| Array.isArray(body)` to the first condition if strict message accuracy is desired."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T15:12:43Z",
+          "note": "assertSafeQueueId (api.ts:127) is structurally identical to assertSafeWpId — same three guards, different error message. Both are intentionally kept separate because the error messages reference the specific parameter type ('queue entry ID' vs 'work-package ID'), which is the right trade-off for debuggability. No change needed."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-05T15:12:43Z",
+          "note": "[documentation-forward] apiErrorToStatus() in gui/server.ts is missing a CONFLICT → 409 case — conflict() errors currently fall through to 500. Pre-existing gap, not introduced by WP-008. api-surface.md should document the current mapping table and note the CONFLICT gap as a known limitation so future contributors know to add the missing case before using conflict() in any new handler."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T15:12:43Z",
+          "note": "No observations on WORKSPACE_ROOT export from ledger-root.ts — placement alongside ORCHESTRATOR_LOGS_DIR is correct and consistent. orchestratorLogsDir is correctly initialised from ORCHESTRATOR_LOGS_DIR at server startup (server.ts:746) and threaded through handleRequest to kill/dismiss handlers. Routing placement is sound: GET /api/orchestrator/queue in matchRoute(), POST start/kill/:id/dismiss/:id as special-case blocks before matchRoute() — appropriate because the body-parsing and path-param extraction blocks don't fit matchRoute's return-handler pattern."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-05T15:14:13Z",
+      "completed_at": "2026-05-05T15:17:33Z",
+      "duration_ms": 200000,
+      "summary": [
+        "Updated mcp-server/docs/agents/project-manifest/api-surface.md with all WP-008 changes: (1) expanded path-traversal guards section from 2 to 3 guards, adding assertSafeQueueId with decodeURIComponent ordering note; (2) added four new orchestrator handler signatures (handleOrchestratorStart, handleGetOrchestratorQueue, handleOrchestratorKill, handleOrchestratorDismiss) with full contract descriptions; (3) added WORKSPACE_ROOT constant export to the ledger-root.ts constants section; (4) added four new orchestrator routes to the GUI server route table (GET /api/orchestrator/queue, POST /api/orchestrator/start, POST /api/orchestrator/kill/:id, POST /api/orchestrator/dismiss/:id); (5) addressed reviewer documentation-forward: added CONFLICT→409 mapping gap row and explanatory Known Limitation callout to the HTTP status code mapping table. Updated mcp-server/docs/agents/project-manifest/file-tree.md: added tests/gui/api-orchestrator.test.ts entry (23 tests)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/file-tree.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-05T15:17:33Z",
+          "note": "[documentation-forward resolved] apiErrorToStatus() CONFLICT→409 gap now documented in api-surface.md HTTP status code mapping table as a Known Limitation with a remediation note for future contributors. Pre-existing issue, not introduced by WP-008."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T15:17:33Z",
+          "note": "No other documentation files required updates. The orchestrator-manager.ts section already fully documents QueueEntry, KillResult, killQueueEntry(), and dismissQueueEntry() (added by WP-006). All new handler signatures are thin wrappers that delegate to those documented functions."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-05T15:17:33Z",
+  "last_updated": "2026-05-05T15:17:33Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-05T14:59:43Z",
+      "notes": [
+        "WP-008 introduces four new orchestrator route handlers and their HTTP routes.",
+        "POST /api/orchestrator/start — body: { planPath: string, dryRun?: boolean }; returns StartResult (checks[], started, pid?).",
+        "GET /api/orchestrator/queue — returns QueueEntry[] with effectiveStatus and progress fields.",
+        "POST /api/orchestrator/kill/:id — returns { killed: boolean }; 400 NOT_FOUND for invalid IDs.",
+        "POST /api/orchestrator/dismiss/:id — returns 204 No Content on success; 404 NOT_FOUND for invalid IDs.",
+        "WORKSPACE_ROOT is now exported from src/utils/ledger-root.ts and used in server.ts to resolve the workspace root for startOrchestrator()."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-05-05T15:02:09Z",
+      "notes": [
+        "WP-008 implements four orchestrator API endpoints fully verified: POST /api/orchestrator/start, GET /api/orchestrator/queue, POST /api/orchestrator/kill/:id, POST /api/orchestrator/dismiss/:id.",
+        "assertSafeQueueId() guard prevents path traversal attacks on queue entry IDs — flag for security audit review.",
+        "WORKSPACE_ROOT export from ledger-root.ts is derived at module load time from __dirname — confirm this resolves correctly in production dist/ layout.",
+        "All 6 AC confirmed met. 639/639 tests pass. Zero TypeScript errors."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-05T15:09:44Z",
+      "notes": [
+        "Security audit PASS. All new orchestrator API handlers (handleOrchestratorStart, handleGetOrchestratorQueue, handleOrchestratorKill, handleOrchestratorDismiss) pass OWASP review. Path traversal prevention via assertSafeQueueId() and checkPathPrefix() is sound. spawn() uses array-form arguments — no shell injection. One pre-existing Medium debt item: readBody() has no body size cap. No blocking issues for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-05T15:12:43Z",
+      "notes": [
+        "WP-008 code review PASS. All 4 new handler functions (handleOrchestratorStart, handleGetOrchestratorQueue, handleOrchestratorKill, handleOrchestratorDismiss) plus assertSafeQueueId are clean and well-structured. One documentation-forward item logged: apiErrorToStatus() CONFLICT → 409 mapping gap (pre-existing, not from WP-008) should be documented in api-surface.md. No code changes made by Reviewer."
+      ]
+    }
+  ]
+}

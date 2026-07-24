@@ -1,0 +1,311 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-002.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "findRunLogs returns only files whose name ends with -{slug}.jsonl and never lists files that don't match the slug",
+      "met": true
+    },
+    {
+      "criterion": "readLogEntries rejects filenames containing .., /, or characters outside the allowlist with a thrown ApiError FORBIDDEN",
+      "met": true
+    },
+    {
+      "criterion": "readLogEntries resolves the path and throws ApiError FORBIDDEN if the resolved path escapes logsDir",
+      "met": true
+    },
+    {
+      "criterion": "readLogEntries with afterLine: 5 returns only lines 6+ and reports correct totalLines",
+      "met": true
+    },
+    {
+      "criterion": "Malformed JSON lines are silently skipped without throwing",
+      "met": true
+    },
+    {
+      "criterion": "resolveOrchestratorLogsDir(undefined) returns a non-empty string; explicit value is returned unchanged",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-23T11:01:08Z",
+      "completed_at": "2026-03-23T11:03:36Z",
+      "duration_ms": 148000,
+      "summary": [
+        "Created mcp-server/src/gui/log-resolver.ts with three exported functions: resolveOrchestratorLogsDir, findRunLogs, and readLogEntries",
+        "resolveOrchestratorLogsDir returns ~/.ai-insights/orchestrator-logs as default when given undefined or empty/whitespace string; returns explicit path unchanged",
+        "findRunLogs lists files ending with -{slug}.jsonl and requires a non-empty prefix so bare -slug.jsonl files are excluded",
+        "readLogEntries implements dual-layer path-traversal defence: filename allowlist [A-Za-z0-9._-]+ rejects .., /, and special chars; secondary resolve() escape check ensures the resolved path stays within logsDir",
+        "afterLine pagination: skips first N lines, returns remaining entries, totalLines always reflects the total non-empty line count",
+        "Malformed JSON lines are silently skipped with no exception propagation",
+        "ApiError is defined locally in the module to avoid circular dependency with gui/api.ts (which will import log-resolver.ts)",
+        "Created tests/gui/log-resolver.test.ts with 22 tests covering all acceptance criteria plus edge cases",
+        "TypeScript compiles with zero errors; all 1540 tests pass across 51 test files"
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/gui/log-resolver.ts",
+          "mcp-server/tests/gui/log-resolver.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:03:36Z",
+          "note": "log-resolver.ts defines its own ApiError class separately from gui/api.ts to avoid a circular import. If the codebase grows and more src/gui/ utilities need to throw ApiErrors, a dedicated src/gui/errors.ts module should be extracted so ApiError is defined once. Both the existing gui/api.ts and log-resolver.ts could then import from that shared module."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:03:36Z",
+          "note": "findRunLogs does not validate that logsDir is an absolute path. A future guard could call path.isAbsolute(logsDir) and throw if not, preventing accidental relative paths from producing confusing results."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-23T11:07:54Z",
+      "completed_at": "2026-03-23T11:09:31Z",
+      "duration_ms": 97000,
+      "summary": [
+        "Verified log-resolver.ts: resolveOrchestratorLogsDir returns DEFAULT_LOGS_DIR (~/.ai-insights/orchestrator-logs) for undefined/empty/whitespace; returns explicit path unchanged",
+        "Verified findRunLogs filters by name.endsWith(suffix) && name.length > suffix.length, ensuring bare -{slug}.jsonl entries are excluded",
+        "Verified dual-layer path traversal defence in readLogEntries: (1) SAFE_FILENAME_REGEX /^[A-Za-z0-9._-]+$/ blocks .., /, and special chars; (2) resolve() escape check confirms resolved path starts with resolvedLogsDir + '/'",
+        "Verified afterLine pagination: skip = afterLine ?? 0, lines.slice(skip) returns lines 6+ for afterLine=5; totalLines always counts all non-empty lines before slicing",
+        "Verified malformed JSON lines are caught in a try/catch and silently skipped",
+        "Reviewed 22 tests in log-resolver.test.ts: all 6 AC scenarios covered plus edge cases (empty dir, non-existent dir, afterLine=0, all-malformed file)",
+        "Full suite: 1547/1547 pass; tsc --noEmit: zero errors. All 6 acceptance criteria confirmed met"
+      ],
+      "metrics": {
+        "test_coverage": "22 dedicated tests; all 6 ACs covered",
+        "tests_passed": 1547,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:09:31Z",
+          "note": "The escape-check condition (resolvedFilePath.startsWith(resolvedLogsDir + '/') || resolvedFilePath === resolvedLogsDir) correctly handles both directory-as-target and file-within-directory cases. The +'/'' suffix prevents false-positive prefix matches (e.g. /tmp/logs vs /tmp/logs-other). Correct and robust."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:09:31Z",
+          "note": "Local ApiError class in log-resolver.ts is a known debt item. Both the implementation and test correctly import it from the same module. Non-blocking for this WP; flagged for future extraction to a shared errors.ts."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-03-23T11:22:22Z",
+      "completed_at": "2026-03-23T11:23:52Z",
+      "duration_ms": 90000,
+      "summary": [
+        "Reviewed mcp-server/src/gui/log-resolver.ts (185 lines) and mcp-server/tests/gui/log-resolver.test.ts (254 lines) against OWASP Top 10. 0 Critical, 0 High findings. 1 Medium (relative path accepted by resolveOrchestratorLogsDir without validation — low exploitability, already flagged as technical debt). 2 Low observations. All 10 OWASP categories assessed. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:23:52Z",
+          "note": "OWASP A01 (Broken Access Control) — Path Traversal: PASS. readLogEntries implements a strong dual-layer defence. Layer 1 (log-resolver.ts lines 125–135): explicit checks for empty filename, '..' substring, and '/' character, plus SAFE_FILENAME_REGEX /^[A-Za-z0-9._-]+$/ that rejects backslash, null-byte, URL-encoded sequences (%), semicolons, pipes, and all other specials. Layer 2 (lines 137–147): path.resolve() escape check with resolvedLogsDir + '/' suffix — correctly prevents prefix-collision attacks (e.g. /tmp/logs vs /tmp/logs-evil). findRunLogs only iterates readdir() results (no caller-controlled filename) and applies suffix filtering. No path traversal vector found."
+        },
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-03-23T11:23:52Z",
+          "note": "OWASP A04 (Insecure Design) — Medium: resolveOrchestratorLogsDir (log-resolver.ts line 69) accepts and returns any non-empty configured string unchanged, including relative paths (e.g. '../../etc'). If a relative logsDir flows into findRunLogs, readdir() will resolve it relative to the process CWD, potentially listing files outside the intended directory. readLogEntries is safe because its escape-check uses path.resolve() which catches CWD-relative escapes — but findRunLogs has no such guard. Exploitation requires control over the 'configured' input (typically from gui-config.json, a server-side file). Severity: Medium. Recommendation: add a path.isAbsolute() guard in resolveOrchestratorLogsDir or findRunLogs and throw if the path is relative. Already noted as technical debt by Developer and QA; confirming it as a Medium security finding for tracking."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:23:52Z",
+          "note": "OWASP A04 (Insecure Design) — Low: readLogEntries accepts afterLine as any number without integer or range validation (log-resolver.ts line 122). Negative values, Infinity, or NaN all safely produce skip=0 (the > 0 guard at line 164 absorbs them) so there is no security impact. However, a runtime guard (e.g. Number.isInteger(afterLine) && afterLine >= 0) would improve defensive robustness and fail fast on bogus input. No immediate risk."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:23:52Z",
+          "note": "OWASP A05 (Security Misconfiguration) — Info: Error messages in readLogEntries echo the caller-supplied filename value back in the error message (e.g. \"Filename contains disallowed characters or path components: '<value>'\"). This is a backend-only MCP server utility with no HTTP response surface, so there is no reflected XSS or log-injection risk in the current architecture. If this module is ever exposed via HTTP, error messages should sanitise or omit the echoed input before returning it in an HTTP response body."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:23:52Z",
+          "note": "A02/A03/A06/A07/A08/A09/A10 — All CLEAR. No cryptographic operations, no new third-party dependencies (only Node.js stdlib: node:fs/promises, node:path, node:os), no SQL/LDAP/shell injection vectors, no authentication logic in scope, no unsafe deserialization (JSON.parse with try/catch and unknown[] return type), no HTTP/URL fetching (no SSRF surface), and STDIO discipline enforced (stderr-only). Security logging: errors are correctly written to stderr without leaking file contents."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-23T11:24:08Z",
+      "completed_at": "2026-03-23T11:25:32Z",
+      "duration_ms": 84000,
+      "summary": [
+        "Reviewed mcp-server/src/gui/log-resolver.ts (185 lines) and mcp-server/tests/gui/log-resolver.test.ts (254 lines). All 22 tests pass; tsc --noEmit zero errors.",
+        "Architecture: Three focused exported functions (resolveOrchestratorLogsDir, findRunLogs, readLogEntries) with clear separation of concerns. Each function has a single responsibility and a clear contract. Public API surface is minimal and well-typed.",
+        "Security: Dual-layer path-traversal defence in readLogEntries is correct and robust. Layer 1 allowlist (SAFE_FILENAME_REGEX + explicit .. and / checks) is redundant-by-design with Layer 2 resolve() escape check — exactly right for a security-sensitive path. The +'/'' suffix on resolvedLogsDir correctly prevents prefix-collision attacks. No regressions or new attack surfaces introduced.",
+        "Medium tracked finding (relative path in resolveOrchestratorLogsDir) acknowledged. findRunLogs has no path.isAbsolute() guard. Accepted as tracked technical debt — does not block merge given the low exploitability (requires control of gui-config.json, a server-side file). Recommend adding the guard as a follow-up.",
+        "Code style: clean, idiomatic TypeScript with consistent use of node: protocol imports, descriptive comments, and JSDoc. Error messages are specific enough to aid debugging without being verbose. isNodeError type guard is correct and reusable.",
+        "Test quality: 22 real-filesystem tests with no mocks. All 6 ACs covered plus meaningful edge cases (empty dir, non-existent dir, afterLine=0/>=totalLines, all-malformed file). Test isolation via mkdtemp/rm is correct. The 'symlink attempt' test comment is a minor inaccuracy (the FORBIDDEN is thrown by layer 1, not the escape-check) but the test itself is valid.",
+        "Maintainability: ApiError duplication (log-resolver.ts vs gui/api.ts) is a known low-priority debt item. Both definitions are structurally identical (same fields, same name). A future src/gui/errors.ts extraction would eliminate duplication. Non-blocking.",
+        "Code review verdict: PASS. Implementation is production-quality."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/gui/log-resolver.ts",
+          "mcp-server/tests/gui/log-resolver.test.ts"
+        ]
+      },
+      "metrics": {
+        "test_coverage": "22 dedicated tests; all 6 ACs covered",
+        "tests_passed": 22,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:25:32Z",
+          "note": "Architecture — Single-responsibility: all three public functions are focused and well-scoped. resolveOrchestratorLogsDir is a pure function (no I/O), findRunLogs is a directory lister with output filtering, readLogEntries is a guarded file reader with pagination. Clean separation with no leakage between concerns."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:25:32Z",
+          "note": "Correctness — afterLine semantics: the JSDoc says 'Zero-based index: skip this many lines from the start', and the implementation (lines.slice(skip)) correctly returns lines from index `afterLine` onward (i.e., line numbers afterLine+1 through totalLines). The AC test (afterLine:5 → returns lines 6, 7, 8 of 8) passes. Semantics are consistent and correct."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:25:32Z",
+          "note": "Correctness — JSONL trailing newline: writeJsonl helper appends a trailing '\\n', and the filter (line.trim().length > 0) correctly discards the resulting empty final element. No off-by-one in totalLines. Robust."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:25:32Z",
+          "note": "ApiError duplication: log-resolver.ts exports its own ApiError identical to gui/api.ts. The dual-definition is structurally safe (same shape, same name), but instanceof checks across module boundaries would fail if callers mix imports. The Developer's suggested src/gui/errors.ts extraction is the right long-term fix. Flagged as low-priority debt; does not block this WP."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-03-23T11:25:32Z",
+          "note": "Tracked Security Medium — path.isAbsolute() guard absent in resolveOrchestratorLogsDir and findRunLogs. If a relative path from gui-config.json flows through, findRunLogs's readdir() will silently resolve relative to process CWD. Exploitation requires write access to gui-config.json (server-side file), limiting practical risk. Recommend adding a guard as a near-term follow-up before this module is wired into the HTTP API layer."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:25:32Z",
+          "note": "Test comment inaccuracy: the 'symlink attempt' test (log-resolver.test.ts line 236) has a comment suggesting the FORBIDDEN comes from the escape-check (layer 2), but '../../etc/passwd' is caught by layer 1 (.includes('..')). The test is still valid — it confirms FORBIDDEN is thrown — but the comment could mislead maintainers. Minor."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:25:32Z",
+          "note": "Missing test: there is no test that directly exercises the layer-2 resolve() escape check in isolation. All current path-traversal tests are caught by layer 1. While the dual-layer defence is correct, a test that gets through layer 1 (e.g. a filename allowlist-compliant name pointing outside logsDir via a crafted logsDir) would provide defence-in-depth coverage. Low priority given the allowlist is strong, but worth noting for future test hardening."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-23T11:36:40Z",
+      "completed_at": "2026-03-23T11:39:05Z",
+      "duration_ms": 145000,
+      "summary": [
+        "Reviewed implementation, QA, security-audit, and code-review pipeline outputs for WP-002.",
+        "Enhanced module-level JSDoc in mcp-server/src/gui/log-resolver.ts: added a '## Known Limitations' block documenting the path.isAbsolute() gap in resolveOrchestratorLogsDir/findRunLogs, and an '## ApiError — Local Definition' block explaining why ApiError is defined locally to avoid a circular import with gui/api.ts — both items flagged in the Reviewer's handoff notes.",
+        "Added a new v1.17.0 entry to mcp-server/changelog.md documenting all three exported functions, the test suite, the OWASP security assessment outcome, and the known path.isAbsolute() limitation.",
+        "Added a 'GUI Backend Modules' section to mcp-server/README.md (within the GUI Dashboard section) with a module table and a dedicated subsection for log-resolver.ts covering all three functions, the dual-layer security model, and the known absolute-path limitation."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/gui/log-resolver.ts",
+          "mcp-server/changelog.md",
+          "mcp-server/README.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:39:05Z",
+          "note": "Addressed both Reviewer-forwarded items: (1) the path.isAbsolute() known limitation is now documented both in the module-level JSDoc and in mcp-server/README.md; (2) the ApiError local-definition rationale is now documented in the module-level JSDoc, preventing future maintainers from being surprised by the dual definition."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:39:05Z",
+          "note": "mcp-server/README.md previously had no documentation of the src/gui/ backend modules. The new 'GUI Backend Modules' table and log-resolver subsection provide a reference point for future contributors and for the HTTP API layer that will eventually consume these functions."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:39:05Z",
+          "note": "Changelog entry (v1.17.0) follows the established style of the mcp-server changelog: bullet-per-topic, module-qualified prefixes, and explicit test counts."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-15T08:56:57Z",
+  "last_updated": "2026-04-15T08:56:57Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-03-23T11:03:36Z",
+      "notes": [
+        "New file: mcp-server/src/gui/log-resolver.ts — three exported functions with full security guards",
+        "New file: mcp-server/tests/gui/log-resolver.test.ts — 22 tests, all passing",
+        "Security note: ApiError is defined locally in log-resolver.ts to avoid circular dep with gui/api.ts",
+        "The security-audit stage should pay particular attention to the path-traversal guards in readLogEntries (lines ~110-135)"
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-23T11:23:52Z",
+      "notes": [
+        "Security audit PASS — 0 Critical/High findings. One Medium finding (relative path accepted by resolveOrchestratorLogsDir without path.isAbsolute() guard) does not block code review but should be tracked as a near-term improvement. Code review can proceed. Recommend Reviewer note the Medium finding in their review and decide whether to require a fix before merge or accept it as tracked debt."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-03-23T11:25:32Z",
+      "notes": [
+        "Code review PASS. Implementation is clean, correct, and production-quality. All 22 tests pass, tsc clean. Two tracked items for Documentation to note: (1) Medium — path.isAbsolute() guard missing in resolveOrchestratorLogsDir/findRunLogs — recommend documenting as a known limitation in the module JSDoc and/or a follow-up task. (2) Low — ApiError is defined locally to avoid circular import; suggest documenting the reason in the module-level JSDoc or a code comment so future maintainers understand the rationale."
+      ]
+    },
+    {
+      "from_agent": "Documentation",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-03-23T11:39:05Z",
+      "notes": [
+        "WP-002 documentation complete. Files modified: mcp-server/src/gui/log-resolver.ts (JSDoc enhanced), mcp-server/changelog.md (v1.17.0 entry added), mcp-server/README.md (GUI Backend Modules section added). All 6 acceptance criteria confirmed met across implementation, QA, security-audit, code-review, and documentation pipelines."
+      ]
+    }
+  ]
+}

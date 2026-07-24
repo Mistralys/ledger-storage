@@ -1,0 +1,236 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "inferProjectRootFromPlanPath('/repo/docs/agents/plans/2026-01-01-foo/plan.md') returns '/repo' (standard case).",
+      "met": true
+    },
+    {
+      "criterion": "inferProjectRootFromPlanPath('/repo/docs/agents/plans/subfolder/2026-01-01-foo/plan.md') returns '/repo' (nested case — not fixed depth).",
+      "met": true
+    },
+    {
+      "criterion": "A path without docs/agents in any ancestor returns a meaningful error or null (not a silently wrong result from counting 4 levels up).",
+      "met": true
+    },
+    {
+      "criterion": "The function remains pure — no filesystem access (fs.existsSync, etc.).",
+      "met": true
+    },
+    {
+      "criterion": "Existing callers (deriveRepoName(), detectProjectByCwd()) continue to work correctly with the upgraded algorithm.",
+      "met": true
+    },
+    {
+      "criterion": "All existing tests in the test suite continue to pass.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-07-01T12:41:59Z",
+      "completed_at": "2026-07-01T12:46:00Z",
+      "duration_ms": 241000,
+      "summary": [
+        "Replaced fixed 4-level dirname() walk in inferProjectRootFromPlanPath() with anchor-based algorithm: splits the normalized path into segments, finds the first i where segments[i]==='docs' and segments[i+1]==='agents', returns segments[0..i-1].join('/') or null if not found.",
+        "Updated return type to string|null. Propagated null-guards to all callers: deriveRepoName() returns 'unknown' on null; detectProjectByCwd() skips null-root projects; project-lifecycle.ts skips readProjectName when root is null.",
+        "Added 8 new test cases to ledger-root.test.ts covering: file path (plan.md), nested plan folder (more than 4 levels below root), filesystem-root edge case, no docs/agents in path (null), empty string (null), docs without agents as next segment (null).",
+        "Full suite: 3242 tests across 110 files — all passing. tsc --noEmit clean."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/utils/ledger-root.ts",
+          "mcp-server/src/storage/ledger-store.ts",
+          "mcp-server/src/tools/project-lifecycle.ts",
+          "mcp-server/tests/utils/ledger-root.test.ts"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 3242,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-01T12:46:00Z",
+          "note": "The return type change of inferProjectRootFromPlanPath (string → string|null) rippled to project-lifecycle.ts (L594) and detectProjectByCwd in ledger-store.ts. Both were updated to guard against null before use. No other callers were affected."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-07-01T12:46:00Z",
+          "note": "The posix import in ledger-root.ts is now unused by inferProjectRootFromPlanPath but still consumed by deriveRepoName (posix.basename). No dead import."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-07-01T12:52:27Z",
+      "completed_at": "2026-07-01T12:53:52Z",
+      "duration_ms": 85000,
+      "summary": [
+        "All 6 ACs from the linked WP spec (work/WP-001.md — inferProjectRootFromPlanPath anchor upgrade) are met. Anchor-based algorithm correctly finds docs/agents regardless of nesting depth. Both callers null-guarded. 22 ledger-root tests pass; full suite 3242/3242 passes, TypeScript clean. Note: 6 extra ACs in the ledger (about Zod schemas, RunnerType, CSS badge) belong to work/WP-002.md — ledger data issue flagged for PM review."
+      ],
+      "metrics": {
+        "test_coverage": "22 tests in ledger-root.test.ts (8 new anchor-algorithm cases)",
+        "tests_passed": 3242,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-01T12:53:52Z",
+          "note": "mcp-server/src/utils/ledger-root.ts: inferProjectRootFromPlanPath() correctly implements the anchor-based algorithm. Normalises backslashes before splitting (cross-platform). Handles filesystem-root edge case ('/docs/agents/...') by returning '/' via empty-join fallback. Returns null for empty string and paths without docs/agents."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-01T12:53:52Z",
+          "note": "Null propagation verified in callers: ledger-store.ts L845 uses 'if (projectRoot === null) continue' to skip null-root projects in detectProjectByCwd(). project-lifecycle.ts L593 uses ternary 'projectRoot !== null ? await readProjectName(projectRoot) : null'. Both are correct."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-01T12:53:52Z",
+          "note": "deriveRepoName() in ledger-root.ts correctly returns 'unknown' on null root. No changes needed there."
+        },
+        {
+          "type": "improvement",
+          "priority": "high",
+          "timestamp": "2026-07-01T12:53:52Z",
+          "note": "LEDGER DATA ISSUE (same pattern as WP-001) — ACs 1-6 in ledger WP-002 (Zod schemas, RunnerType, RUNNER_LABELS, CSS badge, ledger-store L524 cast) originate from work/WP-002.md (Runner Enum Extension), NOT from this WP's linked spec (work/WP-001.md). These ACs belong to a different ledger WP. PM should remove them from ledger WP-002 before COMPLETE status is reachable."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-07-01T12:58:33Z",
+      "completed_at": "2026-07-01T13:00:07Z",
+      "duration_ms": 94000,
+      "summary": [
+        "Code review PASS. inferProjectRootFromPlanPath() upgraded from fixed 4-level walk to anchor-based algorithm. Correct, pure, cross-platform (backslash normalisation), with proper filesystem-root edge-case handling (returns '/' via empty-join fallback).",
+        "Null propagation to all 3 callers reviewed: deriveRepoName() returns 'unknown' on null; detectProjectByCwd() uses 'if (projectRoot === null) continue'; project-lifecycle.ts uses ternary null guard. All correct.",
+        "Test suite: 22 tests (8 new anchor-algorithm cases) — covers standard depth, nested depth, Windows backslashes, null path, empty string, docs-without-agents-next-segment, filesystem-root. Thorough and well-named.",
+        "No Fix-Forward applied. One pre-existing inconsistency noted (repositoryName derivation in project-lifecycle.ts bypasses deriveRepoName()) — low priority, out of WP scope."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/utils/ledger-root.ts",
+          "mcp-server/src/storage/ledger-store.ts",
+          "mcp-server/src/tools/project-lifecycle.ts",
+          "mcp-server/tests/utils/ledger-root.test.ts"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 3242,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-07-01T13:00:07Z",
+          "note": "[documentation-forward] inferProjectRootFromPlanPath() return type changed from string to string|null in this WP. Update mcp-server/docs/agents/project-manifest/api-surface.md to reflect the new signature and add a note that null is returned when no docs/agents anchor is found."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-01T13:00:07Z",
+          "note": "Pre-existing inconsistency (not introduced by this WP): repositoryName derivation in project-lifecycle.ts L596-598 uses a raw split/filter/pop instead of delegating to deriveRepoName(). This bypasses the lowercase normalization and assertSafeSegment validation that deriveRepoName() applies. Consider unifying in a future clean-up WP."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-01T13:00:07Z",
+          "note": "No blocking findings. Anchor-based algorithm is algorithmically correct: segments[i]==='docs' && segments[i+1]==='agents' exact-match prevents partial matches like 'agents-playground'. Backslash normalization is applied before splitting. Filesystem-root edge case ('/docs/agents/...') correctly returns '/' via empty-join fallback. All null guards in callers are correct."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-07-01T13:07:21Z",
+      "completed_at": "2026-07-01T13:08:20Z",
+      "duration_ms": 59000,
+      "summary": [
+        "Updated mcp-server/docs/agents/project-manifest/api-surface.md: inferProjectRootFromPlanPath() return type corrected from 'string' to 'string|null'; description updated from fixed 4-level walk to anchor-based algorithm (finds docs/agents segment pair); null return conditions documented (no anchor found, empty input, docs-without-agents); filesystem-root edge case noted; caller null-guard behaviour documented for all three callers.",
+        "Also updated the deriveRepoName() comment to note 'null root from inferProjectRootFromPlanPath' as a 'unknown'-triggering failure case (replacing the now-stale 'path too shallow' wording).",
+        "ACs 7-12 (the real inferProjectRootFromPlanPath criteria) are all met. ACs 1-6 (Runner Enum Extension) are misplaced from work/WP-002.md — PM must remove them."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-01T13:08:20Z",
+          "note": "documentation-forward resolved: inferProjectRootFromPlanPath() signature updated in api-surface.md — return type corrected from string to string|null; algorithm description updated from fixed 4-level walk to anchor-based (docs/agents segment scan); null return conditions and caller null-guard behaviour documented; deriveRepoName() description updated to note 'null root' as a return-'unknown' trigger."
+        },
+        {
+          "type": "improvement",
+          "priority": "high",
+          "timestamp": "2026-07-01T13:08:20Z",
+          "note": "LEDGER DATA ISSUE (pre-existing): ACs 1-6 in this ledger WP (Zod schemas, RunnerType, RUNNER_LABELS, CSS badge, ledger-store L524 cast) originate from work/WP-002.md and do not belong to this WP spec. PM must remove them via ledger_update_acceptance_criteria before the COMPLETE transition."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-07-01T13:15:36Z",
+  "last_updated": "2026-07-01T13:15:36Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-07-01T12:46:00Z",
+      "notes": [
+        "inferProjectRootFromPlanPath now returns string|null. Callers must handle null: deriveRepoName returns 'unknown'; detectProjectByCwd skips projects; project-lifecycle.ts skips readProjectName when null.",
+        "The anchor algorithm finds the first docs/agents pair in the path segments — works for standard depth, nested plans, and file paths inside plan folders.",
+        "WP-006 (the MCP tool) depends on this correct root inference — it should work as long as plan_path values in the ledger contain docs/agents."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-07-01T12:53:52Z",
+      "notes": [
+        "WP-002 (inferProjectRootFromPlanPath upgrade) fully verified. Anchor-based algorithm correct — 12 tests cover standard, nested, Windows, null, empty, and filesystem-root cases. Null guards in both callers are correct. Flagged ledger data issue: ACs 1-6 belong to work/WP-002.md (Runner Enum Extension), not this WP spec."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-07-01T13:00:07Z",
+      "notes": [
+        "WP-002 PASS. inferProjectRootFromPlanPath anchor-upgrade is correct and well-tested. 22 tests (8 new) cover all AC scenarios. Null guards in all 3 callers are correctly implemented. No Fix-Forward applied — code is clean as-is. Documentation agent: update api-surface.md for the string|null return type change (see documentation-forward comment). PM: misplaced ACs 1-6 (Runner Enum Extension) need removal from ledger WP-002 before COMPLETE transition."
+      ]
+    },
+    {
+      "from_agent": "Documentation",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-07-01T13:08:20Z",
+      "notes": [
+        "Documentation complete. api-surface.md updated: inferProjectRootFromPlanPath() return type corrected to string|null, algorithm description updated. Misplaced ACs 1-6 (Runner Enum Extension) remain — PM must remove before COMPLETE."
+      ]
+    }
+  ]
+}

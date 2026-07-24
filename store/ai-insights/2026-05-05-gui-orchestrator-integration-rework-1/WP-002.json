@@ -1,0 +1,180 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-002.md",
+  "status": "COMPLETE",
+  "assigned_to": "Reviewer",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "MAX_BODY_BYTES constant is defined (1_048_576)",
+      "met": true
+    },
+    {
+      "criterion": "readBody() rejects payloads exceeding the limit via Content-Length pre-check",
+      "met": true
+    },
+    {
+      "criterion": "readBody() rejects payloads exceeding the limit via streaming byte-count fallback",
+      "met": true
+    },
+    {
+      "criterion": "handleRequest() returns 413 for Payload Too Large errors",
+      "met": true
+    },
+    {
+      "criterion": "A test covers the 413 rejection path",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-05T16:58:25Z",
+      "completed_at": "2026-05-05T17:03:46Z",
+      "duration_ms": 321000,
+      "summary": [
+        "Added MAX_BODY_BYTES = 1_048_576 constant and PayloadTooLargeError class to gui/server.ts. Upgraded readBody() with a Content-Length header pre-check and a streaming byte-count fallback (using req.resume() to drain gracefully). Added 413 PAYLOAD_TOO_LARGE handling to all four readBody() call sites in handleRequest(). Added server-body-limit.test.ts with 3 tests covering the constant value, Content-Length pre-check (via raw TCP), and streaming rejection path. All 2099 tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/server.ts",
+          "mcp-server/tests/gui/server-body-limit.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T17:03:46Z",
+          "note": "The four readBody() call sites each have their own PayloadTooLargeError catch branch (added in this WP). If more body-parsing routes are added in future, consider a sendBodyError() helper or a shared wrapper to avoid repeating the pattern."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-05-05T17:03:46Z",
+          "note": "gui/server.ts currently has no Content-Length header on 413 responses — sendError() uses Content-Length only for 200 responses via sendJson(). The error path omits the header, which is technically valid but inconsistent with the rest of the API surface. This pre-existed this WP."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-05T17:07:20Z",
+      "completed_at": "2026-05-05T17:08:35Z",
+      "duration_ms": 75000,
+      "summary": [
+        "Verified WP-002 body-size cap. All 5 ACs confirmed: (1) MAX_BODY_BYTES = 1_048_576 at line 165, exported; (2) Content-Length pre-check at lines 179-184 using !isNaN guard with strict > comparison; (3) streaming byte-count fallback at lines 193-199 using req.resume() to drain cleanly; (4) all 4 readBody() call sites in handleRequest() (lines 587, 647, 681, 708) have PayloadTooLargeError catch returning 413; (5) server-body-limit.test.ts has 3 tests covering constant value, pre-check path (raw TCP), and streaming path. Full suite 2102/2102 pass including 3 new tests."
+      ],
+      "metrics": {
+        "test_coverage": "67 files",
+        "tests_passed": 2102,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T17:08:35Z",
+          "note": "Implementation is solid. Two edge cases verified beyond AC scope: (1) Content-Length: NaN is safely ignored via the !isNaN(n) guard — falls through to streaming check. (2) Content-Length: MAX_BODY_BYTES exactly is not rejected (uses strict > comparison). The streaming test correctly sends MAX_BODY_BYTES + 1 bytes without a Content-Length header to force the streaming path, taking ~3s as expected. Pre-check test uses raw TCP to bypass fetch client-side validation — good technique."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-05-05T17:13:45Z",
+      "completed_at": "2026-05-05T17:14:50Z",
+      "duration_ms": 65000,
+      "summary": [
+        "Reviewed mcp-server/gui/server.ts and mcp-server/tests/gui/server-body-limit.test.ts. WP-002 adds a 1 MiB body-size cap via dual mechanisms: Content-Length pre-check and streaming byte-count fallback. All 4 call sites correctly return 413. This WP is a net security improvement (A04 — Insecure Design). 0 Critical, 0 High, 0 Medium findings. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T17:14:50Z",
+          "note": "Full OWASP Top 10 review performed on mcp-server/gui/server.ts and mcp-server/tests/gui/server-body-limit.test.ts. No security findings — 0 Critical, 0 High, 0 Medium. This WP is a net security improvement. Detailed assessment:\n\nA01 (Broken Access Control): No changes to authorization logic. Pre-existing slug extraction via decodeURIComponent() on URL path segments is unchanged by this WP.\n\nA02 (Cryptographic Failures): Not applicable.\n\nA03 (Injection): parseInt(declaredLength, 10) guarded by !isNaN(n) prevents injection via malformed Content-Length. Buffer.length for streaming byte counting is runtime-internal, not user-controlled.\n\nA04 (Insecure Design): WP-002 directly addresses potential DoS via unbounded request body consumption. Two complementary mechanisms are correctly implemented: (1) Content-Length header pre-check fires before any body data is read — attacker cannot bypass this by sending accurate Content-Length; (2) streaming byte-count fallback (chunk.length accumulation + req.resume() drain) correctly handles cases where Content-Length is absent or deliberately understated. The rejected flag prevents double-rejection of the Promise. The 1 MiB limit is conservative and appropriate for a local developer-only server.\n\nA05 (Security Misconfiguration): Error response returns 413 status code and PAYLOAD_TOO_LARGE code. No stack trace or internals leaked.\n\nA06 (Vulnerable & Outdated Components): No new dependencies.\n\nA07 (Authentication): No auth changes.\n\nA08 (Data Integrity): No deserialization changes.\n\nA09 (Logging): Not applicable to body-size enforcement.\n\nA10 (SSRF): Not applicable.\n\nTest quality: server-body-limit.test.ts uses raw TCP sockets (createConnection) to bypass fetch client-side validation — the correct technique for exercising the Content-Length pre-check path. Both rejection paths (pre-check and streaming) are independently tested."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-05T17:18:47Z",
+      "completed_at": "2026-05-05T17:20:28Z",
+      "duration_ms": 101000,
+      "summary": [
+        "Solid body-size cap implementation. MAX_BODY_BYTES exported at 1_048_576, PayloadTooLargeError is module-private, readBody() has both Content-Length pre-check and streaming byte-count fallback with correct rejected flag preventing double-resolution. All 4 call sites return 413. Test file correctly exercises both rejection paths including the raw-TCP technique for the pre-check. No blocking issues found."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/server.ts",
+          "mcp-server/tests/gui/server-body-limit.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T17:20:28Z",
+          "note": "readBody() dual-mechanism is well-structured. The rejected flag correctly guards the 'end' and 'error' handlers against double-resolution in the streaming path. Pre-check returns before attaching any listeners, so no guard is needed there. Logic is correct."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T17:20:28Z",
+          "note": "Minor asymmetry: the streaming path calls req.resume() to drain remaining data (with an explanatory comment), but the Content-Length pre-check path does not. In the pre-check path, no data listeners are attached so the stream never flows, meaning body data accumulates in Node's internal socket buffer until the response is sent and the connection closes. For a local dev server with Connection: close semantics this is benign — Node.js handles socket cleanup — but adding req.resume() after reject() in the pre-check branch would make the two rejection paths symmetric and is worth considering in a follow-up. Not blocking."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-05-05T17:20:28Z",
+          "note": "The four call sites each repeat the two-line PayloadTooLargeError catch pattern identically. Developer already flagged this (implementation pipeline comment). Acceptable at 4 routes; if the route count grows a shared sendBodyError() helper would reduce the surface. Echoing the debt note for the documentation agent."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-05T17:20:28Z",
+          "note": "[documentation-forward] The 'readBody' function JSDoc (if any) could benefit from a note stating that a Promise rejection with PayloadTooLargeError is the caller's responsibility to handle with a 413 response. This makes the contract explicit for future developers adding new routes that call readBody()."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T17:20:28Z",
+          "note": "Test quality is high: raw TCP socket (createConnection) correctly bypasses fetch client-side Content-Length validation to exercise the pre-check path. The streaming test correctly uses duplex: 'half' and sends MAX_BODY_BYTES + 1 without a Content-Length header. Both rejection mechanisms independently tested."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-05T17:20:28Z",
+  "last_updated": "2026-05-05T17:20:28Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-05T17:03:46Z",
+      "notes": [
+        "MAX_BODY_BYTES (1 MiB) is exported for testing. The Content-Length pre-check fires before any body data is read; the streaming fallback uses req.resume() (not req.destroy()) so the 413 response is sent cleanly. All four readBody() call sites in handleRequest() now have a PayloadTooLargeError catch returning 413. The streaming integration test (AC-3) takes ~3s due to sending 1MiB over loopback — this is expected and within default test timeouts."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-05-05T17:20:28Z",
+      "notes": [
+        "PASS — no blocking issues. Two low-priority observations: (1) pre-check path is missing req.resume() drain for symmetry with streaming path — benign for local dev server; (2) four-site PayloadTooLargeError catch repetition is pre-flagged debt. One documentation-forward: add readBody() JSDoc contract note for future route authors."
+      ]
+    }
+  ]
+}

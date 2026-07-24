@@ -1,0 +1,152 @@
+{
+  "work_package_id": "WP-005",
+  "work_package_file": "work/WP-002.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "ledger_cancel_pipeline accepts optional auto_cancelled parameter (default false)",
+      "met": true
+    },
+    {
+      "criterion": "When auto_cancelled = true, the pipeline object auto_cancelled flag is set to true",
+      "met": true
+    },
+    {
+      "criterion": "Existing callers without the parameter continue to work unchanged (backward compatible)",
+      "met": true
+    },
+    {
+      "criterion": "Unit tests verify auto_cancelled = true sets the flag",
+      "met": true
+    },
+    {
+      "criterion": "Unit tests verify auto_cancelled = false (default) does not set the flag",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-25T15:50:00Z",
+      "completed_at": "2026-03-25T15:55:52Z",
+      "duration_ms": 352000,
+      "summary": [
+        "Added optional `auto_cancelled` boolean parameter (default `false`) to `ledger_cancel_pipeline`. When `true`, sets `pipeline.auto_cancelled = true` on the affected pipeline so crash-recovery cancellations are excluded from rework budget calculations (consistent with §21.27 semantics). Exported `cancelPipeline` from `_internal` to enable integration-style unit tests. Added 3 new tests to `pipeline.test.ts` covering: (1) `auto_cancelled=true` sets flag, (2) `auto_cancelled=false` does not set flag, (3) omitting parameter is backward-compatible. All 1738 tests pass; no type errors."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/tools/pipeline.ts",
+          "mcp-server/tests/tools/pipeline.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-25T15:55:52Z",
+          "note": "The existing `cancelPipeline logic` describe block in pipeline.test.ts simulates the logic by calling `store.updateWorkPackageWithSync` directly rather than calling the tool function. This pattern is consistent with other legacy tests in the file but offers weaker coverage since it does not exercise the actual tool code path. The new `cancelPipeline — auto_cancelled parameter` tests added in this WP call the real function via `_internal.cancelPipeline`, which is the preferred pattern. The older simulate-style tests could eventually be migrated to the real-function pattern, but that is out of scope here."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-25T15:55:52Z",
+          "note": "`CancelPipelineSchema` uses `.default(false)` on the `auto_cancelled` field which will strip the key from the parsed object when calling callers pass `undefined`. This means `pipeline.auto_cancelled` will never be set to `false` explicitly — only `true` or absent. This matches the `Pipeline` schema where `auto_cancelled` is optional (`z.boolean().optional()`), so the behavior is correct and consistent. No action needed, but worth noting for future readers."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-25T16:05:35Z",
+      "completed_at": "2026-03-25T16:08:09Z",
+      "duration_ms": 154000,
+      "summary": [
+        "All 5 acceptance criteria verified. Build clean (tsc --noEmit). Full test suite: 1738/1738 pass (58 files). All 3 new cancelPipeline auto_cancelled tests pass by name. Rework budget exclusion via !p.auto_cancelled filter in startPipeline confirmed pre-existing and unaffected. Backward compatibility verified via Zod .default(false) and omit-param test."
+      ],
+      "metrics": {
+        "test_coverage": "1738/1738 (100%)",
+        "tests_passed": 1738,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-25T16:08:09Z",
+          "note": "No observations — code is clean and consistent. The implementation is minimal and correct: a single conditional branch `if (args.auto_cancelled) { pipeline.auto_cancelled = true; }` correctly avoids writing `false` to the optional field (consistent with the Pipeline schema's `z.boolean().optional()` definition). The rework budget filter in startPipeline (`!p.auto_cancelled`, line 222) was already in place and correctly excludes auto-cancelled pipelines from rework counts — this WP's implementation integrates cleanly without any additional changes needed."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-25T16:08:09Z",
+          "note": "Edge-case vetted: when multiple IN_PROGRESS pipelines of the same type exist (unusual state), cancelPipeline targets the most recent via `.at(-1)`. This is the correct and consistent behavior matching the existing cancel logic. No test gap — the scenario requires pre-existing state that is already invalid per schema constraints."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-25T16:35:24Z",
+      "completed_at": "2026-03-25T16:37:15Z",
+      "duration_ms": 111000,
+      "summary": [
+        "PASS. Implementation is minimal, correct, and well-integrated. The auto_cancelled parameter follows the optional-field convention correctly — only true is written, never false, keeping the JSON ledger lean and consistent with the Pipeline schema's z.boolean().optional() definition. The if (args.auto_cancelled) truthiness guard is the idiomatic pattern here. The _internal export of cancelPipeline follows §53 conventions. Three dedicated tests cover all three cases (true, false, omitted) using the real function path via _internal — the preferred pattern. Applied one Fix-Forward: added an inline comment on the conditional explaining why false is never written, capturing the intent that both the Developer and QA noted in their pipeline comments but had not yet been recorded in source."
+      ],
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-03-25T16:37:15Z",
+          "note": "Added inline comment to the `if (args.auto_cancelled)` branch in `cancelPipeline` explaining why `false` is intentionally not written to the optional field. Non-behavioral — only clarifies intent for future readers. Both Developer and QA noted this asymmetry in their pipeline comments; capturing it in source prevents confusion during future maintenance."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-25T16:50:52Z",
+      "completed_at": "2026-03-25T16:52:14Z",
+      "duration_ms": 82000,
+      "summary": [
+        "Updated mcp-server/docs/agents/project-manifest/api-surface.md for WP-005 additions: (1) added auto_cancelled optional parameter to the ledger_cancel_pipeline tool signature with description of its rework-budget effect and spec reference (\\u00a712.5.2), (2) updated the description to document the auto_cancelled semantics, (3) added cancelPipeline to the pipeline.ts _internal export documentation."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-25T16:52:14Z",
+          "note": "No documentation gaps in the workflow spec — §12.5.2 already documented auto_cancelled semantics and 'GUI reset cleanup' use case (updated in WP-001). The api-surface.md had two gaps: (1) ledger_cancel_pipeline signature was missing the auto_cancelled parameter, (2) the _internal pipeline.ts function section was missing cancelPipeline. Both corrected."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-03-25T16:52:14Z",
+  "last_updated": "2026-03-25T16:52:14Z",
+  "handoff_notes": [
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-25T16:08:09Z",
+      "notes": [
+        "WP-005 passes QA. Implementation is minimal, correct, and fully covered. All 5 AC met. 1738/1738 tests pass, TypeScript clean. Ready for code review."
+      ]
+    }
+  ]
+}

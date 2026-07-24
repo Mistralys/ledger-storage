@@ -1,0 +1,176 @@
+{
+  "work_package_id": "WP-008",
+  "work_package_file": "work/WP-008.md",
+  "status": "COMPLETE",
+  "assigned_to": "Reviewer",
+  "dependencies": [
+    "WP-003",
+    "WP-004",
+    "WP-007"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "node scripts/build-personas.js completes without errors",
+      "met": true
+    },
+    {
+      "criterion": "node scripts/build-personas.js --check passes (output is fresh)",
+      "met": true
+    },
+    {
+      "criterion": "personas/ledger/deep-agents/2-project-manager.md contains subagent_type (not subagent) in all 4 dispatch blocks",
+      "met": true
+    },
+    {
+      "criterion": "The template cross-reference check (WP-7) passes for all personas",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-15T06:01:34Z",
+      "completed_at": "2026-04-15T06:07:38Z",
+      "duration_ms": 364000,
+      "summary": [
+        "ran `npm install` in personas/ to upgrade @mistralys/persona-builder from 2.3.0 to 2.4.0 (package-lock.json already referenced 2.4.0 but node_modules was stale)",
+        "ran `node scripts/build-personas.js` -- completed successfully, 84 files written, now including deep-agents output in personas/ledger/deep-agents/ and personas/standalone/deep-agents/",
+        "verified personas/ledger/deep-agents/2-project-manager.md contains `subagent_type` (not `subagent`) in all 4 dispatch blocks at lines 110, 117, 124, 131",
+        "ran `node scripts/build-personas.js --check` -- passes with 84 personas processed, exit 0 (output is fresh)"
+      ],
+      "artifacts": {
+        "files_modified": [
+          "personas/package-lock.json"
+        ]
+      },
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-04-15T06:07:38Z",
+          "note": "personas/node_modules/@mistralys/persona-builder was at 2.3.0 while package-lock.json referenced 2.4.0. A prior WP (WP-004) updated the lock file but did not run `npm install` to materialize the upgrade. This silent discrepancy meant deep-agents output was silently skipped without any build error. Consider adding a node_modules version validation step to the build script, or adding `npm install` to the build-personas.js preamble when a version mismatch is detected."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T06:07:38Z",
+          "note": "The build script's pre-clean loop (which deletes all .md files from output dirs before building) correctly covered outputDirs entries — no stale files were left. This was observed working correctly for the deep-agents directories."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-15T06:08:07Z",
+      "completed_at": "2026-04-15T06:10:33Z",
+      "duration_ms": 146000,
+      "summary": [
+        "AC1 PASS — node scripts/build-personas.js completed without errors: 84 files written across all targets.",
+        "AC2 PASS — node scripts/build-personas.js --check exits 0: output is fresh (84 personas processed).",
+        "AC3 PASS — personas/ledger/deep-agents/2-project-manager.md contains subagent_type at lines 110, 117, 124, 131 (exactly 4 dispatch blocks); grep for '\"subagent\":' across all deep-agents output returns zero matches.",
+        "AC4 PASS — Cross-reference check runs on --check builds and emits no errors for any of the 84 personas; injected a deliberate bad reference ({{agent_slug_nonexistent_fake}}) to confirm the validator catches it with exit 1 and a clear error message (correct slug, persona name, YAML file), then restored the content file.",
+        "Regression: 1826/1826 MCP server tests pass.",
+        "Edge-case: all 3 output target directories (vs-code, claude-code, deep-agents) have exact expected file counts: 9 ledger + 19 standalone = 28 files each target. Total: 84."
+      ],
+      "metrics": {
+        "tests_passed": 1826,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-04-15T06:10:33Z",
+          "note": "The cross-reference check in scripts/build-personas.js (WP-007) is scoped only to personas/ledger/src/meta. Standalone personas do not use {{agent_slug_*}} variables, which is correct — but worth documenting explicitly so a future maintainer doesn't inadvertently introduce slug variables in standalone templates without wiring up the check."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T06:10:33Z",
+          "note": "The validator emits a [WARN] for 'Unresolved variable' from persona-builder itself, plus a separate [ERROR] from the cross-reference check. These are two independent failure signals for the same root cause. Consider consolidating these messages to avoid confusion in CI logs."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T06:10:33Z",
+          "note": "No unit tests exist specifically for the cross-reference check logic (extractSubagentsList, etc.) in build-personas.js. The manual --check flag covers integration, but an isolated unit test for the parser would guard against future regressions in the YAML parsing logic."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-15T06:11:07Z",
+      "completed_at": "2026-04-15T06:13:57Z",
+      "duration_ms": 170000,
+      "summary": [
+        "WP-008 is a build-and-verify task. The sole code change (running npm install to materialize the v2.4.0 upgrade from the already-updated lock file) is correct and sufficient.",
+        "The cross-reference check logic in scripts/build-personas.js (added by WP-007) is well-implemented: extractSubagentsList handles inline comment stripping, empty multiline guards, and stops at the next top-level YAML key cleanly. The {{agent_slug_*}} regex and slug normalisation (_→-) are correct.",
+        "parseYamlScalars trailing-comment limitation is explicitly documented as a convention constraint — no inline comments on scalar fields. Adequate for the use case.",
+        "Clean pre-build deletion loop correctly covers the new deep-agents output directories via the outputDirs config key. No stale files observed.",
+        "All 4 ACs confirmed passing by QA; 1826/1826 MCP server tests pass. No blocking issues found."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "personas/package-lock.json",
+          "personas/ledger/deep-agents/2-project-manager.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T06:13:57Z",
+          "note": "extractSubagentsList (scripts/build-personas.js) uses ' #' (space+hash) to strip inline YAML comments on list items. A value like `slug#comment` (no leading space) would not be stripped. Given the persona YAML style, this edge case is practically unreachable, but worth noting for future YAML parsers."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-15T06:13:57Z",
+          "note": "[documentation-forward] WP-008.md spec file lists WP-005 as a dependency, but the ledger registered WP-003 instead. The spec file should be corrected to reflect the actual dependency graph (WP-003, WP-004, WP-007) so it does not mislead future readers tracing the execution order."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-04-15T06:13:57Z",
+          "note": "[documentation-forward] scripts/build-personas.js performs the {{agent_slug_*}} cross-reference check only against personas/ledger/src/meta. There is no comment explaining that standalone personas intentionally do not use agent_slug variables. An inline comment at the metaFiles scan point would prevent a future maintainer from wondering if standalone personas were accidentally excluded."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-15T06:13:57Z",
+  "last_updated": "2026-04-15T06:13:57Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-15T06:07:38Z",
+      "notes": [
+        "WP-008 is complete. All 4 ACs verified: build succeeds, --check passes, deep-agents output is now generated for all 28 personas (9 ledger + 19 standalone), and 2-project-manager.md uses subagent_type in all 4 dispatch blocks. The root cause was that personas/node_modules was at v2.3.0 while the lock file referenced 2.4.0 — resolved by running npm install in personas/."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-15T06:10:33Z",
+      "notes": [
+        "WP-008 QA PASS. All 4 ACs verified by execution. Build produces 84 files clean, cross-reference validator is confirmed active and fails loud on bad references. validator tested by deliberate injection of bad agent_slug reference. MCP server regression suite: 1826/1826 pass. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-04-15T06:13:57Z",
+      "notes": [
+        "WP-008 PASS. Build-and-verify task: all 4 ACs confirmed by execution. personas/package-lock.json is the only modified artefact (npm install to materialize the v2.4.0 upgrade). Cross-reference check logic is clean. Two documentation-forward items filed: (1) WP-008.md spec lists WP-005 as dep but ledger has WP-003 — spec file needs correction; (2) build-personas.js cross-reference scope should get an inline comment explaining why standalone personas are intentionally excluded."
+      ]
+    }
+  ]
+}

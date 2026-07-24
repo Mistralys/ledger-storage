@@ -1,0 +1,180 @@
+{
+  "work_package_id": "WP-003",
+  "work_package_file": "work/WP-002.md",
+  "status": "COMPLETE",
+  "assigned_to": "Reviewer",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "Config fields exist with correct defaults (stream_max_retries=2, stream_retry_base_delay_s=10.0)",
+      "met": true
+    },
+    {
+      "criterion": "Environment variables STREAM_MAX_RETRIES and STREAM_RETRY_BASE_DELAY_S are parsed correctly",
+      "met": true
+    },
+    {
+      "criterion": "Missing or non-numeric values fall back to defaults",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-13T09:15:33Z",
+      "completed_at": "2026-04-13T09:18:30Z",
+      "duration_ms": 177000,
+      "summary": [
+        "Added `stream_max_retries: int = 2` and `stream_retry_base_delay_s: float = 10.0` fields to the `Config` dataclass in `orchestrator/src/config.py`, with full docstring documentation.",
+        "Added parsing logic in `load_config()` for `STREAM_MAX_RETRIES` and `STREAM_RETRY_BASE_DELAY_S` env vars. Invalid/missing/negative values silently fall back to defaults (as specified in AC-3), consistent with how the orchestrator treats other optional config.",
+        "Added 14 tests in `TestStreamRetryConfig` class in `orchestrator/tests/test_config.py`. All 97 tests in test_config.py pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/config.py",
+          "orchestrator/tests/test_config.py"
+        ]
+      },
+      "comments": [
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-13T09:18:30Z",
+          "note": "orchestrator/src/config.py: The fallback logic for STREAM_MAX_RETRIES and STREAM_RETRY_BASE_DELAY_S uses module-level `_DEFAULT_*` constants defined inside `load_config()`. These could be elevated to proper module-level constants (like `_CAPTURE_DIALOGUES_FALSY`) for consistency and easier testing. Low priority as they are only used once."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-13T09:23:43Z",
+      "completed_at": "2026-04-13T09:25:25Z",
+      "duration_ms": 102000,
+      "summary": [
+        "All 3 ACs verified: fields exist with correct defaults, env vars parse correctly (including zero, large values, whitespace-padded), and invalid/non-numeric values fall back to defaults. 97/97 test_config.py tests pass.",
+        "Edge-case finding: STREAM_RETRY_BASE_DELAY_S='nan' passes float() validation and is stored as NaN (float('nan') < 0 is False). Similarly 'inf' passes. Not a blocker for stated ACs but noted as a low-priority latent issue consistent with the existing config pattern."
+      ],
+      "metrics": {
+        "tests_passed": 97,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T09:25:25Z",
+          "note": "orchestrator/src/config.py: `STREAM_RETRY_BASE_DELAY_S='nan'` passes through float() without raising ValueError (float('nan') < 0 is False in Python, so the negativity guard is bypassed). Similarly, 'inf' is accepted as an infinite delay. Behaviour is consistent with how other float config fields are handled in load_config(). Not a blocker for the stated ACs, but worth noting as a latent issue since time.sleep(nan) raises ValueError at runtime."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T09:25:25Z",
+          "note": "orchestrator/src/config.py: Same analysis applies to 'nan'/'inf' for stream_max_retries via the int() path: int('nan') raises ValueError so it IS caught and falls back to default. The gap is specific to the float field only."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-13T09:32:15Z",
+      "completed_at": "2026-04-13T09:33:13Z",
+      "duration_ms": 58000,
+      "summary": [
+        "Reviewed 2 files (orchestrator/src/config.py stream retry parsing, orchestrator/tests/test_config.py). 0 Critical, 0 High, 0 Medium. All OWASP Top 10 categories reviewed. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T09:33:13Z",
+          "note": "orchestrator/src/config.py stream_retry_base_delay_s parsing (~line 425): float('nan') < 0 evaluates False in Python, so the negativity guard does not catch NaN or Infinity strings. float('nan') stored in Config.stream_retry_base_delay_s would cause ValueError at asyncio.sleep() call time; float('inf') would cause an indefinite sleep. However, STREAM_RETRY_BASE_DELAY_S is operator-controlled via .env — not external user input. Not a security vulnerability in the OWASP sense. A math.isfinite() guard would be a defensive improvement. Consistent with pre-existing config pattern."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T09:33:13Z",
+          "note": "No security findings — all OWASP Top 10 categories reviewed. Environment variable parsing flows through int()/float() only; all values stored as typed primitives with no injection path. STREAM_MAX_RETRIES accepts large values but remains operator-controlled. Security sign-off: PASS."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-13T09:38:22Z",
+      "completed_at": "2026-04-13T09:40:28Z",
+      "duration_ms": 126000,
+      "summary": [
+        "Reviewed orchestrator/src/config.py (Config dataclass fields and load_config() parsing blocks) and orchestrator/tests/test_config.py (TestStreamRetryConfig, 14 tests). All 3 acceptance criteria verified.",
+        "Parsing logic uses the same silent-fallback pattern as other optional config fields. STREAM_MAX_RETRIES path: int() parse + negativity check, fallback to default. STREAM_RETRY_BASE_DELAY_S path: float() parse + negativity check, fallback to default. Consistent and correct.",
+        "One gap flagged by all pipeline stages: float('nan') < 0 evaluates False in Python, so 'nan' and 'inf' bypass the negativity guard and reach Config. Pre-existing pattern; not a blocker for this WP but should be hardened with math.isfinite() in WP-004 when the field is first consumed by asyncio.sleep().",
+        "_DEFAULT_STREAM_MAX_RETRIES and _DEFAULT_STREAM_RETRY_BASE_DELAY_S are defined as function-local constants, deviating from the module-level _CAPTURE_DIALOGUES_FALSY pattern. Minor convention finding; low priority.",
+        "Tests are well-structured with AC labels and cover all required scenarios including zero-retry, integer-string delay parsing, and negative fallback."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/config.py",
+          "orchestrator/tests/test_config.py"
+        ]
+      },
+      "comments": [
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-13T09:40:28Z",
+          "note": "orchestrator/src/config.py load_config(): _DEFAULT_STREAM_MAX_RETRIES = 2 and _DEFAULT_STREAM_RETRY_BASE_DELAY_S = 10.0 are defined as local variables inside load_config() rather than as module-level constants. The established module-level pattern exists (_CAPTURE_DIALOGUES_FALSY at line 188). Hoisting these to module level would: (1) be consistent with the existing pattern, (2) eliminate duplication with the dataclass field defaults if those fields also reference the constants. Low priority — no correctness risk, but a future cleanup opportunity."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-04-13T09:40:28Z",
+          "note": "orchestrator/src/config.py stream_retry_base_delay_s parsing: `float('nan') < 0` evaluates to False in Python, so the negativity guard does not catch NaN strings. Similarly, float('inf') passes. time.sleep(float('nan')) raises ValueError at runtime; time.sleep(float('inf')) blocks indefinitely. A defensive `math.isfinite(stream_retry_base_delay_s)` check after the negativity guard (raising ValueError to trigger fallback) would close this gap. Pre-existing pattern in the config — not a blocker for this WP, but recommended as a follow-up hardening in the retry loop implementation WP."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-13T09:40:28Z",
+          "note": "[documentation-forward] orchestrator/src/config.py Config dataclass: The stream_max_retries and stream_retry_base_delay_s docstring entries are clear and accurate, but the description of stream_retry_base_delay_s mentions 'base * 2^attempt * jitter' as the backoff formula. This formula is not yet implemented (that's WP-004). The docstring is forward-looking, which is good for documentation intent, but should be verified against the actual WP-004 implementation to ensure the delay formula matches expectations before release."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-13T09:40:28Z",
+  "last_updated": "2026-04-13T09:40:28Z",
+  "handoff_notes": [
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-04-13T09:25:25Z",
+      "notes": [
+        "All 3 ACs verified. Implementation is clean. One noteworthy edge case for the Security Auditor: STREAM_RETRY_BASE_DELAY_S='nan' passes validation (float('nan') < 0 is False), while 'inf' also passes. Both are silently passed into Config and would cause a runtime error only when time.sleep() is called. This is a pre-existing pattern, not a security issue, but worth documenting."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-13T09:33:13Z",
+      "notes": [
+        "Security sign-off: PASS. No Critical or High findings. The nan/inf passthrough for STREAM_RETRY_BASE_DELAY_S is a pre-existing robustness gap in the config pattern (not a security vulnerability) — could be hardened with math.isfinite(). Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-04-13T09:40:28Z",
+      "notes": [
+        "Code review: PASS. Config fields are correctly typed, defaulted, and documented. Parsing logic is consistent with the existing config pattern. All 3 ACs verified. One medium-priority improvement: add math.isfinite() guard for stream_retry_base_delay_s to prevent nan/inf slipping through to asyncio.sleep() — recommended as part of WP-004 retry loop implementation when the delay is first consumed. Documentation agent: verify the 'base * 2^attempt * jitter' formula in the stream_retry_base_delay_s docstring matches WP-004's actual backoff implementation."
+      ]
+    }
+  ]
+}

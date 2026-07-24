@@ -1,0 +1,203 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-002-migrate-project-reset.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "No direct writeWorkPackage calls remain in project-reset.ts",
+      "met": true
+    },
+    {
+      "criterion": "Reset WPs have last_updated auto-stamped after reset operations",
+      "met": true
+    },
+    {
+      "criterion": "All existing project-reset tests pass unchanged",
+      "met": true
+    },
+    {
+      "criterion": "Zod validation applied to all WP writes during reset",
+      "met": true
+    }
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-17T18:13:50Z",
+      "completed_at": "2026-03-17T18:15:56Z",
+      "summary": [
+        "Replaced 3 direct store.writeWorkPackage() calls in project-reset.ts with store.batchUpdateWorkPackagesWithSync()",
+        "Removed the outer withLock() wrappers from both applyProjectReset and markProjectComplete — the batch method now owns the lock scope",
+        "Removed the withLock import (no longer needed)",
+        "Updated module-level JSDoc and function-level JSDoc to reflect the new batch-write approach",
+        "All 1432 tests pass across 44 test files with no regressions"
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/utils/project-reset.ts"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 1432,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T18:15:56Z",
+          "note": "The module-level doc comment in project-reset.ts still said 'The apply function wraps all writes in a single lock scope' — updated to 'routes all WP writes through batchUpdateWorkPackagesWithSync' to match the new implementation."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-03-17T18:15:56Z",
+          "note": "project-reset.ts constructs its own timestamp = now() inside the callback and uses it for both WP fields (status_changed_at, reset_at) and the root index (last_updated). The batch method then stamps its own now() on each WP's last_updated field, potentially creating a very slight timestamp skew between last_updated and status_changed_at. This is cosmetic and intentional by design — noted for awareness."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T18:15:56Z",
+          "note": "The outer note variable in markProjectComplete reconstructs the same message string after the batch call. This is already correct behavior since completedIds is populated inside the callback and accessible in the outer scope. No change needed."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-17T18:17:09Z",
+      "completed_at": "2026-03-17T18:17:50Z",
+      "summary": [
+        "Full verification stack passed. project-reset.ts contains zero direct writeWorkPackage or withLock calls — both applyProjectReset and markProjectComplete route all WP writes through batchUpdateWorkPackagesWithSync. AC2 (auto-stamp) and AC4 (Zod validation) are guaranteed by batchUpdateWorkPackagesWithSync itself: line 368 sets wp.last_updated = timestamp, line 369 calls WorkPackageDetailSchema.parse(wp). All 19 project-reset tests pass unchanged. Full suite: 1432 tests pass across 44 files with no regressions."
+      ],
+      "metrics": {
+        "test_coverage": "44 test files",
+        "tests_passed": 1432,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T18:17:50Z",
+          "note": "applyProjectReset constructs timestamp = now() at the start of the batch callback and uses it for status_changed_at and reset_at. batchUpdateWorkPackagesWithSync then stamps a second now() for last_updated. On a heavily loaded system these two timestamps could differ by a few milliseconds, creating a cosmetic skew between last_updated and status_changed_at. This is intentional by design and noted by the Developer — not a correctness issue."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T18:17:50Z",
+          "note": "markProjectComplete constructs the note string both inside the batch callback and again outside it (line 535). This is deliberate: the note needs to be available in the returned MarkProjectCompleteResult. The duplication is minor but could be eliminated by computing the note from completedIds after the batch call rather than computing it twice."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T18:17:50Z",
+          "note": "No code quality or correctness issues found. The migration is clean and consistent with the surrounding codebase patterns."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-17T18:19:42Z",
+      "completed_at": "2026-03-17T18:20:52Z",
+      "summary": [
+        "Migration of applyProjectReset and markProjectComplete to batchUpdateWorkPackagesWithSync is correct and complete. Both callbacks return the required { updatedWps, root } shape. Root index mutations (status, pending_work_packages, clearSynthesisState, auto_handoff_depth, last_updated, project_comments) are all correctly placed inside the callback, within the lock scope. No operations from the old withLock blocks were left outside the batch. No double-lock risk — withLock import was fully removed. Pattern is consistent with propagateDependencyUnblock/propagateDependencyReblock. No blocking issues found."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T18:20:52Z",
+          "note": "Callback structure is correct in both functions. updatedWps.set() is called for every WP that is either reset or cancelled (skip path correctly skips readWp entirely, avoiding unnecessary I/O). The root index receives all required mutations inside the callback scope."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T18:20:52Z",
+          "note": "The dual timestamp pattern (callback constructs timestamp = now() for status_changed_at/reset_at; batchUpdateWorkPackagesWithSync stamps a second now() for last_updated) is a known cosmetic skew, noted by both Developer and QA. No fix warranted — the ordering is correct and the skew is sub-millisecond in practice."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T18:20:52Z",
+          "note": "markProjectComplete builds the note string twice: once inside the callback to add to project_comments, and once outside to populate the MarkProjectCompleteResult return value. The duplication is minor. The note could be computed once from completedIds post-batch, but this would require computing completedIds.length after the batch rather than capturing it via closure — not a regression risk."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T18:20:52Z",
+          "note": "applyProjectReset correctly guards against stale diagnoses with a status-change check (lines 373-379) inside the batch callback, re-reading the WP under lock. This is a correctness improvement over the old withLock pattern and worth noting explicitly."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T18:20:52Z",
+          "note": "No blocking issues. Code is clean, well-documented, and the migration is faithful to the original semantics. PASS."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-17T18:21:53Z",
+      "completed_at": "2026-03-17T18:24:52Z",
+      "summary": [
+        "Updated constraints.md: removed project-reset.ts from the 'Legitimate direct callers' list in constraint 2c (it no longer calls writeWorkPackage directly); added applyProjectReset and markProjectComplete to the 'Known callers' list for batchUpdateWorkPackagesWithSync in constraint 2b.",
+        "Updated api-surface.md: rewrote applyProjectReset and markProjectComplete JSDoc sections to describe the batchUpdateWorkPackagesWithSync approach, including the skip-path I/O optimization and the cosmetic dual-timestamp note; removed project-reset.ts from the writeWorkPackage @internal callers comment; added project-reset.ts to the batchUpdateWorkPackagesWithSync 'Used by' comment.",
+        "No data-flows.md changes required — no dedicated project-reset flow exists there."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/constraints.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T18:24:52Z",
+          "note": "The dual-timestamp cosmetic skew (last_updated vs status_changed_at/reset_at) is now documented in the applyProjectReset JSDoc in api-surface.md — consistent with the implementation comment added by the Developer."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T18:24:52Z",
+          "note": "No observations — the migration is clean and the documentation accurately reflects the new batchUpdateWorkPackagesWithSync-based implementation."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-03-17T18:24:52Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-03-17T18:15:56Z",
+      "notes": [
+        "WP-002 complete. project-reset.ts no longer calls writeWorkPackage directly — both applyProjectReset and markProjectComplete use batchUpdateWorkPackagesWithSync. withLock import was removed. WP-003 (JSDoc update for writeWorkPackage in ledger-store.ts) can now proceed with the confirmed final caller list."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-17T18:17:50Z",
+      "notes": [
+        "WP-002 QA passed. project-reset.ts is fully migrated to batchUpdateWorkPackagesWithSync — no writeWorkPackage or withLock calls remain. Auto-stamping and Zod validation verified via ledger-store.ts inspection. 1432 tests pass. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-03-17T18:20:52Z",
+      "notes": [
+        "WP-002 code review PASS. project-reset.ts migration to batchUpdateWorkPackagesWithSync is correct. Both functions follow the established pattern, all root index mutations are inside the lock, no operations leaked outside. Non-blocking observations: (1) cosmetic dual-timestamp skew for last_updated vs status_changed_at is intentional; (2) note string duplication in markProjectComplete is minor. No changes required. Ready for Documentation."
+      ]
+    }
+  ]
+}

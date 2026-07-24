@@ -1,0 +1,231 @@
+{
+  "work_package_id": "WP-003",
+  "work_package_file": "work/WP-004.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "loadRegistry() returns { repositories: [] } when .repositories.json does not exist.",
+      "met": true
+    },
+    {
+      "criterion": "loadRegistry() correctly parses a valid .repositories.json file and returns typed RepositoryRegistry.",
+      "met": true
+    },
+    {
+      "criterion": "saveRegistry() writes the registry atomically (partial writes do not corrupt the file).",
+      "met": true
+    },
+    {
+      "criterion": "findByFolderName() returns the correct RepositoryEntry when the given folder name appears in any position of an entry's folder_names array.",
+      "met": true
+    },
+    {
+      "criterion": "findByFolderName() returns null when no entry's folder_names contains the given name.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-06-05T08:25:11Z",
+      "completed_at": "2026-06-05T08:28:30Z",
+      "duration_ms": 199000,
+      "summary": [
+        "Created mcp-server/src/storage/repository-registry.ts: plain-function module with loadRegistry(), saveRegistry(), findByFolderName(), and getAllFolderNames() following the atomicWriteJson/withLock pattern used throughout the codebase.",
+        "loadRegistry() returns { repositories: [] } on absent file, malformed JSON, or schema validation failure — all three error paths silently degrade to an empty registry.",
+        "saveRegistry() validates via RepositoryRegistrySchema before acquiring a withLock(ledgerRoot, ...) lock and calling atomicWriteJson — matching the existing locking strategy.",
+        "findByFolderName() is a pure synchronous lookup (no I/O) iterating over folder_names with Array.prototype.includes.",
+        "getAllFolderNames() returns a defensive copy to prevent callers from mutating the entry's folder_names array.",
+        "Created mcp-server/tests/storage/repository-registry.test.ts: 23 tests covering all 5 acceptance criteria, plus edge cases (malformed JSON fallback, schema validation failure fallback, directory auto-creation, round-trip, case-sensitive matching, defensive copy, degenerate duplicate folder name).",
+        "All 2968 tests in the full suite pass with zero regressions."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/storage/repository-registry.ts",
+          "mcp-server/tests/storage/repository-registry.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T08:28:30Z",
+          "note": "loadRegistry() silently swallows all errors (absent file, malformed JSON, schema failure) and returns { repositories: [] }. This is intentional per the WP spec. However, callers that need to distinguish between 'file absent' and 'file corrupt' have no signal — a future enhancement could expose a typed result (e.g., { registry, source: 'loaded' | 'default' | 'corrupt' }) if diagnostic fidelity becomes important."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T08:28:30Z",
+          "note": "withLock() acquires a lock on the entire ledgerRoot directory. The registry file is directly under ledgerRoot, so this is correct. However, if saveRegistry() is ever called concurrently with LedgerStore.writeRootIndex() (which locks storageDir, a subdirectory), there is no cross-lock contention — the two locks are on different paths. This is consistent with current code patterns but worth noting for future concurrency analysis."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-06-05T08:28:30Z",
+          "note": "The REGISTRY_FILENAME constant ('.repositories.json') is module-private. If other modules need to reference this path directly (e.g., for cleanup in tests), they would have to hardcode the string. Consider exporting the constant, or a registryPath() helper, if WP-005/WP-006 need it."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-06-05T08:29:02Z",
+      "completed_at": "2026-06-05T08:30:17Z",
+      "duration_ms": 75000,
+      "summary": [
+        "Build check: TypeScript compilation clean — zero errors (`tsc --noEmit`).",
+        "AC-1 verified: loadRegistry() returns { repositories: [] } when .repositories.json does not exist — confirmed by test and manual inspection of error-catch path.",
+        "AC-2 verified: loadRegistry() correctly parses a valid .repositories.json and returns a typed RepositoryRegistry — tested with multi-field entry including nullable vision horizons.",
+        "AC-3 verified: saveRegistry() uses atomicWriteJson (write-to-temp-then-rename) under withLock(ledgerRoot) — round-trip test and sequential-overwrite test both pass.",
+        "AC-4 verified: findByFolderName() returns correct RepositoryEntry when the folder name appears at any position (first, middle, last) in folder_names — all three positions tested.",
+        "AC-5 verified: findByFolderName() returns null when no entry matches — tested with empty registry and multi-entry registry.",
+        "Regression: full 2968-test suite passes with zero failures.",
+        "Edge cases verified: malformed JSON fallback, schema validation failure fallback, case-sensitive matching, defensive copy from getAllFolderNames(), degenerate duplicate folder name (returns first match), schema rejection on save with invalid slug."
+      ],
+      "metrics": {
+        "test_coverage": "23 targeted tests + 2968 full suite — all pass",
+        "tests_passed": 23,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T08:30:17Z",
+          "note": "No issues found. The module is clean, well-structured, and consistent with existing storage patterns (atomicWriteJson + withLock). All error paths are intentional and spec-compliant."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-06-05T08:30:42Z",
+      "completed_at": "2026-06-05T08:31:42Z",
+      "duration_ms": 60000,
+      "summary": [
+        "Reviewed mcp-server/src/storage/repository-registry.ts (114 lines) and mcp-server/tests/storage/repository-registry.test.ts (318 lines) against all four review dimensions.",
+        "Maintainability: Excellent. The module is a flat-function module (no class, no state), which is the correct abstraction for pure I/O helpers. Function signatures are self-explanatory. JSDoc coverage is complete with @param, @returns, and @throws on every exported function. Internal helper registryPath() is unexported, keeping the API surface minimal.",
+        "Best Practices: Consistent with existing storage layer patterns (atomicWriteJson + withLock). Schema-validate-before-write discipline in saveRegistry() matches the pattern in ledger-store.ts. Defensive copy in getAllFolderNames() prevents external mutation — a correct defensive programming choice.",
+        "Performance: findByFolderName() is O(n×m) over entries × folder_names. Acceptable for the expected registry size (tens of entries, not thousands). No unnecessary I/O — synchronous helpers correctly avoid disk access. Schema validation before lock acquisition in saveRegistry() is correct (fail-fast before entering the critical section).",
+        "Future Context: The module is well-positioned for consumption by WP-005 and WP-006. The registryPath() private helper is already present, enabling future export if downstream callers need it (noted by Developer). The all-errors-silenced loadRegistry() fallback matches the spec intent; the Developer's own note about a future typed result (loaded | default | corrupt) is a valid long-term enhancement — flagging as documentation-forward.",
+        "No blocking issues found. No Fix-Forward edits applied. One documentation-forward item recorded."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/storage/repository-registry.ts",
+          "mcp-server/tests/storage/repository-registry.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T08:31:42Z",
+          "note": "No observations — code is clean, consistent, and well-documented. Follows the established atomicWriteJson/withLock pattern precisely."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-06-05T08:31:42Z",
+          "note": "[documentation-forward] loadRegistry() silently merges three distinct failure modes (absent file, malformed JSON, schema validation failure) into a single { repositories: [] } fallback. The JSDoc already notes this, but the public API documentation should explicitly describe this contract so callers know not to rely on thrown errors for diagnostic fidelity. Consider adding an @remarks block noting the intentional lossy fallback and pointing to a future typed-result pattern if observability is ever needed."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-06-05T08:31:42Z",
+          "note": "registryPath() is a private helper, not exported. This is currently correct. If WP-005 or WP-006 need to reference the registry file path directly (e.g., in test cleanup or migration), they should call saveRegistry/loadRegistry rather than reconstructing the path. If a direct path reference becomes necessary, export registryPath() rather than hardcoding the constant in callers."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-06-05T08:32:01Z",
+      "completed_at": "2026-06-05T08:40:14Z",
+      "duration_ms": 493000,
+      "summary": [
+        "Documented the new repository-registry storage module across all relevant docs.",
+        "mcp-server/README.md: Added .repositories.json to the architecture diagram; added new item 6 'Repository Registry' to the Data Model section describing the lossy-fallback contract, the storage module, and its role in ledger_get_repository_context.",
+        "mcp-server/docs/agents/project-manifest/api-surface.md: Added a new 'Repository Registry — src/storage/repository-registry.ts' section documenting loadRegistry() (with the full @remarks lossy-fallback contract as requested by the documentation-forward item), saveRegistry(), findByFolderName(), and getAllFolderNames(), plus concurrency notes and consumer list.",
+        "mcp-server/docs/agents/project-manifest/file-tree.md: Added .repositories.json runtime entry in storage/, src/schema/repository-registry.ts schema entry, src/storage/repository-registry.ts storage entry with full description, tests/storage/repository-registry.test.ts (23 tests, edge cases), and tests/schema/repository-registry.test.ts.",
+        "mcp-server/docs/agents/project-manifest/tech-stack.md: Extended the Repository Pattern section to describe the plain-function storage module approach (no class, no state, no lifecycle), and added src/schema/repository-registry.ts to the Schema-First Design key files.",
+        "mcp-server/docs/agents/project-manifest/data-flows.md: Added .repositories.json to the storage layout diagram.",
+        "CTX generation: ctx generate completed successfully (33 docs, 0 errors). Six .context/ files updated to reflect new source files and documentation."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/README.md",
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/file-tree.md",
+          "mcp-server/docs/agents/project-manifest/tech-stack.md",
+          "mcp-server/docs/agents/project-manifest/data-flows.md",
+          ".context/mcp-server/manifest-api-surface.md",
+          ".context/mcp-server/manifest-file-tree.md",
+          ".context/mcp-server/manifest-tech-stack.md",
+          ".context/mcp-server/overview.md",
+          ".context/mcp-server/file-structure.md",
+          ".context/mcp-server/tests.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T08:40:14Z",
+          "note": "Addressed the documentation-forward item from code review: loadRegistry() now has an explicit @remarks block in api-surface.md describing the intentional lossy-fallback contract (absent file, malformed JSON, schema failure all collapse to { repositories: [] }) and pointing to a future typed-result pattern (loaded | default | corrupt) if diagnostic fidelity is ever needed."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T08:40:14Z",
+          "note": "No other documentation gaps found. The existing README, tech-stack, file-tree, data-flows, and api-surface docs were all updated consistently. The module's design choice (plain-function, no class) is now documented in tech-stack.md with rationale."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-06-05T08:40:14Z",
+  "last_updated": "2026-06-05T08:40:14Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-06-05T08:28:30Z",
+      "notes": [
+        "All 5 acceptance criteria are met and verified by 23 unit tests.",
+        "loadRegistry() has 3 distinct error paths all covered: absent file, malformed JSON, schema validation failure — all return { repositories: [] }.",
+        "saveRegistry() uses withLock(ledgerRoot) + atomicWriteJson, consistent with the ledger-store.ts pattern. Lock target is ledgerRoot (not the file) to serialize all ledger mutations via the same lock.",
+        "findByFolderName() and getAllFolderNames() are pure synchronous helpers — no async, no I/O.",
+        "The storage module is a flat-function module (not a class), as prescribed by the WP spec and the Rationale section.",
+        "The module is ready for consumption by WP-005 (repository-context.ts) and WP-006 (api-repos.ts), both of which call these functions with resolveLedgerRoot()."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-06-05T08:30:17Z",
+      "notes": [
+        "All 5 ACs confirmed met by 23 passing unit tests plus full 2968-test regression suite. TypeScript compiles with zero errors. Module is ready for code review — no rework needed."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-06-05T08:31:42Z",
+      "notes": [
+        "All 5 ACs confirmed met. Code is clean, well-structured, and fully consistent with existing storage layer patterns. One documentation-forward item recorded for the Documentation agent: describe the intentional lossy-fallback contract of loadRegistry() more explicitly in public API docs. No rework needed — ready for Documentation pipeline."
+      ]
+    }
+  ]
+}

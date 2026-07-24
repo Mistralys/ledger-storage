@@ -1,0 +1,215 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Reviewer",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "Function correctly classifies 529, 429, >=500, httpx errors as retryable",
+      "met": true
+    },
+    {
+      "criterion": "Function correctly classifies 401, 403 as non-retryable",
+      "met": true
+    },
+    {
+      "criterion": "Plain ValueError classified as non-retryable",
+      "met": true
+    },
+    {
+      "criterion": "Exception chain walking works correctly",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-13T09:10:29Z",
+      "completed_at": "2026-04-13T09:13:28Z",
+      "duration_ms": 179000,
+      "summary": [
+        "Added `_is_retryable_api_error()` helper to `orchestrator/src/nodes/__init__.py` immediately after `_is_fatal_error()`. The function uses duck-typing (`getattr(exc, 'status_code', None)`) to classify HTTP 529, 429, and >=500 as retryable, delegates fatal-status detection (401, 403) to `_is_fatal_error()`, and detects httpx transport errors via `type(exc).__module__` inspection without importing httpx. Exception chain walking mirrors the existing `_is_fatal_error()` pattern.",
+        "Added 16 tests in `TestIsRetryableApiError` class at the bottom of `orchestrator/tests/test_nodes.py`, covering all 4 acceptance criteria: retryable status codes (529/429/500/503), httpx transport errors, non-retryable statuses (401/403), plain exceptions (ValueError), and exception chain walking (via __cause__ and __context__). All 174 tests in test_nodes.py pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/nodes/__init__.py",
+          "orchestrator/tests/test_nodes.py"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T09:13:28Z",
+          "note": "orchestrator/src/nodes/__init__.py: The `_is_fatal_error()` and `_is_retryable_api_error()` helpers use recursion to walk the exception chain. For the rare case of a circular `__context__` chain (Python prevents __cause__ cycles but __context__ can form them), neither function has an explicit cycle guard. The existing pattern has operated safely in practice, but a `visited` set would be a defensive improvement."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-13T09:13:28Z",
+          "note": "orchestrator/tests/test_nodes.py: The new `TestIsRetryableApiError` class is appended at the bottom of what is otherwise a stage-node-focused test file. A dedicated `test_error_helpers.py` would better group the `_is_fatal_error` and `_is_retryable_api_error` tests together as the set grows with WP-002–WP-006 additions."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-13T09:19:05Z",
+      "completed_at": "2026-04-13T09:21:14Z",
+      "duration_ms": 129000,
+      "summary": [
+        "All 4 acceptance criteria verified through code review, 174 test_nodes.py tests (pass), and full orchestrator regression suite (907 passed, 6 skipped, 0 failures).",
+        "5 additional edge-case stress tests passed: httpx 401 fatal short-circuit, status 499 non-retryable, httpx submodule path detection via chain, httpx.HTTPStatusError with 5xx status, and __cause__/__context__ chain priority."
+      ],
+      "metrics": {
+        "tests_passed": 907,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T09:21:14Z",
+          "note": "orchestrator/src/nodes/__init__.py: _is_retryable_api_error() and _is_fatal_error() both lack a cycle guard on __context__ chain walking. Python prevents __cause__ cycles but __context__ can form them. Confirmed pre-existing pattern in _is_fatal_error — low risk in practice but a `visited` set would be a defensive hardening. Not a blocker."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T09:21:14Z",
+          "note": "orchestrator/tests/test_nodes.py: TestIsRetryableApiError lacks an explicit test for an httpx.HTTPStatusError carrying a 5xx status_code (e.g., httpx 503). The httpx module + status_code path is exercised by implicit coverage but a dedicated test for this combination would close the gap cleanly."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T09:21:14Z",
+          "note": "No test explicitly verifies the __cause__ vs __context__ priority rule when both are set and point to conflicting classifications. The implementation correctly mirrors _is_fatal_error's short-circuit, but test coverage here is implicit only."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-13T09:27:31Z",
+      "completed_at": "2026-04-13T09:30:31Z",
+      "duration_ms": 180000,
+      "summary": [
+        "Reviewed 2 files (orchestrator/src/nodes/__init__.py lines 77-126, orchestrator/tests/test_nodes.py lines 1836-1951). 0 Critical, 0 High, 0 Medium. All OWASP Top 10 categories reviewed. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T09:30:31Z",
+          "note": "orchestrator/src/nodes/__init__.py: _is_retryable_api_error() calls _is_fatal_error(exc) before any retryable check, which correctly prevents any 401/403 error from being classified as retryable — even when wrapped. From A07 perspective, this is the critical security invariant and it holds correctly. No vulnerability."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T09:30:31Z",
+          "note": "orchestrator/src/nodes/__init__.py lines 104-105 and 64-65: int(status) can throw ValueError if status_code is set to a non-numeric string by a malformed exception object. Pre-existing pattern in _is_fatal_error. In the retry-loop call site (WP-004), a ValueError has no status_code and would be classified non-retryable, so the safe failure mode applies. Not a new vulnerability introduced by this WP."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T09:30:31Z",
+          "note": "No security findings — all OWASP Top 10 categories reviewed. _is_retryable_api_error is a pure classification helper with no I/O, no user-supplied input, and no injection surface. The auth-error short-circuit (A07) is architecturally correct. Zero new attack surface introduced."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-13T09:33:47Z",
+      "completed_at": "2026-04-13T09:36:10Z",
+      "duration_ms": 143000,
+      "summary": [
+        "Reviewed orchestrator/src/nodes/__init__.py (lines 77–126) and orchestrator/tests/test_nodes.py (lines 1836–1951). All 4 acceptance criteria verified. Implementation is clean, follows the established _is_fatal_error pattern, and introduces no regressions.",
+        "The httpx disambiguation guard (if status is None: return True) inside the httpx module branch is subtle but architecturally correct — it prevents httpx.HTTPStatusError with non-retryable status codes (e.g., 404) from being misclassified as retryable via the transport path. Docstring correctly documents this behavior.",
+        "Security invariant is locked: _is_fatal_error(exc) is the first call, ensuring 401/403 can never be retried regardless of wrapping depth. This is the correct architecture for an auth-error short-circuit guard.",
+        "Two pre-existing concerns noted by Developer, QA, and Security Auditor (int(status) ValueError and __context__ cycle guard) are shared with _is_fatal_error and are not regressions introduced by this WP.",
+        "Test coverage is comprehensive. The 'httpx.HTTPStatusError + 5xx gap' flagged by QA is not a real code-path gap — duck-typing means test_status_503_is_retryable already exercises that branch independently of exception class origin."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/nodes/__init__.py",
+          "orchestrator/tests/test_nodes.py"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T09:36:10Z",
+          "note": "orchestrator/src/nodes/__init__.py lines 107–113: The httpx transport-error block contains an implicit disambiguation — httpx.HTTPStatusError (which carries status_code) is intentionally skipped by the `if status is None:` guard and instead handled by the status-code block above. This is correct, but the design intent could be clearer with an inline comment: # httpx.HTTPStatusError already handled above via status_code; only transport-level errors (no status_code) reach here. Future contributors editing this block may not immediately see why the guard is needed."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-13T09:36:10Z",
+          "note": "[documentation-forward] orchestrator/src/nodes/__init__.py: _is_retryable_api_error docstring is excellent but could benefit from an explicit note that httpx.HTTPStatusError (which carries status_code) is routed through the status-code branch, not the httpx transport branch. This disambiguates the two httpx sub-paths for future contributors maintaining the function."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T09:36:10Z",
+          "note": "orchestrator/tests/test_nodes.py: TestIsRetryableApiError has no dedicated test for the httpx.HTTPStatusError + non-retryable status scenario (e.g., httpx error with status_code=404 must NOT return True via the httpx transport path). While test_status_404_client_error_is_not_retryable covers the duck-typed path, a test using a fake httpx-module exception WITH a non-retryable status_code would lock the disambiguation invariant directly. This is a coverage specificity gap, not a logic gap."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T09:36:10Z",
+          "note": "No improvement needed — all pre-existing concerns (int(status) ValueError, __context__ cycle guard) are shared with _is_fatal_error and were correctly identified and triaged by all prior pipeline stages. No new issues introduced by this WP."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-13T09:36:10Z",
+  "last_updated": "2026-04-13T09:36:10Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-13T09:13:28Z",
+      "notes": [
+        "Implementation is clean and all 4 ACs are met. The function is ready for QA. Key points for the QA agent: (1) httpx detection relies on `type(exc).__module__` being exactly `'httpx'` or starting with `'httpx.'` — if httpx internals change their module layout this could drift; (2) the `status_code = 429` is treated as retryable but not in `_is_fatal_error`'s set — no overlap to worry about; (3) chain walking is recursive not iterative — covered by tests but note the cycle guard observation above."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-04-13T09:21:14Z",
+      "notes": [
+        "Implementation is clean and all ACs are verified. Edge-case stress tests confirm: (1) httpx fatal-status short-circuit works correctly; (2) httpx submodule paths (e.g. httpx._exceptions) are detected via startswith check; (3) __cause__ takes priority over __context__ as expected. Known observations for the Security Auditor: no injection surface (pure classification function, no I/O, no external calls). The cycle guard on __context__ chain walking is a low-priority hardening note, not a security issue."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-13T09:30:31Z",
+      "notes": [
+        "Security sign-off: PASS. No Critical or High findings. The auth boundary (401/403 never retried) is correctly enforced by the _is_fatal_error preemption guard at the top of _is_retryable_api_error. Two pre-existing low-severity items noted (int(status) ValueError propagation and __context__ cycle guard) — neither is new to this WP. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-04-13T09:36:10Z",
+      "notes": [
+        "Code review: PASS. Implementation is clean, architecturally sound, and all 4 ACs are verified. No blocking issues. Key notes for Documentation agent: (1) _is_retryable_api_error docstring could clarify that httpx.HTTPStatusError is routed through the status-code branch, not the transport branch — documentation-forward comment left in pipeline. (2) No doc changes required for this WP beyond the optional inline clarification noted above."
+      ]
+    }
+  ]
+}

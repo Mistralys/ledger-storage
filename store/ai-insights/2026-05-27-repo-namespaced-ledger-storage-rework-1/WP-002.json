@@ -1,0 +1,252 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-004.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "resolveRepoName() calls assertSafeSlug(repoUrlParam) as its first statement.",
+      "met": true
+    },
+    {
+      "criterion": "resolveRepoName() calls assertSafeSlug(slugUrlParam) as its second statement (or combined; order must precede any filesystem operation).",
+      "met": true
+    },
+    {
+      "criterion": "Invalid repoUrlParam or slugUrlParam values (traversal strings, empty, uppercase) cause a 404 ApiError before any .meta.json read is attempted.",
+      "met": true
+    },
+    {
+      "criterion": "Tests in mcp-server/tests/gui-server.test.ts verify that resolveRepoName() rejects traversal input before file access.",
+      "met": true
+    },
+    {
+      "criterion": "All existing tests for resolveRepoName() continue to pass.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-28T07:33:37Z",
+      "completed_at": "2026-05-28T07:39:09Z",
+      "duration_ms": 332000,
+      "summary": [
+        "Added a local assertSafeSlug(segment: string): void helper function to gui/server.ts in the Meta helpers section. The function uses SAFE_SLUG_REGEX from constants.ts and throws ApiError NOT_FOUND — consistent with the api.ts pattern.",
+        "Modified resolveRepoName() to call assertSafeSlug(repoUrlParam) and assertSafeSlug(slugUrlParam) as its first two statements, before any filesystem access. Exported the function for testability.",
+        "Created mcp-server/tests/gui-server.test.ts with 10 tests: 9 guard-failure cases (traversal, empty, uppercase, hyphens, separators) + 1 positive case confirming the guard passes for valid inputs and filesystem access is reached. All pass. All 809 GUI tests continue to pass. TypeScript type-check clean."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/server.ts",
+          "mcp-server/tests/gui-server.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-28T07:39:09Z",
+          "note": "resolveRepoName() was previously private (unexported). It has been exported to enable direct unit testing without an HTTP server. This is a minor API surface addition — the function was already callable via all namespaced route handlers, so the export does not introduce a new security surface."
+        },
+        {
+          "type": "refactor",
+          "priority": "low",
+          "timestamp": "2026-05-28T07:39:09Z",
+          "note": "The routing layer in matchRoute() already validates both params with SAFE_SLUG_REGEX before calling resolveRepoName(). The new internal guards are redundant at runtime but provide defence-in-depth. The routing checks could be simplified in a future cleanup pass by delegating entirely to resolveRepoName()."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-28T07:44:00Z",
+      "completed_at": "2026-05-28T07:45:36Z",
+      "duration_ms": 96000,
+      "summary": [
+        "Build check: `npx tsc --noEmit` — clean, zero errors.",
+        "Regression: full suite 2330/2330 pass across 79 test files.",
+        "Focused run of tests/gui-server.test.ts: 10/10 pass — all 5 repoUrlParam guard cases, all 4 slugUrlParam guard cases, and the positive filesystem-access test.",
+        "AC verification: all 5 AC confirmed by code review and test execution.",
+        "Guard fires before filesystem access — confirmed by distinct error message check in tests."
+      ],
+      "metrics": {
+        "test_coverage": "N/A",
+        "tests_passed": 2330,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-28T07:45:36Z",
+          "note": "Test design for AC-3 is particularly strong: the expectGuardError helper checks for the 'Invalid repo or slug parameter' message, which is distinct from the 'Project not found' message thrown after filesystem access. The positive test confirms the guard does not fire on valid inputs, making the before-filesystem-access guarantee observable. No gaps."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-28T07:45:36Z",
+          "note": "No observation — implementation is clean. assertSafeSlug is properly scoped (unexported, file-local) and defence-in-depth design (routing layer already validates params) is a sound security choice."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-05-28T07:49:11Z",
+      "completed_at": "2026-05-28T07:50:53Z",
+      "duration_ms": 102000,
+      "summary": [
+        "Reviewed 2 files (gui/server.ts, tests/gui-server.test.ts). 0 Critical, 0 High, 1 Low (assertSafeSlug echoes raw segment in error message — unreachable via HTTP; defence-in-depth routing-layer pre-validation prevents exposure). Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-28T07:50:53Z",
+          "note": "No security findings — all OWASP Top 10 categories reviewed; no Critical or High issues identified. Defence-in-depth is correctly implemented: routing layer (matchRoute) validates both params via SAFE_SLUG_REGEX before calling resolveRepoName(), and resolveRepoName() validates again internally via assertSafeSlug(). Throwing NOT_FOUND (rather than a 400 or 422) is the correct information-hiding posture."
+        },
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-05-28T07:50:53Z",
+          "note": "Low — assertSafeSlug (server.ts line 267) echoes the raw segment value in its error message: `Invalid repo or slug parameter: '${segment}'.`. The routing layer's equivalent check (lines 567, 593, etc.) uses a static non-reflective message. Since the response is application/json and the routing layer pre-validates before resolveRepoName() is called, this is unreachable via HTTP. However, now that resolveRepoName() is exported, future callers that bypass the routing layer could surface the reflective message. Recommendation: use a static non-reflective message consistent with the routing layer, e.g. `'Invalid repo or slug parameter.'`."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-28T07:53:08Z",
+      "completed_at": "2026-05-28T07:55:04Z",
+      "duration_ms": 116000,
+      "summary": [
+        "Reviewed mcp-server/gui/server.ts and mcp-server/tests/gui-server.test.ts.",
+        "assertSafeSlug is correctly placed as the first two statements in resolveRepoName() — before any join(), readFile(), or JSON.parse() call. Validates both repoUrlParam and slugUrlParam against SAFE_SLUG_REGEX. Throws ApiError NOT_FOUND to prevent information leakage (invalid input looks identical to a missing project from the client side).",
+        "Fix-Forward applied: assertSafeSlug error message changed from reflected-input template literal to the same static string used at all 6 routing-layer guard sites. This removes raw URL parameter echoing from the HTTP error response body. All 10 tests pass with the static message.",
+        "Test suite design is strong: the positive test explicitly differentiates guard failure (message contains 'Invalid repo or slug parameter') from filesystem failure (message contains the slug name), confirming the guard fires before filesystem access.",
+        "All 5 acceptance criteria confirmed met."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/server.ts",
+          "mcp-server/tests/gui-server.test.ts"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 10,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-28T07:55:04Z",
+          "note": "reviewer-applied-fix: assertSafeSlug error message changed from template literal `Invalid repo or slug parameter: '${segment}'.` to static string 'Invalid repo or slug parameter.' (consistent with ALL 6 routing-layer guard sites at lines 567, 593, 619, 645, 675, 705, 731). The old message echoed the raw URL parameter value in the HTTP error response body (ApiError.message is sent to clients via sendError). While unreachable in practice due to routing-layer pre-validation, the inconsistency was a latent risk if a future route forgot to include the routing guard. All 10 tests pass with the static message (test assertions use toMatch(/Invalid repo or slug parameter/i) which matches the new static string)."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-28T07:55:04Z",
+          "note": "The `resolveRepoName` export for testability (previously private) is a minor but reasonable surface addition. The function was already indirectly callable through all namespaced route handlers; the export only enables direct unit testing without an HTTP server. No architectural concerns."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-28T07:55:04Z",
+          "note": "Dual-layer validation (routing matchRoute + assertSafeSlug inside resolveRepoName) is slightly redundant but provides genuine defence-in-depth: new routes added in future WPs that call resolveRepoName will automatically be guarded even if the route author forgets a routing-layer check. The Developer's implementation note about this being 'planned deduplication path' is accurate — WP-003 may simplify the routing checks by relying on resolveRepoName entirely."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-05-28T07:55:04Z",
+          "note": "[documentation-forward] The resolveRepoName JSDoc says 'Both repoUrlParam and slugUrlParam are validated via assertSafeSlug before any filesystem access is attempted (defence-in-depth).' It could further clarify that the ApiError thrown uses code NOT_FOUND rather than a 400/VALIDATION_ERROR — this matches the 'not found' response that callers see for missing projects, making invalid-input and missing-project cases indistinguishable from the client side (information hiding by design)."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-28T07:58:43Z",
+      "completed_at": "2026-05-28T08:00:39Z",
+      "duration_ms": 116000,
+      "summary": [
+        "Addressed the code-review documentation-forward: updated the resolveRepoName JSDoc in gui/server.ts to clarify that ApiError NOT_FOUND is used (rather than a 400/VALIDATION_ERROR) as an intentional information-hiding design — invalid-input and missing-project cases are indistinguishable from the client side.",
+        "Added resolveRepoName to mcp-server/docs/agents/project-manifest/api-surface.md in the gui/server.ts section — it was newly exported by this WP and was missing from the manifest.",
+        "Added gui-server.test.ts to mcp-server/docs/agents/project-manifest/file-tree.md at the root tests/ level (matches actual filesystem location)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/server.ts",
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/file-tree.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-28T08:00:39Z",
+          "note": "Addressed both documentation-forward items from code-review: (1) Updated resolveRepoName JSDoc to clarify that ApiError NOT_FOUND is thrown by design for both invalid input and missing projects — intentional information-hiding so callers cannot distinguish the two cases. (2) Added resolveRepoName to api-surface.md with full signature, behavior, and rationale for the NOT_FOUND design choice."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-28T08:00:39Z",
+          "note": "Added gui-server.test.ts to file-tree.md at the root tests/ level. The file lives at tests/ root (not in tests/gui/) matching the actual filesystem location."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-28T08:00:39Z",
+  "last_updated": "2026-05-28T08:00:39Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-28T07:39:09Z",
+      "notes": [
+        "assertSafeSlug is defined locally in server.ts (not imported from api.ts, which keeps it private). It uses SAFE_SLUG_REGEX from constants.ts and throws ApiError NOT_FOUND — same behaviour as the api.ts version.",
+        "resolveRepoName() is now exported for testability. The test file is at mcp-server/tests/gui-server.test.ts with 10 tests (10 pass).",
+        "All 809 gui tests pass. Type-check clean."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-05-28T07:45:36Z",
+      "notes": [
+        "All 5 AC verified and met. The assertSafeSlug guard fires before any filesystem access — confirmed by the distinctive error message in tests. resolveRepoName() is exported and testable."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-28T07:50:53Z",
+      "notes": [
+        "Security review complete: 0 Critical, 0 High, 1 Low finding (echoed segment value in assertSafeSlug error message — unreachable via HTTP due to routing-layer pre-validation, but inconsistent with the routing layer's static message). Does not block code review. Recommendation: optional hardening — use a static non-reflective message in assertSafeSlug."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-28T07:55:04Z",
+      "notes": [
+        "WP-002 PASS with one Fix-Forward applied: assertSafeSlug error message changed from a reflected-input template literal to a static string, consistent with all 6 routing-layer guard messages. Non-behavioral change; all 10 tests pass. resolveRepoName export and dual-layer validation are architecturally sound. Documentation agent: two low-priority documentation-forward items recorded for JSDoc improvements."
+      ]
+    }
+  ]
+}

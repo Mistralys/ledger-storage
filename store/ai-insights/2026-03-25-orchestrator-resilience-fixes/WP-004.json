@@ -1,0 +1,174 @@
+{
+  "work_package_id": "WP-004",
+  "work_package_file": "work/WP-005.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "New run with UUID collision regenerates a new UUID and logs a warning",
+      "met": true
+    },
+    {
+      "criterion": "Resuming a terminal checkpoint prints clear warning and exits non-zero",
+      "met": true
+    },
+    {
+      "criterion": "Resuming a non-terminal checkpoint works normally (no regression)",
+      "met": true
+    },
+    {
+      "criterion": "Unit tests cover both new-run collision and terminal-resume scenarios",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-25T15:13:00Z",
+      "completed_at": "2026-03-25T15:25:53Z",
+      "duration_ms": 773000,
+      "summary": [
+        "Added three checkpoint helper functions to cli.py: _thread_id_exists_in_checkpoint (stdlib sqlite3 query), _mark_run_terminal (writes {thread_id}.terminal marker file), _is_run_terminal (checks marker file).",
+        "Modified thread ID generation: new runs check for UUID collision in the SQLite DB and regenerate up to 5 times (log.warning on each collision); resume runs check for terminal marker and exit EXIT_ERROR with a clear diagnostic message.",
+        "After a successful non-interrupted graph.ainvoke call, _mark_run_terminal is called to record the run as complete.",
+        "Added 12 new unit tests across 4 test classes: TestThreadIdExistsInCheckpoint, TestMarkAndIsRunTerminal, TestTerminalResumeGuard, TestUuidCollisionHandling. All 46 CLI tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/cli.py",
+          "orchestrator/tests/test_cli.py"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-25T15:25:53Z",
+          "note": "orchestrator/src/cli.py — _mark_run_terminal is not called when --interrupt-on is active, so a run that was previously interrupted and then resumed to completion would never be marked terminal. If resuming interrupted runs to their natural end is a use case, the terminal marker logic should also run in the resume path when interrupt_before is empty."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-25T15:25:53Z",
+          "note": "orchestrator/src/cli.py — The .terminal marker files accumulate in the checkpoint_dir indefinitely; no cleanup mechanism exists. At scale this could produce orphaned files. Consider a periodic sweep or linking the marker lifetime to the SQLite checkpoint lifecycle."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-25T15:30:34Z",
+      "completed_at": "2026-03-25T15:31:31Z",
+      "duration_ms": 57000,
+      "summary": [
+        "All 4 ACs verified and passing. 46/46 CLI tests pass; full orchestrator suite: 517 passing, 9 pre-existing aiosqlite failures (unchanged). Three helper functions (_thread_id_exists_in_checkpoint, _mark_run_terminal, _is_run_terminal) individually unit-tested. UUID collision detection verified. Terminal resume guard exits EXIT_ERROR with diagnostic message. Non-terminal resume path unaffected."
+      ],
+      "metrics": {
+        "test_coverage": "12 new WP-004 tests + 46 CLI suite",
+        "tests_passed": 46,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-25T15:31:31Z",
+          "note": "No observations — code is clean and consistent. The three helper functions (_thread_id_exists_in_checkpoint, _mark_run_terminal, _is_run_terminal) are small, focused, and testable in isolation. Defensive fallback (return False on any Exception) in _thread_id_exists_in_checkpoint correctly prevents DB I/O errors from blocking new runs. Terminal marker correctly scoped by thread_id. note: _mark_run_terminal is not called on resume path; if a previously-interrupted run resumes to completion it will not be marked terminal. Low-risk observation noted by Developer — not a blocking issue for current AC."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-25T15:47:41Z",
+      "completed_at": "2026-03-25T15:48:50Z",
+      "duration_ms": 69000,
+      "summary": [
+        "Reviewed WP-004: UUID collision guard and terminal resume guard in orchestrator/src/cli.py.",
+        "_thread_id_exists_in_checkpoint: stdlib sqlite3 (no LangGraph dep), parameterized query (SQL injection safe), defensive except Exception: return False. Correct.",
+        "_mark_run_terminal: mkdir(parents, exist_ok), .touch(), silent OSError suppression. Correct.",
+        "_is_run_terminal: single-line Path.exists() — minimal and correct.",
+        "UUID collision guard: correctly skips DB query if file absent. Loop limit of 5 prevents infinite loop. Minor off-by-one on last iteration (5th regenerated UUID unchecked) — statistically irrelevant.",
+        "Terminal resume guard: correct error message with actionable guidance, returns EXIT_ERROR. Guard is checked before MCP startup, which is the right fail-fast location.",
+        "_mark_run_terminal correctly placed behind 'if not interrupt_before:' — interrupted runs remain resumable, which is the intended behavior.",
+        "All 4 ACs verified through QA. Two low-priority improvement observations recorded but neither blocks PASS."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-25T15:48:50Z",
+          "note": "The UUID collision loop (for _ in range(5)) generates a new UUID at the end of each failing iteration but does not re-check that UUID before the next loop iteration starts. After 5 consecutive collisions, the 5th regenerated UUID is used without a final existence check. Statistically irrelevant given UUID v4's 2^122 space, but could be tightened by checking at the top of each iteration (e.g. while _thread_id_exists_in_checkpoint(...): for _ in range(5): ... else: log.error(...))."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-25T15:48:50Z",
+          "note": "The except Exception block in _thread_id_exists_in_checkpoint silently returns False without any log entry. If a DB I/O error occurs during a new run, the collision check silently passes and the run proceeds. This is the correct defensive behavior, but adding log.debug('Skipping checkpoint collision check due to DB error: %s', exc) would make the suppression visible in debug logs and ease troubleshooting."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-25T16:48:35Z",
+      "completed_at": "2026-03-25T16:50:14Z",
+      "duration_ms": 99000,
+      "summary": [
+        "Two documentation updates for WP-004 (stale checkpoint detection): (1) Added 'Terminal marker behaviour' section to _run() docstring in orchestrator/src/cli.py, explicitly documenting that --interrupt-on active intentionally suppresses _mark_run_terminal and why (addressing the Reviewer's documentation-forward item). (2) Added 'Resume safety: terminal checkpoint guard' subsection to orchestrator/README.md documenting the terminal marker mechanism, the error message on stale-resume, and the invariant that interrupt-on runs are not marked terminal."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/cli.py",
+          "orchestrator/README.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-25T16:50:14Z",
+          "note": "No documentation gaps blocked progress. Reviewer's documentation-forward item addressed: _run() docstring in cli.py now explicitly documents that --interrupt-on active suppresses _mark_run_terminal and why. README.md updated with a 'Resume safety: terminal checkpoint guard' subsection explaining the terminal marker behavior and the error message users will see."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-03-25T16:50:14Z",
+  "last_updated": "2026-03-25T16:50:14Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-03-25T15:25:53Z",
+      "notes": [
+        "WP-004 complete. Three helper functions added to cli.py (_thread_id_exists_in_checkpoint, _mark_run_terminal, _is_run_terminal). UUID collision regenerates up to 5 times with log.warning. Terminal resume guard exits EXIT_ERROR with clear message. Terminal marker is written after successful non-interrupted graph.ainvoke. All 46 CLI tests pass, 517/526 suite-wide tests pass (9 pre-existing aiosqlite failures).\""
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-25T15:31:31Z",
+      "notes": [
+        "WP-004 QA PASS. All 4 ACs verified. 46/46 CLI tests pass; full orchestrator suite 517 passing (9 pre-existing aiosqlite failures unchanged). UUID collision guard tested via _thread_id_exists_in_checkpoint helper tests. Terminal resume guard tested end-to-end via test_resume_terminal_thread_exits_error (returns EXIT_ERROR). Non-terminal resume path confirmed not disrupted. _mark_run_terminal directory-creation behavior also verified."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-03-25T15:48:50Z",
+      "notes": [
+        "WP-004 code review PASS. Three helper functions are clean, focused, and correct. Terminal guard, UUID collision guard, and _mark_run_terminal call site all implemented correctly.",
+        "[documentation-forward] cli.py: add docstring note to _run() documenting that --interrupt-on active suppresses _mark_run_terminal (by design), so step-resumed runs that complete naturally won't be flagged as terminal. This is intentional but non-obvious to future maintainers."
+      ]
+    }
+  ]
+}

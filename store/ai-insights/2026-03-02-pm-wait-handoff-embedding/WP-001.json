@@ -1,0 +1,136 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "ledger_get_next_action with agent_role: 'Project Manager' returns handoff_status in WAIT responses",
+      "met": true
+    },
+    {
+      "criterion": "handoff_status includes auto_handoff when the agent registry is loaded",
+      "met": true
+    },
+    {
+      "criterion": "Non-WAIT PM responses (e.g. UNBLOCK_WP) do not include handoff_status",
+      "met": true
+    },
+    {
+      "criterion": "At least 1 new unit test covers the PM WAIT handoff embedding",
+      "met": true
+    },
+    {
+      "criterion": "All pre-existing tests continue to pass after this change",
+      "met": true
+    }
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-02T06:37:02Z",
+      "completed_at": "2026-03-02T06:38:37Z",
+      "summary": [
+        "Wrapped the 'Project Manager' switch case in workflow-next-action.ts with embedHandoffStatusInWait, matching the pattern used by all other agent roles.",
+        "Added one unit test in the 'handoff_status embedded in WAIT responses' describe block: sets up an IN_PROGRESS WP with an active pipeline so PM falls through to WAIT, then asserts result.handoff_status is defined and current_agent is 'Project Manager'.",
+        "All 983 tests pass (982 pre-existing + 1 new). No regressions."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/tools/workflow-next-action.ts",
+          "mcp-server/tests/tools/workflow-next-action.test.ts"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 983,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-03-02T07:38:30Z",
+          "note": "getProjectManagerAction (workflow-next-action.ts ~line 291) re-fetches all WP details via its own Promise.all, even though the outer scope already loaded wpDetails at line 75. Aligning its signature with getDeveloperAction/getQaAction/etc. (accepting pre-loaded wpDetails as an optional param) would eliminate this redundant I/O. Flagged in the plan as a separate micro-debt item; out of scope for this WP."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-03-02T07:38:30Z",
+          "note": "The Synthesis case in the switch statement constructs an inline object literal rather than delegating to a named getSynthesisAction() function, unlike all other cases. Minor inconsistency that could be extracted for uniformity."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-02T06:40:44Z",
+      "completed_at": "2026-03-02T06:42:12Z",
+      "summary": [
+        "All 5 acceptance criteria verified. 983/983 tests pass (982 pre-existing + 1 new PM WAIT handoff test). Build clean.",
+        "Implementation correctly wraps the 'Project Manager' switch case with embedHandoffStatusInWait at lines 216-222 of workflow-next-action.ts, matching the pattern for all other agent roles.",
+        "New test at tests/tools/workflow-next-action.test.ts lines 1503-1527 asserts PM WAIT responses carry handoff_status with current_agent='Project Manager'.",
+        "Non-WAIT PM paths (CREATE_WORK_PACKAGES, SIGNAL_SYNTHESIS) correctly bypass embedding. Error resilience confirmed via try/catch in embedHandoffStatusInWait."
+      ],
+      "metrics": {
+        "tests_passed": 983,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-02T07:45:00Z",
+          "note": "The CREATE_WORK_PACKAGES and SIGNAL_SYNTHESIS early-return paths for PM return raw MCP response objects without embedHandoffStatusInWait — intentional and correct since neither is a WAIT action. No test explicitly asserts absence of handoff_status on those paths, but the embedHandoffStatusInWait early-return guard (action !== WAIT) provides the coverage implicitly."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-02T06:43:13Z",
+      "completed_at": "2026-03-02T06:44:14Z",
+      "summary": [
+        "Fix is minimal, surgical, and architecturally consistent. The 'Project Manager' switch case now wraps getProjectManagerAction with embedHandoffStatusInWait, matching the established pattern for all other agent roles.",
+        "Early-return paths (CREATE_WORK_PACKAGES, SIGNAL_SYNTHESIS) correctly predate the switch and return non-WAIT actions — the embedHandoffStatusInWait guard provides a safe backstop.",
+        "Pre-loaded opts (store, rootIndex, wpDetails) are correctly forwarded to avoid redundant reads.",
+        "New PM WAIT unit test drives through all PM priority rules to WAIT via a non-stale IN_PROGRESS pipeline, then asserts handoff_status shape. All 5 acceptance criteria met. 983/983 tests pass. No blocking issues."
+      ],
+      "metrics": {
+        "tests_passed": 983,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-02T06:43:30Z",
+          "note": "Non-blocking (pre-existing debt): getProjectManagerAction re-fetches wpDetails internally via its own Promise.all even though the outer scope already loaded them and forwards them as opts. Aligning it with getDeveloperAction/getQaAction to accept pre-loaded wpDetails would eliminate N redundant disk reads per PM call. Should be tracked as a separate micro-debt item — already flagged in implementation pipeline."
+        },
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-02T06:43:30Z",
+          "note": "Non-blocking (pre-existing inconsistency): The Synthesis case in the switch constructs an inline object literal rather than delegating to a getSynthesisAction() function, unlike all other agent-role cases. Minor uniformity gap; no functional impact."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-02T06:48:22Z",
+      "completed_at": "2026-03-02T06:48:57Z",
+      "summary": [
+        "Updated the stale computeHandoffStatus usage comment in mcp-server/docs/agents/project-manifest/api-surface.md (line 1721). The comment previously listed only 'Developer, QA, Reviewer' as the agent roles for which handoff_status is embedded in WAIT responses. It now correctly lists all six roles: 'Project Manager, Developer, QA, Reviewer, Documentation, Synthesis', reflecting the complete set handled by embedHandoffStatusInWait after this WP's implementation change."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md"
+        ]
+      }
+    }
+  ],
+  "status_changed_at": "2026-03-02T06:48:57Z"
+}

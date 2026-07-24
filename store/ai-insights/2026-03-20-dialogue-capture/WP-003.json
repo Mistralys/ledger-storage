@@ -1,0 +1,224 @@
+{
+  "work_package_id": "WP-003",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001",
+    "WP-002"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "When _app_config.capture_dialogues is True and _wp_id is non-empty, create_stage_node() calls write_dialogue() after a successful ainvoke() and appends a dialogue_captured entry to the returned run_log.",
+      "met": true
+    },
+    {
+      "criterion": "When _app_config.capture_dialogues is False, no dialogue_captured entry appears in run_log and no filesystem write is attempted.",
+      "met": true
+    },
+    {
+      "criterion": "A write_dialogue() failure (e.g., PermissionError) is caught and does not cause the stage node to raise or return stage_success: False.",
+      "met": true
+    },
+    {
+      "criterion": "The dialogue_captured JSONL event contains at minimum: action='dialogue_captured', stage, wp_id, file_path (non-empty string), level='INFO'.",
+      "met": true
+    },
+    {
+      "criterion": "_build_stream_console_line() returns a non-empty formatted string for an entry with action='dialogue_captured' that includes the stage, WP ID, and filename.",
+      "met": true
+    },
+    {
+      "criterion": "orchestrator/docs/jsonl-log-schema.md includes dialogue_captured in the Full Field Reference table and the Action Values table with correct field annotations.",
+      "met": true
+    },
+    {
+      "criterion": "pytest orchestrator/tests/test_nodes.py orchestrator/tests/test_logging.py passes with no failures.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-23T16:13:31Z",
+      "completed_at": "2026-03-23T16:16:20Z",
+      "duration_ms": 169000,
+      "summary": [
+        "Implemented dialogue capture in create_stage_node(): imports serialize_messages_to_markdown and write_dialogue, derives slug_dir from workspace_root/mcp-server/storage/ledger/<slug>, calls write_dialogue in try/except (failure is non-fatal), emits dialogue_captured JSONL event via run_logger.stream_entry(), appends entry to run_log.",
+        "Added dialogue_captured formatting branch to _build_stream_console_line() in logging.py: formats as '[{stage}] {wp_id} dialogue saved → {filename}'.",
+        "Updated orchestrator/docs/jsonl-log-schema.md: added file_path field to Full Field Reference table, added dialogue_captured row to Action Values table, updated event count from 17 to 18, updated ordering section.",
+        "Added capture_dialogues=False to _FakeConfig in test_nodes.py to prevent AttributeError in existing tests.",
+        "Added TestDialogueCaptured class to test_nodes.py covering: flag=True emits event, required fields present, flag=False omits event, empty wp_id omits event, write_dialogue failure does not affect stage_success.",
+        "Added TestDialogueCaptured class to test_logging.py covering: format with file_path, stage+wp included, no file_path, no wp_id."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/nodes/__init__.py",
+          "orchestrator/src/utils/logging.py",
+          "orchestrator/docs/jsonl-log-schema.md",
+          "orchestrator/tests/test_nodes.py",
+          "orchestrator/tests/test_logging.py"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 154,
+        "tests_failed": 0
+      }
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-23T16:21:17Z",
+      "completed_at": "2026-03-23T16:22:53Z",
+      "duration_ms": 96000,
+      "summary": [
+        "Full QA verification of dialogue capture feature (WP-003). All 154 pytest tests pass in test_nodes.py and test_logging.py with zero failures. All 7 acceptance criteria independently confirmed against source code.",
+        "AC1 PASS: nodes/__init__.py lines 117-142 — when _app_config.capture_dialogues=True and _wp_id non-empty, write_dialogue() is called and the returned dialogue_captured_entry is appended to extra_log_entries (and therefore run_log) at line 215-216.",
+        "AC2 PASS: The capture block is guarded by `if _app_config.capture_dialogues and _wp_id:` (line 117); no write attempt or run_log entry is produced when the flag is False.",
+        "AC3 PASS: The entire capture block is wrapped in a bare `except Exception` (line 143) that logs at DEBUG level and continues normally — write_dialogue failure leaves stage_success unaffected.",
+        "AC4 PASS: The dialogue_captured dict (lines 133-140) always contains action='dialogue_captured', stage, wp_id, file_path=str(written_path) (non-empty when write succeeds), level='INFO'.",
+        "AC5 PASS: _build_stream_console_line() dialogue_captured branch (logging.py lines 209-216) extracts filename from file_path, returns '[{stage}] {wp_id} dialogue saved → {filename}'; TestDialogueCaptured in test_logging.py validates format with file_path, without file_path, and missing wp_id.",
+        "AC6 PASS: jsonl-log-schema.md Full Field Reference table has a 'file_path' row describing the dialogue_captured field (line 48). Action Values table row 5 has 'dialogue_captured' with correct fields: stage, wp_id, file_path, level='INFO'.",
+        "AC7 PASS: pytest orchestrator/tests/test_nodes.py orchestrator/tests/test_logging.py — 154 passed, 0 failed (0.55s)."
+      ],
+      "metrics": {
+        "test_coverage": "All 7 ACs verified",
+        "tests_passed": 154,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T16:22:53Z",
+          "note": "nodes/__init__.py line 122 reads `project_path_obj = state['project_path']` (a string) then calls `.rstrip('/')` and `.split('/')[-1]` on it to derive the slug. This works but is fragile — a Path object in state would break the split. Low risk since state contract currently passes strings, but worth noting for future hardening."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T16:22:53Z",
+          "note": "write_dialogue() glob-based revision detection (dialogue_writer.py lines 240-253) is not concurrency-safe: two concurrent nodes capturing dialogue for the same wp_id+stage could write to the same filename. Acceptable for current sequential orchestrator design, but worth a comment if concurrency is ever added."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T16:22:53Z",
+          "note": "No dedicated test covers the slug derivation path (workspace_root / mcp-server / storage / ledger / <slug>) with a live filesystem call. The write_dialogue mock in tests substitutes the whole function, so a malformed workspace_root would only be caught at runtime. Considered low-risk given the mock pattern is standard for this codebase."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-23T16:28:19Z",
+      "completed_at": "2026-03-23T16:34:50Z",
+      "duration_ms": 391000,
+      "summary": [
+        "Code review PASS for WP-003 dialogue capture feature. Reviewed nodes/__init__.py (lines 115–216), logging.py (lines 209–216), jsonl-log-schema.md, test_nodes.py (TestDialogueCaptured), and test_logging.py (TestDialogueCaptured). 154/154 pytest tests confirmed passing live. All 7 ACs verified against source. Implementation is well-structured, non-fatal error handling is correct, JSONL schema docs are accurate and complete, and test coverage is thorough and idiomatic for the codebase."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/nodes/__init__.py",
+          "orchestrator/src/utils/logging.py",
+          "orchestrator/docs/jsonl-log-schema.md",
+          "orchestrator/tests/test_nodes.py",
+          "orchestrator/tests/test_logging.py"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 154,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T16:34:50Z",
+          "note": "nodes/__init__.py line 122: slug is derived with str(project_path_obj).rstrip('/').split('/')[-1]. Works correctly for the current string contract, but wrapping in Path(project_path_obj).name would be more robust and idiomatic should a pathlib.Path ever land in state. Non-blocking — QA flagged same, confirming no regression risk."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T16:34:50Z",
+          "note": "The dialogue_captured entry is appended to extra_log_entries AFTER pipeline_result (line 215-216), which correctly matches the documented event ordering in jsonl-log-schema.md (step 4 after step 3). Ordering is intentional and correct."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T16:34:50Z",
+          "note": "No observations — code is clean and consistent. The except Exception / noqa: BLE001 pattern is consistent with the existing pattern used for pipeline_result read-back at line 208. Bare except is intentional and correct here."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-23T16:36:38Z",
+      "completed_at": "2026-03-23T16:39:18Z",
+      "duration_ms": 160000,
+      "summary": [
+        "Reviewed all implementation artifacts from WP-003 (nodes/__init__.py, logging.py, jsonl-log-schema.md, test_nodes.py, test_logging.py). The jsonl-log-schema.md was already fully updated by the Developer (AC6): file_path field in Full Field Reference, dialogue_captured row in Action Values table, ordering section updated, event count bumped to 18.",
+        "Updated orchestrator/README.md: (1) stage nodes description now mentions dialogue_captured event and non-fatal write-failure behaviour; (2) test_nodes.py table row updated to include TestDialogueCaptured (5 tests); (3) test_logging.py table row updated to list dialogue_captured as the 8th event-type pattern and include TestDialogueCaptured (4 tests); (4) total unit test count updated from 375 to 455.",
+        "Added v0.9.3 entry to orchestrator/changelog.md covering all four deliverables: node integration, JSONL event, console formatter, and schema docs.",
+        "Updated orchestrator/docs/public-api.md: WorkflowLogger description now lists dialogue_captured as a named event type with its console format.",
+        "Added Unreleased section to root changelog.md summarising the complete dialogue capture feature (WP-001 config, WP-002 writer, WP-003 integration) in user-facing terms."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/README.md",
+          "orchestrator/changelog.md",
+          "orchestrator/docs/public-api.md",
+          "changelog.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T16:39:18Z",
+          "note": "orchestrator/README.md test count was stale at 375 — actual count is 455. The gap reflects three WPs from this project (WP-001 config tests, WP-002 dialogue writer tests, WP-003 node + logging tests). README is now accurate."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T16:39:18Z",
+          "note": "No documentation-forward items were raised by the Reviewer in the code-review pipeline — all three reviewer comments were implementation-quality observations (slug derivation, event ordering, exception pattern), none requiring documentation action."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T16:39:18Z",
+          "note": "No changes were needed to orchestrator/docs/jsonl-log-schema.md — it was already fully updated by the Developer as part of WP-003 implementation (AC6). Documentation pass confirmed accuracy of all additions."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-03-23T16:39:18Z",
+  "last_updated": "2026-03-23T16:39:18Z",
+  "handoff_notes": [
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-23T16:22:53Z",
+      "notes": [
+        "All 7 acceptance criteria met. 154/154 tests pass. Code is clean and implementation matches the WP specification exactly. Three low-priority improvement observations recorded (slug derivation string assumption, non-concurrent-safe revision counter, no live filesystem integration test) — none are blockers."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-03-23T16:34:50Z",
+      "notes": [
+        "WP-003 code-review PASS. All 7 ACs confirmed against source. 154/154 tests pass (live run verified). Implementation is clean, idiomatic, and matches spec exactly. Three low-priority improvement notes recorded (slug string derivation, ordering confirmation, exception pattern). No blockers. Ready for documentation."
+      ]
+    }
+  ]
+}

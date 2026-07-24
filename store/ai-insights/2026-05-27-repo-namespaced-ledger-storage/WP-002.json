@@ -1,0 +1,220 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-002.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "A LedgerStore constructed from a project path resolves storageDir to {ledgerRoot}/{repoName}/{slug}/",
+      "met": true
+    },
+    {
+      "criterion": "renameSlug('new-slug') moves the directory to {ledgerRoot}/{repoName}/new-slug/, not the flat {ledgerRoot}/new-slug/",
+      "met": true
+    },
+    {
+      "criterion": "The conflict-check access() call inside renameSlug() queries {ledgerRoot}/{repoName}/new-slug/",
+      "met": true
+    },
+    {
+      "criterion": "All existing LedgerStore unit tests pass with updated path expectations",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-27T12:55:58Z",
+      "completed_at": "2026-05-27T13:09:25Z",
+      "duration_ms": 807000,
+      "summary": [
+        "Added `deriveRepoName` to LedgerStore import from ledger-root.ts",
+        "Added `public readonly repoName: string` field to LedgerStore",
+        "Updated LedgerStore constructor: computes `this.repoName = deriveRepoName(projectPath)` and sets `this.storageDir = join(this.ledgerRoot, this.repoName, this.slug)`",
+        "Updated `renameSlug()`: `newStorageDir` now uses `join(this.ledgerRoot, this.repoName, newSlug)` for both the directory move and the conflict-check access() call",
+        "Updated `listAllProjects()` to scan two levels deep: depth-1 dirs with a direct .meta.json are read as old-layout projects; depth-1 dirs without .meta.json are treated as repo-namespace dirs and scanned for slug dirs at depth 2",
+        "Updated all renameSlug test path assertions in ledger-store.test.ts to use `store.repoName` as the namespace level (e.g. `join(tempLedgerRoot, store.repoName, NEW_SLUG)` instead of `join(tempLedgerRoot, NEW_SLUG)`)",
+        "Added new storageDir isolation test: two LedgerStore instances with the same slug but different project paths produce different storageDir values and correctly named repoName fields",
+        "All 63 ledger-store.test.ts tests pass; 63 GUI handler tests in api.test.ts/api-reset.test.ts/api-wp-overview.test.ts are expected regressions — the GUI handlers construct LedgerStore(slug, ledgerRoot) with a bare slug which will be addressed in WP-004/WP-005"
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/storage/ledger-store.ts",
+          "mcp-server/tests/storage/ledger-store.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-27T13:09:25Z",
+          "note": "gui/api.ts constructs LedgerStore(slug, ledgerRoot) with a bare slug on every handler call (17 instances, e.g. lines 172, 349, 517, etc.). After the WP-002 storageDir change, bare-slug construction always yields repoName='unknown', so all handlers look in {ledgerRoot}/unknown/{slug}/. This is a systematic pattern issue: handlers need to resolve the plan_path via listAllProjects first, then construct LedgerStore with the full planPath. WP-004/WP-005 must address this before the GUI tests pass again."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T13:09:25Z",
+          "note": "The listAllProjects() two-level scan introduced in WP-002 will emit stderr noise for depth-1 entries that are repo-namespace dirs (they have no .meta.json and the catch is silent). WP-004 should add a targeted test for the stderr log path to ensure the error format stays consistent for actual missing-meta project dirs at depth 2."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-27T13:15:22Z",
+      "completed_at": "2026-05-27T13:17:00Z",
+      "duration_ms": 98000,
+      "summary": [
+        "AC1 verified: LedgerStore constructor sets storageDir = join(ledgerRoot, repoName, slug) — confirmed in source at ledger-store.ts constructor.",
+        "AC2 verified: renameSlug() computes newStorageDir = join(ledgerRoot, repoName, newSlug) and passes it to rename() — flat-layout path is not used.",
+        "AC3 verified: The conflict-check access() call uses the same newStorageDir (includes repoName) — TOCTOU pattern is unchanged from prior behaviour.",
+        "AC4 verified: All 63 ledger-store.test.ts tests pass (including new storageDir isolation test).",
+        "Regression confirmed: Exactly 63 GUI handler tests fail in api.test.ts, api-reset.test.ts, api-wp-overview.test.ts — matches expected regressions documented in handoff. Root cause: gui/api.ts constructs LedgerStore(slug, ledgerRoot) without a full planPath, yielding repoName='unknown'. Scoped to WP-004/WP-005.",
+        "Edge-case note: deriveRepoName() guards empty/null input and non-slug repo names with 'unknown' fallback — safe. TOCTOU race in renameSlug() between access() and rename() is a pre-existing pattern, not introduced by this WP."
+      ],
+      "metrics": {
+        "tests_passed": 63,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T13:17:00Z",
+          "note": "deriveRepoName() returns 'unknown' for any repo whose directory name doesn't match SAFE_SLUG_REGEX. If two such repos exist, their projects will share the {ledgerRoot}/unknown/ namespace and can collide by slug. Worth documenting as a known limitation in constraints.md."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T13:17:00Z",
+          "note": "No improvement — core logic is clean and consistent with AC specification."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-27T13:18:52Z",
+      "completed_at": "2026-05-27T13:23:36Z",
+      "duration_ms": 284000,
+      "summary": [
+        "Reviewed ledger-store.ts constructor change (repoName + namespaced storageDir), renameSlug() update, and listAllProjects() two-level scan. One Fix-Forward applied: updated LedgerStore class-level JSDoc from '{ledgerRoot}/{slug}/' to '{ledgerRoot}/{repoName}/{slug}/'. Implementation is correct, well-structured, and all ACs are met. No blocking issues."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/storage/ledger-store.ts",
+          "mcp-server/tests/storage/ledger-store.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-27T13:23:36Z",
+          "note": "LedgerStore class-level JSDoc described storage as '{ledgerRoot}/{slug}/' — updated to '{ledgerRoot}/{repoName}/{slug}/' to reflect the WP-002 namespaced layout. Non-behavioral docstring change."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-05-27T13:23:36Z",
+          "note": "[documentation-forward] constraints.md should document the known limitation: when two repos have a directory name that fails SAFE_SLUG_REGEX (e.g. contains dots or non-ASCII), both fall back to the 'unknown/' namespace and can collide by slug. Add a Known Limitations entry with: affected component (LedgerStore.storageDir), trigger condition, and mitigation advice (rename repo root to a slug-compatible name)."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-05-27T13:23:36Z",
+          "note": "[documentation-forward] LedgerStore.listAllProjects() two-level scan behavior (old flat-layout detection at depth-1, repo-namespace scan at depth-2) is not directly tested — only exercised indirectly through detectProjectByCwd tests. Consider adding a direct listAllProjects test suite in a future WP that covers: mixed flat+namespaced layout in the same ledger root, stderr log path for missing depth-2 .meta.json files."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T13:23:36Z",
+          "note": "renameSlug() conflict test creates a conflictStore using join(tmpdir(), NEW_SLUG) as plan path, which produces repoName='unknown' (shallow path fallback). The test works correctly because store also uses a shallow path and gets 'unknown'. Future test refactors that use proper {root}/docs/agents/plans/{slug} paths should ensure conflictStore's plan path derives the same repoName as store for the conflict assertion to remain valid."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-27T13:26:04Z",
+      "completed_at": "2026-05-27T13:30:25Z",
+      "duration_ms": 261000,
+      "summary": [
+        "Updated mcp-server/docs/agents/project-manifest/api-surface.md: added repoName as a new public readonly field on LedgerStore, updated storageDir inline comment from '{ledgerRoot}/{slug}/' to '{ledgerRoot}/{repoName}/{slug}/', updated class-level description to match.",
+        "Updated mcp-server/docs/agents/project-manifest/file-tree.md: replaced flat {slug}/ storage tree entry with the new two-level {repoName}/{slug}/ layout; updated the Generated/Ignored Directories note at the bottom to match.",
+        "Updated mcp-server/docs/agents/project-manifest/data-flows.md: rewrote Flow 1b (listAllProjects) to accurately describe the two-level scan — depth-1 entries with .meta.json are old flat-layout, depth-1 entries without .meta.json are repo-namespace dirs scanned at depth-2; bulk-replaced 19 path shorthands from storage/ledger/{slug}/ to storage/ledger/{repoName}/{slug}/ throughout all flows.",
+        "Updated mcp-server/docs/agents/project-manifest/constraints.md: added new 'Known Limitations' section at the end with KL-1 (deriveRepoName 'unknown' namespace collision — affected component, trigger, mitigation, detection) and KL-2 (listAllProjects two-level scan has no direct unit tests — mixed layout and stderr log path not directly covered).",
+        "Both documentation-forward items from the code-review pipeline are addressed: KL-1 covers the unknown collision; KL-2 documents the test coverage gap and names the missing scenarios."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/file-tree.md",
+          "mcp-server/docs/agents/project-manifest/data-flows.md",
+          "mcp-server/docs/agents/project-manifest/constraints.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T13:30:25Z",
+          "note": "data-flows.md Flow 1b previously described a single-level scan of storage/ledger/ — updated to accurately reflect the two-level scan introduced in WP-002 (flat-layout detection at depth-1, repo-namespace scan at depth-2). 19 path shorthands throughout the file bulk-updated to include the {repoName} level."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T13:30:25Z",
+          "note": "api-surface.md LedgerStore class block was missing the new repoName readonly field entirely. Added with a note that it falls back to 'unknown' for repos with non-slug-compatible directory names."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T13:30:25Z",
+          "note": "Both documentation-forward items from the code-review pipeline addressed: KL-1 (unknown namespace collision) documents affected component, trigger condition (SAFE_SLUG_REGEX failure), mitigation (rename repo root), and detection (inspect {ledgerRoot}/unknown/). KL-2 names the two missing test scenarios for listAllProjects() and recommends a future WP for direct coverage."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-27T13:30:25Z",
+  "last_updated": "2026-05-27T13:30:25Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-27T13:09:25Z",
+      "notes": [
+        "WP-002 is complete. storageDir is now join(ledgerRoot, repoName, slug). listAllProjects scans two levels.",
+        "EXPECTED REGRESSIONS: 63 GUI handler tests in api.test.ts, api-reset.test.ts, api-wp-overview.test.ts are failing because gui/api.ts uses new LedgerStore(slug, ledgerRoot) with bare slugs (repoName='unknown') but test fixtures write data using join(tmpdir(), slug) as planPath (repoName varies by OS tmpdir depth). These will be fixed in WP-004/WP-005 when the handlers are updated to use meta.plan_path from listAllProjects.",
+        "All 63 ledger-store.test.ts tests pass including the new storageDir isolation test."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-27T13:17:00Z",
+      "notes": [
+        "WP-002 QA passed. All 4 ACs met. 63 expected GUI handler regressions confirmed (api.test.ts, api-reset.test.ts, api-wp-overview.test.ts) — these are scoped to WP-004/WP-005. No surprises. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-27T13:23:36Z",
+      "notes": [
+        "WP-002 code review PASS. One Fix-Forward applied: LedgerStore class JSDoc updated from '{ledgerRoot}/{slug}/' to '{ledgerRoot}/{repoName}/{slug}/'. Two documentation-forward items filed: (1) document 'unknown' namespace collision as a known limitation in constraints.md; (2) note that listAllProjects() two-level scan lacks direct unit tests — covered indirectly only. Implementation is clean and architecturally sound."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,323 @@
+{
+  "work_package_id": "WP-007",
+  "work_package_file": "work/WP-010.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-004"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "`getProjectLedgerStatus()` uses namespaced path when `expectedRepo` is non-null",
+      "met": true
+    },
+    {
+      "criterion": "`getProjectLedgerStatus()` falls back to flat path when `expectedRepo` is null (backward compat)",
+      "met": true
+    },
+    {
+      "criterion": "`resolveProgress()` has a documented invariant comment explaining bare-slug suffix matching",
+      "met": true
+    },
+    {
+      "criterion": "`killQueueEntry()` and `dismissQueueEntry()` pass `expectedRepo` to `getProjectLedgerStatus()`",
+      "met": true
+    },
+    {
+      "criterion": "`getQueue()` call site passes `entry.expectedRepo` to `getProjectLedgerStatus()`",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-31T16:28:51Z",
+      "completed_at": "2026-05-31T16:31:56Z",
+      "duration_ms": 185000,
+      "summary": [
+        "Updated getProjectLedgerStatus() in get-queue.ts to accept a third optional parameter `expectedRepo: string | null = null`. When non-null, constructs a namespaced path `<ledgerRoot>/<expectedRepo>/<slug>/project-ledger.json`; when null, falls back to the legacy flat path for backward compatibility.",
+        "Updated getQueue() call site in get-queue.ts to pass `entry.expectedRepo` as the third argument to getProjectLedgerStatus().",
+        "Added invariant comment to resolveProgress() in resolve-progress.ts explaining that log filenames use bare slug only (flat layout) — suffix matching on `-${slug}.jsonl` is correct and intentional even in multi-root workspace configurations.",
+        "Updated killQueueEntry() in orchestrator-manager.ts to pass `entry.expectedRepo` to getProjectLedgerStatus().",
+        "Updated dismissQueueEntry() in orchestrator-manager.ts to pass `entry.expectedRepo` to getProjectLedgerStatus().",
+        "All 160 existing tests pass. TypeScript compiles clean (no type errors)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/gui/queue/get-queue.ts",
+          "mcp-server/src/gui/queue/resolve-progress.ts",
+          "mcp-server/gui/orchestrator-manager.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T16:31:56Z",
+          "note": "get-queue.ts: The `getProjectLedgerStatus()` function is now called from three distinct sites (getQueue, killQueueEntry, dismissQueueEntry) with the same three-argument signature. The default parameter (`expectedRepo = null`) ensures backward compatibility for any callers that haven't been updated yet, but long-term all callers should be explicit. No action needed now — the default is correct policy."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T16:31:56Z",
+          "note": "resolve-progress.ts: The invariant comment now clearly documents why the log file suffix-match uses the bare slug even when `expectedRepo` is set. This is accurate: the Python orchestrator writes log files into a single flat `logsDir` regardless of repo namespace. No logic change was needed."
+        },
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-05-31T16:31:56Z",
+          "note": "orchestrator-manager.ts: The `killQueueEntry` and `dismissQueueEntry` functions both re-read the queue file from disk independently, then recompute effective status. If the queue file is modified between reads (e.g., a concurrent dismiss while a kill is in flight), a stale view could cause a double-operation or missed cleanup. The existing locking parity gap comment (line 72 in orchestrator-manager.ts) already documents this asymmetry. This is pre-existing debt — not introduced by this WP."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-31T16:32:22Z",
+      "completed_at": "2026-05-31T16:35:35Z",
+      "duration_ms": 193000,
+      "summary": [
+        "TypeScript compiles clean (exit 0, no errors).",
+        "All 5 acceptance criteria verified by code inspection: (1) getProjectLedgerStatus() uses namespaced join(ledgerRoot, expectedRepo, slug, 'project-ledger.json') when expectedRepo is non-null; (2) falls back to join(ledgerRoot, slug, 'project-ledger.json') when null; (3) resolveProgress() has invariant comment at lines 88-95 of resolve-progress.ts explaining flat log layout; (4) both killQueueEntry() and dismissQueueEntry() pass entry.expectedRepo to getProjectLedgerStatus(); (5) getQueue() call site passes entry.expectedRepo.",
+        "Created mcp-server/tests/gui/queue-ledger-status.test.ts with 9 new tests covering: namespaced path resolution (AC-1, 3 cases), flat path backward compat (AC-2, 3 cases), getQueue() end-to-end with non-null/null expectedRepo (AC-5, 3 cases). All 9 pass.",
+        "Regression: 162 tests pass across all queue-related test files (queue-ledger-status, get-queue, orchestrator-manager, resolve-progress, validate-entry, compute-effective-status). The one pre-existing failure (dialogue-qa.test.ts, 17 tests) is unrelated to WP-007 — it concerns dialogue API views and has no dependency on any modified file.",
+        "Edge cases confirmed: empty-string expectedRepo treated as falsy (falls through to flat path — correct); synthesis_generated:true in namespaced ledger correctly triggers getQueue() exclusion; invalid JSON in namespaced ledger is fail-safe (exists:true, synthesisGenerated:false)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/tests/gui/queue-ledger-status.test.ts"
+        ]
+      },
+      "metrics": {
+        "test_coverage": "9 new tests added for namespaced-path behavior",
+        "tests_passed": 162,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T16:35:35Z",
+          "note": "get-queue.ts: An empty-string expectedRepo ('') is falsy in JS, so getProjectLedgerStatus() would treat it as null and use the flat path. This is arguably correct behavior (empty string is not a valid repo slug), but the parameter name 'expectedRepo' implies string-or-null semantics. Consider adding a guard `expectedRepo && expectedRepo.length > 0` if the validator layer cannot guarantee this invariant."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T16:35:35Z",
+          "note": "orchestrator-manager.ts: Pre-existing path-traversal risk — if expectedRepo contained '../', the join() call would traverse up directories. Input is normalized by isRawQueueEntry() in validate-entry.ts but that guard only checks typeof === 'string', not content. Low real-world risk since expectedRepo comes from the Python orchestrator. Pre-existing concern, not introduced by WP-007."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T16:35:35Z",
+          "note": "dialogue-qa.test.ts has 17 pre-existing failures (querySelectorAll on null element). These failures are completely unrelated to WP-007 modifications — no shared file dependencies. Recommend investigating in a separate work package."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-05-31T16:36:00Z",
+      "completed_at": "2026-05-31T16:37:10Z",
+      "duration_ms": 70000,
+      "summary": [
+        "Reviewed 4 source files (get-queue.ts, resolve-progress.ts, orchestrator-manager.ts, validate-entry.ts). 0 Critical, 0 High findings. 1 Medium finding (path traversal defense-in-depth gap on expectedRepo — noted, does not block). Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-05-31T16:37:10Z",
+          "note": "MEDIUM — A01 (Broken Access Control / Path Traversal): mcp-server/src/gui/queue/get-queue.ts line 112. In getProjectLedgerStatus(), the `expectedRepo` parameter is used as a path component in `join(ledgerRoot, expectedRepo, slug, 'project-ledger.json')` without content validation. Node.js path.join() does not prevent traversal when a path component contains '../' (e.g., expectedRepo='../secret' would resolve to `<ledgerRoot>/../secret/<slug>/project-ledger.json`). The isRawQueueEntry() guard in validate-entry.ts (line 69) normalizes expectedRepo to `string | null` but only checks `typeof === 'string'` — no pattern/content guard is applied. The SAFE_SLUG_REGEX (`/^[a-z0-9][a-z0-9-]*$/`) and assertSafeSegment() are already available in src/utils/path-validator.ts and src/utils/constants.ts respectively. Severity context: this is a local developer MCP server with no remote attack surface; the input originates from the Python orchestrator (trusted local process); the operation is read-only and fail-safe. Exploitation would require a malicious `.run-queue.json` on the local filesystem. Practical risk is low, but the fix is trivial and aligns with existing project conventions. Remediation: add a guard in getProjectLedgerStatus() (or at the call sites in getQueue/killQueueEntry/dismissQueueEntry) that rejects non-null expectedRepo values failing assertSafeSegment(). Example: `if (expectedRepo && !assertSafeSegment(expectedRepo)) { return { exists: false, synthesisGenerated: false }; }`"
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T16:37:10Z",
+          "note": "INFO — A01 (Path Traversal, same vector): The `slug` field (expectedSlug in RawQueueEntry) is used as another path component in both the flat and namespaced join() calls. isRawQueueEntry() validates it as a non-empty, non-whitespace-only string but does not apply SAFE_SLUG_REGEX content validation. This is a secondary version of the same defense-in-depth gap — same low exploitability, same trivial fix. The Python orchestrator generates slugs from plan folder basenames (YYYY-MM-DD-{project-name} pattern), so traversal sequences are practically excluded. Remediation: extend assertSafeSegment() coverage to include expectedSlug at the validator boundary (validate-entry.ts)."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T16:37:10Z",
+          "note": "INFO — A09 (Security Logging): No security-sensitive events (e.g., path traversal attempts, unexpected expectedRepo formats) are logged or surfaced. Since the functions are fail-safe and return `{ exists: false }` on any error, a traversal attempt would silently fall through. A debug-level log on unexpected input format would aid incident detection. Low priority for a local-only tool."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T16:37:10Z",
+          "note": "No findings in remaining OWASP Top 10 categories: A02 (no cryptographic operations), A03 (no injection — path.join() used for filesystem access only, no SQL/template/command injection surface), A04 (fail-safe defaults throughout), A05 (no exposed error details — all errors silently return safe defaults), A06 (no new third-party dependencies introduced by WP-007), A07 (no authentication flows), A08 (no deserialization beyond JSON.parse with safe error handling), A10 (no outbound HTTP requests from the modified code paths)."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-31T16:37:27Z",
+      "completed_at": "2026-05-31T16:38:35Z",
+      "duration_ms": 68000,
+      "summary": [
+        "Reviewed all 4 modified files (get-queue.ts, resolve-progress.ts, orchestrator-manager.ts, queue-ledger-status.test.ts) plus supporting context files (validate-entry.ts, path-validator.ts).",
+        "No blocking issues found. Implementation is clean, well-documented, and architecturally consistent with project conventions.",
+        "No Fix-Forward changes applied — code is already in good shape.",
+        "Two Documentation-Forward items tagged for the Documentation agent.",
+        "Security Auditor's medium path-traversal finding acknowledged — the fix is appropriate as a follow-up but not blocking given the local-only, read-only, fail-safe nature of the function."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/gui/queue/get-queue.ts",
+          "mcp-server/src/gui/queue/resolve-progress.ts",
+          "mcp-server/gui/orchestrator-manager.ts",
+          "mcp-server/tests/gui/queue-ledger-status.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T16:38:35Z",
+          "note": "get-queue.ts: getProjectLedgerStatus() — The ternary path-selection idiom (`expectedRepo ? join(...) : join(...)`) is idiomatic and clear. The JSDoc is thorough and accurate (both path shapes documented, fail-safe contract stated, all three @param tags present). No improvement needed."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T16:38:35Z",
+          "note": "get-queue.ts: getQueue() — The `Promise.all([getProjectLedgerStatus(...), resolveProgress(...)])` fan-out per entry is well-structured. The AC-6 exclusion logic (`effectiveStatus === 'started' && synthesisGenerated`) is correct and easy to follow. The comment referencing AC-2 through AC-6 in the call site is helpful for traceability."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T16:38:35Z",
+          "note": "orchestrator-manager.ts: killQueueEntry() and dismissQueueEntry() — The comment 'Intentionally omits the hasLogActivity argument — dismiss/kill eligibility uses the conservative rule' is excellent. It pre-empts the obvious 'why not pass hasStageActivity?' question that any reader will have. Good defensive documentation."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T16:38:35Z",
+          "note": "validate-entry.ts: The in-place mutation side-effect on isRawQueueEntry() (normalizing expectedRepo to null) is documented clearly in the JSDoc. The pattern is unusual (type guards typically do not mutate) but the trade-off (avoids a second mapping pass over filtered results) is justified and explicitly explained. Acceptable."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T16:38:35Z",
+          "note": "resolve-progress.ts: EMPTY_RESOLUTION sentinel with Object.freeze() is a good practice — prevents accidental mutation of the shared sentinel across concurrent callers. The `{ ...EMPTY_RESOLUTION, logFilename }` spread pattern for the 'file found but unreadable' path is correct and consistent."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-31T16:38:35Z",
+          "note": "Follow-up suggestion (non-blocking): The Security Auditor's MEDIUM finding on path traversal is low-risk given the local-only, read-only, fail-safe nature of getProjectLedgerStatus(), but the fix is genuinely trivial since assertSafeSegment() already exists in path-validator.ts. Recommend adding a guard `if (expectedRepo && !assertSafeSegment(expectedRepo)) return { exists: false, synthesisGenerated: false }` in a future hardening pass. Same applies to expectedSlug at the validate-entry.ts boundary."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-31T16:38:35Z",
+          "note": "[documentation-forward] The module-level JSDoc for get-queue.ts lists exported symbols but does not mention the new `expectedRepo` parameter shape or the namespaced-vs-flat path selection logic in the Exports section. The function-level JSDoc is complete, but a brief note at the module level would help a new contributor understand the dual-layout behavior at a glance."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-05-31T16:38:35Z",
+          "note": "[documentation-forward] orchestrator-manager.ts: The module header lifecycle state table (lines 22–30) describes `started + synthesis_generated true → excluded (AC-6)` but does not mention that the ledger lookup for that check is now namespace-aware when expectedRepo is set. A one-line note cross-referencing the WP-007 change would keep the module header accurate as a standalone reference."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-31T16:38:57Z",
+      "completed_at": "2026-05-31T16:40:12Z",
+      "duration_ms": 75000,
+      "summary": [
+        "Addressed both [documentation-forward] items from the code-review pipeline.",
+        "get-queue.ts: Added a 'Ledger path layout — dual-mode (WP-007)' section to the module-level JSDoc, explaining the namespaced vs flat path shapes, when each is selected, and confirming all three call sites (getQueue, killQueueEntry, dismissQueueEntry) pass entry.expectedRepo.",
+        "orchestrator-manager.ts: Added a WP-007 note below the lifecycle state table clarifying that the synthesis_generated ledger lookup (AC-6 exclusion row) is namespace-aware, with the path shapes and the three affected call sites listed explicitly.",
+        "No README or external docs required updating — the changes are internal to queue-reading logic with no public API surface changes.",
+        "All existing function-level JSDoc was already complete and accurate; only the module-level documentation needed supplementing."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/gui/queue/get-queue.ts",
+          "mcp-server/gui/orchestrator-manager.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T16:40:12Z",
+          "note": "get-queue.ts: Module-level JSDoc now documents both path layouts with concrete path template strings, and explicitly names all three call sites. This gives a new contributor a complete picture at the module header without having to read individual function docs."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T16:40:12Z",
+          "note": "orchestrator-manager.ts: The lifecycle table note cross-references WP-007 so the change history is traceable from the module header. Matches the existing table comment style (plain English, no external links required)."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T16:40:12Z",
+          "note": "No README updates were needed: getProjectLedgerStatus() is an internal utility with no public CLI or MCP tool surface. The dual-layout behavior is an implementation detail fully captured in the source-level JSDoc."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-31T16:40:12Z",
+  "last_updated": "2026-05-31T16:40:12Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-31T16:31:56Z",
+      "notes": [
+        "QA: New test coverage is needed in `mcp-server/tests/gui/queue-ledger-status.test.ts` (as noted in the WP). Specifically test: (1) getProjectLedgerStatus() with non-null expectedRepo resolves the namespaced path, (2) getProjectLedgerStatus() with null expectedRepo resolves the flat path, (3) getQueue() with an entry whose expectedRepo is non-null reads from the namespaced ledger directory. Existing tests in tests/gui/queue/get-queue.test.ts and tests/gui/orchestrator-manager.test.ts cover the flat-path (legacy null) behavior and continue to pass."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-05-31T16:35:35Z",
+      "notes": [
+        "Security Auditor: WP-007 introduces a new file path construction in getProjectLedgerStatus() — when expectedRepo is non-null, it uses join(ledgerRoot, expectedRepo, slug, 'project-ledger.json'). The expectedRepo value originates from the Python orchestrator via .run-queue.json and is validated only as typeof === 'string' (not content-validated). Consider whether a path-traversal threat model applies here (e.g., expectedRepo = '../secret'). Note: Node.js path.join() does not prevent traversal when components contain '../'.",
+        "Security Auditor: New test file added at mcp-server/tests/gui/queue-ledger-status.test.ts (9 tests, all PASS). No new source code attack surface beyond the one path construction noted above."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-31T16:37:10Z",
+      "notes": [
+        "Reviewer: WP-007 is security-cleared (PASS). One Medium finding noted for awareness: expectedRepo and expectedSlug are used as path.join() components without content-validation against SAFE_SLUG_REGEX. The fix (assertSafeSegment() guard before path construction) is trivial and aligns with existing project conventions; consider requesting it as a follow-up improvement comment during code review. No blocking security issues — all 5 acceptance criteria met, all OWASP Top 10 categories reviewed clean."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-31T16:38:35Z",
+      "notes": [
+        "Documentation agent: All 5 acceptance criteria are met and code-review PASS. Two [documentation-forward] items are recorded as pipeline comments: (1) get-queue.ts module-level JSDoc could reference the dual-layout (namespaced vs flat) path behavior introduced in WP-007; (2) orchestrator-manager.ts module header lifecycle table omits that the synthesis_generated ledger lookup is now namespace-aware. Neither blocks any functionality — both are supplementary clarity improvements for future contributors."
+      ]
+    },
+    {
+      "from_agent": "Documentation",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-05-31T16:40:12Z",
+      "notes": [
+        "All 5 acceptance criteria confirmed met. Two documentation-forward items from code-review resolved: module-level JSDoc in get-queue.ts now documents dual-layout path behavior; orchestrator-manager.ts lifecycle table now notes that the AC-6 synthesis_generated check is namespace-aware. No public API or README changes required."
+      ]
+    }
+  ]
+}

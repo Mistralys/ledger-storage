@@ -1,0 +1,251 @@
+{
+  "work_package_id": "WP-006",
+  "work_package_file": "work/WP-007.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-002",
+    "WP-004"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "logsDir resolves to {ledgerRoot}/{repoName}/{slug}/orchestrator/logs",
+      "met": true
+    },
+    {
+      "criterion": "An invalid repoName (containing /, .., uppercase, or other SAFE_SLUG_REGEX violations) is rejected before any path construction occurs",
+      "met": true
+    },
+    {
+      "criterion": "An invalid slug is rejected before any path construction occurs",
+      "met": true
+    },
+    {
+      "criterion": "Legacy migration paths within the handler also use the namespaced layout",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-27T13:58:20Z",
+      "completed_at": "2026-05-27T14:09:45Z",
+      "duration_ms": 685000,
+      "summary": [
+        "Added repoName parameter to handleListRunLogs and handleGetRunLog in run-log-handlers.ts — it is now the second positional argument after slug",
+        "Upgraded assertSafeSlug from loose path-traversal check to strict SAFE_SLUG_REGEX validation; both repoName and slug are validated before any filesystem access",
+        "Updated all existing test call sites in run-log-handlers.test.ts to pass 'my-repo' as the second argument",
+        "Added 9 new tests covering: invalid repoName rejection (uppercase, slash, dot-dot, empty) for both handlers; pre-filesystem guard verification; AC1 namespaced logsDir integration test; AC4 legacy migration test",
+        "41/41 tests pass; tsc --noEmit clean"
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/gui/handlers/run-log-handlers.ts",
+          "mcp-server/tests/gui/run-log-handlers.test.ts"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 41,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T14:09:45Z",
+          "note": "run-log-handlers.ts: assertSafeSlug now uses SAFE_SLUG_REGEX (imported from constants.ts) giving the same validation rules as the ledger-root module. The two modules each define their own local wrapper — one throws ApiError, one throws plain Error — which is intentional (no shared dependency between GUI and storage layers), but worth documenting in a code comment."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-05-27T14:09:45Z",
+          "note": "run-log-handlers.test.ts: the test file grew to 482 lines covering 41 cases. The new AC1/AC4 tests allocate their own tmpdir inside the test body and clean up in a finally block rather than using beforeEach/afterEach — this is intentional (they need a different dir layout) but creates a minor inconsistency with the surrounding test style."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-27T14:24:49Z",
+      "completed_at": "2026-05-27T14:25:57Z",
+      "duration_ms": 68000,
+      "summary": [
+        "All 41 tests in tests/gui/run-log-handlers.test.ts pass. All 4 ACs independently verified. assertSafeSlug upgraded to SAFE_SLUG_REGEX-based validation in run-log-handlers.ts. repoName is validated before slug in both handlers — the guard using a non-existent logsDir confirms rejection occurs before any filesystem I/O. AC1 integration test confirms the namespaced {ledgerRoot}/{repoName}/{slug}/orchestrator/logs path structure. AC4 legacy migration test confirms orphaned logs are migrated into the namespaced destination directory. Pre-existing GUI test failures unrelated to this WP."
+      ],
+      "metrics": {
+        "tests_passed": 41,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T14:25:57Z",
+          "note": "repoName is validated before slug in both handlers (assertSafeSlug(repoName) then assertSafeSlug(slug)). This is correct for fast-fail behaviour, but no test explicitly covers the case where both are invalid simultaneously. Low risk — the ordering is self-evident and the single-invalid cases cover the boundary."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T14:25:57Z",
+          "note": "No improvement — code is clean and consistent. Both handlers clearly separate validation from filesystem operations and all AC tests use non-existent dirs to prove pre-filesystem guard behaviour."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-05-27T15:02:38Z",
+      "completed_at": "2026-05-27T15:05:07Z",
+      "duration_ms": 149000,
+      "summary": [
+        "Reviewed 2 files (run-log-handlers.ts, run-log-handlers.test.ts). 0 Critical, 0 High, 0 Medium, 2 Low/Info. Security sign-off: PASS. Both handlers validate repoName and slug via assertSafeSlug (SAFE_SLUG_REGEX) before any filesystem access. URL-encoding bypass not possible at handler layer. One Low: logsDir is externally constructed without containment check inside handler (WP-007 scope). One Info: duplicate assertSafeSlug implementations (intentional but divergence risk)."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T15:05:07Z",
+          "note": "A01 — Access Control / Input Validation (PASS): assertSafeSlug(repoName) and assertSafeSlug(slug) are called at lines 97–98 and 171–172 of run-log-handlers.ts, before any filesystem access. SAFE_SLUG_REGEX (/^[a-z0-9][a-z0-9-]*$/) rejects '..' (starts with '.'), '/' (not in charset), uppercase, empty string, and percent-encoded characters (% not in charset). URL-encoding bypass is not possible at the handler layer: server.ts already calls decodeURIComponent() prior to passing values, and raw percent-encoded residuals ('%2F') also fail the regex."
+        },
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-05-27T15:05:07Z",
+          "note": "A01 — Defense-in-depth gap: logsDir is an externally constructed parameter passed into both handlers (not validated inside the handler against SAFE_SLUG_REGEX or a ledgerRoot containment check). The handler's assertSafeSlug calls validate repoName and slug as discrete strings but do not verify that logsDir resolves within ledgerRoot. A malicious or misconfigured server.ts caller could supply a traversal path as logsDir. Currently logsDir is constructed in gui/server.ts (WP-007 scope); when WP-007 is complete, its server-level validation should ensure repoUrlParam is validated before join(). This is a Low finding — flagged for WP-007 reviewer attention."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T15:05:07Z",
+          "note": "Info — Duplicate assertSafeSlug: run-log-handlers.ts defines a local assertSafeSlug (throws ApiError) while ledger-root.ts defines a parallel local assertSafeSlug (throws plain Error). Both use SAFE_SLUG_REGEX. The separation is intentional (GUI layer vs storage layer error types) but creates divergence risk. Already flagged in the implementation and WP-005 pipelines. Consolidate into a shared utility before further growth."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-27T15:18:19Z",
+      "completed_at": "2026-05-27T15:24:36Z",
+      "duration_ms": 377000,
+      "summary": [
+        "Code review PASS. run-log-handlers.ts and run-log-handlers.test.ts are clean and well-architected. assertSafeSlug is comprehensively documented (JSDoc + inline comments). Validation order (repoName before slug) is intentional and correctly explained in comments. The AC1/AC4 tests using inline try/finally are intentional and documented. Test coverage is thorough at 41 tests across all 4 ACs. No Fix-Forward edits required; no Blocking issues found."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/gui/handlers/run-log-handlers.ts",
+          "mcp-server/tests/gui/run-log-handlers.test.ts"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 41,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T15:24:36Z",
+          "note": "run-log-handlers.ts: the two assertSafeSlug implementations (one in run-log-handlers.ts throwing ApiError, one in ledger-root.ts throwing plain Error) are intentionally separated by layer boundary. A cross-reference code comment in each module pointing to the other would reduce the risk of future divergence (both use SAFE_SLUG_REGEX from constants.ts, but the throw types differ by design)."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-27T15:24:36Z",
+          "note": "[documentation-forward] run-log-handlers.ts: the module-level file comment still documents only the pre-WP-006 route pattern (GET /api/projects/:slug/runs). Update to reflect the new signature accepting repoName as a second parameter and the rationale for validating repoName before slug (namespace-first fast-fail)."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T15:24:36Z",
+          "note": "No blocking issues — code is clean, well-structured, and follows the established pattern. Both handlers correctly separate validation from filesystem operations, assertSafeSlug guards are comprehensive and independently tested."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-27T15:26:44Z",
+      "completed_at": "2026-05-27T15:28:44Z",
+      "duration_ms": 120000,
+      "summary": [
+        "Updated module-level file comment in run-log-handlers.ts to reflect the new repoName parameter, the namespace-first fast-fail validation order, and the provisional `:repo/:slug` route shape (WP-007 will finalize server integration).",
+        "Added layer-separation cross-reference to assertSafeSlug JSDoc in run-log-handlers.ts — notes that the GUI-layer version throws ApiError while the parallel storage-layer version in ledger-root.ts throws plain Error, and instructs maintainers to keep both in sync.",
+        "Added reciprocal cross-reference to assertSafeSlug JSDoc in ledger-root.ts — same rationale from the storage-layer perspective."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/gui/handlers/run-log-handlers.ts",
+          "mcp-server/src/utils/ledger-root.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-27T15:28:44Z",
+          "note": "[documentation-forward resolved] run-log-handlers.ts module-level comment updated: documents repoName as second handler parameter, namespace-first validation order (assertSafeSlug(repoName) before assertSafeSlug(slug)), and the provisional :repo/:slug route shape pending WP-007 server.ts integration."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T15:28:44Z",
+          "note": "Cross-reference comments added to assertSafeSlug in both run-log-handlers.ts and ledger-root.ts. Each comment names the parallel implementation, explains the differing throw types (ApiError vs plain Error), states the layer-separation rationale, and warns maintainers to keep both in sync. This directly addresses the divergence risk flagged in the implementation, security-audit, and code-review pipelines."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T15:28:44Z",
+          "note": "No additional doc gaps found. Existing JSDoc on handleListRunLogs and handleGetRunLog already accurately documents the repoName parameter, validation order, and SAFE_SLUG_REGEX constraints. tsc --noEmit clean after changes."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-27T15:28:44Z",
+  "last_updated": "2026-05-27T15:28:44Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-27T14:09:45Z",
+      "notes": [
+        "WP-007 (gui/server.ts) must update the two handleListRunLogs and handleGetRunLog call sites at lines ~477 and ~495 to pass a repoName extracted from the URL (likely /:repo/:slug route params). The new handler signatures are: handleListRunLogs(slug, repoName, logsDir, orchestratorLogsDir, ...) and handleGetRunLog(slug, repoName, filename, logsDir, orchestratorLogsDir, afterLine?)."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-05-27T14:25:57Z",
+      "notes": [
+        "All 4 ACs met. Both handlers validate repoName then slug via assertSafeSlug (SAFE_SLUG_REGEX) before any filesystem operations. AC1 integration test confirms the namespaced logsDir path structure. AC4 migration test confirms the legacy flat dir migrates into the namespaced destination. Pre-existing GUI test failures in api.test.ts, api-reset.test.ts, api-wp-overview.test.ts are unrelated. Security review should check: (1) repoName is extracted from URL route params in gui/server.ts — verify those call sites pass repoName correctly (WP-007 is pending); (2) confirm no way to bypass assertSafeSlug by passing URL-encoded characters (e.g. %2F for /) — the guard must operate on URL-decoded strings."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-27T15:05:07Z",
+      "notes": [
+        "Security sign-off: PASS. 0 Critical, 0 High. Both handlers correctly validate repoName and slug via assertSafeSlug (SAFE_SLUG_REGEX) before any filesystem access. URL-encoding bypass is not possible at the handler layer. One Low: logsDir is an externally supplied parameter not range-checked inside the handler — WP-007 must validate repoUrlParam at the server dispatch layer before constructing logsDir. One Info: duplicate assertSafeSlug implementations across modules (intentional but divergence risk)."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-27T15:24:36Z",
+      "notes": [
+        "WP-006 PASS. run-log-handlers.ts is clean and ready for documentation. Documentation agent should: (1) update the module-level file comment to reflect the new repoName parameter and dual-validation pattern; (2) note the intentional layer-separation rationale for the two assertSafeSlug implementations (ApiError in GUI layer vs plain Error in storage layer)."
+      ]
+    }
+  ]
+}

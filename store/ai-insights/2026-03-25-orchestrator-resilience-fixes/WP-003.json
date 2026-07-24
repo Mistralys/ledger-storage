@@ -1,0 +1,219 @@
+{
+  "work_package_id": "WP-003",
+  "work_package_file": "work/WP-006.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "Tool calls missing work_package_id have it auto-injected with the active WP ID",
+      "met": true
+    },
+    {
+      "criterion": "Tool calls with explicitly wrong work_package_id are still rejected",
+      "met": true
+    },
+    {
+      "criterion": "WP-scoped stage prompts include a CRITICAL scope reminder with the active WP ID",
+      "met": true
+    },
+    {
+      "criterion": "Unit tests verify both auto-injection and rejection behavior",
+      "met": true
+    },
+    {
+      "criterion": "Tool calls with explicitly wrong work_package_id are still rejected with ValueError",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-25T15:06:25Z",
+      "completed_at": "2026-03-25T15:12:51Z",
+      "duration_ms": 386000,
+      "summary": [
+        "Hardened cross-WP tool guard in restrict_to_wp(): absent work_package_id is now auto-injected with the active WP ID instead of passing through silently. Explicit wrong WP IDs still raise ValueError.",
+        "Added _WP_SCOPE_REMINDER constant to nodes/__init__.py and wired it into build_stage_prompt() — when wp_id is provided, a CRITICAL scope line is appended after the project-path reminder.",
+        "Updated test_call_without_wp_id_passes_through → test_call_without_wp_id_injects_active_wp to assert injection; added test_toolcall_without_wp_id_injects_active_wp for ToolCall dict shape.",
+        "All 50 tool_wrapper tests pass, all 128 nodes tests pass, 507/516 orchestrator-wide tests pass (9 pre-existing aiosqlite failures unrelated to these changes)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/utils/tool_wrappers.py",
+          "orchestrator/src/nodes/__init__.py",
+          "orchestrator/tests/test_tool_wrappers.py"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-25T15:12:51Z",
+          "note": "orchestrator/src/utils/tool_wrappers.py — tools that genuinely do not accept work_package_id will now receive it as an extra kwarg. LangChain tools generally ignore unknown keys, but if a future tool uses strict Pydantic validation it could raise. A skip-list or tag-based opt-out mechanism could be added if that becomes an issue."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-03-25T15:12:51Z",
+          "note": "orchestrator/src/nodes/__init__.py — _WP_SCOPE_REMINDER uses .format(wp_id=wp_id) rather than an f-string because the constant is defined at module level. This pattern is consistent with _PROJECT_PATH_REMINDER but slightly unusual; a lambda or helper would be more Pythonic if more interpolation points are added later."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-25T15:28:22Z",
+      "completed_at": "2026-03-25T15:30:23Z",
+      "duration_ms": 121000,
+      "summary": [
+        "All 5 ACs verified and passing. 178/178 targeted tests pass (50 tool_wrapper + 128 nodes); full orchestrator suite 517 passing, 9 pre-existing aiosqlite failures (same as before this WP). restrict_to_wp injection (flat-dict + ToolCall) and rejection (ValueError) both verified. _WP_SCOPE_REMINDER properly guarded by wp_id truthiness so synthesis stages are unaffected. AC2 corrected to met:true — implementation was correct, ledger state was stale."
+      ],
+      "metrics": {
+        "test_coverage": "50 tool_wrapper tests + 128 node tests (178 targeted tests, 517 suite-wide)",
+        "tests_passed": 178,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-25T15:30:23Z",
+          "note": "No observations — code is clean and consistent. The restrict_to_wp implementation correctly handles both flat-dict and ToolCall nested-dict structures for injection and rejection. AC2 was incorrectly marked false in the ledger; the underlying behavior (ValueError on wrong WP ID) is fully implemented and tested by TestRestrictToWpMismatchRaises (3 passing tests). AC2 and AC5 are semantically identical; both are now marked met."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-03-25T15:39:43Z",
+      "completed_at": "2026-03-25T15:41:06Z",
+      "duration_ms": 83000,
+      "summary": [
+        "Reviewed 3 files (tool_wrappers.py, nodes/__init__.py, test_tool_wrappers.py). 0 Critical, 0 High, 1 Medium (design edge case — noted), 1 Low (observability). Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-03-25T15:41:06Z",
+          "note": "Medium — A04 Insecure Design (edge case, not exploitable in current usage). File: orchestrator/src/utils/tool_wrappers.py — restrict_to_wp(). The sentinel pattern (_orig_ainvoke_wp) stores the first-time original ainvoke; subsequent wraps always delegate directly to that original, bypassing any earlier wrap. In the standard pipeline each tool instance is only ever wrapped with one WP ID, so this is benign. However, if a future refactor shares tool instances across concurrent pipeline stages with different wp_ids, only the last guard's closure would be active — the previous guards would be silently bypassed when the sentinel short-circuits. This is a latent design risk. Recommendation: document the single-WP-per-tool-instance invariant in tool_wrappers.py, or gate the sentinel on (sentinel_wp_id == wp_id) instead of just hasattr."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-25T15:41:06Z",
+          "note": "Low — A09 Security Logging & Monitoring. File: orchestrator/src/utils/tool_wrappers.py — _guarded_ainvoke(). The ValueError rejection path is silent: no log entry records that a cross-WP call was blocked. In a headless pipeline run this event is only visible if the exception propagates to the run logger upstream. Recommendation: add a log.warning() call before raising ValueError so security-relevant rejections are captured in the structured JSONL run log regardless of exception handling upstream."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-25T15:41:06Z",
+          "note": "No other security findings. All OWASP Top 10 categories reviewed: A01 (access control guard is correctly applied — inject when absent, reject on explicit mismatch), A02 (no crypto), A03 (no injection — wp_id interpolation via .format() uses trusted internal ledger data constrained to WP-NNN pattern), A04 (see Medium note), A05 (no config exposure), A06 (no new dependencies), A07 (no auth), A08 (no deserialization), A09 (see Low note), A10 (no SSRF). OWASP review complete."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-25T15:45:54Z",
+      "completed_at": "2026-03-25T15:47:33Z",
+      "duration_ms": 99000,
+      "summary": [
+        "Reviewed WP-003: Cross-WP tool guard hardening in orchestrator/src/utils/tool_wrappers.py and orchestrator/src/nodes/__init__.py.",
+        "restrict_to_wp(): injection path (absent wp_id → inject active WP) and rejection path (explicit wrong wp_id → ValueError) are both correct. Handles flat-dict and ToolCall structures via the same pattern as inject_project_path. Idempotency sentinel prevents closure stacking. Empty wp_id guard correctly bypasses synthesis stages.",
+        "_WP_SCOPE_REMINDER: module-level constant using lazy .format(wp_id=wp_id) is the correct pattern for a module-level string template. build_stage_prompt() guard on 'if wp_id:' ensures the CRITICAL reminder only appears in WP-scoped stages.",
+        "Tests cover: injection (flat-dict), injection (ToolCall), rejection (flat-dict), rejection (ToolCall), matching WP passthrough, non-dict passthrough, idempotency, empty-wp_id skip. Comprehensive.",
+        "Security Auditor's medium finding (sentinel single-WP invariant) and low finding (silent rejection) both endorsed. Neither blocks PASS. Both documented as improvement comments.",
+        "AC2 and AC5 are semantically identical — noted as convention observation for future WP planning."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-03-25T15:47:33Z",
+          "note": "Endorsing the Security Auditor's medium finding (sentinel double-wrap latent risk): add a docstring or inline comment in restrict_to_wp() explicitly documenting the invariant 'tool instances must not be shared across concurrent pipeline stages with different wp_ids'. This is the minimal fix. The stronger fix (gating sentinel on sentinel_wp_id == wp_id) would be safer but is a behavioral change that should go back to Developer if desired."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-25T15:47:33Z",
+          "note": "Endorsing the Security Auditor's low finding: the ValueError rejection path in _guarded_ainvoke() should emit a log.warning() before raising. This makes cross-WP rejection events visible in the structured JSONL run log without requiring the caller to catch and log the exception. Example: log.warning('Cross-WP tool call blocked: call_wp_id=%r, active_wp_id=%r, tool=%s', call_wp_id, _active_wp, getattr(_orig, '__self__', {}).name if hasattr(_orig, '__self__') else '')"
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-03-25T15:47:33Z",
+          "note": "AC2 and AC5 are semantically identical ('Tool calls with explicitly wrong work_package_id are still rejected' vs. 'Tool calls with explicitly wrong work_package_id are still rejected with ValueError'). Future WP planning should avoid duplicate acceptance criteria; they waste review time and can cause confusing 'unmet' states when only one is updated."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-25T16:46:22Z",
+      "completed_at": "2026-03-25T16:48:22Z",
+      "duration_ms": 120000,
+      "summary": [
+        "Three documentation updates for WP-003 (cross-WP tool guard hardening): (1) Added single-WP-per-tool-instance invariant note to the restrict_to_wp Design notes in orchestrator/src/utils/tool_wrappers.py \\u2014 directly addressing the Reviewer's documentation-forward item and the Security Auditor's medium finding. (2) Updated orchestrator/docs/architecture.md MCP Tool Wrapping section to document restrict_to_wp as the Layer 3 safety net, the single-WP invariant, and _WP_SCOPE_REMINDER as the prompt-level companion. (3) Added restrict_to_wp entry to the Utilities table in orchestrator/docs/public-api.md."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/utils/tool_wrappers.py",
+          "orchestrator/docs/architecture.md",
+          "orchestrator/docs/public-api.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-25T16:48:22Z",
+          "note": "No documentation gaps blocked progress. The module docstring in tool_wrappers.py was already excellent; the single-WP invariant note was added to complete the Reviewer's documentation-forward item. The architecture.md and public-api.md were genuinely missing restrict_to_wp and _WP_SCOPE_REMINDER entirely — both now documented."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-03-25T16:48:22Z",
+  "last_updated": "2026-03-25T16:48:22Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-03-25T15:12:51Z",
+      "notes": [
+        "WP-003 complete. restrict_to_wp now injects active WP ID when work_package_id is absent (flat-dict and ToolCall shapes both handled). build_stage_prompt appends a CRITICAL scope line when wp_id is set. All existing and new tests pass."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-03-25T15:30:23Z",
+      "notes": [
+        "WP-003 QA PASS. All 5 ACs verified (AC2 was incorrectly flagged false in ledger — implementation is correct, ValueError raises on explicit wrong WP ID, confirmed by 3 TestRestrictToWpMismatchRaises tests). 178/178 tool_wrappers + nodes tests pass. Full suite: 517/527 pass (9 pre-existing aiosqlite failures in test_graph.py, unrelated to this WP). build_stage_prompt _WP_SCOPE_REMINDER verified in nodes/__init__.py — only appended when wp_id is non-empty (synthesis stages unaffected)."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-03-25T15:47:33Z",
+      "notes": [
+        "WP-003 code review PASS. restrict_to_wp() injection/rejection logic and _WP_SCOPE_REMINDER are well-implemented and fully tested.",
+        "Documentation agent: the module docstring in tool_wrappers.py is excellent and self-contained. Consider adding a note about the single-WP-per-tool-instance invariant to the 'Design notes' section for restrict_to_wp() — aligns with the Security Auditor's medium finding.",
+        "[documentation-forward] tool_wrappers.py restrict_to_wp() Design notes section: document the single-WP-per-tool-instance invariant (tool instances must not be shared across concurrent stages with different wp_ids) to prevent latent misuse."
+      ]
+    }
+  ]
+}

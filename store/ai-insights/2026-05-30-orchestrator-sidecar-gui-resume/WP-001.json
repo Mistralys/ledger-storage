@@ -1,0 +1,224 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "{plan_dir}/.orchestrator-run.json is created immediately after thread_id resolution and before graph execution, with result, error, and duration_s set to null.",
+      "met": true
+    },
+    {
+      "criterion": "After a successful run the file is updated with result = \"SUCCESS\" and a correct duration_s; both the metadata file and the tombstone file exist.",
+      "met": true
+    },
+    {
+      "criterion": "After a run using --interrupt-on (with no errors), the file is updated with result = \"INTERRUPTED\".",
+      "met": true
+    },
+    {
+      "criterion": "When --resume is called with a terminal thread_id, the _is_run_terminal path writes the metadata file with result = \"ERROR\" before exiting.",
+      "met": true
+    },
+    {
+      "criterion": "All file writes are atomic: the temp file is written then renamed via os.replace(); a partial write never leaves a corrupt metadata file.",
+      "met": true
+    },
+    {
+      "criterion": "is_resume is true in the metadata when --resume was used to launch the run.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-31T08:19:50Z",
+      "completed_at": "2026-05-31T08:26:58Z",
+      "duration_ms": 428000,
+      "summary": [
+        "Added _write_run_metadata() helper to cli.py that atomically writes .orchestrator-run.json via temp file + os.replace().",
+        "Inserted run-start write (result=null) after thread_id resolution and run_start_ts capture, before graph execution.",
+        "Inserted run-end write (result=SUCCESS/INTERRUPTED/ERROR) after the lock-release finally block, before the tombstone.",
+        "Inserted error write (result=ERROR) in the _is_run_terminal early-exit path inside the if args.resume: block.",
+        "Added .orchestrator-run.json pattern to .gitignore.",
+        "Created orchestrator/tests/test_run_metadata.py with 25 passing tests covering all acceptance criteria."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/cli.py",
+          "orchestrator/tests/test_run_metadata.py",
+          ".gitignore"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T08:26:58Z",
+          "note": "cli.py: The tombstone write (after the lock finally block) and the new metadata write share identical _fatal computation logic. A minor refactor to compute _fatal once and pass it to both would eliminate the duplication, but is out of scope for this WP."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T08:26:58Z",
+          "note": "cli.py: The _write_error_status() inner helper and _write_run_metadata() both write to plan_dir on the _is_run_terminal path. They're complementary (different purposes / file paths), but having two side-effect writes in one early-exit branch is worth a comment for future maintainers."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T08:26:58Z",
+          "note": "cli.py: The run-end INTERRUPTED detection uses a string-contains check on outside_errors ('Interrupted' in e). This is functional but fragile; a dedicated flag or enum would be more robust if more interrupt sources are added later."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-31T08:37:49Z",
+      "completed_at": "2026-05-31T08:39:32Z",
+      "duration_ms": 103000,
+      "summary": [
+        "All 6 acceptance criteria verified through code inspection and test execution.",
+        "25/25 new tests in test_run_metadata.py pass; 1029/1029 total orchestrator tests pass (6 skipped, 0 failures).",
+        "Atomic write via temp+os.replace() confirmed in _write_run_metadata(). Initial metadata (result=null) written after thread_id resolution and run_start_ts capture, before graph execution. Final metadata written after lock release, before tombstone.",
+        "Terminal resume guard writes result='ERROR' metadata before returning EXIT_ERROR — verified in TestTerminalResumeMetadata tests.",
+        "is_resume=bool(args.resume) correctly set at all three _write_run_metadata() call sites.",
+        ".gitignore updated with .orchestrator-run.json pattern at line 27.",
+        "INTERRUPTED logic: fires when interrupt_before is non-empty with no errors (--interrupt-on path) OR when 'Interrupted' appears in outside_errors (signal/KeyboardInterrupt). Both paths confirmed in cli.py lines 958-965.",
+        "Pre-existing 7 failures noted by Developer in test_nodes.py are absent — all tests pass, suggesting they were resolved separately or are now skipping (counted in the 6 skipped)."
+      ],
+      "metrics": {
+        "tests_passed": 25,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-31T08:39:32Z",
+          "note": "cli.py _write_run_metadata(): If write_text() succeeds but os.replace() fails (rare same-directory replace failure), the .tmp file would be orphaned — the OSError catch does not clean it up. Practically harmless (same-dir os.replace is almost always atomic), but a finally: tmp_path.unlink(missing_ok=True) after the replace would be belt-and-suspenders. Not a blocking issue."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T08:39:32Z",
+          "note": "No live --interrupt-on integration test was run (would require a real LangGraph graph execution). The logic is covered by the unit test of _write_run_metadata(result='INTERRUPTED') and by code inspection confirming the bool(interrupt_before) branch in cli.py lines 958-965."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-31T08:46:56Z",
+      "completed_at": "2026-05-31T08:49:33Z",
+      "duration_ms": 157000,
+      "summary": [
+        "Code review PASS with one Fix-Forward applied. Implementation is clean, well-structured, and architecturally sound. All 6 ACs met; 25/25 tests verified. No blocking issues found.",
+        "Fix-Forward applied: added a finally: tmp_path.unlink(missing_ok=True) guard inside _write_run_metadata() to clean up orphaned .tmp files if os.replace() fails. Non-behavioral — all 25 tests still pass.",
+        "Two low-priority improvement observations carried forward from the Developer pipeline: (1) _meta_fatal/_fatal duplication between metadata write block and tombstone block; (2) 'Interrupted' in e string check is fragile for future interrupt sources. Both are out of scope and non-blocking."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/cli.py",
+          "orchestrator/tests/test_run_metadata.py",
+          ".gitignore"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-31T08:49:33Z",
+          "note": "orchestrator/src/cli.py _write_run_metadata(): Added `finally: tmp_path.unlink(missing_ok=True)` (wrapped in inner try/except OSError) after the os.replace() call. Cleans up the orphaned .tmp file if write_text() succeeds but os.replace() fails — a rare but possible same-directory replace failure. Non-behavioral in the success path (os.replace consumed the file). Preserves the 'never raises' contract via the inner try/except. All 25 existing tests pass unchanged."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T08:49:33Z",
+          "note": "orchestrator/src/cli.py: _meta_fatal computation at the metadata write block (lines ~960-967) and the _fatal computation at the tombstone block are near-identical. A minor refactor to compute this once before both blocks would reduce duplication. Out of scope for WP-001."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T08:49:33Z",
+          "note": "orchestrator/src/cli.py: INTERRUPTED detection uses `any('Interrupted' in e for e in outside_errors)`. A dedicated enum or flag would be more robust if more interrupt sources are added. Out of scope, but worth noting for future maintainers."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-31T08:49:33Z",
+          "note": "[documentation-forward] The .orchestrator-run.json file format (all fields: thread_id, plan_path, slug, started_at, is_resume, dry_run, log_filename, pid, result, error, duration_s) is not documented in the orchestrator README or manifest. The Documentation agent should add a schema table and lifecycle description (null while in progress → SUCCESS/INTERRUPTED/ERROR) to orchestrator/README.md or the relevant manifest doc."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-31T08:54:38Z",
+      "completed_at": "2026-05-31T08:56:50Z",
+      "duration_ms": 132000,
+      "summary": [
+        "Added 'Run metadata file (.orchestrator-run.json)' subsection to orchestrator/README.md under the Usage section, addressing the documentation-forward flagged by the Reviewer.",
+        "Section covers: purpose and placement of the file, atomic-write guarantee, .gitignore status, full field schema table (all 11 fields with types and descriptions), and a lifecycle block showing all four terminal result values plus the null-while-in-progress initial state.",
+        "Updated the Table of Contents to include the new subsection anchor."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/README.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T08:56:50Z",
+          "note": "orchestrator/README.md: The CTX context snapshot (.context/orchestrator/) may be stale after this change — 'node scripts/cli.js ctx-generate' should be run to regenerate .context/orchestrator/overview.md with the new section."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-31T08:56:50Z",
+  "last_updated": "2026-05-31T08:56:50Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-31T08:26:58Z",
+      "notes": [
+        "All 6 acceptance criteria met. 25 new tests added in test_run_metadata.py — 22 unit tests for _write_run_metadata() plus 3 integration-style tests for the _is_run_terminal call path.",
+        "The 7 pre-existing test failures in test_nodes.py (synthesis node / missing standalone-knowledge-archiver.md) are unrelated to this WP.",
+        "The result logic for INTERRUPTED: fires when interrupt_before is non-empty with no errors (--interrupt-on path), or when 'Interrupted' appears in outside_errors (signal/KeyboardInterrupt). QA should verify the --interrupt-on live flow if possible."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-31T08:39:32Z",
+      "notes": [
+        "All 6 ACs verified. 25/25 new tests pass, 1029 total tests pass. Implementation is clean and correct.",
+        "Minor low-priority edge case: orphaned .tmp file possible if os.replace() fails after write_text() succeeds — not blocking, just worth noting.",
+        "The 7 pre-existing test failures mentioned by Developer in test_nodes.py are not present — all tests pass in the current run."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-31T08:49:33Z",
+      "notes": [
+        "All 6 ACs confirmed met. Implementation is clean and production-ready.",
+        "Fix-Forward applied by Reviewer: _write_run_metadata() now cleans up orphaned .tmp files via finally: tmp_path.unlink(missing_ok=True). All 25 tests pass.",
+        "Documentation gap flagged: .orchestrator-run.json file format and lifecycle are undocumented. Documentation agent should add a schema reference to orchestrator/README.md or relevant manifest doc.",
+        "Two low-priority improvement observations noted (non-blocking): (1) _meta_fatal/_fatal duplication; (2) string-based INTERRUPTED detection."
+      ]
+    }
+  ]
+}

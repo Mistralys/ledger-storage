@@ -1,0 +1,167 @@
+{
+  "work_package_id": "WP-003",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Reviewer",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "API.getRunLogs('my-slug') calls fetch('/api/projects/my-slug/runs', …)",
+      "met": true
+    },
+    {
+      "criterion": "API.getRunLogEntries('my-slug', '20260225T113355-my-slug.jsonl', 5) calls the URL with ?after=5",
+      "met": true
+    },
+    {
+      "criterion": "API.getRunLogEntries('my-slug', 'file.jsonl') without afterLine calls URL without ?after= param",
+      "met": true
+    },
+    {
+      "criterion": "Filename is encodeURIComponent-escaped in the URL",
+      "met": true
+    },
+    {
+      "criterion": "No new runtime dependencies introduced; no build step required",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "code-review"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-23T11:03:44Z",
+      "completed_at": "2026-03-23T11:05:29Z",
+      "duration_ms": 105000,
+      "summary": [
+        "Added getRunLogs(slug) to the API object in gui/public/api-client.js: calls GET /api/projects/{encodeURIComponent(slug)}/runs",
+        "Added getRunLogEntries(slug, filename, afterLine?) to the API object: calls GET /api/projects/{slug}/runs/{encodedFilename}[?after={afterLine}]",
+        "Filename is encoded via encodeURIComponent; slug is also encoded consistently with all other API methods",
+        "afterLine is omitted from query string when undefined/null; when explicitly 0 it is included as ?after=0 (legitimate server-side offset)",
+        "No new runtime dependencies; this is plain ES module JS served directly to the browser — no build step needed",
+        "Created tests/gui/api-client.test.ts with 7 tests using jsdom + vm.runInThisContext + mocked fetch",
+        "All 1547 tests pass across 52 test files; TypeScript compiles clean"
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/api-client.js",
+          "mcp-server/tests/gui/api-client.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:05:29Z",
+          "note": "api-client.js uses var-style IIFE (var API = (function(){...})()) instead of ES module exports. This is intentional — it matches the existing pattern for browser scripts served without a bundler. However, the inconsistency between this and the TypeScript source files is worth noting as technical debt if the codebase ever migrates the GUI to a proper build step."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:05:29Z",
+          "note": "getRunLogEntries treats afterLine=0 as a valid offset (appends ?after=0). This is semantically correct but differs from the undefined case. If the server-side handler treats ?after=0 and absence of ?after identically, consider normalizing to omit the param when afterLine is 0. Currently keeping the explicit behavior as it preserves information."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-23T11:07:55Z",
+      "completed_at": "2026-03-23T11:09:49Z",
+      "duration_ms": 114000,
+      "summary": [
+        "Verified api-client.js: getRunLogs(slug) calls request('GET', '/projects/' + encodeURIComponent(slug) + '/runs') — slug is URI-encoded consistently with all other methods",
+        "Verified getRunLogEntries(slug, filename, afterLine): filename encoded via encodeURIComponent; qs appends ?after={afterLine} only when afterLine !== undefined && afterLine !== null",
+        "Verified afterLine omitted case: no qs appended — URL has no ?after= param",
+        "Verified afterLine=0 case: ?after=0 is appended (developer's intentional design, noted in comments)",
+        "Confirmed no new runtime dependencies introduced; api-client.js is vanilla ES IIFE, no build step",
+        "Reviewed 7 tests in api-client.test.ts: all 5 AC scenarios covered plus slug-encoding and afterLine=0 cases",
+        "Full suite: 1547/1547 pass; tsc --noEmit: zero errors. All 5 acceptance criteria confirmed met"
+      ],
+      "metrics": {
+        "test_coverage": "7 dedicated tests; all 5 ACs covered",
+        "tests_passed": 1547,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:09:49Z",
+          "note": "afterLine=0 appends ?after=0 explicitly. This is a deliberate, documented design decision. If the server treats ?after=0 identically to absence of the param, consider normalising in a future pass. No defect present."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:09:49Z",
+          "note": "No test currently covers afterLine=null (explicit null). The implementation guards null with `!== null` so it behaves like undefined — edge case is handled but not explicitly tested. Low priority coverage gap."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-23T11:12:00Z",
+      "completed_at": "2026-03-23T11:12:37Z",
+      "duration_ms": 37000,
+      "summary": [
+        "Reviewed api-client.js changes (getRunLogs, getRunLogEntries) and the new api-client.test.ts file.",
+        "getRunLogs (line 58): clean, minimal, consistent with all other single-resource GET methods in the module. encodeURIComponent(slug) applied correctly.",
+        "getRunLogEntries (lines 59-62): correct URL construction. encodeURIComponent applied to both slug and filename. afterLine guard (undefined/null check) is correct — afterLine=0 is intentionally preserved as a legitimate offset value.",
+        "afterLine encoding (line 60): encodeURIComponent(afterLine) is used even though afterLine is a number. This is harmless and safe — numbers encode to their ASCII digit string with no special characters. A slight over-encode (minor style point), but correct behavior.",
+        "No encodeURIComponent applied to the static ?after= key itself — this is correct; 'after' has no special characters.",
+        "Consistency check: getRunLogEntries encodes slug with encodeURIComponent (line 61) consistent with all sibling methods. The IIFE/var pattern is pre-existing technical debt, not introduced by this change.",
+        "Test file (api-client.test.ts): 7 tests provide excellent coverage for all 5 ACs. vm.runInThisContext pattern is appropriate for testing a browser-only IIFE from Node/jsdom. vi.fn mock fetch is clean and correctly scoped. All edge cases (slug with spaces, slug with slashes, filename with spaces, afterLine=0) are covered.",
+        "One coverage gap (afterLine=null explicit case) is acknowledged by Developer and QA and is low-priority — the implementation handles it correctly.",
+        "All 5 acceptance criteria confirmed met."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:12:37Z",
+          "note": "api-client.js line 60: encodeURIComponent(afterLine) where afterLine is a number is safe and correct, but a numeric value needs no URI encoding. A direct string coercion ('' + afterLine or String(afterLine)) would be slightly clearer in intent. Zero impact on correctness or behaviour."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:12:37Z",
+          "note": "api-client.test.ts: no test for afterLine=null (explicit null) — the implementation correctly treats null identically to undefined (guards both). Low-priority given correct runtime behaviour; a single test mirroring the afterLine=undefined case with null would close this gap."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:12:37Z",
+          "note": "api-client.js overall: the IIFE/var pattern is pre-existing design that predates this change. As noted by Developer, it is intentional for a no-build-step browser script. No action required for this WP — tracking as long-term technical debt."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-15T08:56:57Z",
+  "last_updated": "2026-04-15T08:56:57Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-23T11:05:29Z",
+      "notes": [
+        "Single file change: gui/public/api-client.js — two new methods added to the API IIFE return object",
+        "New test file: tests/gui/api-client.test.ts — 7 tests, all passing",
+        "No TypeScript changes needed; api-client.js is plain JavaScript"
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-03-23T11:12:37Z",
+      "notes": [
+        "All 5 acceptance criteria met and verified. Three low-priority observations logged (encodeURIComponent on numeric afterLine, missing null test, IIFE pattern debt) — none are blockers. Ready for Documentation."
+      ]
+    }
+  ]
+}

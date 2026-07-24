@@ -1,0 +1,224 @@
+{
+  "work_package_id": "WP-004",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-002"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "listAllProjects() returns projects stored at {ledgerRoot}/{repoName}/{slug}/ (new layout)",
+      "met": true
+    },
+    {
+      "criterion": "listAllProjects() also returns projects stored at {ledgerRoot}/{slug}/ (old layout, for backward compat during migration window)",
+      "met": true
+    },
+    {
+      "criterion": ".archive and all other dot-prefixed entries are skipped at both scan levels",
+      "met": true
+    },
+    {
+      "criterion": "LedgerStore.detectProjectByCwd() continues to identify the correct project, since it delegates to listAllProjects()",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-27T13:33:45Z",
+      "completed_at": "2026-05-27T13:39:28Z",
+      "duration_ms": 343000,
+      "summary": [
+        "The listAllProjects() two-level namespace scan was already implemented in ledger-store.ts (lines 669–741) — it correctly handles both old flat layout (depth-1 .meta.json) and new namespaced layout (depth-2 .meta.json), with dot-prefix skipping at both levels.",
+        "Created mcp-server/tests/storage/list-all-projects.test.ts with 10 test cases covering: new namespaced layout, old flat layout, mixed layouts, dot-prefixed entry filtering at depth-1 and depth-2, empty namespace directory, namespace with invalid subdirectories, same-slug collision-prevention across namespaces, and detectProjectByCwd() delegation with both layouts.",
+        "All 10 new tests pass; all 97 storage tests pass (no regressions); TypeScript compiles cleanly. Pre-existing failures in tests/gui/ are unrelated to this WP."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/tests/storage/list-all-projects.test.ts"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 10,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T13:39:28Z",
+          "note": "ledger-store.ts listAllProjects() stderr.write for unreadable depth-2 entries (line 730) uses a string interpolation that includes both entry and subEntry names — this is clear and correct, but a structured error log (JSON) would make it easier to parse in automated monitoring. Low priority."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T13:39:28Z",
+          "note": "The project-meta.test.ts describe block 'LedgerStore.listAllProjects' (line 141) only tests the old flat layout. Now that the two-level scan is in production, those tests are still accurate (the method is backward compatible) but they could be augmented with namespaced layout cases. The new dedicated test file covers this fully."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T13:39:28Z",
+          "note": "The foundAtDepth1 boolean flag in listAllProjects() (line 706) is an implementation detail that could be replaced with a simpler early-continue pattern, but the current approach is correct and readable. No change needed."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-27T13:40:00Z",
+      "completed_at": "2026-05-27T13:42:48Z",
+      "duration_ms": 168000,
+      "summary": [
+        "Build check: TypeScript compiles cleanly (tsc --noEmit exit 0).",
+        "AC1–AC4 verified: all 10 tests in tests/storage/list-all-projects.test.ts pass, covering new namespaced layout, old flat layout, mixed layouts, dot-prefix filtering at depth-1 and depth-2, empty namespaces, invalid subdirectories, same-slug cross-namespace isolation, and detectProjectByCwd() delegation.",
+        "Regression: all 97 storage tests pass (4 test files). No regressions introduced by WP-004.",
+        "Edge-case review: test coverage for LedgerStore.listAllProjects() is thorough. Same-slug cross-namespace collision prevention is explicitly tested. Dot-prefix filtering at both scan depths is verified.",
+        "Pre-existing GUI failures flagged: 63 failures across tests/gui/api.test.ts, api-reset.test.ts, api-wp-overview.test.ts. Root cause is namespace-change regressions from earlier WPs (WP-001/WP-002) — not caused by WP-004."
+      ],
+      "metrics": {
+        "test_coverage": "97/97 storage tests pass",
+        "tests_passed": 10,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "regression",
+          "priority": "high",
+          "timestamp": "2026-05-27T13:42:48Z",
+          "note": "63 GUI tests failing across tests/gui/api.test.ts (numerous), api-reset.test.ts, and api-wp-overview.test.ts. Pattern: handlers like handleRenameProject, handleArchiveProject, and others that look up a project by slug are throwing 'Project not found' even when the project was just created. Root cause appears to be that these GUI handlers still construct the storage path using the old flat layout ({ledgerRoot}/{slug}/), while LedgerStore may now write to a namespaced path when repoName is derivable. This is a regression from the namespace-change WPs (WP-001/WP-002) and must be resolved before release."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-05-27T13:42:48Z",
+          "note": "The listAllProjects() ENOENT stderr log (ledger-store.ts ~line 730) is covered by the 'silently skips namespace subdirectories with no valid .meta.json' test, which confirms the path executes. However there is no test asserting the exact stderr message format. Low priority since the behavior (skip and continue) is verified."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-27T13:43:30Z",
+      "completed_at": "2026-05-27T13:47:30Z",
+      "duration_ms": 240000,
+      "summary": [
+        "WP-004 code review PASS. The listAllProjects() two-level scan implementation in ledger-store.ts is architecturally sound: correct dot-prefix filtering at both scan depths, graceful ENOENT handling with stderr logging (not crashing), and clear foundAtDepth1 sentinel pattern. The test deliverable (tests/storage/list-all-projects.test.ts) is comprehensive: all 4 ACs are covered, helper functions createFlatProject/createNamespacedProject are clean and reusable, same-slug cross-namespace collision prevention is explicitly tested, and teardown is correct.",
+        "One Fix-Forward applied: replaced hardcoded Unix path '/home/user/old-flat-project' in the detectProjectByCwd flat-layout regression test with join(tmpdir(), 'old-flat-project') to comply with the workspace cross-platform policy (AGENTS.md §Cross-Platform Policy). All 10 tests continue to pass.",
+        "The pre-existing GUI regression (63 failures in tests/gui/) is outside WP-004 scope but is a confirmed architectural break: all slug-based GUI handlers construct LedgerStore(slug, ledgerRoot) where slug is a bare string — this causes storageDir to resolve to {ledgerRoot}/unknown/{slug}/ instead of {ledgerRoot}/{repoName}/{slug}/. Additionally, direct join(ledgerRoot, slug, ...) path constructions in handleDeleteProject, handleGetPlanDocument, handleGetSynthesisDocument, handleListDialogues, handleGetDialogueFile, handleListChunks, and handleGetChunkFile all use the old flat layout. This must be addressed in a dedicated WP before release."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/tests/storage/list-all-projects.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-27T13:47:30Z",
+          "note": "tests/storage/list-all-projects.test.ts: replaced hardcoded Unix path '/home/user/old-flat-project' with join(tmpdir(), 'old-flat-project') and constructed plan_path and cwdPath via join() in the 'detectProjectByCwd() resolves a project stored in the old flat layout' test. This complies with the workspace cross-platform policy (AGENTS.md §Cross-Platform Policy rule 5). The test is logically equivalent — the fake path strings are consistent — but now works correctly on Windows where 'C:\\...' paths would be returned by tmpdir(). All 10 tests pass."
+        },
+        {
+          "type": "improvement",
+          "priority": "high",
+          "timestamp": "2026-05-27T13:47:30Z",
+          "note": "BLOCKING PRE-RELEASE: gui/api.ts — every slug-based handler (handleGetProject, handleListWorkPackages, handleGetWorkPackage, handleDeleteProject, handleArchiveProject, handleUnarchiveProject, handleMarkProjectComplete, handleGetPlanDocument, handleGetSynthesisDocument, handleResetProject, handleRenameProject, handleGetProjectHealth, handleGetInsights, handleListDialogues, handleGetDialogueFile, handleListChunks, handleGetChunkFile) calls new LedgerStore(slug, ledgerRoot) with just the slug. deriveRepoName(slug) returns 'unknown' for a bare slug, so storageDir = {ledgerRoot}/unknown/{slug}/ — which does not match the actual namespaced storage location. This causes ledgerDirExists() to return false for every project, producing 'Project not found' for all namespace-stored projects. Root cause of the 63 GUI test failures. Needs a dedicated fix WP."
+        },
+        {
+          "type": "improvement",
+          "priority": "high",
+          "timestamp": "2026-05-27T13:47:30Z",
+          "note": "BLOCKING PRE-RELEASE: gui/api.ts — direct join(ledgerRoot, slug, ...) path constructions at lines 683 (handleDeleteProject), 836 and 863 (plan/synthesis document reads), 1312/1372 (handleListDialogues/handleGetDialogueFile), 1441/1501 (handleListChunks/handleGetChunkFile) all assume the old flat layout {ledgerRoot}/{slug}/. Must be updated to use the resolved storageDir from a LedgerStore instance or via listAllProjects() lookup."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-27T13:47:30Z",
+          "note": "[documentation-forward] listAllProjects() is now the canonical entry point for resolving project storage paths from slugs. The api-surface.md for mcp-server should document that any code that receives only a slug (not a plan_path) must use listAllProjects() to retrieve the ProjectMeta (which contains plan_path) before constructing a LedgerStore instance. This architectural dependency is not currently captured in the manifest."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T13:47:30Z",
+          "note": "No other blocking issues found. listAllProjects() in ledger-store.ts is well-implemented: the foundAtDepth1 sentinel is readable, stderr logging in the depth-2 catch block is appropriately non-crashing, and the ENOENT-handling test confirms the skip-and-continue behavior is exercised."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-27T13:48:29Z",
+      "completed_at": "2026-05-27T13:50:17Z",
+      "duration_ms": 108000,
+      "summary": [
+        "Reviewed implementation, QA, and code-review pipeline artifacts for WP-004.",
+        "api-surface.md: Expanded the LedgerStore static section — listAllProjects() now has inline documentation covering the two-level scan (flat legacy layout + new namespaced layout), dot-prefix filtering at both scan depths, non-fatal ENOENT handling with stderr logging, and the ARCHITECTURAL CONSTRAINT note: any slug-only caller must use listAllProjects() to obtain a ProjectMeta before constructing a LedgerStore — direct LedgerStore(slug, ledgerRoot) construction yields storageDir={ledgerRoot}/unknown/{slug}/ and will fail for all namespaced projects.",
+        "constraints.md: Updated KL-2 ('listAllProjects() Two-Level Scan Has No Direct Unit Tests') to reflect that WP-004 resolved this gap. Enumerated all 10 test scenarios now covered by tests/storage/list-all-projects.test.ts. Retained historical context and added a cross-reference to the api-surface.md architectural constraint note.",
+        "Addressed the documentation-forward item from the code-review pipeline: the canonical listAllProjects() architectural dependency is now captured in api-surface.md."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/constraints.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-27T13:50:17Z",
+          "note": "The documentation-forward item from code-review has been addressed: api-surface.md now documents the canonical architectural constraint that slug-only callers must use listAllProjects() before constructing a LedgerStore. This note will directly inform the fix needed for the 63 pre-existing GUI test failures (WP-001/WP-002 regression) documented in the pipeline."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-27T13:50:17Z",
+  "last_updated": "2026-05-27T13:50:17Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-27T13:39:28Z",
+      "notes": [
+        "listAllProjects() two-level scan was already implemented before this WP ran (likely added as part of the WP-002 constructor update). The WP-004 deliverable was exclusively the new test file. All 10 new tests pass; 97 total storage tests pass. Pre-existing test failures are confined to tests/gui/api-reset.test.ts, tests/gui/api-wp-overview.test.ts, and tests/gui/api.test.ts (63 failures) — these appear to be failures introduced by the namespace-change WPs and are the responsibility of QA to flag."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-27T13:42:48Z",
+      "notes": [
+        "WP-004 QA PASS. All 4 ACs verified via 10 dedicated tests in tests/storage/list-all-projects.test.ts. 97/97 storage tests pass. IMPORTANT: 63 pre-existing GUI test failures in tests/gui/ (api.test.ts, api-reset.test.ts, api-wp-overview.test.ts) are a regression from WP-001/WP-002 namespace changes — specifically GUI handlers that look up projects by slug are not finding them after LedgerStore writes to namespaced paths. This must be addressed before release. Reviewer should inspect gui/api.ts handlers (handleRenameProject, handleArchiveProject, etc.) to verify they resolve project storage paths using listAllProjects() rather than constructing a flat {ledgerRoot}/{slug}/ path directly."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-27T13:47:30Z",
+      "notes": [
+        "WP-004 PASS. All 4 ACs met. One Fix-Forward applied (cross-platform path in test). The listAllProjects() implementation and its tests are production-ready.",
+        "CRITICAL for Documentation agent: the listAllProjects() architectural dependency (it is now required for any slug-to-path resolution in GUI handlers) must be added to mcp-server/docs/agents/project-manifest/api-surface.md. See the documentation-forward comment in this pipeline.",
+        "IMPORTANT: 63 GUI test failures in tests/gui/ are a pre-existing regression from WP-001/WP-002 (not caused by WP-004). The root cause is all slug-based GUI handlers using new LedgerStore(slug, ledgerRoot) which yields storageDir={ledgerRoot}/unknown/{slug}/ instead of the correct namespaced path. This must be fixed before release — see the high-priority comments in this pipeline."
+      ]
+    },
+    {
+      "from_agent": "Documentation",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-05-27T13:50:17Z",
+      "notes": [
+        "WP-004 documentation complete. api-surface.md and constraints.md updated. The canonical listAllProjects() architectural constraint is now documented. Note for next agent: 63 GUI test failures in tests/gui/ remain as a pre-existing regression from WP-001/WP-002 — all slug-based GUI handlers construct LedgerStore(slug, ledgerRoot) directly, yielding storageDir={ledgerRoot}/unknown/{slug}/ instead of the correct namespaced path. This needs a dedicated fix WP before release."
+      ]
+    }
+  ]
+}

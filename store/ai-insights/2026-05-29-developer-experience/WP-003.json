@@ -1,0 +1,281 @@
+{
+  "work_package_id": "WP-003",
+  "work_package_file": "work/WP-006.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "Running the script creates ~/.ai-insights/bin/launch-server.js and ~/.ai-insights/config.json.",
+      "met": true
+    },
+    {
+      "criterion": "Re-running when already registered is a no-op (idempotent).",
+      "met": true
+    },
+    {
+      "criterion": "--dry-run prints the JSON diff to stdout without writing any files.",
+      "met": true
+    },
+    {
+      "criterion": "VS Code user-level mcp.json contains a central_pm entry pointing to the shim path; no other keys are modified or reordered.",
+      "met": true
+    },
+    {
+      "criterion": "If mcp-server/dist/index.js does not exist, the script exits with a clear actionable error without writing any files.",
+      "met": true
+    },
+    {
+      "criterion": "The shim uses child_process.spawn with { stdio: 'inherit' } — stdout is not buffered at any point.",
+      "met": true
+    },
+    {
+      "criterion": "If ~/.ai-insights/config.json contains a path that no longer exists, the shim prints a diagnostic to stderr and exits with code 1.",
+      "met": true
+    },
+    {
+      "criterion": "A timestamped backup of the existing mcp.json is created before any merge write.",
+      "met": true
+    },
+    {
+      "criterion": "All paths use path.join() / os.homedir() — no hardcoded separators.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-29T21:15:42Z",
+      "completed_at": "2026-05-29T21:22:46Z",
+      "duration_ms": 424000,
+      "summary": [
+        "Created scripts/install-mcp-global.js with all exported functions: getShimDir, shimConfigExists, writeShim, writeConfig, installVSCode, installClaudeCode, uninstall, dryRun, install.",
+        "Updated scripts/cli.js: added install-mcp command (key i, Setup & Configuration), added global-mcp SETUP_COMPONENT after mcp-json, updated mcp-json desc to 'Workspace-level override (for advanced use)'.",
+        "Created scripts/tests/install-mcp.test.js with 14 tests covering all acceptance criteria.",
+        "Full workspace test suite: 80 tests passed, 0 failed."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "scripts/install-mcp-global.js",
+          "scripts/cli.js",
+          "scripts/tests/install-mcp.test.js"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 80,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-29T21:22:46Z",
+          "note": "install() accepts an optional opts.log callback. In the SETUP_COMPONENTS run() for global-mcp, a wrapper passes log() from cli.js. This means the library and consumer log functions are decoupled. No observation needed."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-29T21:31:16Z",
+      "completed_at": "2026-05-29T21:32:28Z",
+      "duration_ms": 72000,
+      "summary": [
+        "All 9 acceptance criteria verified. 14 dedicated tests and 80/80 workspace tests pass. Shim subprocess test confirmed exit code 1 + stderr diagnostic on missing repoPath. Idempotency, timestamped backup, dry-run, and spawn/stdio:inherit all confirmed by test execution and code inspection. No hardcoded path separators found."
+      ],
+      "metrics": {
+        "tests_passed": 80,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-29T21:32:28Z",
+          "note": "getShimDir() builds the return value as base + path.sep + 'bin' (string concatenation) rather than path.join(base, 'bin'). Functionally equivalent on all platforms, but path.join() would be more idiomatic and consistent with the rest of the codebase."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-29T21:32:28Z",
+          "note": "install() idempotency guard requires both configPath AND shimPath to exist. Partial installs (one file present, other absent) correctly re-run the write phase. This is the desired behavior."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-05-29T22:04:50Z",
+      "completed_at": "2026-05-29T22:07:22Z",
+      "duration_ms": 152000,
+      "summary": [
+        "Reviewed 3 files (scripts/install-mcp-global.js, scripts/cli.js, scripts/tests/install-mcp.test.js). 0 Critical, 0 High, 1 Medium (noted). Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-05-29T22:07:22Z",
+          "note": "Medium | A04 Insecure Design | scripts/install-mcp-global.js line 109-111 (shim _buildShimContent). The shim constructs distPath = join(repoPath, 'mcp-server', 'dist', 'index.js') and spawns it via Node.js without validating that distPath resolves within the configured repoPath boundary. A manually edited ~/.ai-insights/config.json pointing to an arbitrary .js file would cause that file to be executed in the MCP server context. Exploitability is LOW for this developer tool — config.json is in the user's home directory and writable only by the local user; an attacker with write access already has full user-level code execution. Remediation (defence-in-depth): add a path.resolve(distPath).startsWith(path.resolve(repoPath) + path.sep) containment check before spawn, and exit with a diagnostic if the check fails."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-29T22:07:22Z",
+          "note": "Info | A03 Injection — all spawnSync/spawn calls in installClaudeCode, uninstall, and the shim use shell: false (or the default, which is false) with argument arrays. No shell injection is possible. Process.execPath (Node.js binary) is used in the shim, not a user-controlled path — safe."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-29T22:07:22Z",
+          "note": "Info | A02 Cryptographic Failures — no cryptographic operations, no secrets, no credentials. config.json stores only a local filesystem path. VS Code mcp.json stores node executable + shim path. No data requiring encryption."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-29T22:07:22Z",
+          "note": "Info | A06 Vulnerable Components — no new npm dependencies introduced. Implementation uses only Node.js built-ins: fs, os, path, child_process. No CVE exposure."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-29T22:07:56Z",
+      "completed_at": "2026-05-29T22:10:25Z",
+      "duration_ms": 149000,
+      "summary": [
+        "Code review PASS. Reviewed scripts/install-mcp-global.js, scripts/cli.js (install-mcp / global-mcp additions), and scripts/tests/install-mcp.test.js. Architecture is clean: clear public API, well-separated path resolution, correct cross-platform spawn usage, idiomatic error typing (err.code = 'DIST_MISSING'). One Fix-Forward applied (getShimDir path concatenation). One Documentation-Forward tagged. No blocking issues found."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "scripts/install-mcp-global.js",
+          "scripts/cli.js",
+          "scripts/tests/install-mcp.test.js"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 80,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-29T22:10:25Z",
+          "note": "getShimDir() was returning `base + path.sep + 'bin'` (string concatenation) instead of path.join(base, 'bin'). Fixed to use path.join() for consistency with the rest of the codebase and the AGENTS.md cross-platform policy. Non-behavioral — produces the same paths on all platforms. QA flagged this; applied directly as a Fix-Forward."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-29T22:10:25Z",
+          "note": "[documentation-forward] The AGENTS.md Root-Level Tooling table documents scripts/cli.js (as the interactive command center) but does not mention scripts/install-mcp-global.js. Add an entry for install-mcp-global.js to the Root-Level Tooling table: purpose is 'Stable-shim strategy for user-level MCP server registration across VS Code and Claude Code; called by scripts/cli.js install-mcp command and global-mcp SETUP_COMPONENT'."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-29T22:10:25Z",
+          "note": "dryRun() uses console.log/console.error directly while install() accepts an opts.log callback. This is a minor inconsistency that makes dryRun() harder to test in isolation. Not a blocker — tests skip when dist is absent, and the function is display-only by design."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-29T22:10:25Z",
+          "note": "The ledger metadata field work_package_file is set to 'work/WP-006.md' but WP-006.md covers a different feature (cli-menu First-Run Wizard). The correct file is work/WP-003.md. This does not affect functionality — acceptance criteria in the ledger are correct — but the reference should be corrected for audit integrity."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-29T22:10:25Z",
+          "note": "No blocking issues. All 9 acceptance criteria confirmed met. Architecture well-aligned with the stable-shim design described in WP-003.md. No over-engineering detected."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-29T22:15:39Z",
+      "completed_at": "2026-05-29T22:18:40Z",
+      "duration_ms": 181000,
+      "summary": [
+        "Added scripts/install-mcp-global.js entry to Root-Level Tooling table in AGENTS.md and CLAUDE.md: documents the stable-shim strategy, shim/config paths, --dry-run flag, and relationship to cli.js install-mcp command and global-mcp SETUP_COMPONENT.",
+        "Added Global MCP registration server key row to Cross-System Dependencies table in both AGENTS.md and CLAUDE.md: cross-references scripts/install-mcp-global.js central_pm hardcoding against personas/ledger/src/meta/_shared.yaml mcp_server_name.",
+        "Documentation-forward from code review fully addressed. All pre-existing doc state in AGENTS.md verified accurate against implementation artifacts."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "AGENTS.md",
+          "CLAUDE.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-29T22:18:40Z",
+          "note": "Documentation-forward from code review addressed: AGENTS.md Root-Level Tooling table now includes scripts/install-mcp-global.js with purpose description matching the stable-shim design."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-29T22:18:40Z",
+          "note": "Cross-System Dependencies row added for Global MCP registration server key. This surfaces the central_pm hardcoding in install-mcp-global.js as a tracked sync point — essential for anyone renaming the server key in the future."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-29T22:18:40Z",
+          "note": "CLAUDE.md (auto-generated mirror of AGENTS.md) was one revision behind on both the health-checks.js entry and the install-mcp-global.js entry. Both entries added. Full CTX regeneration (node scripts/cli.js ctx-generate) should be run to also update .context/agents.md."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-29T22:18:40Z",
+  "last_updated": "2026-05-29T22:18:40Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-29T21:22:46Z",
+      "notes": [
+        "WP-003 complete. scripts/install-mcp-global.js created with all required exports. cli.js updated: install-mcp command (key i), global-mcp SETUP_COMPONENT after mcp-json, mcp-json desc updated. 14 tests in scripts/tests/install-mcp.test.js. Full suite: 80 tests, 0 failures."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-05-29T21:32:28Z",
+      "notes": [
+        "WP-003 PASS. All 9 ACs met, 80/80 workspace tests pass. Shim content verified (spawn + stdio inherit), backup verified, idempotency verified, dry-run verified, path-separator policy confirmed. Note for security audit: shim reads config.json and spawns a subprocess \\u2014 review input validation on repoPath."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-29T22:07:22Z",
+      "notes": [
+        "WP-003 security audit PASS. 0 Critical, 0 High. One Medium noted (A04: no distPath containment check in shim — low exploitability in developer-tool context, defence-in-depth recommendation only). All 9 ACs confirmed met. Code is ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-29T22:10:25Z",
+      "notes": [
+        "WP-003 code-review PASS. One Fix-Forward applied: getShimDir() now uses path.join() (non-behavioral, consistent with cross-platform policy). One documentation-forward tagged: AGENTS.md Root-Level Tooling table needs an entry for scripts/install-mcp-global.js. All 9 ACs confirmed met. 80/80 tests pass. Ready for documentation pipeline."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,196 @@
+{
+  "work_package_id": "WP-005",
+  "work_package_file": "work/WP-005.md",
+  "status": "COMPLETE",
+  "assigned_to": "Reviewer",
+  "dependencies": [
+    "WP-002",
+    "WP-003",
+    "WP-004"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "Updated migrateOrphanedLogs() tests verify source file still exists after migration (not moved)",
+      "met": true
+    },
+    {
+      "criterion": "Unit tests for archiveCompletedLogs(): active run in source → not copied; completed run not in archive → copied; completed run with newer source → archive refreshed; completed run with current archive → no-op",
+      "met": true
+    },
+    {
+      "criterion": "Unit tests for resolveLogSource(): file only in archive → returns archiveDir; file only in source → returns sourceDir; file in both with newer source → copies and returns archiveDir; file in both with current archive → returns archiveDir",
+      "met": true
+    },
+    {
+      "criterion": "Integration-style tests for handleListRunLogs(): active run visible from orchestrator source; completed run visible from archive; same filename in both dirs → deduplicated in response",
+      "met": true
+    },
+    {
+      "criterion": "Integration-style tests for handleGetRunLog(): active run reads from orchestrator source dir; completed run reads from archive dir",
+      "met": true
+    },
+    {
+      "criterion": "All existing tests in mcp-server/tests/gui/ pass without modification to production behavior",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-24T13:06:11Z",
+      "completed_at": "2026-03-24T13:13:36Z",
+      "duration_ms": 445000,
+      "summary": [
+        "Updated existing handleListRunLogs and handleGetRunLog tests to use the new two-source-directory signatures introduced in WP-002/WP-003/WP-004 (logsDir + orchestratorLogsDir parameters). Added import of utimes/stat from fs/promises in log-resolver.test.ts. Added import of mkdir in run-log-handlers.test.ts.",
+        "Added migrateOrphanedLogs() tests to log-resolver.test.ts: copies matching files, source file still exists after migration (not moved), no-op when destDir already has slug files, handles nonexistent srcDir, handles no matching files, creates destDir when absent.",
+        "Added archiveCompletedLogs() unit tests covering all 4 documented scenarios: active run → not copied; completed run not in archive → copied; completed run with newer source (via utimes) → archive refreshed; completed run with current archive (via utimes) → no-op.",
+        "Added resolveLogSource() unit tests covering all 4 resolution paths: file only in archiveDir → returns archiveDir; file only in sourceDir → returns sourceDir; file in both with newer source → copies to archive and returns archiveDir; file in both with current archive → returns archiveDir without re-copying. Plus: neither exists → returns archiveDir (fall-through).",
+        "Added integration-style tests for handleListRunLogs(): active run only in orchestratorLogsDir is visible; completed run only in logsDir is visible with is_active: false; same filename in both dirs is deduplicated (appears once); logsDir entry wins when same filename exists in both.",
+        "Added integration-style tests for handleGetRunLog(): active run reads from orchestratorLogsDir (not yet archived); completed run reads from logsDir (archive); file in both with current archive reads from archiveDir without re-copying.",
+        "All 360 tests across 15 test files in mcp-server/tests/gui/ pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/tests/gui/log-resolver.test.ts",
+          "mcp-server/tests/gui/run-log-handlers.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-24T13:13:36Z",
+          "note": "log-resolver.test.ts uses utimes() to manipulate file mtimes for archiveCompletedLogs/resolveLogSource tests. This is reliable on tmpfs but on systems with coarse mtime resolution (1s) a 5000ms offset was chosen to ensure stable comparisons — a test-level constant (e.g. MTIME_OFFSET_MS = 5000) could improve readability."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-24T13:13:36Z",
+          "note": "run-log-handlers.test.ts previously used a single tempDir variable shared between handleListRunLogs and handleGetRunLog suites. The refactor to separate logsDir/orchestratorLogsDir per suite eliminates a potential source of test pollution and is cleaner."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-24T13:13:50Z",
+      "completed_at": "2026-03-24T13:16:04Z",
+      "duration_ms": 134000,
+      "summary": [
+        "Full suite run: 360/360 tests pass across all 15 GUI test files (exit code 0).",
+        "WP-005 test files: log-resolver.test.ts (47 tests) and run-log-handlers.test.ts (29 tests) = 76 tests total, all green.",
+        "AC1 — migrateOrphanedLogs() copy-not-move: test 'source file still exists after migration' explicitly reads the source path after migrateOrphanedLogs() and asserts content is intact. PASS.",
+        "AC2 — archiveCompletedLogs() 4 scenarios: all 4 documented paths covered (active→not copied; completed→copied; newer source→archive refreshed; current archive→no-op). mtime manipulation uses utimes() with a 5 s offset — reliable on macOS/Linux tmpfs. PASS.",
+        "AC3 — resolveLogSource() 4 paths + fall-through: file only in archive, file only in source, both with newer source (copy+refresh), both with current archive (no re-copy), neither (fall-through). PASS.",
+        "AC4 — handleListRunLogs() integration: active run visible from orchestratorLogsDir; completed run visible from logsDir; same filename deduplicated; logsDir takes precedence on conflict. PASS.",
+        "AC5 — handleGetRunLog() integration: active run reads from orchestratorLogsDir; completed run reads from logsDir; file in both with current archive reads from archive without re-copy. PASS.",
+        "AC6 — No production source files modified: git history confirms only test files changed. All 360 pre-existing tests continue to pass. PASS.",
+        "Mtime-based tests ran 3×3 consecutive times with 76/76 passes every time — no flakiness detected."
+      ],
+      "metrics": {
+        "test_coverage": "76 new tests in 2 modified test files; 360 total across 15 GUI test files",
+        "tests_passed": 360,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-24T13:16:04Z",
+          "note": "mtime-based tests (archiveCompletedLogs + resolveLogSource) use a 5000ms utimes() offset. Developer noted this could use a named constant MTIME_OFFSET_MS for readability. Confirmed reliable: 3 consecutive runs produced 76/76 passes with sub-200ms test duration — no flakiness risk."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-24T13:16:04Z",
+          "note": "The 'logsDir entry takes precedence over orchestratorLogsDir for same filename' test in run-log-handlers.test.ts verifies merge priority by writing an active-looking file to orchestratorLogsDir and a completed file to logsDir, then asserting is_active: false (archive wins). This is a good regression guard for the deduplication priority logic."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-24T13:16:04Z",
+          "note": "No test currently covers the scenario where orchestratorLogsDir does not exist (as a directory). findRunLogs() is already tested for a nonexistent path returning [], but an integration-level test for handleListRunLogs() with a nonexistent orchestratorLogsDir path could add belt-and-suspenders confidence. Not a blocker — the unit-level coverage is sufficient."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-24T13:16:49Z",
+      "completed_at": "2026-03-24T13:18:47Z",
+      "duration_ms": 118000,
+      "summary": [
+        "Reviewed both modified test files in full: mcp-server/tests/gui/log-resolver.test.ts (47 tests) and mcp-server/tests/gui/run-log-handlers.test.ts (29 tests). No production source files were changed in this WP.",
+        "All 6 acceptance criteria confirmed met by direct inspection of the test code. Each AC maps clearly to one or more named test cases.",
+        "Applied one Fix-Forward improvement: extracted the repeated mtime-offset magic number (5000) into a named module-level constant MTIME_OFFSET_MS = 5_000 with an explanatory JSDoc comment. Replaced all 4 usages in archiveCompletedLogs and resolveLogSource test suites. Verified 76/76 tests still pass after the change.",
+        "Code quality is high: test isolation is clean (separate beforeEach/afterEach per describe block, independent temp dirs per suite), assertions are precise, edge cases are well-covered, and comments explain intent clearly.",
+        "No blocking issues found."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/tests/gui/log-resolver.test.ts"
+        ]
+      },
+      "metrics": {
+        "test_coverage": "76 tests in 2 files; all 360 GUI tests green",
+        "tests_passed": 76,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-03-24T13:18:47Z",
+          "note": "log-resolver.test.ts: extracted the bare integer 5000 used in all four utimes() mtime-manipulation calls into a top-level constant `MTIME_OFFSET_MS = 5_000` with a JSDoc comment explaining the rationale (coarse mtime resolution on HFS+/FAT32). Non-behavioral — test semantics and assertion logic are identical. All 76 tests pass."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-24T13:18:47Z",
+          "note": "The `wait()` helper declared in log-resolver.test.ts (line 26) is never called in the current test suite. It was presumably a holdover from an early draft that used real sleeps before switching to utimes(). Safe to delete in a cleanup pass — removing it would shrink the helper section and eliminate a potential 'why is this here?' question for future readers."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-03-24T13:18:47Z",
+          "note": "run-log-handlers.test.ts file-level JSDoc (lines 1–8) mentions 'dual-source merge/deduplication' and 'source routing' as covered topics, which is accurate. A brief note indicating which WP introduced the two-parameter signature (logsDir + orchestratorLogsDir) would help orient future maintainers who open the file cold."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-03-24T13:18:47Z",
+  "last_updated": "2026-03-24T13:18:47Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-03-24T13:13:36Z",
+      "notes": [
+        "All 6 acceptance criteria are met and marked. Tests are in mcp-server/tests/gui/log-resolver.test.ts (47 tests, up from 20) and mcp-server/tests/gui/run-log-handlers.test.ts (29 tests, up from 22). All 360 tests across 15 gui test files pass. No production source files were modified — only test files."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-24T13:16:04Z",
+      "notes": [
+        "All 6 AC confirmed met with full traceability. 360/360 tests pass. No production source files were modified. mtime-based tests are stable (verified 3 consecutive runs). One low-priority gap noted: no integration test for handleListRunLogs() with a nonexistent orchestratorLogsDir, but findRunLogs() unit test already covers that path. Ready for code-review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-03-24T13:18:47Z",
+      "notes": [
+        "All 6 AC met and confirmed by direct code inspection. One Fix-Forward applied: magic number 5000 → named constant MTIME_OFFSET_MS in log-resolver.test.ts. 76/76 tests pass post-edit. One low-priority doc gap flagged for Documentation agent: run-log-handlers.test.ts could note which WP introduced the dual-source signature. Dead helper `wait()` in log-resolver.test.ts is cleanup-eligible but not blocking."
+      ]
+    }
+  ]
+}

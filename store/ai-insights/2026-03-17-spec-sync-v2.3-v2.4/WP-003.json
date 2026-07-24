@@ -1,0 +1,174 @@
+{
+  "work_package_id": "WP-003",
+  "work_package_file": "work/WP-007.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "completePipeline() checks dependency freshness when result is PASS",
+      "met": true
+    },
+    {
+      "criterion": "A soft warning project comment is emitted for each stale dependency",
+      "met": true
+    },
+    {
+      "criterion": "Pipeline completion is NOT blocked — PASS result is accepted regardless",
+      "met": true
+    },
+    {
+      "criterion": "Check is skipped if pipeline has no started_at timestamp",
+      "met": true
+    },
+    {
+      "criterion": "Check is skipped if WP has no dependencies",
+      "met": true
+    },
+    {
+      "criterion": "Warning messages include the dependency WP ID",
+      "met": true
+    }
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-17T08:42:34Z",
+      "completed_at": "2026-03-17T08:51:59Z",
+      "summary": [
+        " Added §21.59 advisory cross-WP dependency freshness check to completePipeline(). Pre-reads dep WP details before the lock to get their status_changed_at and latest pipeline completed_at. Inside the lock callback, warns via project_comments when any dep was modified after the pipeline started_at. PASS is never blocked — advisory only. Skips gracefully when started_at is absent or WP has no dependencies.",
+        "As opportunistic cleanup: replaced second inline orderedActive[orderedActive.length-1] pattern in completePipeline step 4b (auto-finalize) with lastActiveStage() helper. Removed now-unused getOrderedActiveStages import from pipeline.ts.",
+        "TypeScript compilation clean, 1309/1309 tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/tools/pipeline.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T08:51:59Z",
+          "note": "The staleness check pre-reads dep WP files before acquiring the main lock. This means there's a narrow race window: the dep could be modified between the pre-read and the actual lock. For an advisory-only SHOULD check, this is acceptable. A more precise implementation would load dep WP details inside the lock (requiring async callbacks), which would need a refactor of updateWorkPackageWithSync."
+        },
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-03-17T08:51:59Z",
+          "note": "WorkPackageDetail does not have a dedicated 'last_updated' field. The staleness check uses a composite: latest of status_changed_at and the most-recent pipeline's completed_at. This is a best-effort proxy — spec §21.59 assumes a 'last_updated' field on WP detail that doesn't exist yet. Adding it to WorkPackageDetailSchema would make this check more precise."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T08:51:59Z",
+          "note": "Discovered and fixed a second inline orderedActive[orderedActive.length-1] pattern in completePipeline's step 4b (auto-finalize block) that was missed during the WP-002 helper extraction. Fixed as part of this WP by replacing with lastActiveStage(activeStages). This also allowed removing getOrderedActiveStages from pipeline.ts imports entirely."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-17T09:13:18Z",
+      "completed_at": "2026-03-17T09:15:13Z",
+      "summary": [
+        "All 6 acceptance criteria verified and passed. completePipeline() adds the §21.59 dependency freshness check gated on `status === PASS`. Pre-reads dep WPs before the write lock, populates depStalenessMap with max(status_changed_at, last pipeline completed_at) per dep. Inside the lock, pushes a type:warning project comment for each stale dep — never blocks PASS. Skips cleanly when started_at is absent (guard on line 488) or when WP has no dependencies (depStalenessMap stays empty). All warning messages embed the depId. TypeScript compilation clean (exit 0), 1309/1309 tests pass."
+      ],
+      "metrics": {
+        "tests_passed": 1309,
+        "tests_failed": 0,
+        "compilation_errors": 0,
+        "tests_run": 1309
+      },
+      "comments": [
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-17T09:15:13Z",
+          "note": "AC1: confirmed — freshness check is gated on `if (args.status === 'PASS')` (pre-read block, line 393) and `if (args.status === 'PASS' && pipeline.started_at && depStalenessMap.size > 0)` (inner comment block, line 488)."
+        },
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-17T09:15:13Z",
+          "note": "AC3 & AC4 co-verified: `pipeline.started_at` guard on line 488 ensures the staleness loop is skipped when started_at is absent; the PASS result is never modified or blocked by the check."
+        },
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-17T09:15:13Z",
+          "note": "AC5: when WP has no dependencies, `depStalenessMap` remains empty (pre-read block skips populating it at line 399). The outer `depStalenessMap.size > 0` guard on line 488 ensures the comment-push loop is skipped."
+        },
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-17T09:15:13Z",
+          "note": "ProjectCommentSchema compliance of the new warning comment verified: all required fields present (type, priority, timestamp, agent, note). `priority: low` is a valid CommentPriority value."
+        },
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-17T09:15:13Z",
+          "note": "Race window noted by developer: dep WPs are pre-read before the main write lock. Advisory-only check, so this is acceptable. TypeScript compilation clean (exit 0). 1309/1309 tests pass."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-17T09:21:41Z",
+      "completed_at": "2026-03-17T09:23:40Z",
+      "summary": [
+        "Reviewed pipeline.ts staleness check addition. Two-phase architecture (pre-read before lock, comment-push inside lock) correctly handles the advisory use case. depStalenessMap is a Map<depId, maxTimestamp> computed via max(status_changed_at, last pipeline completed_at) — appropriate proxy given WorkPackageDetail lacks a dedicated last_updated field (spec assumption mismatch documented as debt). ISO 8601 lexicographic string comparison is valid for UTC timestamps. PASS is never blocked: staleness comments are pure annotations. All 6 ACs met. Bonus: second missed orderedActive[length-1] pattern fixed; getOrderedActiveStages import removed. No blocking issues."
+      ],
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-03-17T09:23:40Z",
+          "note": "The spec constraint 'dependency summaries are already available in the root index' could not be followed literally because WorkPackageSummarySchema has no status_changed_at or pipeline timestamps. The implementation correctly adapts by reading full WP detail files per dep. The Developer documented this as debt (missing last_updated on WPDetail schema). The adaptation is sound and the debt is correctly identified."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T09:23:40Z",
+          "note": "Minor: `[...candidates].sort().at(-1)` creates an unnecessary copy of a local array. `candidates.sort().at(-1)` is equivalent (local variable, safe to mutate in-place). Zero functional impact."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T09:23:40Z",
+          "note": "Bonus cleanup: the second inline orderedActive[orderedActive.length-1] pattern missed by WP-002 was caught and fixed here (step 4b auto-finalize block in pipeline.ts, now uses lastActiveStage(activeStages)). The getOrderedActiveStages import was also removed as it became unused. Good opportunistic hygiene."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-17T09:41:23Z",
+      "completed_at": "2026-03-17T09:44:42Z",
+      "summary": [
+        "Updated mcp-server/docs/agents/project-manifest/api-surface.md to document the §21.59 advisory dependency freshness check added to completePipeline() by WP-003. Added an 'Advisory dependency freshness check (§21.59)' paragraph under ledger_complete_pipeline that describes: pre-lock dep-WP pre-reads, max-timestamp computation, warning project comment emission inside lock, no blocking of PASS, and skip conditions (no started_at, no dependencies). Added Constraint 70 to mcp-server/docs/agents/project-manifest/constraints.md formalizing the staleness check rule, skip conditions, staleness proxy, and acceptable race window."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/constraints.md"
+        ]
+      }
+    }
+  ],
+  "status_changed_at": "2026-03-17T09:44:42Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-03-17T09:23:40Z",
+      "notes": [
+        "WP-003 approved. §21.59 advisory staleness check is correct: pre-read before lock for dep WPs, map populated with max(status_changed_at, latest completed_at), ISO string comparison inside lock, PASS never blocked, project comment per stale dep. Spec-noted root-index shortcut was inapplicable (missing fields on summary) — full WP detail reads are the correct adaptation. Documentation agent may proceed."
+      ]
+    }
+  ]
+}

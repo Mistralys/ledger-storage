@@ -1,0 +1,404 @@
+{
+  "work_package_id": "WP-005",
+  "work_package_file": "work/WP-004.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-004"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "resolveProjectDir('ai-insights/2026-05-01-my-plan', ledgerRoot) returns join(ledgerRoot, 'ai-insights', '2026-05-01-my-plan')",
+      "met": true
+    },
+    {
+      "criterion": "A bare slug that exists in exactly one repo namespace returns the correct storage path",
+      "met": true
+    },
+    {
+      "criterion": "A bare slug that exists in two or more repo namespaces throws an AMBIGUOUS error that lists all matching qualified paths",
+      "met": true
+    },
+    {
+      "criterion": "Each segment of a qualified input is individually validated against assertSafeSlug (repo and slug validated separately — no composite string)",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-27T13:50:59Z",
+      "completed_at": "2026-05-27T13:58:06Z",
+      "duration_ms": 427000,
+      "summary": [
+        "Added resolveProjectDir(slugOrQualified, ledgerRoot): Promise<string> to mcp-server/src/utils/ledger-root.ts. Qualified {repo}/{slug} input validates each segment individually via local assertSafeSlug (uses SAFE_SLUG_REGEX — stricter than the loose guard in run-log-handlers.ts) and returns join(ledgerRoot, repo, slug) with no filesystem access. Bare-slug input scans all non-dot repo-namespace subdirectories of ledgerRoot using readdir, collects matches, returns the path if exactly one match exists, throws AMBIGUOUS (listing all qualified paths) on multiple matches, or throws NOT_FOUND if no match. Added readdir import to ledger-root.ts. Created mcp-server/tests/storage/slug-resolution.test.ts with 17 tests covering all 4 acceptance criteria plus NOT_FOUND and dot-prefix skip cases. All 17 tests pass; tsc --noEmit clean; pre-existing GUI test failures are unrelated to this WP."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/utils/ledger-root.ts",
+          "mcp-server/tests/storage/slug-resolution.test.ts"
+        ]
+      },
+      "metrics": {
+        "test_coverage": "17/17 for slug-resolution.test.ts",
+        "tests_passed": 17,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T13:58:06Z",
+          "note": "assertSafeSlug in ledger-root.ts is stricter than the homonymous local function in run-log-handlers.ts (which only checks includes('/') and includes('..')). When Phase 3 WPs update the GUI handlers, consider extracting the strict SAFE_SLUG_REGEX-based assertSafeSlug to a shared utility (e.g., path-validator.ts) to avoid divergence between the two guards."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T13:58:06Z",
+          "note": "resolveProjectDir uses readdir() to probe candidate directories, which issues one syscall per namespace directory. For ledger roots with many namespaces this is linear. The current usage pattern (called only on GUI handler request paths) makes this acceptable, but a stat()-based probe would be slightly more efficient for existence checks without needing to enumerate directory entries."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-27T14:20:07Z",
+      "completed_at": "2026-05-27T14:24:38Z",
+      "duration_ms": 271000,
+      "summary": [
+        "All 17 tests in tests/storage/slug-resolution.test.ts pass. tsc --noEmit clean. All 4 acceptance criteria independently verified. Three pre-existing GUI test file failures (api.test.ts, api-reset.test.ts, api-wp-overview.test.ts) confirmed unrelated to this WP — resolveProjectDir is not imported by any GUI handler and WP-005 changes are purely additive to ledger-root.ts. Edge-case stress tests pass: multi-slash qualified input (repo/sub/slug) throws on invalid slug segment; uppercase bare slug and empty-string bare slug both throw NOT_FOUND."
+      ],
+      "metrics": {
+        "test_coverage": "17/17 for slug-resolution.test.ts",
+        "tests_passed": 17,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T14:24:38Z",
+          "note": "An empty-string bare slug ('') is not validated before the filesystem scan — it falls through to NOT_FOUND rather than a validation error. Functionally safe, but a pre-scan guard (e.g. assertSafeSlug(slug) before readdir) would make the error more descriptive. Not a blocking issue."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T14:24:38Z",
+          "note": "No test covers a multi-slash qualified input (e.g. 'repo/sub/slug'). The code handles it correctly (assertSafeSlug rejects 'sub/slug' because '/' is not in SAFE_SLUG_REGEX), but an explicit test would document this boundary. Not a failing AC."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-05-27T14:59:34Z",
+      "completed_at": "2026-05-27T15:02:12Z",
+      "duration_ms": 158000,
+      "summary": [
+        "Reviewed 2 files (ledger-root.ts, slug-resolution.test.ts). 0 Critical, 0 High, 1 Medium, 1 Low, 1 Info. Security sign-off: PASS. The qualified-path branch is secure — SAFE_SLUG_REGEX (/^[a-z0-9][a-z0-9-]*$/) blocks all path-traversal inputs including '..', '/', backslash, null bytes, and Unicode. The bare-slug branch has a Medium gap: the slug is not validated via assertSafeSlug before the filesystem probe, allowing inputs like '..' that are bounded within ledgerRoot but return incorrect paths. No Critical or High findings; implementation is safe for current additive state (function not yet wired to any handler)."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-05-27T15:02:12Z",
+          "note": "A04 — Insecure Design: bare-slug branch (lines 162–197 of ledger-root.ts) never calls assertSafeSlug on the slug before the filesystem probe. A bare input of '..' (no slash) enters the bare-slug path; join(ledgerRoot, namespace, '..') normalises to ledgerRoot and readdir(ledgerRoot) succeeds, causing '..' to match every existing namespace. Traversal is bounded — cannot escape ledgerRoot — but the function may return ledgerRoot as the resolved project path rather than rejecting the input. Recommended fix: add assertSafeSlug(slug) as the first statement in the bare-slug branch (after the includes('/') check), before any filesystem access. This is consistent with how qualified-path segments are validated."
+        },
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-05-27T15:02:12Z",
+          "note": "A09 — Information Disclosure via error messages: the NOT_FOUND error (line 193 of ledger-root.ts) embeds the absolute ledgerRoot path: \"NOT_FOUND: project slug '...' was not found in any repo namespace under '/absolute/path/to/ledger'\". When resolveProjectDir is wired to a GUI/API handler, this message should be sanitised before returning to callers — strip the filesystem path from the user-facing message and retain it only in server-side logs. The AMBIGUOUS error is safe (it contains only repo/slug strings, not filesystem paths)."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T15:02:12Z",
+          "note": "Info — Duplicate assertSafeSlug implementations: ledger-root.ts (line 122) and run-log-handlers.ts (line 43) each define a local assertSafeSlug with identical SAFE_SLUG_REGEX logic. This was already flagged in the implementation pipeline. Before resolveProjectDir is consumed by any handler, extract the shared guard to a common utility (e.g. src/utils/path-validator.ts) to avoid future divergence."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "FAIL",
+      "started_at": "2026-05-27T15:08:04Z",
+      "completed_at": "2026-05-27T15:11:13Z",
+      "duration_ms": 189000,
+      "summary": [
+        "Reviewed mcp-server/src/utils/ledger-root.ts (resolveProjectDir + assertSafeSlug) and mcp-server/tests/storage/slug-resolution.test.ts. One Blocking issue found: the bare-slug branch never calls assertSafeSlug(slug) before filesystem access, creating an inconsistency with the qualified-path branch and producing incorrect behaviour for inputs like '..' (returns ledgerRoot or spurious AMBIGUOUS instead of throwing 'Invalid path segment'). Test suite is clean (17/17 pass, cross-platform temp-dir setup, well-named tests covering all 4 ACs). No other blocking issues. Two documentation-forward items tagged for the Documentation agent.",
+        "Blocking fix required: add `assertSafeSlug(slug)` as the first statement in the bare-slug branch (immediately after the `includes('/')` check and before the readdir(ledgerRoot) call). This makes input validation consistent across both branches and rejects invalid bare inputs fast, before any I/O. The Developer should also add a test for assertSafeSlug rejection on a bare '..' slug to cover this boundary."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/utils/ledger-root.ts",
+          "mcp-server/tests/storage/slug-resolution.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "blocking",
+          "priority": "high",
+          "timestamp": "2026-05-27T15:11:13Z",
+          "note": "BLOCKING: bare-slug branch of resolveProjectDir() never calls assertSafeSlug(slug) before the filesystem probe (ledger-root.ts lines ~162–197). The qualified-path branch validates both segments before I/O; the bare-slug branch does not. A bare input of '..' (no slash) enters this branch; join(ledgerRoot, namespace, '..') normalises to ledgerRoot; readdir(ledgerRoot) succeeds; '..' then matches every namespace — the function returns ledgerRoot itself as the 'project path' (1 namespace) or throws a spurious AMBIGUOUS (2+ namespaces) instead of immediately rejecting the invalid segment. Fix: add `assertSafeSlug(slug)` immediately after `const slug = slugOrQualified` (the first statement before any readdir call). Add a corresponding test: `resolveProjectDir('..', tempLedgerRoot)` must reject with 'Invalid path segment'."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T15:11:13Z",
+          "note": "The single-match reconstruction in the bare-slug branch re-parses the stored qualified string to recover repo (matches[0]!.indexOf('/')). Since the loop has access to dirent.name directly, storing matches as {repo, slug} tuples (or a Map) would make this slightly more readable. Minor — not blocking."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-27T15:11:13Z",
+          "note": "[documentation-forward] NOT_FOUND error message in resolveProjectDir() embeds the absolute ledgerRoot filesystem path: \"NOT_FOUND: project slug '...' was not found in any repo namespace under '/absolute/path'\". Document in mcp-server/docs/agents/project-manifest/constraints.md that callers must sanitise this error message (strip the filesystem path) before surfacing it to API consumers. The AMBIGUOUS error is safe and does not need sanitisation."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-05-27T15:11:13Z",
+          "note": "[documentation-forward] assertSafeSlug is now defined in two files: ledger-root.ts (strict, SAFE_SLUG_REGEX-based) and run-log-handlers.ts (loose, includes('/') + includes('..')-only check). Document this divergence in mcp-server/docs/agents/project-manifest/constraints.md as known tech debt, with a note that the strict variant should be extracted to a shared utility (e.g. src/utils/path-validator.ts) before resolveProjectDir is wired to any GUI handler."
+        }
+      ]
+    },
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-27T15:12:27Z",
+      "completed_at": "2026-05-27T15:13:50Z",
+      "duration_ms": 83000,
+      "summary": [
+        "Rework: added assertSafeSlug(slug) as the first statement in the bare-slug branch of resolveProjectDir() in mcp-server/src/utils/ledger-root.ts (immediately after `const slug = slugOrQualified`, before any readdir call). This makes input validation symmetric — both branches now reject invalid segments before filesystem I/O. Added one new test: `resolveProjectDir('..', tempLedgerRoot)` rejects with 'Invalid path segment', covering the boundary flagged by the Reviewer. All 18 tests pass; tsc --noEmit clean."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/utils/ledger-root.ts",
+          "mcp-server/tests/storage/slug-resolution.test.ts"
+        ]
+      },
+      "metrics": {
+        "test_coverage": "18/18 for slug-resolution.test.ts",
+        "tests_passed": 18,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T15:13:50Z",
+          "note": "assertSafeSlug in the bare-slug branch now mirrors the qualified-path branch — both validate before I/O. No further symmetry gaps in resolveProjectDir(). Existing observation about extracting assertSafeSlug to a shared utility (path-validator.ts) remains relevant but is out of scope for this WP."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-27T15:14:37Z",
+      "completed_at": "2026-05-27T15:16:39Z",
+      "duration_ms": 122000,
+      "summary": [
+        "Rework QA — focused verification of the blocking fix from code-review. Confirmed assertSafeSlug(slug) is now called as the first statement in the bare-slug branch of resolveProjectDir() in ledger-root.ts, before any readdir I/O. Source inspection verified the call position is immediately after `const slug = slugOrQualified` and before the topDirents readdir call. New test 16 ('throws on path-traversal in a bare slug') passes: resolveProjectDir('..', tempLedgerRoot) rejects synchronously with 'Invalid path segment'. All 18 tests in slug-resolution.test.ts pass. tsc --noEmit clean. Regression pass: 1503 tests across 48 non-GUI test files — no regressions. All 4 ACs continue to be met. The blocking inconsistency between the qualified-path branch and the bare-slug branch is fully resolved."
+      ],
+      "metrics": {
+        "test_coverage": "18/18 for slug-resolution.test.ts; 1503/1503 for non-GUI suite",
+        "tests_passed": 18,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T15:16:39Z",
+          "note": "All previously-failed ACs now pass. The blocking issue (bare-slug branch calling assertSafeSlug before I/O) is resolved. No new issues found in the rework. The two documentation-forward items from the code-review remain open and are forwarded to the next agent: (1) NOT_FOUND error embeds absolute ledgerRoot path — callers must sanitise before surfacing to API consumers; (2) assertSafeSlug is defined in two files (ledger-root.ts strict, run-log-handlers.ts loose) — document as known tech debt until extracted to a shared utility."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-05-27T15:33:50Z",
+      "completed_at": "2026-05-27T15:35:26Z",
+      "duration_ms": 96000,
+      "summary": [
+        "Re-audit after rework. Reviewed 2 files (ledger-root.ts, slug-resolution.test.ts). 0 Critical, 0 High, 0 Medium, 1 Low, 1 Info. The previously blocking Medium finding (A04 — bare-slug branch performing filesystem I/O before input validation) is fully resolved: assertSafeSlug(slug) is now the first statement in the bare-slug branch (ledger-root.ts line 172), placed before any readdir() call. SAFE_SLUG_REGEX (/^[a-z0-9][a-z0-9-]*$/) reliably rejects '.', '..', '/', backslash, null bytes, Unicode, and uppercase inputs on all three supported platforms. A new test covers the '..' bare-slug rejection path. All 18 tests pass. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T15:35:26Z",
+          "note": "A04 — RESOLVED (rework verified): assertSafeSlug(slug) is now called as the first statement in the bare-slug branch of resolveProjectDir() (ledger-root.ts line 172), immediately after `const slug = slugOrQualified` and before the readdir(ledgerRoot) call. SAFE_SLUG_REGEX (/^[a-z0-9][a-z0-9-]*$/) blocks all traversal inputs including '..', '/', backslash, null bytes, and Unicode. A new test (test 18) explicitly asserts that resolveProjectDir('..', tempLedgerRoot) rejects with 'Invalid path segment', covering this boundary. The previous Medium finding is fully remediated."
+        },
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-05-27T15:35:26Z",
+          "note": "A09 — Information Disclosure (unchanged, Low): the NOT_FOUND error message still embeds the absolute ledgerRoot filesystem path ('NOT_FOUND: project slug ... was not found in any repo namespace under /absolute/path'). The function is not yet wired to any GUI or API handler. When it is integrated, callers must sanitise this error message before returning it to API consumers — strip the filesystem path and retain it only in server-side logs. The AMBIGUOUS error is safe (repo/slug strings only). Document in constraints.md per handoff note from code-review pipeline."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T15:35:26Z",
+          "note": "Info — Duplicate assertSafeSlug implementations (unchanged): ledger-root.ts (strict, SAFE_SLUG_REGEX-based) and run-log-handlers.ts (loose, includes('/') + includes('..') only) each define their own local assertSafeSlug. Both use SAFE_SLUG_REGEX from constants.ts but throw different error types (Error vs ApiError). Before resolveProjectDir is consumed by any handler, extract the strict variant to a shared utility (e.g. src/utils/path-validator.ts) to prevent future divergence. Document as known tech debt in constraints.md per handoff note from code-review pipeline."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-27T15:36:10Z",
+      "completed_at": "2026-05-27T15:38:12Z",
+      "duration_ms": 122000,
+      "summary": [
+        "Re-review after rework and security re-audit PASS. Reviewed mcp-server/src/utils/ledger-root.ts (resolveProjectDir + assertSafeSlug) and mcp-server/tests/storage/slug-resolution.test.ts (18 tests). The blocking issue from the previous FAIL is fully resolved: assertSafeSlug(slug) is correctly placed as the first statement in the bare-slug branch immediately after `const slug = slugOrQualified` and before any readdir call, making input validation symmetric across both branches. No new blocking issues found.",
+        "Code quality is clean across all four dimensions. Maintainability: JSDoc layer note on assertSafeSlug explicitly documents the intentional duplication and what must stay in sync — excellent future-proofing. Variable names are descriptive; the single-match reconstruction from stored qualified strings is slightly indirect but serves dual purpose (AMBIGUOUS error message reuse), so the trade-off is correct. Best Practices: path.join() (not posix) is used for final path construction — correct cross-platform behaviour; async/await is clean; error prefixes (AMBIGUOUS:, NOT_FOUND:) are consistent with codebase conventions. Performance: O(N) bare-slug scan is acceptable for the GUI-handler usage pattern. Future Context: function is purely additive (not yet wired to any handler); the two carry-forward documentation items are appropriate to defer to the Documentation agent. Test suite: 18 tests with mkdtemp/rm cross-platform temp dirs, clear test names, correct beforeEach/afterEach isolation, and explicit coverage of all 4 ACs plus the '..' bare-slug path-traversal boundary. PASS — code is ready for the Documentation agent."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/utils/ledger-root.ts",
+          "mcp-server/tests/storage/slug-resolution.test.ts"
+        ]
+      },
+      "metrics": {
+        "test_coverage": "18/18 for slug-resolution.test.ts",
+        "tests_passed": 18,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T15:38:12Z",
+          "note": "The single-match reconstruction in the bare-slug branch re-parses the stored qualified string (matches[0]!.indexOf('/')) to recover the repo name. This is correct but slightly indirect — dirent.name is available directly in the loop. The current approach is the right trade-off because matches[] doubles as the AMBIGUOUS error message source (which needs qualified strings, not full paths). No change needed; noting for future refactors if the error format changes."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-27T15:38:12Z",
+          "note": "[documentation-forward] NOT_FOUND error message in resolveProjectDir() embeds the absolute ledgerRoot filesystem path: \"NOT_FOUND: project slug '...' was not found in any repo namespace under '/absolute/path'\". Document in mcp-server/docs/agents/project-manifest/constraints.md that callers must sanitise this error message (strip the filesystem path) before surfacing it to API consumers. The AMBIGUOUS error is safe (contains only repo/slug strings) and does not need sanitisation."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-05-27T15:38:12Z",
+          "note": "[documentation-forward] assertSafeSlug is now defined in two files: ledger-root.ts (strict, SAFE_SLUG_REGEX-based, throws plain Error) and run-log-handlers.ts (loose, includes('/') + includes('..') only, throws ApiError). The JSDoc layer note in ledger-root.ts documents this intentional separation correctly. Document this as known tech debt in mcp-server/docs/agents/project-manifest/constraints.md with a note that the strict variant should be extracted to a shared utility (e.g. src/utils/path-validator.ts) before resolveProjectDir is wired to any GUI handler."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-27T15:38:50Z",
+      "completed_at": "2026-05-27T15:44:26Z",
+      "duration_ms": 336000,
+      "summary": [
+        "Added two entries to mcp-server/docs/agents/project-manifest/constraints.md addressing both documentation-forward items from the code-review pipeline.",
+        "Gotcha 13: documents that resolveProjectDir() NOT_FOUND error embeds the absolute ledgerRoot filesystem path. Explains caller responsibility to sanitise the message before surfacing to API consumers, notes the AMBIGUOUS error is safe, and provides a correct handler pattern.",
+        "KL-3: documents the intentional assertSafeSlug duplication across src/utils/ledger-root.ts (storage layer, throws plain Error) and src/gui/handlers/run-log-handlers.ts (GUI layer, throws ApiError NOT_FOUND). States the maintenance rule (both must be updated together when SAFE_SLUG_REGEX changes), explains the planned extraction to src/utils/path-validator.ts, and emphasises the layer separation must be preserved after consolidation.",
+        "No other documentation required: resolveProjectDir() is purely additive (not yet wired to any handler), all four acceptance criteria were met in the implementation and code-review pipelines, and no other documentation gaps were identified in the codebase."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/constraints.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T15:44:26Z",
+          "note": "Gotcha 13 and KL-3 both address exclusively additive code (resolveProjectDir is not yet wired to any handler). The risk window described in Gotcha 13 (raw NOT_FOUND message reaching an API consumer) is zero today. The entries are preventive documentation for the integration phase."
+        }
+      ]
+    }
+  ],
+  "rework_counts": {
+    "implementation": 1,
+    "qa": 1,
+    "code-review": 1,
+    "security-audit": 1
+  },
+  "status_changed_at": "2026-05-27T15:44:26Z",
+  "last_updated": "2026-05-27T15:44:26Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-27T13:58:06Z",
+      "notes": [
+        "resolveProjectDir is exported from mcp-server/src/utils/ledger-root.ts. The local assertSafeSlug is not exported — it is an internal guard. QA tests should verify: (1) qualified path with exactly one slash splits correctly at the first slash; (2) AMBIGUOUS error message contains all {repo}/{slug} qualified paths as literal strings; (3) NOT_FOUND error message contains the string 'NOT_FOUND'; (4) invalid segments (uppercase, path-traversal, empty) throw synchronously before any filesystem I/O."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-05-27T14:24:38Z",
+      "notes": [
+        "All 4 ACs met. resolveProjectDir correctly validates each qualified segment individually via assertSafeSlug using SAFE_SLUG_REGEX (/^[a-z0-9][a-z0-9-]*$/). Multi-slash inputs are blocked by slug segment validation. Bare-slug scan correctly skips dot-prefixed namespace directories. Pre-existing GUI test failures (63 tests in 3 files under tests/gui/) are unrelated to this WP. Security review should verify: (1) SAFE_SLUG_REGEX is sufficient to prevent directory traversal in all OS path contexts; (2) the readdir-based probe for bare slugs does not leak information about the filesystem structure beyond the project slug names."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-27T15:02:12Z",
+      "notes": [
+        "Security sign-off: PASS. No Critical or High findings. One Medium input-validation gap in the bare-slug branch of resolveProjectDir (ledger-root.ts): assertSafeSlug is not called on the slug before the filesystem probe. Recommended pre-handler fix: add assertSafeSlug(slug) at the top of the bare-slug path before any readdir call. One Low: NOT_FOUND error embeds absolute ledger root path — sanitise before surfacing to API callers. No blocking issues; code review may proceed."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Developer",
+      "timestamp": "2026-05-27T15:11:13Z",
+      "notes": [
+        "FAIL — one blocking fix required before re-review. Add assertSafeSlug(slug) at the top of the bare-slug branch in resolveProjectDir() (ledger-root.ts) — immediately after `const slug = slugOrQualified` and before the readdir(ledgerRoot) call. Also add a test asserting that `resolveProjectDir('..', tempLedgerRoot)` rejects with 'Invalid path segment'. No other changes needed — test suite, JSDoc, and function architecture are all clean. After the fix, the Reviewer can PASS without another full review cycle."
+      ]
+    },
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-27T15:13:50Z",
+      "notes": [
+        "Rework complete. Blocking issue resolved: assertSafeSlug(slug) is now called at the top of the bare-slug branch before any readdir I/O. New test confirms '..' bare-slug input rejects with 'Invalid path segment'. All 18 tests pass; tsc --noEmit clean. The two documentation-forward items from the previous code-review (NOT_FOUND error message sanitisation and assertSafeSlug duplication debt) are still present and addressed to the Documentation agent."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-05-27T15:16:39Z",
+      "notes": [
+        "Rework PASS. The blocking fix is verified: assertSafeSlug(slug) is now called in the bare-slug branch before any filesystem I/O, making input validation symmetric across both branches. All 18 tests pass; tsc --noEmit clean; 1503-test non-GUI regression suite clean. Two documentation-forward items remain from the code-review: (1) NOT_FOUND error embeds absolute ledgerRoot filesystem path — document in constraints.md that callers must sanitise before surfacing to API consumers; (2) assertSafeSlug is duplicated in ledger-root.ts (strict) and run-log-handlers.ts (loose) — document as known tech debt in constraints.md."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-27T15:35:26Z",
+      "notes": [
+        "Re-audit PASS. The blocking Medium finding (A04 — bare-slug branch executing filesystem I/O before input validation) is fully remediated: assertSafeSlug(slug) is now called before readdir() in the bare-slug branch, symmetric with the qualified-path branch. All 4 ACs met; 18/18 tests pass. Two carry-forward documentation items remain for the Documentation agent: (1) NOT_FOUND error embeds absolute ledgerRoot path — document in constraints.md that callers must sanitise before surfacing to API consumers; (2) assertSafeSlug is duplicated across ledger-root.ts (strict) and run-log-handlers.ts (loose) — document as known tech debt in constraints.md with a note to extract to src/utils/path-validator.ts before resolveProjectDir is wired to a handler."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-27T15:38:12Z",
+      "notes": [
+        "PASS — no blocking issues. The rework is complete and all 4 ACs are met. Two documentation items remain for the Documentation agent: (1) Document in constraints.md that NOT_FOUND error from resolveProjectDir() embeds the absolute ledgerRoot path — callers must sanitise before surfacing to API consumers; (2) Document in constraints.md the assertSafeSlug duplication (ledger-root.ts strict vs run-log-handlers.ts loose) as known tech debt pending extraction to src/utils/path-validator.ts before resolveProjectDir is wired to a handler. These are the only open items — no code changes are needed before documentation."
+      ]
+    }
+  ]
+}

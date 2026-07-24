@@ -1,0 +1,230 @@
+{
+  "work_package_id": "WP-009",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001",
+    "WP-008"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "Every project link in the list uses the `#/projects/{repo}/{slug}` form",
+      "met": true
+    },
+    {
+      "criterion": "Action menu handlers pass `(repo, slug)` to API client delete/archive/unarchive calls",
+      "met": true
+    },
+    {
+      "criterion": "Projects with null `repository_name` do not generate broken links — they display as read-only rows",
+      "met": true
+    },
+    {
+      "criterion": "No link in the view still uses the bare-slug `#/projects/{slug}` form",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-31T16:58:17Z",
+      "completed_at": "2026-05-31T17:03:32Z",
+      "duration_ms": 315000,
+      "summary": [
+        "Updated project-list.js to generate namespaced #/projects/{repo}/{slug} links for all project rows, with null-repo guard rendering read-only cells and emitting a console.warn.",
+        "Updated action menu kebab handler: added data-repo attribute to .action-menu-wrapper and menu portal buttons; View link uses namespaced hash route; API delete/archive/unarchive calls pass (repo, slug); null-repo projects show an alert instead of making a broken API call.",
+        "Updated ProjectNameCache in utils.js to use repo+'/'+slug as the cache key (with JSDoc), updated breadcrumb().project() to look up by namespaced key, and fixed the fallback to return only the slug portion (not the full composite key) when no entry exists.",
+        "All 242 tests in router-utils, client-rendering, api-client, and api test files pass. Pre-existing failures in dialogue-qa.test.ts are caused by WP-001's api-client migration (stale test expectations) and are not introduced by this WP."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/project-list.js",
+          "mcp-server/gui/public/utils.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-31T17:03:32Z",
+          "note": "project-list.js: The action menu portal handler guards null-repo with an alert() (user-facing). Consider replacing with a console.error and silently skipping the action — an alert is disruptive for an operator-only edge case that normal users should never encounter."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-05-31T17:03:32Z",
+          "note": "utils.js ProjectNameCache: The cache has no TTL or eviction policy. In a long-running SPA session with hundreds of projects, the cache will grow unbounded. A simple max-size eviction (LRU) or per-navigation clear would be safer."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-05-31T17:03:32Z",
+          "note": "project-list.js: The .action-menu-wrapper element stores data-slug and data-repo as data attributes on the wrapper, then the portal buttons redundantly store the same values. Consider storing on the wrapper only and having the portal action handler walk up the DOM to find the wrapper, reducing duplication."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T17:03:32Z",
+          "note": "utils.js breadcrumb().project() fallback: The fallback `key.slice(lastSlash + 1)` is now tested and works correctly. However, a null/undefined key argument would still cause lastIndexOf to throw — adding an early return for falsy key would be more defensive."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-31T17:04:22Z",
+      "completed_at": "2026-05-31T17:08:11Z",
+      "duration_ms": 229000,
+      "summary": [
+        "Verified all 4 acceptance criteria against project-list.js and utils.js source via static analysis and vm-based execution.",
+        "AC1: buildTable row links use '#/projects/' + encodeURIComponent(repo) + '/' + encodeURIComponent(p.slug) — confirmed, no bare-slug href patterns remain.",
+        "AC2: Portal handler passes (repo, slug) to API.deleteProject, API.archiveProject, API.unarchiveProject — confirmed.",
+        "AC3: Null repository_name projects render a read-only <td> (no <a> tag) with a console.warn — confirmed with both static and runtime checks.",
+        "AC4: No legacy #/projects/{slug} form exists anywhere in project-list.js — confirmed by grep and regex scan.",
+        "Ran 70 tests across router-utils.test.ts, client-rendering.test.ts, api-client.test.ts — all pass.",
+        "Full suite: 2812 pass, 17 fail. All 17 failures are in dialogue-qa.test.ts — pre-existing from WP-001's api-client migration. Confirmed by git diff (dialogue-qa.test.ts is unmodified, fails only against current api-client.js).",
+        "Edge cases verified: URL-encoding of special chars in repo/slug, XSS prevention via escapeHtml in title attrs, empty-string repo treated as falsy (read-only row), ProjectNameCache.get fallback returns slug portion only (not full composite key), null key argument to cache.get returns null without throwing."
+      ],
+      "metrics": {
+        "tests_passed": 2812,
+        "tests_failed": 17
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-31T17:08:11Z",
+          "note": "project-list.js portal handler uses alert() for the null-repo guard. Confirmed pre-existing Developer observation: disruptive for an operator-only edge case. Recommend replacing with console.error + silent skip in a follow-up. Not a blocker."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-31T17:08:11Z",
+          "note": "ProjectNameCache.get(null) returns null without throwing — the guard `var lastSlash = key ? key.lastIndexOf('/') : -1` handles it correctly. However, the JSDoc says falsy key is for legacy callers only; a defensive early-return for null/undefined would improve explicitness."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-05-31T17:08:11Z",
+          "note": "There are no dedicated unit tests for project-list.js buildTable or action-menu logic. All AC verification was done via static analysis and manual vm-based scripts. Adding a vitest file (e.g., tests/gui/project-list.test.ts) using jsdom would provide regression coverage for this and future WPs touching project-list.js."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T17:08:11Z",
+          "note": "17 pre-existing dialogue-qa.test.ts failures (WP-001 scope) remain. These should be addressed in the WP that owns api-client.js test migration. Confirmed unrelated to WP-009 via git diff."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-31T17:08:29Z",
+      "completed_at": "2026-05-31T17:09:27Z",
+      "duration_ms": 58000,
+      "summary": [
+        "Code review PASS with one Fix-Forward applied. All 4 acceptance criteria confirmed met by QA. The namespaced #/projects/{repo}/{slug} migration in project-list.js is correct and complete — table row links, View action, and all API portal calls (delete/archive/unarchive) use the (repo, slug) form. Null-repo guard is applied consistently in both buildTable (read-only cell) and the portal action handler. XSS surface is fully covered via escapeHtml on all user-controlled values. ProjectNameCache key scheme in utils.js is clean and well-documented. Fix-Forward applied: replaced alert() in null-repo portal guard with console.error + silent skip."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/project-list.js",
+          "mcp-server/gui/public/utils.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "medium",
+          "timestamp": "2026-05-31T17:09:27Z",
+          "note": "project-list.js line 472-475: Replaced alert() in the null-repo portal action guard with console.error() + silent return. The alert was disruptive for an operator-only edge case. The fix is non-behavioral — the action was already being aborted; only the feedback mechanism changed. QA validation remains intact."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T17:09:27Z",
+          "note": "project-list.js line 445: The one-shot mousedown handler registration uses document._projectListDocHandlerInstalled as a boolean flag on the native DOM object. This pollutes the global document object. A module-level boolean var would be cleaner. Not a blocker — pattern is consistent with the rest of the SPA's event registration style."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T17:09:27Z",
+          "note": "project-list.js line 138 and utils.js line 85: The composite cache key string repo+'/'+slug is constructed inline in two separate places. A small helper function makeProjectCacheKey(repo, slug) exported from utils.js would eliminate the risk of format drift if the separator ever changes. Non-blocking — current usages are consistent."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-05-31T17:09:27Z",
+          "note": "[documentation-forward] ProjectNameCache in utils.js has a JSDoc mentioning 'bare slug for legacy callers' but there is no documentation explaining which callers are legacy, when they will be migrated (WP-013 for project-detail.js), or what the migration path is. Update the JSDoc to reference WP-013 or add a TODO comment pointing to the follow-up work."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-31T17:09:44Z",
+      "completed_at": "2026-05-31T17:12:40Z",
+      "duration_ms": 176000,
+      "summary": [
+        "Addressed all documentation gaps for WP-009 (namespaced project links in project-list view).",
+        "documentation-forward item resolved: Updated ProjectNameCache JSDoc in utils.js — both set() and get() now explicitly identify 'project-detail.js' as the legacy caller pending WP-013 migration, replacing the vague 'legacy callers' reference.",
+        "Updated file-tree.md utils.js description to enumerate all exported symbols: added formatDuration, ProjectNameCache IIFE (composite repo/slug key scheme), and breadcrumb() fluent builder.",
+        "Updated file-tree.md project-list.js description to document: namespaced #/projects/{repo}/{slug} routing (WP-009), null-repo read-only row behavior (console.warn on render, console.error + silent skip on action), and ProjectNameCache population with repo/slug key.",
+        "CTX context regenerated — .context/mcp-server/manifest-file-tree.md and .context/mcp-server/source-gui-frontend.md updated to reflect all changes (32 documents rebuilt cleanly)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/utils.js",
+          "mcp-server/docs/agents/project-manifest/file-tree.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T17:12:40Z",
+          "note": "ProjectNameCache has no TTL or eviction policy — pre-existing debt noted in implementation pipeline. Documented current behavior accurately; eviction strategy is a separate follow-up."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-31T17:12:40Z",
+  "last_updated": "2026-05-31T17:12:40Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-31T17:03:32Z",
+      "notes": [
+        "Pre-existing test failures in tests/gui/dialogue-qa.test.ts (17 tests) are caused by WP-001's api-client migration: those tests still call API.getDialogues(slug, wpId) and API.getDialogueContent(slug, filename) with old 2-param signatures and expect bare-slug URLs. The QA pipeline should update those test signatures to (repo, slug, ...) and update URL assertions to the namespaced form.",
+        "ProjectNameCache in utils.js now uses repo+'/'+slug as the key. project-detail.js (WP-013) still calls ProjectNameCache.set(slug, ...) with the bare slug — breadcrumbs shown from the detail view will fall back to displaying the slug until WP-013 is implemented.",
+        "The dialogue-qa test failures were confirmed to be pre-existing (the tests pass only when api-client.js is reverted to its pre-WP-001 state via git stash)."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-31T17:08:11Z",
+      "notes": [
+        "All 4 acceptance criteria verified PASS. project-list.js correctly generates namespaced #/projects/{repo}/{slug} links throughout — in table rows, action-menu view links, and portal button data attributes. Null-repo projects render as read-only rows. API calls pass (repo, slug). No bare-slug links remain. The 17 dialogue-qa test failures are pre-existing WP-001 regressions and must not block code review.",
+        "Minor open items (non-blocking): (1) alert() in null-repo portal guard — consider console.error + silent skip; (2) no dedicated jsdom unit tests for project-list.js — coverage gap for future maintainers."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-31T17:09:27Z",
+      "notes": [
+        "All 4 acceptance criteria are met and confirmed. One Fix-Forward was applied: alert() in null-repo portal guard replaced with console.error + silent skip (non-behavioral). Open documentation gap: ProjectNameCache JSDoc mentions 'legacy callers' without specifying which callers or migration timeline — tag for Documentation agent. Pre-existing 17 dialogue-qa.test.ts failures remain scoped to WP-001 api-client migration — not introduced by this WP."
+      ]
+    }
+  ]
+}

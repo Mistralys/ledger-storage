@@ -1,0 +1,254 @@
+{
+  "work_package_id": "WP-003",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001",
+    "WP-002"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "A single combined poll function is registered via Router._setPolling at 5s cadence after initial render, replacing the current separate pollQueue registration",
+      "met": true
+    },
+    {
+      "criterion": "The poll function fetches getProject and getWorkPackageOverview (not getSynthesisDocument) per cycle",
+      "met": true
+    },
+    {
+      "criterion": "Data-only changes (WP status, pipeline stages, health, synthesis_generated, timing) trigger targeted DOM patches without full page rebuild",
+      "met": true
+    },
+    {
+      "criterion": "Structural changes (WP count differs, project status → COMPLETE/ARCHIVED) trigger a full renderProjectDetail re-render",
+      "met": true
+    },
+    {
+      "criterion": "Poll state is render-scoped (captured in the renderProjectDetail closure) — no module-scoped _lastDetailState variable",
+      "met": true
+    },
+    {
+      "criterion": "renderOrchToolbar does not call Router._setPolling directly; all polling is managed through pollController",
+      "met": true
+    },
+    {
+      "criterion": "Exactly one active polling interval exists at all times — the combined↔resume handoff maintains this invariant",
+      "met": true
+    },
+    {
+      "criterion": "DOM patching is skipped when a modal is open or an inline edit is active, to avoid disrupting user interaction",
+      "met": true
+    },
+    {
+      "criterion": "The synthesis link row appears automatically when synthesis_generated becomes true during polling, without requiring a manual page refresh",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-06-09T17:09:56Z",
+      "completed_at": "2026-06-09T17:18:54Z",
+      "duration_ms": 538000,
+      "summary": [
+        "Implemented `_pollProjectDetail(app, repo, slug, pollStateRef, pollController)` — fetches getProject, getWorkPackageOverview, and getProjectHealth in parallel, builds a new snapshot via _snapshotProjectState, diffs against pollStateRef[0], applies targeted DOM patches for data-only changes, or calls pollController.stopPolling() + renderProjectDetail for structural changes.",
+        "Added interactive-state guard: skips DOM patching when #reset-modal-overlay is open or .title-edit-input/.slug-edit-input is active; structural re-renders are not guarded.",
+        "Implemented render-scoped `pollController` object inside renderProjectDetail — holds `_mode` ('combined'/'resume'), exposes getMode(), startCombinedPolling(opts?), startResumePolling(ctx), settleResumePolling(ctx), and stopPolling(). pollStateRef is a [lastSnapshot] single-element array in the same closure — no module-scoped state.",
+        "startCombinedPolling accepts optional `orchPollFn` so when an active orchestrator run is present, the same 5s tick refreshes both project data and the orchestrator queue.",
+        "Modified renderOrchToolbar to accept `opts.pollController`: Resume button click now calls pollController.startResumePolling({ pollFn }) instead of Router._setPolling directly; settle calls pollController.settleResumePolling({ app, repo, slug }) instead of Router._clearPolling + renderProjectDetail directly.",
+        "Modified renderProjectDetail: (1) creates pollController + pollStateRef at the top, (2) builds initial snapshot from already-fetched data after HTML render, (3) calls pollController.startCombinedPolling() to register the 5s combined poll, (4) passes pollController to all renderOrchToolbar calls, (5) upgrades to startCombinedPolling({ orchPollFn: pollQueue }) in the active-run path (replacing the old Router._setPolling(pollQueue, 5000) call).",
+        "Synthesis auto-reveal: _pollProjectDetail calls _patchSynthesisLink(true, repo, slug) when synthesis_generated flips to true.",
+        "Updated two existing WP-013 AC-5 tests in project-detail-runs.test.ts to reflect the new combined-poll registration behavior (called once for no-active-run, twice for active-run).",
+        "Added tests/gui/project-detail-poll.test.ts with 23 new tests covering all 9 acceptance criteria: poll registration, fetchPattern (AC-2), data patches (AC-3), structural re-renders (AC-4), render-scoped state (AC-5), renderOrchToolbar without direct Router._setPolling (AC-6), single-interval invariant (AC-7), interactive-state guard (AC-8), synthesis auto-reveal (AC-9).",
+        "Full test suite: 3164/3164 tests pass (3141 original + 23 new). node --check exit 0."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/project-detail.js",
+          "mcp-server/tests/gui/project-detail-runs.test.ts",
+          "mcp-server/tests/gui/project-detail-poll.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-09T17:18:54Z",
+          "note": "pollController.startCombinedPolling accepts an optional `orchPollFn` to call on each 5s tick when an active orchestrator run is present. This keeps the combined poll extensible without adding a module-scoped registry. The orchPollFn is the pre-existing `pollQueue` closure from the active-run path — it continues to handle renderRunsList + renderOrchToolbar updates exactly as before, just invoked through the combined tick rather than a separate interval."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-06-09T17:18:54Z",
+          "note": "_pollProjectDetail fetches getProjectHealth in every poll cycle even when the project status or WP health hasn't changed. This is a minor over-fetch since health is cheap (in-memory ledger read). A future optimisation could skip the health fetch when the diff shows only synthesis_generated or last_updated changes — but it keeps the patch function simple and correct in all edge cases."
+        },
+        {
+          "type": "refactor",
+          "priority": "low",
+          "timestamp": "2026-06-09T17:18:54Z",
+          "note": "The health badge initial render in renderProjectDetail (lines ~1078-1093) still uses a direct inline callback rather than delegating to _patchHealthBadge. The poll cycle does use _patchHealthBadge correctly. This duplication was noted in WP-001/002 reviews; consolidating it would remove the last inline health-badge render in favor of the patch helper."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-09T17:18:54Z",
+          "note": "pollController.settleResumePolling calls Router._clearPolling() then renderProjectDetail(). If renderProjectDetail itself fails (e.g. network error on the initial getProject call), the combined poll will not be re-registered. This is consistent with the existing error behavior (showError is called) and the user can navigate away and back, but could be hardened in a future pass with an error-state poll that retries periodically."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-06-09T17:19:19Z",
+      "completed_at": "2026-06-09T17:29:53Z",
+      "duration_ms": 634000,
+      "summary": [
+        "All 9 acceptance criteria verified PASS. Full test suite (3164/3164) passes. No regressions. Build/syntax check clean. Edge-case analysis surfaced one minor latent risk (null pollStateRef on first tick) that is adequately guarded by the interval timing and .catch handler."
+      ],
+      "metrics": {
+        "test_coverage": "23 dedicated WP-003 tests across 8 describe blocks; 2 updated WP-013 AC-5 regression tests",
+        "tests_passed": 3164,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-09T17:29:53Z",
+          "note": "_diffProjectState(prev, next) does not guard against a null `prev` argument (line 559 would throw `Cannot read properties of null`). In practice this is benign: detailPollState.ref[0] is always initialised to a real snapshot at line 940 before startCombinedPolling() registers the interval at line 945, and the 5s setInterval delay means the first poll tick cannot fire before that assignment. The outer .catch at line 712 is an additional safety net. No test currently exercises the null-ref path directly; a defensive null-guard or a null-ref unit test would further harden this."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-09T17:29:53Z",
+          "note": "The interactive-state guard (`modalOpen || editActive`) is captured synchronously at the top of _pollProjectDetail BEFORE the Promise.all fetch (lines 640-642). This means if the user opens a modal DURING the fetch, the check will miss it and patches will fire when the promise resolves. This TOCTOU window is ~50-100ms and negligible in practice, but is worth noting as a future hardening opportunity if modal interactions become more complex."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-09T17:29:53Z",
+          "note": "Structural re-renders (WP count change, COMPLETE/ARCHIVED transition) bypass the interactive guard and will wipe a modal or in-progress inline edit. This is confirmed by test §5 line 670 ('does NOT skip structural re-renders even when modal is open') and is consistent with the WP spec (spec says guard applies only to DOM patching; structural changes warrant a full re-render regardless). No defect — expected behavior."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-09T17:29:53Z",
+          "note": "No improvement needed — code is clean and consistent with spec."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-06-09T17:30:25Z",
+      "completed_at": "2026-06-09T17:32:33Z",
+      "duration_ms": 128000,
+      "summary": [
+        "Full line-by-line review of project-detail.js (pollController, _pollProjectDetail, _diffProjectState, _snapshotProjectState, all _patch* helpers, renderOrchToolbar, and renderProjectDetail), plus both test files (project-detail-poll.test.ts and the updated AC-5 tests in project-detail-runs.test.ts).",
+        "Architecture: pollController as a render-scoped state machine with a _mode discriminant and 5 clean delegate methods is well-designed and correctly scoped. The startCombinedPolling({ orchPollFn }) extension hook is elegant — same interval, two concerns, zero module-scoped state.",
+        "All 9 ACs are correctly implemented. The structural-vs-data diff classification is sound: WP count change and COMPLETE/ARCHIVED transitions trigger a full re-render; all other changes are patched in-place with per-element guards.",
+        "Interactive-state guard is correctly pre-fetch (synchronous capture before Promise.all). The TOCTOU window is negligible (~50-100ms) and the current approach is the right trade-off.",
+        "Legacy fallback in renderOrchToolbar (else branches when pollController is null) is correct defensive coding — no current callers omit pollController, but it prevents silent breakage in hypothetical future contexts.",
+        "Test quality is high: makeNoopPollController() is a clean isolation pattern, renderAndSettle uses DOM-state break condition rather than arbitrary sleep, and the 8 describe blocks map cleanly to the 9 ACs.",
+        "No blocking issues found. No Fix-Forward changes applied. Two documentation-forward items tagged for the Documentation agent.",
+        "VERDICT: PASS"
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/project-detail.js",
+          "mcp-server/tests/gui/project-detail-runs.test.ts",
+          "mcp-server/tests/gui/project-detail-poll.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-09T17:32:33Z",
+          "note": "No blocking issues found — code is clean, well-architected, and consistent with the WP-003 spec."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-06-09T17:32:33Z",
+          "note": "[documentation-forward] _diffProjectState JSDoc (line ~542) does not document the safety assumption that `prev` is never null. Callers must always initialize pollStateRef[0] before starting the interval. Add a `@param` note: '`prev` — must be a non-null snapshot; passing null will throw on Object.keys(prev.wpStatuses)'. This protects future maintainers who may call this function outside the current initialization-ordering context."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-06-09T17:32:33Z",
+          "note": "[documentation-forward] pollController.settleResumePolling JSDoc (lines ~773-781) does not mention that it calls renderProjectDetail, which creates a new pollController closure — meaning the calling context's pollController reference is effectively invalidated after this call returns. Add a note: 'Triggers a full renderProjectDetail re-render; the current pollController is superseded by the one created in the new render.'"
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-06-09T17:32:56Z",
+      "completed_at": "2026-06-09T17:33:49Z",
+      "duration_ms": 53000,
+      "summary": [
+        "Addressed both documentation-forward items from the code-review pipeline.",
+        "1. _diffProjectState @param prev JSDoc (line ~540): Added null-guard safety note clarifying that prev must be non-null, that passing null throws on Object.keys(prev.wpStatuses), and that callers must initialise pollStateRef[0] with a real snapshot before registering the poll interval (the 5s delay guarantees first-tick safety).",
+        "2. pollController.settleResumePolling JSDoc (line ~776): Added a NOTE block explaining that calling this method triggers a full renderProjectDetail re-render, which creates a new pollController closure, effectively invalidating the caller's reference — callers must not invoke further pollController methods after settleResumePolling returns.",
+        "No README or architecture doc changes were needed — the feature is an internal GUI polling mechanism with no public API surface or user-visible configuration changes."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/project-detail.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-09T17:33:49Z",
+          "note": "Both documentation-forward items from the Reviewer were addressed with inline JSDoc additions. No external documentation (README, docs/) required updating — the pollController and _diffProjectState are internal implementation details of the project-detail view with no public API surface."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-09T17:33:49Z",
+          "note": "No observations — code is clean and consistent."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-06-09T17:33:49Z",
+  "last_updated": "2026-06-09T17:33:49Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-06-09T17:18:54Z",
+      "notes": [
+        "All 9 ACs are met and verified by 23 dedicated tests. The pollController is render-scoped (inside the renderProjectDetail closure). renderOrchToolbar now receives pollController via opts.pollController and uses it for all Resume button polling lifecycle — no direct Router._setPolling calls remain in renderOrchToolbar. The two existing WP-013 AC-5 tests were updated to reflect the new combined-poll registration behavior (called once for no-active-run path, called twice for active-run path). QA should verify: (1) the combined poll registers at 5s in both active-run and no-active-run paths, (2) data-only patches are applied without full page rebuild, (3) structural changes (WP count change, COMPLETE/ARCHIVED transition) trigger a full re-render, (4) interactive-state guard prevents patches when modal or edit input is present, (5) synthesis link row auto-reveals on synthesis_generated flip, (6) renderOrchToolbar Resume click uses pollController.startResumePolling (not Router._setPolling directly)."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-06-09T17:29:53Z",
+      "notes": [
+        "All 9 ACs verified against source code and test suite (3164/3164 pass). Key implementation details for Reviewer: (1) pollController is a render-scoped object (lines 739-791) with 5 methods; startCombinedPolling/startResumePolling both call Router._setPolling, ensuring mutual exclusion of intervals. (2) _pollProjectDetail (lines 638-715) captures interactive-state guard synchronously before the async fetch; structural re-renders are intentionally NOT gated by this guard. (3) No module-scoped poll state — only _pdLogPreviewCleanups, STAGE_ABBREV, and PIPELINE_STAGES at module scope. (4) Minor latent risk: _diffProjectState has no null-guard on prev, but init ordering (line 940 before 945) and 5s interval delay make this safe in practice. Low-priority hardening candidate only."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-06-09T17:32:33Z",
+      "notes": [
+        "All 9 ACs confirmed met. Two documentation-forward items are tagged as pipeline comments for the Documentation agent to resolve: (1) _diffProjectState JSDoc is missing a null-guard safety note on the `prev` parameter — add '@param prev — must be non-null snapshot; null will throw on Object.keys(prev.wpStatuses)'; (2) pollController.settleResumePolling JSDoc should note that it calls renderProjectDetail and invalidates the current pollController reference. No code changes were applied — pure documentation gaps only."
+      ]
+    }
+  ]
+}

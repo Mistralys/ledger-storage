@@ -1,0 +1,189 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-002.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "checkRevalidationGuard() fires through startPipeline (at least one integration test)",
+      "met": true
+    },
+    {
+      "criterion": "PM agent_role bypasses role check for all pipeline types",
+      "met": true
+    },
+    {
+      "criterion": "rework_counts.qa increments when a QA pipeline is retried (not rework_counts.implementation)",
+      "met": true
+    },
+    {
+      "criterion": "rework_counts.implementation increments when an implementation pipeline is retried",
+      "met": true
+    },
+    {
+      "criterion": "Circuit breaker triggers based on per-type count",
+      "met": true
+    },
+    {
+      "criterion": "Auto-cancelled pipelines are excluded from rework detection",
+      "met": true
+    },
+    {
+      "criterion": "Downstream-triggered rework increments the correct per-type rework_counts key",
+      "met": true
+    },
+    {
+      "criterion": "developerReworkTypes in workflow-helpers.ts is derived from FAIL_ROUTING_MAP",
+      "met": true
+    }
+  ],
+  "revision": 1,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-02-27T16:41:01Z",
+      "completed_at": "2026-02-27T16:51:09Z",
+      "summary": [
+        "Gold Nugget M-1: Fixed developerReworkTypes in hasDownstreamReengagedSince() to derive from FAIL_ROUTING_MAP at runtime instead of hardcoded array. Added cross-reference comment to FAIL_ROUTING_MAP in pipeline-maps.ts.",
+        "Made agent_role required in StartPipelineSchema (was optional). PM override: agent_role === 'Project Manager' bypasses role check for all pipeline types, adds [PM Override] to pipeline summary.",
+        "Wired checkRevalidationGuard() call in startPipeline after prerequisite check (step 4b). Guard fires only when a prior run of that pipeline type exists and prereq PASS is stale relative to upstream rework.",
+        "Fixed rework detection in startPipeline: replaced simple same-type FAIL check with combined isDirectRework || isDownstreamRework using hasDownstreamFail(). Auto-cancelled pipelines excluded via !p.auto_cancelled filter.",
+        "Fixed rework counting to be per-pipeline-type: wp.rework_counts[args.type] incremented. Legacy rework_count scalar kept in sync only for implementation type (backward-compat).",
+        "Fixed circuit breaker to use per-type counter: effectiveReworkCount = wp.rework_counts?.[args.type] ?? wp.rework_count ?? 0.",
+        "Exported startPipeline through _internal for integration testing.",
+        "Updated pipeline.test.ts agent_role guard tests: PM Override test added, backward-compat test replaced, Gold Nugget M-2 comment added to inlined guard simulation.",
+        "Created tests/tools/start-pipeline-guards.test.ts: 13 new integration tests covering PM override, revalidation guard, per-type rework counting, downstream rework, auto-cancelled exclusion, circuit breaker, and FAIL_ROUTING_MAP derivation.",
+        "All 637 tests pass, 0 TypeScript errors."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/utils/workflow-helpers.ts",
+          "mcp-server/src/utils/pipeline-maps.ts",
+          "mcp-server/src/tools/pipeline.ts",
+          "mcp-server/tests/tools/pipeline.test.ts",
+          "mcp-server/tests/tools/start-pipeline-guards.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T17:51:00Z",
+          "note": "The revalidation guard (checkRevalidationGuard) is unreachable for the qa pipeline type via startPipeline normal flow: if an impl rework is IN_PROGRESS, startPipeline's prerequisite check (step 4) blocks qa with 'need PASS impl first'; if it completed as FAIL, same block. The guard is only triggerable in practice for code-review (and documentation), where the prerequisite (qa) can have a PASS while upstream impl has been reworked. This asymmetry should be documented in the API surface or a comment in startPipeline."
+        },
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-02-27T17:51:00Z",
+          "note": "The existing rework-circuit-breaker.test.ts contains a `simulateStartPipeline` function that duplicates the old per-type rework logic. After WP-002, those simulated tests test stale code (always increments `implementation` counter, ignores per-type). The tests still pass because they test their own simulation, not the live code. These tests should be deprecated or updated to call `_internal.startPipeline` directly."
+        },
+        {
+          "type": "refactor",
+          "priority": "low",
+          "timestamp": "2026-02-27T17:51:00Z",
+          "note": "process.argv injection is used in start-pipeline-guards.test.ts to override the ledger root for startPipeline integration tests. This is a pragmatic workaround for the lack of a store injection point in the tool function. A cleaner long-term approach would be a factory/DI pattern for LedgerStore creation in tool functions."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-02-27T17:01:59Z",
+      "completed_at": "2026-02-27T17:02:46Z",
+      "summary": [
+        "All 8 acceptance criteria verified via source code inspection and live test execution.",
+        "645/645 tests pass — no regressions.",
+        "73 targeted pipeline guard/test suite tests all pass with verbose per-test confirmation of each AC.",
+        "developerReworkTypes dynamically derived from FAIL_ROUTING_MAP confirmed at workflow-helpers.ts:227.",
+        "Medium-priority debt flagged: rework-circuit-breaker.test.ts uses stale simulation stub — tests pass but do not exercise live code."
+      ],
+      "metrics": {
+        "test_coverage": "All 8 AC scenarios have dedicated integration tests",
+        "tests_passed": 645,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-02-27T18:02:30Z",
+          "note": "rework-circuit-breaker.test.ts uses a simulateStartPipeline stub that still hardcodes 'implementation' counter increments. These tests pass only because they test their own simulation, not live code. They should be updated or deprecated to call _internal.startPipeline directly after WP-002 (flagged by Developer already)."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T18:02:30Z",
+          "note": "No observations — code is clean and consistent. Integration tests in start-pipeline-guards.test.ts cover all guard paths thoroughly, and FAIL_ROUTING_MAP derivation has a dedicated regression guard test."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-02-27T17:04:57Z",
+      "completed_at": "2026-02-27T17:06:21Z",
+      "summary": [
+        "Reviewed pipeline.ts startPipeline, workflow-helpers.ts hasDownstreamReengagedSince, pipeline-maps.ts FAIL_ROUTING_MAP, and both test files.",
+        "PM Override gate (isPmOverride = agent_role === 'Project Manager') is correctly placed before the role check and propagated to summary via '[PM Override]' marker.",
+        "rework_counts per-type pattern is canonical: spread-assign to avoid mutation aliasing, legacy rework_count scalar kept in sync only for 'implementation' type for backward compatibility.",
+        "Circuit breaker correctly reads post-increment count; abortable write semantics prevent the incremented count from being persisted on circuit-breaker throw.",
+        "FAIL_ROUTING_MAP derivation in hasDownstreamReengagedSince eliminates the hardcoded array drift risk — architecture improvement with a regression guard test.",
+        "start-pipeline-guards.test.ts provides 13 focused integration tests covering all 8 acceptance criteria. rework-circuit-breaker.test.ts simulation stub is stale but non-blocking (medium debt flagged)."
+      ],
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-02-27T18:15:00Z",
+          "note": "rework-circuit-breaker.test.ts uses a self-contained simulateStartPipeline stub that hardcodes 'implementation' counter increments. These tests pass only because they test their own simulation, not live code. With start-pipeline-guards.test.ts now providing direct _internal.startPipeline integration coverage, the old simulation tests should be updated or deprecated. Confirmed independently by QA; this is the most actionable non-blocking item from the WP-002 diff."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T18:15:00Z",
+          "note": "StartPipelineSchema.agent_role .describe() still reads 'If provided, validated against the pipeline type owner' but agent_role is now required (no .optional()). The describe hint is stale. Not a behavioral issue but could mislead callers skimming the schema comment."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T18:15:00Z",
+          "note": "Circuit breaker ordering: rework_counts is incremented before the circuit-breaker check, so the check fires on the NEW count. Because updateWorkPackageWithSync aborts the write on throw, the increment is discarded when the breaker fires. This is correct but the sequencing (increment then check) is non-obvious — a brief comment at step 6b explaining 'uses the post-increment count; throw aborts the write so the increment is not persisted' would aid future maintainers."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T18:15:00Z",
+          "note": "No observations — core logic is clean. FAIL_ROUTING_MAP derivation removes a historical drift risk, PM override pattern is well-factored with isPmOverride boolean, and the integration test harness in start-pipeline-guards.test.ts provides comprehensive guard coverage."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-02-27T17:11:27Z",
+      "completed_at": "2026-02-27T17:13:49Z",
+      "summary": [
+        "Updated api-surface.md (ledger_start_pipeline): agent_role changed from optional to required; added PM Override exception; replaced rework circuit breaker description with accurate per-type rework detection (direct + downstream, auto-cancelled excluded); added revalidation guard note.",
+        "Updated constraints.md (constraint 21): rewrote rework detection to cover direct and downstream rework with auto-cancelled exclusion; corrected circuit breaker effective count to rework_counts?.[type] (per-type, not hardcoded implementation); narrowed legacy dual-write note to implementation type only.",
+        "Updated data-flows.md (Flow 4): added agent_role to entry point signature; added step 4 (role check + PM Override) and step 4b (revalidation guard); rewrote step 5 rework detection with direct/downstream rework and auto-cancelled exclusion; renumbered subsequent steps."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/constraints.md",
+          "mcp-server/docs/agents/project-manifest/data-flows.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T17:15:00Z",
+          "note": "No observations — all three manifest docs now accurately reflect the WP-002 changes: agent_role is documented as required with PM Override exception, rework detection is updated to cover direct + downstream rework with auto-cancelled exclusion, circuit breaker uses per-type count, and legacy dual-write scope is narrowed to implementation type only."
+        }
+      ]
+    }
+  ]
+}

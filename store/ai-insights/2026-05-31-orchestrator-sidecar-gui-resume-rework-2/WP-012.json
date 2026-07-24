@@ -1,0 +1,233 @@
+{
+  "work_package_id": "WP-012",
+  "work_package_file": "work/WP-007.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001",
+    "WP-008",
+    "WP-006"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "`insights.js` project links use `#/projects/{repo}/{slug}` when `repository_name` is available",
+      "met": true
+    },
+    {
+      "criterion": "`knowledge.js` origin-plan links use `#/projects/{repo}/{slug}` when `repository_name` is available",
+      "met": true
+    },
+    {
+      "criterion": "Entries with null `repository_name` do not generate broken links — graceful fallback is applied",
+      "met": true
+    },
+    {
+      "criterion": "No link in either view still uses the bare-slug form without repo",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-31T17:39:53Z",
+      "completed_at": "2026-05-31T17:44:52Z",
+      "duration_ms": 299000,
+      "summary": [
+        "Updated insights.js to generate namespaced project links (#/projects/{repo}/{slug}) when repository_name is non-null; falls back to plain text (no broken link) when null.",
+        "Updated knowledge.js to generate namespaced origin-plan links (#/projects/{repo}/{slug}) when both origin_plan and repository_name are present; falls back to a plain <span> (no anchor) when repository_name is null.",
+        "Added new test file tests/gui/insights-knowledge-links.test.ts with 9 tests covering all 4 acceptance criteria using jsdom + vm.runInThisContext (same approach as client-rendering.test.ts).",
+        "Full test suite: 93 files, 2843 tests — all passing, zero regressions."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/insights.js",
+          "mcp-server/gui/public/views/knowledge.js",
+          "mcp-server/tests/gui/insights-knowledge-links.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T17:44:52Z",
+          "note": "insights.js buildCards() constructs HTML via string concatenation throughout. A helper function like `projectHref(repo, slug)` could reduce duplication if other card elements ever need namespaced links. Not in scope for this WP but worth noting."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-05-31T17:44:52Z",
+          "note": "knowledge.js applyFilters() silently discards items whose scope doesn't match activeTab; there is no empty-state indicator for the 'repository' tab when no repository insights exist. Pre-existing issue, not introduced here."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-05-31T17:44:52Z",
+          "note": "knowledge.js uses a mix of `/* ── comment ── */` (dense divider style) and standard `//` line comments. Not a bug, but slightly inconsistent with the rest of the file suite. No change needed."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-31T17:45:37Z",
+      "completed_at": "2026-05-31T17:47:34Z",
+      "duration_ms": 117000,
+      "summary": [
+        "Build check: no compilation errors — browser-side JS files load cleanly in jsdom via vm.runInThisContext.",
+        "AC-1 PASS: insights.js generates #/projects/{encodeURIComponent(repo)}/{encodeURIComponent(slug)} anchor when repository_name is non-null (lines 40-42).",
+        "AC-2 PASS: knowledge.js generates #/projects/{encodeURIComponent(repo)}/{encodeURIComponent(origin_plan)} anchor when both origin_plan and repository_name are non-null (lines 198-202).",
+        "AC-3 PASS: insights.js falls back to escapeHtml(project_slug) plain text when repository_name is null/undefined/empty (falsy check). knowledge.js falls back to <span> when repository_name is falsy, empty string when origin_plan is absent.",
+        "AC-4 PASS: grep of all *.js view files confirms no bare-slug #/projects/{slug} pattern in insights.js or knowledge.js — both use encodeURIComponent for both segments.",
+        "Dedicated test suite (insights-knowledge-links.test.ts): 9 tests, all PASS.",
+        "Full regression: 93 test files, 2843 tests — all PASS, zero regressions."
+      ],
+      "metrics": {
+        "test_coverage": "93 files",
+        "tests_passed": 2843,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T17:47:34Z",
+          "note": "insights.js falsy check on repository_name (`e.repository_name ? ...`) handles null, undefined, and empty string identically — all fall back to plain text. This is slightly broader than the spec's 'null' wording but behaves correctly and defensively for all API response shapes."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-31T17:47:34Z",
+          "note": "Edge case verified: undefined project_slug in insights.js fallback path renders the string 'undefined' as text via escapeHtml(e.project_slug). This is a pre-existing pattern across the entire view suite and is not introduced by this WP — API schema guarantees project_slug is always populated."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T17:47:34Z",
+          "note": "No test covers the case where project_slug itself contains special characters requiring URL encoding in the insights.js namespaced link path. The URL-encoding test does cover this for knowledge.js origin_plan. Low risk since slugs are plan directory names which are typically URL-safe."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-31T17:48:04Z",
+      "completed_at": "2026-05-31T17:48:49Z",
+      "duration_ms": 45000,
+      "summary": [
+        "Reviewed insights.js (lines 40-42): conditional projectLink construction is correct — falsy guard on repository_name is appropriately defensive, encodeURIComponent applied to both segments, escapeHtml fallback applied consistently with surrounding HTML generation patterns.",
+        "Reviewed knowledge.js (lines 198-202): nested ternary for originPlanHtml is readable and correctly handles three cases: no origin_plan → empty string, origin_plan present but no repository_name → <span> fallback, both present → namespaced anchor. No off-by-one or logic errors.",
+        "Reviewed test file insights-knowledge-links.test.ts (9 tests): all four acceptance criteria are covered including URL-encoding of special characters, repository_name null/undefined fallbacks, bare-slug absence check, and link text content. Test structure (jsdom + vm.runInThisContext) is consistent with the established project pattern.",
+        "No blocking issues found. No Fix-Forward changes applied. One Documentation-Forward item tagged."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/insights.js",
+          "mcp-server/gui/public/views/knowledge.js",
+          "mcp-server/tests/gui/insights-knowledge-links.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T17:48:49Z",
+          "note": "insights.js lines 40-42: the falsy guard `e.repository_name ? ... : ...` is slightly broader than the spec's 'null' wording but is the correct defensive choice — it silently handles null, undefined, and empty string from any API response shape without special-casing. Pattern is consistent with the existing code style in this file."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T17:48:49Z",
+          "note": "knowledge.js lines 198-202: the nested ternary `ins.origin_plan ? (ins.repository_name ? <anchor> : <span>) : ''` is concise and readable for three cases. If a fourth branch is ever needed (e.g., global-scope origin link without a repository), extraction into a named helper `buildOriginPlanHtml(ins)` would improve readability."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-31T17:48:49Z",
+          "note": "[documentation-forward] Neither insights.js nor knowledge.js has inline comments explaining the namespaced link format `#/projects/{repo}/{slug}`. A one-line comment at the projectLink / originPlanHtml assignment site (e.g., `/* namespaced link: requires repository_name so the router can scope the project view */`) would help future contributors understand why the fallback exists and when it triggers."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T17:48:49Z",
+          "note": "Test: insights-knowledge-links.test.ts line 284 asserts `app.innerHTML.toContain('<span style=\"font-size:12px\">Origin:')` — this hard-codes the inline style string. If the style is refactored to a class, this test will fail. Low risk for now but worth noting as a brittleness vector."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-31T17:49:07Z",
+      "completed_at": "2026-05-31T17:51:14Z",
+      "duration_ms": 127000,
+      "summary": [
+        "Addressed the documentation-forward item from the code-review pipeline: added inline comments at the projectLink assignment site in insights.js (lines 40–43) and the originPlanHtml assignment site in knowledge.js (lines 198–203), explaining the namespaced link format (#/projects/{repo}/{slug}), why repository_name is required, and when the fallback path triggers.",
+        "insights.js comment explains: requires repository_name for router scoping; null repository_name falls back to plain escaped text (no anchor, no broken link).",
+        "knowledge.js comment covers all three cases: no origin_plan → empty string; origin_plan + repository_name → namespaced anchor; origin_plan without repository_name → <span> fallback.",
+        "Added v1.32.2 changelog entry in mcp-server/changelog.md summarising the namespaced link changes in both views and the new test file.",
+        "No README or external API reference updates were required — the existing mcp-server/README.md Insights and Knowledge page descriptions already document the high-level feature accurately; the inline comments capture the implementation-level detail that was missing."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/insights.js",
+          "mcp-server/gui/public/views/knowledge.js",
+          "mcp-server/changelog.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T17:51:14Z",
+          "note": "documentation-forward resolved: both insights.js (projectLink) and knowledge.js (originPlanHtml) now have comments that explain the namespaced link format and fallback rationale. Future contributors will understand why repository_name is checked and what each branch means."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T17:51:14Z",
+          "note": "No README gaps found. The mcp-server/README.md already accurately describes the Insights page (#/insights) and Knowledge page (#/knowledge) at the feature level. The inline code comments added here fill the implementation-detail gap identified during code review."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-31T17:51:14Z",
+  "last_updated": "2026-05-31T17:51:14Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-31T17:44:52Z",
+      "notes": [
+        "insights.js: line 40-42 replaced bare-slug anchor with conditional that builds #/projects/{repo}/{slug} when repository_name is non-null; falls back to escapeHtml(project_slug) plain text when null.",
+        "knowledge.js: lines 198-202 replaced bare-slug origin_plan anchor with a ternary: namespaced anchor when repository_name is non-null, plain <span> when null, empty string when origin_plan itself is absent.",
+        "All changes are in mcp-server/gui/public/ (browser-side JS). No TypeScript server changes required.",
+        "Test coverage: tests/gui/insights-knowledge-links.test.ts — 9 tests, AC-1 through AC-4 covered for both views including URL-encoding of special characters."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-31T17:47:34Z",
+      "notes": [
+        "All 4 acceptance criteria verified and passing. 9 dedicated tests + 2843 total regression tests all green. No blocking issues. Code is clean and safe for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-31T17:48:49Z",
+      "notes": [
+        "Code review PASS. No blocking issues. All four acceptance criteria confirmed met.",
+        "One [documentation-forward] item tagged: inline comments explaining the namespaced link format (#/projects/{repo}/{slug}) and the fallback rationale are missing in insights.js and knowledge.js. Please add brief comments at the projectLink and originPlanHtml assignment sites.",
+        "No source files were modified by the Reviewer — Fix-Forward had no eligible candidates."
+      ]
+    }
+  ]
+}

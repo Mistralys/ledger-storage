@@ -1,0 +1,241 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "Typing in the Knowledge page search input does not cause the input to lose focus between keystrokes.",
+      "met": true
+    },
+    {
+      "criterion": "getDistinctValues() is a single private helper inside renderKnowledge(); no inline category/project collection loops remain in render() or wireFilterBarEvents().",
+      "met": true
+    },
+    {
+      "criterion": "The focus guard is conditional (hadFocus check) — it must NOT unconditionally call .focus(), because renderList() is triggered by card actions (edit, cancel, delete, move) where stealing focus would be a UX regression.",
+      "met": true
+    },
+    {
+      "criterion": "All existing tests pass with zero regressions.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-29T15:07:38Z",
+      "completed_at": "2026-05-29T15:09:27Z",
+      "duration_ms": 109000,
+      "summary": [
+        "Extracted getDistinctValues(insights) private helper inside renderKnowledge() that returns { categories, projects } as sorted arrays. Replaced the two inline collection loops (in render() and wireFilterBarEvents()) with calls to this single helper.",
+        "Added focus-preservation guard in renderList(): captures document.activeElement before the filter-bar innerHTML rebuild and, via a conditional hadFocus check on id === 'kn-query', restores focus to #kn-query afterward. The guard is strictly conditional — it does NOT fire when renderList() is triggered by card actions (edit, cancel-edit, delete, cancel-delete, move, cancel-move, confirm-delete, promote, confirm-move), preventing focus-theft UX regression on those paths.",
+        "All 87 test files / 2653 tests pass with zero regressions."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/knowledge.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-29T15:09:27Z",
+          "note": "In wireFilterBarEvents(), the categories/projects arrays computed via getDistinctValues(allInsights) are captured at wire-time (closure). If allInsights mutates (e.g. after a confirm-delete or promote action), the filter-bar event handlers will pass stale arrays to renderList(). The current code in wireEvents() shares the same pattern — both are consistent. A future improvement could have renderList() always derive fresh values from allInsights itself rather than accepting them as parameters, eliminating the stale-closure risk entirely."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-05-29T15:09:27Z",
+          "note": "knowledge.js (views/knowledge.js) uses ES5-only patterns (var, forEach, indexOf) throughout, which is intentional per project convention (plain-JS no-bundler constraint). However, Array.prototype.forEach is called on NodeList from document.querySelectorAll() in wireRangeSliders() — this works in modern browsers but would fail in IE11. Since the project targets modern browsers this is acceptable, but worth noting for completeness."
+        },
+        {
+          "type": "refactor",
+          "priority": "medium",
+          "timestamp": "2026-05-29T15:09:27Z",
+          "note": "renderList() currently rebuilds the entire filter-bar innerHTML on every call (even when only the card list changes, e.g. typing in the search box). This causes the category/project select elements to re-render on each keystroke. The focus-guard restores the search input focus as a band-aid, but a cleaner fix would be to only rebuild the filter bar when the tab changes (not on every renderList() call). This was out of scope for WP-001 but should be tracked as a follow-up."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-29T15:09:46Z",
+      "completed_at": "2026-05-29T15:11:43Z",
+      "duration_ms": 117000,
+      "summary": [
+        "All 4 acceptance criteria verified. 87 test files / 2653 tests pass with zero regressions. Static code analysis confirms correct implementation of both deliverables: getDistinctValues() private helper (single definition, two call sites) and conditional hadFocus focus-preservation guard in renderList(). Edge-case analysis reveals all identified failure paths are handled safely."
+      ],
+      "metrics": {
+        "test_coverage": "87 test files",
+        "tests_passed": 2653,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-29T15:11:43Z",
+          "note": "document.activeElement null-safety: hadFocus guard on line 252 uses short-circuit evaluation (activeEl && activeEl.id === 'kn-query'). Handles null activeElement (some iframe/browser edge cases) and document.body focus correctly — no crash risk."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-29T15:11:43Z",
+          "note": "#kn-query null-guard on line 271 (if (qEl) qEl.focus()) prevents crash if filter bar rebuild ever fails to produce the search input. Defensive and correct."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-29T15:11:43Z",
+          "note": "Tab-switch focus path verified: when clicking a tab button, activeElement is the tab button (not #kn-query), so hadFocus=false and focus stays on the tab button. No UX regression on tab switching."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-05-29T15:11:43Z",
+          "note": "Pre-existing (not introduced by WP-001): wireEvents() captures categories/projects via closure at initial render time. After confirm-delete or promote mutations to allInsights, the stale closure arrays are passed to renderList() — the filter dropdowns may momentarily show stale values. This is a pre-existing pattern consistent with the rest of the codebase and was already flagged by the Developer. Out of scope for this WP."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-29T15:12:08Z",
+      "completed_at": "2026-05-29T15:13:04Z",
+      "duration_ms": 56000,
+      "summary": [
+        "Code review PASS. Both WP-001 deliverables (getDistinctValues() helper extraction and conditional hadFocus focus-preservation guard) are correctly implemented, well-structured, and follow the project's plain-JS conventions. No blocking issues found. All four acceptance criteria remain met."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/knowledge.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-29T15:13:04Z",
+          "note": "getDistinctValues() is cleanly extracted: single definition at lines 58–68, two well-placed call sites (render() line 227, wireFilterBarEvents() line 295). The helper is pure (no side effects, returns a value object) and correctly typed for the project's plain-JS convention. No issues."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-29T15:13:04Z",
+          "note": "hadFocus focus guard (lines 250–273): capture-before-mutate pattern is correct. activeEl is captured synchronously before innerHTML is overwritten. The conditional at line 270 (if (hadFocus)) is the right guard boundary. The inline comment at lines 267–269 accurately explains the UX rationale — this is exemplary self-documenting code."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-29T15:13:04Z",
+          "note": "wireFilterBarEvents() (line 295) calls getDistinctValues(allInsights) fresh on every re-wire, ensuring the filter dropdowns always reflect current data. This correctly sidesteps the stale-closure issue that exists in the wireEvents() parameters. The design is internally consistent even if not perfectly DRY."
+        },
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-05-29T15:13:04Z",
+          "note": "Pre-existing architectural debt (not introduced by WP-001): renderList() rebuilds the entire filter-bar innerHTML on every call (line 263), even for card-only interactions like edit/cancel/move. The hadFocus guard is a correct compensating mechanism, but the underlying cause is the over-eager filter-bar rebuild. The medium-priority refactor path — only rebuild the filter bar on tab changes — was correctly deferred out of WP-001 scope. Recommend tracking as a standalone follow-up WP: 'Decouple card-list re-render from filter-bar re-render in renderList()'. This would eliminate the focus-guard workaround entirely and improve keystroke performance."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-29T15:13:04Z",
+          "note": "[documentation-forward] renderList() has grown to coordinate three concerns: card-list rebuild, filter-bar rebuild, and focus restoration. A JSDoc-style block comment above renderList() explaining its full contract (what it rebuilds, the hadFocus invariant, and when it is safe to call from card actions) would help future contributors avoid introducing regressions when modifying this function."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-05-29T15:13:04Z",
+          "note": "[documentation-forward] getDistinctValues() lacks an inline comment describing its return shape ({ categories: string[], projects: string[] }) and the sorted guarantee. A one-line comment above the function (consistent with the style used for formatConfidence and applyFilters) would improve discoverability."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-29T15:13:26Z",
+      "completed_at": "2026-05-29T15:14:27Z",
+      "duration_ms": 61000,
+      "summary": [
+        "Added a 3-line return-shape comment above getDistinctValues() describing its output contract: { categories: string[], projects: string[] }, sorted alphabetically, distinct non-empty values only.",
+        "Added a JSDoc-style block comment above renderList() documenting all three concerns it coordinates: (1) card-list rebuild, (2) filter-bar rebuild with re-wiring, and (3) the hadFocus focus-restoration invariant including an explicit explanation of why focus is not restored unconditionally (card action safety). Includes @param tags for both parameters.",
+        "Both documentation-forward items from the code-review pipeline were fully addressed. No other documentation gaps were found — the existing inline comments within the function bodies already explain the UX rationale clearly."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/knowledge.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-29T15:14:27Z",
+          "note": "getDistinctValues() comment (lines 58–60) follows the existing header-comment style used for formatConfidence and applyFilters — consistent with project conventions."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-29T15:14:27Z",
+          "note": "renderList() block comment (lines 251–269) documents the hadFocus invariant in detail, including the full list of card actions that must NOT steal focus. This gives future contributors a clear contract before modifying the function."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-29T15:14:27Z",
+          "note": "No README or external documentation changes were needed. WP-001 is an internal refactor (helper extraction + focus guard) with no public API or user-facing behaviour changes, so README coverage was already accurate."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-29T15:14:27Z",
+  "last_updated": "2026-05-29T15:14:27Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-29T15:09:27Z",
+      "notes": [
+        "WP-001 implementation is complete. The single modified file is mcp-server/gui/public/views/knowledge.js.",
+        "Two changes were made: (1) getDistinctValues() private helper extracted — replaces both inline category/project collection loops in render() and wireFilterBarEvents(). (2) Focus-preservation guard added to renderList() — captures activeElement before filter-bar rebuild, restores focus to #kn-query only if it was already focused (hadFocus check).",
+        "QA should verify browser-level: (a) typing in the search box keeps focus across keystrokes; (b) clicking Edit/Cancel/Delete/Cancel-Delete/Move/Cancel-Move buttons does NOT steal focus to the search input.",
+        "All 2653 automated tests pass with no regressions."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-29T15:11:43Z",
+      "notes": [
+        "WP-001 QA PASS. All 4 ACs verified by static analysis and full test suite (2653/2653). The two deliverables — getDistinctValues() helper and hadFocus conditional focus guard — are correctly implemented. Code is ready for code-review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-29T15:13:04Z",
+      "notes": [
+        "WP-001 code-review PASS. Both deliverables reviewed and approved with no changes applied. Two documentation-forward items recorded for the Documentation agent: (1) a JSDoc-style contract comment for renderList() describing its three concerns and the hadFocus invariant; (2) a one-line return-shape comment for getDistinctValues(). Pre-existing medium-priority debt (filter-bar over-rebuild) is acknowledged and tracked — recommend a follow-up WP to decouple card-list from filter-bar re-render."
+      ]
+    },
+    {
+      "from_agent": "Documentation",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-05-29T15:14:27Z",
+      "notes": [
+        "WP-001 documentation PASS. Added inline contract comments to getDistinctValues() (return shape) and renderList() (JSDoc-style block covering all three concerns and the hadFocus invariant). Both documentation-forward items from code review addressed. No README changes required — this was a purely internal refactor with no user-facing behaviour change."
+      ]
+    }
+  ]
+}

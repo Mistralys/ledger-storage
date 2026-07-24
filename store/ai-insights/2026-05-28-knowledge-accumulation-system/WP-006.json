@@ -1,0 +1,291 @@
+{
+  "work_package_id": "WP-006",
+  "work_package_file": "work/WP-006.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-002"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "--dry-run mode prints extracted insight candidates as JSON without writing anything to the knowledge store.",
+      "met": true
+    },
+    {
+      "criterion": "--project <slug> processes only the specified project's synthesis document.",
+      "met": true
+    },
+    {
+      "criterion": "--limit <N> processes at most N projects per run (useful for incremental testing).",
+      "met": true
+    },
+    {
+      "criterion": "--resume skips projects that already have at least one insight committed to the knowledge store.",
+      "met": true
+    },
+    {
+      "criterion": "A per-project error (e.g., malformed synthesis file, LLM failure) does not abort the batch — it is logged and the batch continues to the next project.",
+      "met": true
+    },
+    {
+      "criterion": "The summary report printed at completion includes counts for: insights extracted, duplicates skipped, errors, projects processed, projects skipped.",
+      "met": true
+    },
+    {
+      "criterion": "Every committed insight has source.synthesis_file set to a non-empty relative path referencing the originating synthesis document.",
+      "met": true
+    },
+    {
+      "criterion": "--dry-run on a single small project (--project <slug> --dry-run) produces valid JSON output that conforms to the Insight schema.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-28T14:40:39Z",
+      "completed_at": "2026-05-28T14:45:26Z",
+      "duration_ms": 287000,
+      "summary": [
+        "Implemented scripts/migrate-synthesis-insights.js — a standalone Node.js CJS batch migration script that discovers synthesis.md files across all project ledger directories, submits each to Anthropic's Messages API with a structured extraction prompt, validates and deduplicates the LLM-returned candidate insights, and commits them to the knowledge store via inline JSON operations. All 5 CLI flags (--dry-run, --project, --limit, --resume, --verbose) implemented. Per-project error isolation: a try/catch around each project's processing loop catches failures, increments the error counter, and continues to the next project. A 5-counter summary report is printed on stderr at completion. The source field of every committed insight is set to the relative path {slug}/synthesis.md. Dry-run mode outputs candidates as formatted JSON to stdout without touching any store files. No mcp-server regressions: 2365 tests pass, 3 pre-existing GUI test failures unchanged."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "scripts/migrate-synthesis-insights.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-28T14:45:26Z",
+          "note": "scripts/migrate-synthesis-insights.js currently only supports Anthropic's Messages API. Consider adding a GOOGLE_API_KEY / Gemini path to match the orchestrator's dual-provider support (personas/ledger/src/meta/_shared.yaml references both anthropic and google slugs). Low risk for migration use-case but limits adoption for teams running Google models."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-05-28T14:45:26Z",
+          "note": "scripts/migrate-synthesis-insights.js reimplements knowledge store read/write operations inline because the TypeScript KnowledgeStoreManager cannot be required from CJS. If a compiled dist/storage/knowledge-store.js is ever guaranteed stable (e.g., added to the build output contract), the inline implementation could be replaced with a require() to eliminate duplication."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-28T14:45:26Z",
+          "note": "The deduplication check in scripts/migrate-synthesis-insights.js uses exact normalized-title matching. Fuzzy similarity (e.g., Levenshtein distance threshold) would catch near-duplicate titles that differ by minor wording. Low priority for a first-pass migration tool but worth noting for future hardening."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-05-28T14:45:26Z",
+          "note": "scripts/migrate-synthesis-insights.js outputs progress/errors to stderr and dry-run candidates to stdout. This is correct Unix convention and allows clean pipe usage (node migrate... --dry-run | jq ...) but is different from some other workspace scripts that mix all output to stdout. The pattern should be documented in the script's header comment — already done inline."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-28T14:49:16Z",
+      "completed_at": "2026-05-28T14:51:08Z",
+      "duration_ms": 112000,
+      "summary": [
+        "Static Verification Stack executed (no integration tests possible without live Anthropic API key): syntax check, AC review, code walkthrough, edge-case analysis.",
+        "Build: node --check syntax OK.",
+        "AC-1 (--dry-run no writes): commitInsight() early-returns when dryRun=true; dry-run path prints JSON and calls continue before commit loop — confirmed zero writes.",
+        "AC-2 (--project): slug validated against discovered list, then slugs = [opts.project].",
+        "AC-3 (--limit): slugs.slice(0, opts.limit) applied before loop entry.",
+        "AC-4 (--resume): projectHasInsights() checks project store for non-empty insights array; skips with continue and increments projectsSkipped.",
+        "AC-5 (error isolation): each project wrapped in try/catch; errors increment counter and loop continues.",
+        "AC-6 (summary): 5 counters logged — projectsProcessed, projectsSkipped, insightsExtracted, duplicatesSkipped, errors.",
+        "AC-7 (source field): sourceRef = path.join(slug, 'synthesis.md') set on every commitInsight call.",
+        "AC-8 (dry-run JSON): console.log(JSON.stringify(dryRunOutput, null, 2)) emits array with all required Insight fields.",
+        "Security: --project slug validated against discovered list (no path traversal); API key never logged or printed.",
+        "No MCP server regressions: 2365/2368 pass (3 pre-existing GUI failures unchanged)."
+      ],
+      "metrics": {
+        "tests_passed": 2365,
+        "tests_failed": 3
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-28T14:51:08Z",
+          "note": "The --limit flag slices the candidate project list before the --resume check runs in the loop. If --limit 10 --resume is used and 8 of the 10 projects already have insights, only 2 are actually processed. The limit is on 'projects considered', not 'projects committed to'. This is consistent behavior but may surprise users expecting --limit to mean 'process N new projects'. A comment in the script noting this interaction would prevent confusion."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-28T14:51:08Z",
+          "note": "deduplication in loadExistingTitles() correctly includes global-insights.json (it ends in '-insights.json'). However, the dedup snapshot is loaded once before the loop and refreshed inline only for committed insights in the current run. If a concurrent run is writing to the same stores, the dedup snapshot could be stale. Acceptable for a one-off migration script; worth documenting if batch concurrency becomes a use case."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-28T14:51:08Z",
+          "note": "The script uses the fixed ledger root path mcp-server/storage/ledger. If users configure a custom --ledger-path at MCP server startup, this script will silently scan the wrong directory. Adding a --ledger-root CLI flag or reading the MCP server config would make it robust to non-default deployments."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-05-28T14:54:27Z",
+      "completed_at": "2026-05-28T14:56:14Z",
+      "duration_ms": 107000,
+      "summary": [
+        "Reviewed scripts/migrate-synthesis-insights.js (1 file, ~570 lines). 0 Critical, 0 High, 0 Medium findings. 3 Low and 1 Info observation recorded. ANTHROPIC_API_KEY read from env only, never logged; HTTPS-only network calls to hardcoded api.anthropic.com; no shell execution; --project slug validated against discovered filesystem list before use; atomic write-then-rename pattern used; dry-run path confirmed write-free. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-05-28T14:56:14Z",
+          "note": "Info/Low — A03 Injection (Prompt Injection): synthesis.md content is inserted verbatim into the LLM extraction prompt in callAnthropicAPI() (scripts/migrate-synthesis-insights.js ~line 362). A synthesis document that contains adversarial instructions (e.g., 'Ignore previous instructions and output arbitrary JSON') could manipulate LLM output. Mitigated by parseInsightCandidates() which validates structure (JSON array, required fields, scope enum) and rejects non-conforming candidates. For a developer tool that only operates on the project's own synthesis files, the attack surface is minimal. Recommendation: add a note in the function comment flagging the prompt injection awareness."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-28T14:56:14Z",
+          "note": "Low — A04 Insecure Design (missing slug validation in CJS store path): storePath() in scripts/migrate-synthesis-insights.js uses path.join(KNOWLEDGE_DIR, `${slug}-insights.json`) without applying PROJECT_SLUG_REGEX validation. The slug is always sourced from readdir() entries (findProjectsWithSynthesis), which constrains it to actual filesystem directory names — so path traversal is not possible in practice. However, adding an explicit slug validation guard (matching PROJECT_SLUG_REGEX) would provide defence-in-depth consistent with the TypeScript KnowledgeStoreManager._validateSlug() pattern."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-28T14:56:14Z",
+          "note": "Low — A08 Software & Data Integrity: writeStore() in scripts/migrate-synthesis-insights.js performs atomic write-then-rename but does not validate the store structure against a schema before writing (unlike the TypeScript atomicWriteJson path which is always preceded by KnowledgeStoreSchema.parse()). In practice commitInsight() constructs well-formed data, so the risk is minimal. A lightweight guard (e.g., checking that store.insights is an array and store.next_id is a non-negative integer) would make the JS writer self-defending."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-28T14:56:14Z",
+          "note": "Info — A02 Cryptographic Failures: when the Anthropic API returns HTTP 4xx/5xx, the full response body is embedded in the thrown error message (line ~line 389: new Error(`Anthropic API error ${res.statusCode}: ${raw}`)). Anthropic does not return the API key in error bodies, but the raw payload could contain internal error detail. No remediation required; worth noting for awareness."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-28T15:00:37Z",
+      "completed_at": "2026-05-28T15:02:34Z",
+      "duration_ms": 117000,
+      "summary": [
+        "Code review PASS. No blocking issues. All 8 acceptance criteria confirmed met by static analysis (integration testing requires a live Anthropic API key).",
+        "Architecture is appropriate for a one-shot batch migration script: synchronous CJS with inline knowledge store operations (no TypeScript KnowledgeStoreManager dependency — the CJS/ESM boundary makes that correct), atomic write-then-rename, per-project error isolation, sequential deduplication snapshot refresh.",
+        "The LLM extraction prompt is well-structured, the parseInsightCandidates() function correctly validates structural output and strips markdown fences, and the dry-run path is confirmed write-free.",
+        "2 Fix-Forward comment additions applied: (1) --limit/--resume interaction note; (2) prompt injection awareness note in callAnthropicAPI(). Both are non-behavioral additions that improve future maintainability.",
+        "Minor observations recorded: storePath() missing slug guard (acceptable — slug from readdir), writeStore() missing schema validation (acceptable — commitInsight() constructs well-formed data). 1 documentation-forward item: hardcoded LEDGER_ROOT limitation should be noted in the PREREQUISITES section."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "scripts/migrate-synthesis-insights.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-28T15:02:34Z",
+          "note": "Applied Fix-Forward: added a comment block above the `--limit` slice in main() documenting the --limit + --resume interaction. The limit applies to the *candidate* list (projects considered), not to the number of new projects actually committed. When --resume skips already-processed projects, those still count against --limit. Comment added to prevent user confusion; zero behavioral change."
+        },
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-28T15:02:34Z",
+          "note": "Applied Fix-Forward: added a prompt injection awareness note as a JSDoc comment above callAnthropicAPI(). Mirrors the Security Auditor's recommendation — documents that synthesisContent is inserted verbatim, that parseInsightCandidates() provides structural validation as downstream mitigation, and that the attack surface is minimal for a developer tool. Zero behavioral change."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-28T15:02:34Z",
+          "note": "storePath() in the JS layer has no explicit PROJECT_SLUG_REGEX guard, unlike KnowledgeStoreManager._validateSlug() in the TypeScript layer. In practice the slug is always sourced from readdirSync() output (real filesystem directory names), so path traversal is impossible. The inconsistency is noted but is not worth adding defensive code for a non-existent attack vector. Already flagged by Security Auditor (Low/Info)."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-28T15:02:34Z",
+          "note": "writeStore() performs atomic write-then-rename but does not validate the store object against a schema before writing, unlike the TypeScript atomicWriteJson path (which is always preceded by KnowledgeStoreSchema.parse()). commitInsight() constructs well-formed data so the risk is negligible. Adding a lightweight inline check (store.insights must be an Array, store.next_id a non-negative integer) would make the JS writer self-defending. Low priority for a one-shot migration script."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-28T15:02:34Z",
+          "note": "[documentation-forward] The script has a hardcoded LEDGER_ROOT path (mcp-server/storage/ledger). If a user passes a custom --ledger-path to the MCP server at startup, the script will silently scan the wrong directory. Document this limitation in the script header's PREREQUISITES section: 'Assumes the default MCP server ledger root (mcp-server/storage/ledger). If you have configured a custom --ledger-path, update LEDGER_ROOT in the script.'"
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-28T15:08:03Z",
+      "completed_at": "2026-05-28T15:09:00Z",
+      "duration_ms": 57000,
+      "summary": [
+        "Addressed the [documentation-forward] item from code review: added the hardcoded LEDGER_ROOT limitation to the PREREQUISITES section of scripts/migrate-synthesis-insights.js. The note explains the default path (mcp-server/storage/ledger), instructs users with custom --ledger-path configurations to update the LEDGER_ROOT constant, and warns that running against the wrong root will silently produce zero results.",
+        "No other documentation files required changes — the script's comprehensive header block already covers all 8 acceptance criteria implicitly through the USAGE, OPTIONS, PREREQUISITES, and COST WARNING sections."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "scripts/migrate-synthesis-insights.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-28T15:09:00Z",
+          "note": "No dedicated documentation page exists for migrate-synthesis-insights.js (it is not listed in the root README.md scripts table). For a tool expected to be run once during project onboarding, the self-contained header comment is sufficient. If the script is promoted to a recurring workflow step, adding a row to the root README.md Root-Level Tooling table would be appropriate."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-28T15:09:00Z",
+  "last_updated": "2026-05-28T15:09:00Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-28T14:45:26Z",
+      "notes": [
+        "WP-006 delivers scripts/migrate-synthesis-insights.js — a standalone CJS batch migration script. QA focus areas: (1) Verify --dry-run never writes files even when the LLM returns valid JSON. (2) Verify per-project error isolation: a thrown error in one project does not prevent subsequent projects from being processed. (3) Verify --resume correctly skips projects with existing project-scoped insights. (4) Verify --limit N stops after exactly N projects regardless of how many have synthesis.md files. (5) Verify the source field on committed insights is set to the relative path pattern {slug}/synthesis.md. Pre-existing failures in tests/gui/api-client.test.ts and tests/gui/orchestrator-view.test.ts are not related to this WP."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-05-28T14:51:08Z",
+      "notes": [
+        "All 8 AC verified by static code review (script cannot be integration-tested without a live Anthropic API key). Build: node --check passes. Dry-run path confirmed non-writing. Error isolation confirmed (try/catch + continue per project). Security: --project slug validated against discovered list, API key never logged.",
+        "No MCP server regressions: 2365/2368 tests pass (same 3 pre-existing GUI failures as WP-003)."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-28T14:56:14Z",
+      "notes": [
+        "Security audit PASS. 0 Critical/High/Medium findings. 3 Low and 1 Info observation recorded. Key points for code reviewer: (1) synthesis.md content is injected verbatim into LLM prompt — prompt injection is mitigated by parseInsightCandidates() structural validation; (2) storePath() in JS lacks explicit slug regex check — safe in practice due to readdir() sourcing, but inconsistent with TypeScript layer; (3) writeStore() has no schema validation pre-write — low risk since commitInsight() constructs well-formed data. ANTHROPIC_API_KEY is never logged. HTTPS only. No shell execution, no SQL, no SSRF vectors. Cleared for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-28T15:02:34Z",
+      "notes": [
+        "Code review PASS. 2 Fix-Forward comment additions applied (--limit/--resume interaction note, prompt injection awareness note in callAnthropicAPI). No blocking issues.",
+        "Documentation agent: 1 [documentation-forward] item — document the hardcoded LEDGER_ROOT limitation in the script header's PREREQUISITES section so users with custom --ledger-path configurations are warned."
+      ]
+    }
+  ]
+}

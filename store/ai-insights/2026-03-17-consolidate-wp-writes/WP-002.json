@@ -1,0 +1,216 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-002-batch-update-with-sync.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "batchUpdateWorkPackagesWithSync method exists on LedgerStore with schema validation, last_updated auto-stamp per WP, and single meta sync",
+      "met": true
+    },
+    {
+      "criterion": "propagateDependencyUnblock refactored to use batchUpdateWorkPackagesWithSync instead of direct file writes",
+      "met": true
+    },
+    {
+      "criterion": "propagateDependencyReblock refactored to use batchUpdateWorkPackagesWithSync instead of direct file writes",
+      "met": true
+    },
+    {
+      "criterion": "All existing propagation tests pass unchanged",
+      "met": true
+    },
+    {
+      "criterion": "New unit test verifies schema validation and last_updated auto-stamp on batch updates",
+      "met": true
+    },
+    {
+      "criterion": "Single lock acquisition per propagation call (no regression from current behavior)",
+      "met": true
+    }
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-17T16:58:17Z",
+      "completed_at": "2026-03-17T17:01:46Z",
+      "summary": [
+        "Added batchUpdateWorkPackagesWithSync method to LedgerStore that acquires a single lock, reads the root index, accepts a callback returning a Map of updated WPs and the updated root index, auto-stamps last_updated per WP, validates via Zod schemas, and syncs .meta.json exactly once.",
+        "Refactored propagateDependencyUnblock to use batchUpdateWorkPackagesWithSync — removed manual withLock, store.writeWorkPackage, store.writeRootIndex calls, and last_updated stamps (auto-handled by batch method).",
+        "Refactored propagateDependencyReblock similarly — moved all candidates, COMPLETE warning writes, synthesis state reset, and pending WP recomputation into the single batch callback.",
+        "Removed unused withLock import from work-package.ts.",
+        "Added 7 unit tests for batchUpdateWorkPackagesWithSync in tests/storage/ledger-store.test.ts covering: multi-WP atomic write, last_updated auto-stamp, Zod validation rejection, callback error rollback, empty updatedWps handling, readWp helper, and meta sync.",
+        "All 1431 tests pass (up from 1418 before this WP)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/storage/ledger-store.ts",
+          "mcp-server/src/tools/work-package.ts",
+          "mcp-server/tests/storage/ledger-store.test.ts"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 1431,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T17:01:46Z",
+          "note": "In batchUpdateWorkPackagesWithSync, the empty-updatedWps case still writes the root index and syncs meta (documented in JSDoc). Callers that truly have nothing to do (candidates.length === 0 in propagateDependencyUnblock) could return early before calling the batch method to avoid a no-op disk write, but the current behavior is correct and predictable."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-03-17T17:01:46Z",
+          "note": "The withLock import in work-package.ts was removed since neither propagation function uses it anymore. If future code in that file needs direct locking it will need to re-add the import — this is expected and not a problem."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T17:01:46Z",
+          "note": "The timestamp used for all WPs in a single batchUpdateWorkPackagesWithSync call is computed once (const timestamp = now()) and shared across all WPs in the batch. This is intentional and consistent, but worth noting: all WPs in one batch get the exact same last_updated value."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-17T17:02:47Z",
+      "completed_at": "2026-03-17T17:03:27Z",
+      "summary": [
+        "Full verification stack passed. batchUpdateWorkPackagesWithSync is correctly implemented in LedgerStore: single lock acquisition over storageDir, callback receives root index + readWp helper, auto-stamps last_updated using a shared timestamp across all batch WPs, validates each WP via WorkPackageDetailSchema and the root index via RootIndexSchema, writes all WP files atomically then root index, syncs .meta.json exactly once after all writes.",
+        "propagateDependencyUnblock and propagateDependencyReblock are both correctly refactored to use batchUpdateWorkPackagesWithSync. No raw withLock, writeWorkPackage, or writeRootIndex calls remain in work-package.ts (confirmed by grep). The withLock import is fully removed.",
+        "propagateDependencyReblock correctly handles all three cases inside the single batch: (1) READY/IN_PROGRESS WPs blocked with blocked_by set and IN_PROGRESS pipelines auto-cancelled, (2) COMPLETE WPs warned via pipeline comment without status change, (3) synthesis state cleared when at least one WP was re-blocked. All within one lock acquisition.",
+        "Full test suite: 1431 tests pass across 44 test files (0 failures). Includes cascade-reblock, cascade-unblock, and all propagation integration tests."
+      ],
+      "metrics": {
+        "tests_passed": 1431,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T17:03:27Z",
+          "note": "mcp-server/src/storage/ledger-store.ts batchUpdateWorkPackagesWithSync — shared timestamp (const timestamp = now() computed once, applied to all WPs) is correct and verified by the auto-stamp test. The single-timestamp behavior is appropriate for batch consistency and matches the JSDoc contract."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T17:03:27Z",
+          "note": "mcp-server/src/tools/work-package.ts propagateDependencyUnblock — when candidates.length === 0 the method still calls batchUpdateWorkPackagesWithSync, resulting in a read + root index write + meta sync with no WP changes. A guard before the call (return early if no candidates) would eliminate the no-op disk write, but this is a minor efficiency concern, not a correctness issue."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T17:03:27Z",
+          "note": "tests/storage/ledger-store.test.ts batchUpdateWorkPackagesWithSync suite — no test covers the case where one WP in the batch passes validation but a later WP fails. The implementation processes WPs in Map iteration order and fails on the first invalid entry; partial writes of earlier WPs cannot occur because atomicWriteJson is per-WP. This behavior is correct but undocumented by tests."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-17T17:05:20Z",
+      "completed_at": "2026-03-17T17:06:47Z",
+      "summary": [
+        "Full code review of batchUpdateWorkPackagesWithSync (ledger-store.ts), the refactored propagateDependencyUnblock and propagateDependencyReblock (work-package.ts), and the new batch test suite (ledger-store.test.ts). No blocking issues found. All 6 acceptance criteria confirmed met. Implementation is consistent with the LedgerStore write pattern established by WP-001. 1431/1431 tests passing."
+      ],
+      "metrics": {
+        "tests_passed": 1431,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T17:06:47Z",
+          "note": "ledger-store.ts batchUpdateWorkPackagesWithSync: if WP-001 in a [WP-001, WP-002] batch passes Zod validation and is written, then WP-002 fails validation, WP-001 remains on disk (no rollback). This is the same characteristic as the existing updateWorkPackageWithSync — not newly introduced — but callers should be aware that batch atomicity is lock-scoped, not rollback-scoped across multiple files."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T17:06:47Z",
+          "note": "work-package.ts propagateDependencyUnblock (line 973): when candidates.length === 0 (no BLOCKED WPs depend on the completed WP), the function still acquires the lock, reads the root index, stamps last_updated, writes the root index, and syncs meta. An early-return guard before the batchUpdateWorkPackagesWithSync call (if candidates.length === 0 return) would eliminate this no-op disk write. Flagged by both Developer and QA; non-blocking."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T17:06:47Z",
+          "note": "work-package.ts propagateDependencyReblock (lines 1076-1091): COMPLETE dependent WPs are read and written (with a warning comment) as part of updatedWps, which means they receive a last_updated auto-stamp via batchUpdateWorkPackagesWithSync even though their status is unchanged. This is semantically correct but may surprise future readers — a brief comment noting the side-effect would improve clarity."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T17:06:47Z",
+          "note": "work-package.ts propagateDependencyReblock: now() is called independently at lines 996, 1051, 1084, and 1102 within a single callback invocation. These will produce the same second-granularity timestamp in practice, but they are not guaranteed to match. Capturing a single local timestamp variable at the start of the callback and reusing it (as batchUpdateWorkPackagesWithSync does for last_updated) would be more consistent. Non-blocking."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-17T17:09:23Z",
+      "completed_at": "2026-03-17T17:10:55Z",
+      "summary": [
+        "api-surface.md: batchUpdateWorkPackagesWithSync entry was already present and complete from a prior pass — no changes needed there.",
+        "data-flows.md: Updated Flow 6 (updateWorkPackageStatus) propagateDependencyUnblock and propagateDependencyReblock sub-flows to show batchUpdateWorkPackagesWithSync as the single-lock mechanism instead of the previous per-WP write loop. Both propagation flows now document the batch callback pattern, the two-pass validate-then-write guarantee, and single meta sync.",
+        "data-flows.md: Updated the auto-finalize path in Flow 5 (completePipeline) to note that propagateDependencyUnblock uses batchUpdateWorkPackagesWithSync.",
+        "constraints.md: Constraint 2b (Batch Multi-WP Writes Must Use batchUpdateWorkPackagesWithSync) was already added by a linter pass — verified it is complete and accurate."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/data-flows.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T17:10:55Z",
+          "note": "data-flows.md: the old propagation sub-flows showed individual writeWorkPackage + writeRootIndex calls per WP iteration, which no longer matched the batchUpdateWorkPackagesWithSync implementation. The rewrite makes the single-lock guarantee explicit and surfaces the two-pass validate-then-write property."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T17:10:55Z",
+          "note": "No changes to file-tree.md were needed — no new source files were created by WP-001 or WP-002."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-03-17T17:10:55Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-03-17T17:01:46Z",
+      "notes": [
+        "WP-002 is complete. The batchUpdateWorkPackagesWithSync method is fully implemented and tested. The propagation functions (propagateDependencyUnblock and propagateDependencyReblock) now route all WP writes through the single-lock batch method.",
+        "WP-001 (createWorkPackageWithSync) was already implemented by a prior run — its pipeline in the ledger was stale/orphaned but the actual code changes and tests were present on disk. WP-001 needs its implementation pipeline cancelled (stale) and a new pipeline started by whoever is handling WP-001 documentation/QA.",
+        "WP-003 depends on both WP-001 and WP-002 being complete — it can proceed once both WPs clear QA and code review."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-17T17:03:27Z",
+      "notes": [
+        "WP-002 QA PASS. All 6 acceptance criteria verified met. Full test suite: 1431/1431 passing. Both propagation functions (propagateDependencyUnblock, propagateDependencyReblock) correctly use batchUpdateWorkPackagesWithSync. No raw write/lock calls remain in work-package.ts. Code is clean and implementation is consistent with the LedgerStore write pattern established by WP-001."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-03-17T17:06:47Z",
+      "notes": [
+        "WP-002 code review PASS. All 6 AC criteria confirmed met. 1431/1431 tests passing. Key non-blocking observations: (1) propagateDependencyUnblock no-op path still performs a disk round-trip — consider early-return guard; (2) COMPLETE dependent WPs in propagateDependencyReblock get last_updated auto-stamped as a side-effect of being in updatedWps — worth documenting; (3) now() called 4 times in reblock callback — a single local timestamp would be more consistent. None are blockers. Ready for Documentation."
+      ]
+    }
+  ]
+}

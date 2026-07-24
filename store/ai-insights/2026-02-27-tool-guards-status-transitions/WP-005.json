@@ -1,0 +1,147 @@
+{
+  "work_package_id": "WP-005",
+  "work_package_file": "work/WP-005.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-004"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "Unknown agent role (e.g., 'Planner', 'RandomBot') is rejected with actionable error",
+      "met": true
+    },
+    {
+      "criterion": "Known roles accepted: Developer, Project Manager",
+      "met": true
+    },
+    {
+      "criterion": "status_changed_at present on WP after successful claim",
+      "met": true
+    }
+  ],
+  "revision": 1,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-02-27T17:46:03Z",
+      "completed_at": "2026-02-27T17:51:18Z",
+      "summary": [
+        "Added CLAIMABLE_ROLES constant at module scope in claimWorkPackage with 10 valid roles (Developer, QA, Reviewer, Documentation, Project Manager and their Agent aliases)",
+        "Added role guard (step 2c) in claimWorkPackage after the override auth guard — throws actionable error for unknown roles",
+        "Added wp.status_changed_at = now() after wp.status = 'IN_PROGRESS' in step 5 of claimWorkPackage",
+        "Added _ledgerRoot parameter to claimWorkPackage to match updateWorkPackageStatus/createWorkPackage pattern — required for integration testing",
+        "Exported propagateDependencyReblock from _internal for WP-007 testing",
+        "Added 5 new integration tests covering Planner rejection, RandomBot rejection, Developer acceptance, Project Manager acceptance, and status_changed_at presence",
+        "All 697 tests pass, 0 TypeScript errors"
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/tools/work-package.ts",
+          "mcp-server/tests/tools/work-package.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T17:51:00Z",
+          "note": "claimWorkPackage previously lacked a _ledgerRoot parameter (unlike createWorkPackage and updateWorkPackageStatus), making direct integration testing impossible without touching the filesystem. Added the parameter for consistency; no behavioral change for production callers."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-02-27T17:52:23Z",
+      "completed_at": "2026-02-27T17:53:41Z",
+      "summary": [
+        "Build check passed: 0 TypeScript errors (npx tsc --noEmit)",
+        "AC-1 verified: Planner rejected with 'Agent role \\'Planner\\' cannot claim work packages. Valid roles: ...' — confirmed error is actionable",
+        "AC-1 verified: RandomBot rejected with matching message",
+        "AC-2 verified: Developer and Project Manager claims succeed (result.isError falsy)",
+        "AC-3 verified: status_changed_at is defined and is a string on successful claim",
+        "Regression check: 697/697 tests pass across 32 test files, no regressions",
+        "Edge-case: Synthesis role absent from CLAIMABLE_ROLES (only in comment confirming exclusion intent)",
+        "Edge-case: Guard ordering confirmed — assignment guard (step 2) fires before role guard (step 2c), both produce actionable errors"
+      ],
+      "metrics": {
+        "tests_passed": 697,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T17:53:00Z",
+          "note": "mcp-server/src/tools/work-package.ts: CLAIMABLE_ROLES is a standalone string array defined locally in work-package.ts rather than being derived from the AGENT_ROLES constant in constants.ts. If a new agent role is added to AGENT_ROLES, the developer must manually decide whether to add it to CLAIMABLE_ROLES. Consider adding a CI-time assertion (e.g. in tests) that verifies every non-orchestrating role in AGENT_ROLES is present in CLAIMABLE_ROLES to prevent silent drift."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T17:53:10Z",
+          "note": "mcp-server/tests/tools/work-package.test.ts: The 'rejects Planner role' test assigns the WP to 'Planner' so the assignment guard doesn't block it first. This setup is correct and the comment explains the intent. However, no test covers the case where an unknown/non-claimable role tries to claim a WP assigned to a *different* agent — in that scenario the assignment guard fires first, effectively masking the CLAIMABLE_ROLES guard. This is acceptable behaviour but worth documenting in the test suite."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-02-27T17:56:02Z",
+      "completed_at": "2026-02-27T17:57:24Z",
+      "summary": [
+        "Reviewed claimWorkPackage role guard, CLAIMABLE_ROLES constant, status_changed_at assignment, and new integration tests.",
+        "No blocking issues found. Implementation is functionally correct, well-structured, and follows established patterns.",
+        "Guard ordering (assignment → override-auth → role) is intentional and documented in both code comments and the test suite.",
+        "CLAIMABLE_ROLES drift risk (QA-flagged) acknowledged and recorded as a low-priority debt item."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-02-27T18:00:00Z",
+          "note": "mcp-server/src/tools/work-package.ts (line 388): CLAIMABLE_ROLES is a standalone string array rather than being derived from AGENT_ROLES in constants.ts. The constants.ts comment states 'All other files that reference agent roles should import from here rather than defining local constants.' While a direct filter isn't possible (AGENT_ROLES lacks the Agent aliases and the exclusion rules differ), a computed approach — e.g. AGENT_ROLES.filter(r => !ORCHESTRATING_ROLES.includes(r)) plus the alias suffix set — would make the exclusion logic explicit and reduce drift risk. Medium priority because silent drift is possible when a new role is added to AGENT_ROLES."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T18:00:10Z",
+          "note": "mcp-server/src/tools/work-package.ts (line 447): The CLAIMABLE_ROLES guard (step 2c) fires after the assignment guard (step 2) and override-auth guard (step 2b). Consequence: a Planner claiming a WP assigned to Developer receives the assignment error, not the role error. This is intentional and documented in tests — but the guard could be moved to step 1b (immediately after the READY check) so role validation is always surfaced regardless of assignment state. Low priority since the QA team has already documented the masking behavior."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T18:00:20Z",
+          "note": "mcp-server/src/tools/work-package.ts (line 448): The actionable error hint 'Valid roles: Developer, QA, Reviewer, Documentation, Project Manager.' does not enumerate the Agent-alias variants (e.g., 'Documentation Agent'). Users whose agent name is an alias variant will not trigger the error (aliases are in CLAIMABLE_ROLES), but the hint could be expanded or dynamically generated from CLAIMABLE_ROLES to avoid confusion when reading logs."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-02-27T17:59:57Z",
+      "completed_at": "2026-02-27T18:05:02Z",
+      "summary": [
+        "Updated api-surface.md: ledger_claim_work_package now documents CLAIMABLE_ROLES guard (Planner/Synthesis excluded, actionable error message) and status_changed_at side effect.",
+        "Updated constraints.md: Added constraint 50 (CLAIMABLE_ROLES guard, guard ordering, enforcement note).",
+        "Updated data-flows.md: Flow 3 (Claiming) now includes step 2b override auth guard, step 2c CLAIMABLE_ROLES role guard, and step 5 status_changed_at = now() explicitly."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/constraints.md",
+          "mcp-server/docs/agents/project-manifest/data-flows.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T00:00:00Z",
+          "note": "No gaps found — CLAIMABLE_ROLES guard and status_changed_at side effect are clearly documented across all three manifest files."
+        }
+      ]
+    }
+  ]
+}

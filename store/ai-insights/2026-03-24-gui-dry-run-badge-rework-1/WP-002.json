@@ -1,0 +1,131 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-002.md",
+  "status": "COMPLETE",
+  "assigned_to": "Reviewer",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "All tests in dialogue-qa.test.ts pass",
+      "met": true
+    },
+    {
+      "criterion": "DOM expectations match current renderWorkPackageDetail output",
+      "met": true
+    },
+    {
+      "criterion": "Fetch mock provides correct response methods (text/json)",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-24T21:17:31Z",
+      "completed_at": "2026-03-24T21:25:15Z",
+      "duration_ms": 464000,
+      "summary": [
+        "Fixed 12 failing tests in dialogue-qa.test.ts with two root-cause fixes: (1) AC2 manual fetch mocks added json: async () => ({ content: '...' }) so getDialogueContent (which uses request() → res.json()) could resolve correctly; (2) Changed all installFetchMock routes for /dialogues/{filename} from text: '...' to body: { content: '...' } so that json() returns the { content } wrapper the handler expects. The root cascading failure was AC6: the text-only mock caused null.content TypeError, making marked.parse never get called, the test assertion failed, and document.body.removeChild(app) was never reached — leaving a stale #wp-dialogues-section in the document that corrupted document.getElementById lookups for all subsequent tests. All 26 tests now pass; full GUI suite 383/383."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/tests/gui/dialogue-qa.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-03-24T21:25:15Z",
+          "note": "dialogue-qa.test.ts cleanup (document.body.removeChild) is done inline after assertions with no try/finally guard. A single assertion failure before the removeChild call causes DOM pollution that cascades to all subsequent tests in the file. Adding try/finally cleanup blocks to each test would make the suite resilient to partial failures."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-24T21:25:15Z",
+          "note": "The installFetchMock helper always provides both json() and text() methods. Tests that need getDialogueContent to succeed should use body: { content: '...' } since the route's body drives the json() response. Documenting this in a comment near installFetchMock would save future maintainers from repeating the same mistake."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-24T21:29:23Z",
+      "completed_at": "2026-03-24T21:30:19Z",
+      "duration_ms": 56000,
+      "summary": [
+        "All 3 ACs verified through execution and code inspection. (AC1) 26/26 dialogue-qa.test.ts tests pass. (AC2) DOM expectations use querySelector('#wp-dialogues-section') which correctly finds the element rendered by renderWorkPackageDetail. (AC3) installFetchMock provides both json() and text() on all mock responses; routes using body: { content: '...' } correctly feed the json() consumer in getDialogueContent. Full GUI suite 383/383. Debt noted: no try/finally teardown guard in test cleanup."
+      ],
+      "metrics": {
+        "test_coverage": "dialogue-qa.test.ts (targeted) + full GUI suite (15 files)",
+        "tests_passed": 26,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-03-24T21:30:19Z",
+          "note": "dialogue-qa.test.ts: document.body.removeChild(app) cleanup has no try/finally guard. A future assertion failure before the cleanup call will leave a stale #wp-dialogues-section in the DOM, cascading failures to all subsequent tests in the file. Adding try/finally cleanup blocks would make the suite robust to partial failures. (Inherited from Developer's noting; flagged for Reviewer's awareness.)"
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-24T21:30:19Z",
+          "note": "installFetchMock fallback uses routes[routes.length - 1] when no route matches. This is a silent fallback that could mask misconfigured route patterns. A console.warn on unmatched URLs would aid debugging in future test authoring."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-24T21:34:17Z",
+      "completed_at": "2026-03-24T21:35:46Z",
+      "duration_ms": 89000,
+      "summary": [
+        "Clean test-only fix with two root-cause corrections: (1) installFetchMock now unconditionally provides json() returning route.body and text() returning route.text on every mock response — eliminates the class of failures caused by missing json() method; (2) dialogue file fetch routes changed from text: '...' to body: { content: '...' } to match getDialogueContent's actual consumption path (res.json().content). Both fixes are minimal and precisely targeted. The cascade failure mechanism (stale DOM node from missing try/finally teardown) is correctly identified as medium-priority debt, not fixed by this WP. All review dimensions pass."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-24T21:35:46Z",
+          "note": "installFetchMock providing both json() and text() unconditionally on all routes is the right design — avoids per-test boilerplate and prevents the 'missing json() method' failure class entirely. Clean API."
+        },
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-03-24T21:35:46Z",
+          "note": "Multiple tests follow the pattern: document.body.appendChild(app) / assertions / document.body.removeChild(app) with no try/finally guard. An assertion failure before removeChild leaves a stale #wp-dialogues-section in the DOM and cascades failures to later tests. Wrapping each test body in try/finally { document.body.removeChild(app) } would make the suite robust to partial failures. Affects ~10 test functions in AC4, AC5, AC6, AC7, AC8, and edge cases. Flagged by Developer and QA; deferring to a dedicated cleanup WP rather than a mid-route Fix-Forward, as the scope exceeds trivial."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-03-24T21:35:46Z",
+  "last_updated": "2026-03-24T21:35:46Z",
+  "handoff_notes": [
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-24T21:30:19Z",
+      "notes": [
+        "WP-002 fix is clean: installFetchMock now provides both json() and text() methods; routes use body: { content: '...' } where the handler's json() response is consumed. 26/26 tests pass. Flag for Reviewer: the lack of try/finally cleanup in test teardown is a medium-priority debt item — does not affect current passing state but is a fragility risk."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-03-24T21:35:46Z",
+      "notes": [
+        "WP-002 is a test-only fix. installFetchMock updated to provide both json()/text() on all routes; dialogue file fetch routes corrected to use body: { content } so getDialogueContent (which calls res.json()) resolves cleanly. 26/26 pass, full GUI suite 383/383. No production code changed. Medium-priority debt: ~10 test functions lack try/finally teardown guards — flagged for a future cleanup WP, not blocking."
+      ]
+    }
+  ]
+}

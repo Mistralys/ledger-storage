@@ -1,0 +1,213 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "When globalInsights and repoInsights contain an insight with the same id, getRepositoryContext returns it only once",
+      "met": true
+    },
+    {
+      "criterion": "Deduplication preserves insertion order (global insights first, then unique repo-scoped additions)",
+      "met": true
+    },
+    {
+      "criterion": "When no duplicates exist, behavior is unchanged — all insights are returned",
+      "met": true
+    },
+    {
+      "criterion": "All existing tests in the repository-context test suite continue to pass",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-06-05T11:28:24Z",
+      "completed_at": "2026-06-05T11:30:50Z",
+      "duration_ms": 146000,
+      "summary": [
+        "Implemented insight deduplication in getRepositoryContext(): changed line 166 from a simple array spread to an O(n) dedup loop that iterates [...globalInsights, ...repoInsights], tracking seen ids in a Set<number>. Global insights take precedence (first-seen wins). The deduped array preserves insertion order.",
+        "Added 3 new test cases in a dedicated 'insight deduplication' describe block in repository-context.test.ts: (1) shared id appears exactly once, (2) insertion order is global-first then unique repo additions, (3) no-overlap case is unchanged. All 3 pass. Full test suite: 3069 tests across 101 files — all pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/tools/repository-context.ts",
+          "mcp-server/tests/tools/repository-context.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T11:30:50Z",
+          "note": "repository-context.ts line 163: the KnowledgeStoreManager is instantiated fresh on every getRepositoryContext call. For high-traffic usage this creates repeated object allocations per request. A lightweight factory or cached instance per ledgerRoot would be a minor win, though for the current call frequency (one MCP request at a time) this is negligible."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-06-05T11:30:50Z",
+          "note": "repository-context.ts: the safeListRepositoryInsights helper swallows all errors silently (bare catch {}). This is intentional for invalid repo names (SLUG_REGEX failures), but it will also mask genuine I/O errors. A narrow catch on the specific ZodError or a typed guard would be more defensive without changing the AC."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-06-05T11:32:16Z",
+      "completed_at": "2026-06-05T11:33:24Z",
+      "duration_ms": 68000,
+      "summary": [
+        "All 4 acceptance criteria verified against the implementation in repository-context.ts (lines 166-175) and the 3 new test cases in repository-context.test.ts.",
+        "AC1: Dedup test for shared id=42 — passes (id appears exactly once).",
+        "AC2: Insertion-order test [global 1,2] + [repo 2,3] → [1,2,3] — passes.",
+        "AC3: No-overlap test (global=10, repo=20) — both returned, length=2 — passes.",
+        "AC4: Full regression suite 3069/3069 tests across 101 files — all pass, no regressions.",
+        "Edge cases confirmed: empty insight stores produce empty array; include_insights:false bypasses dedup path entirely."
+      ],
+      "metrics": {
+        "test_coverage": "3 dedicated AC test cases; full 101-file suite regression clean",
+        "tests_passed": 3069,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T11:33:24Z",
+          "note": "safeListRepositoryInsights (repository-context.ts line 221) uses a bare catch {} that swallows all errors, including genuine I/O failures. Pre-existing pattern — not introduced by this change. Flagged for awareness; does not affect AC."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-06-05T11:33:38Z",
+      "completed_at": "2026-06-05T11:34:28Z",
+      "duration_ms": 50000,
+      "summary": [
+        "Reviewed repository-context.ts (lines 157–176) and the full repository-context.test.ts deduplication suite.",
+        "Deduplication implementation at lines 167–175 is correct, idiomatic, and well-scoped. O(n) Set<number> approach is the right tool for this use case — no over-engineering.",
+        "Global-first precedence is structurally enforced by the iteration order of [...globalInsights, ...repoInsights] combined with first-seen wins via seenIds.has(); this is self-documenting and correct.",
+        "Test suite: 3 dedicated deduplication tests cover the shared-id, insertion-order, and no-overlap cases with realistic fixture data. seedKnowledgeStore helper is cleanly scoped and reusable. Tests pass 3069/3069.",
+        "Two pre-existing low-priority observations flagged by Developer and QA (KnowledgeStoreManager per-call instantiation; bare catch {} in safeListRepositoryInsights) are noted but neither introduced by this WP and neither affects correctness at current call frequency.",
+        "No blocking issues. One documentation-forward item tagged for Documentation agent."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/tools/repository-context.ts",
+          "mcp-server/tests/tools/repository-context.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T11:34:28Z",
+          "note": "Lines 167–175: the dedup loop creates an intermediate [...globalInsights, ...repoInsights] spread array before iterating. For the current scale (≤20 global + a handful of repo insights) this is fine. If insight limits grow substantially, a two-pass approach iterating each array independently would avoid the allocation — not worth changing now."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-06-05T11:34:28Z",
+          "note": "safeListRepositoryInsights (line 221): bare catch {} swallows all errors. Pre-existing pattern, not introduced by this WP. A typed catch guard (e.g. catching only ZodError or a known validation error type) would make the intent explicit and surface genuine I/O failures. Low-priority tech debt to address in a future cleanup pass."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T11:34:28Z",
+          "note": "No reviewer-applied fixes were made — code is clean and consistent. All four acceptance criteria were met as verified by QA. The change is minimal, correct, and does not introduce any new patterns that deviate from the existing codebase style."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-06-05T11:34:28Z",
+          "note": "[documentation-forward] The safeListRepositoryInsights JSDoc (lines 211–214) explains the SLUG_REGEX guard but does not mention the broader contract that all errors are swallowed. Given the bare catch {} is intentional, a one-line note clarifying 'all errors are suppressed to prevent partial failures in the parallel Promise.all' would help future maintainers understand the design intent."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-06-05T11:34:51Z",
+      "completed_at": "2026-06-05T11:38:17Z",
+      "duration_ms": 206000,
+      "summary": [
+        "Updated safeListRepositoryInsights JSDoc in repository-context.ts to clarify that ALL errors are intentionally suppressed (not just SLUG_REGEX failures), with explicit rationale: prevents partial failures in the parallel Promise.all fetch alongside global insights.",
+        "Updated api-surface.md 'Insight sourcing' paragraph to document the new deduplication behavior (by numeric id, global-first / first-seen wins) and to clarify that all repository-scoped errors are suppressed.",
+        "Updated file-tree.md repository-context.ts entry to mention deduplication logic and intentional error suppression.",
+        "Updated help-content.ts usage note for relevant_insights[] to mention deduplication by numeric id with global-copy precedence.",
+        "CTX context regenerated: mcp-server/manifest-api-surface.md, mcp-server/manifest-file-tree.md, and project-manifest.md updated with new content."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/tools/repository-context.ts",
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/file-tree.md",
+          "mcp-server/src/tools/help-content.ts",
+          ".context/mcp-server/manifest-api-surface.md",
+          ".context/mcp-server/manifest-file-tree.md",
+          ".context/project-manifest.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-06-05T11:38:17Z",
+          "note": "Addressed documentation-forward from Reviewer: safeListRepositoryInsights JSDoc now explicitly states that ALL errors are suppressed (not just SLUG_REGEX validation failures), with the design rationale (Promise.all partial-failure prevention) documented inline."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T11:38:17Z",
+          "note": "api-surface.md 'Insight sourcing' paragraph previously described the insight result as 'concatenated' — updated to 'fetched in parallel and merged', which accurately reflects the Promise.all approach and the subsequent deduplication pass."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T11:38:17Z",
+          "note": "No changes needed to README.md or mcp-server/README.md — the deduplication is an internal implementation detail; the public-facing tool description already correctly described the relevant_insights[] field semantics. Documentation updates were scoped to the internal API surface docs, file tree, and inline JSDoc."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-06-05T11:38:17Z",
+  "last_updated": "2026-06-05T11:38:17Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-06-05T11:30:50Z",
+      "notes": [
+        "Implementation is straightforward: single loop dedup by numeric id using Set<number> in repository-context.ts. Three targeted test cases cover the three AC scenarios. No existing tests were modified — the 18 pre-existing cases all continue to pass."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-06-05T11:33:24Z",
+      "notes": [
+        "Implementation is clean and correct. The O(n) dedup via Set<number> at lines 167-175 of repository-context.ts is straightforward and well-tested. No issues to address before code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-06-05T11:34:28Z",
+      "notes": [
+        "Implementation is clean, idiomatic, and all 4 ACs are met. One documentation-forward item: the safeListRepositoryInsights JSDoc should clarify that ALL errors (not just SLUG_REGEX failures) are intentionally suppressed to prevent partial failures in the parallel Promise.all. No blocking issues — safe to proceed to documentation stage."
+      ]
+    }
+  ]
+}

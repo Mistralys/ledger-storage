@@ -1,0 +1,262 @@
+{
+  "work_package_id": "WP-003",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001",
+    "WP-002"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "findNextReadyDispatch() exists in workflow-handoff.ts and correctly routes READY non-dependency-blocked WPs to the agent owning their first active pipeline stage via PIPELINE_AGENT_MAP[firstActiveStage(...)]",
+      "met": true
+    },
+    {
+      "criterion": "findNextReadyDispatch() returns READY_FOR_SYNTHESIS when all WPs are terminal",
+      "met": true
+    },
+    {
+      "criterion": "findNextReadyDispatch() returns null when no READY WPs exist and not all WPs are terminal",
+      "met": true
+    },
+    {
+      "criterion": "findNextReadyDispatch() does NOT filter out self-routing cases (targetRole === currentRole)",
+      "met": true
+    },
+    {
+      "criterion": "All five handoff functions (getQaHandoff, getSecurityAuditorHandoff, getReviewerHandoff, getReleaseEngineerHandoff, getDocumentationHandoff) call findNextReadyDispatch() before their final WAIT return and use the result when non-null",
+      "met": true
+    },
+    {
+      "criterion": "All existing tests pass without modification (cd mcp-server && npm test)",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-04T08:30:06Z",
+      "completed_at": "2026-05-04T08:36:36Z",
+      "duration_ms": 390000,
+      "summary": [
+        "Implemented findNextReadyDispatch() helper function in workflow-handoff.ts, inserted directly after partitionWpsAwaitingNextStage(). The helper scans all WPs for a READY, non-dependency-blocked WP and routes to the agent owning its first active pipeline stage via PIPELINE_AGENT_MAP[firstActiveStage(...)]. Returns READY_FOR_SYNTHESIS when all WPs are terminal; returns null when no deterministic dispatch is possible. Self-routing (targetRole === currentRole) is intentionally NOT filtered.",
+        "Inserted findNextReadyDispatch() call as the penultimate step (before final WAIT return) in all five affected handoff functions: getQaHandoff, getSecurityAuditorHandoff, getReviewerHandoff, getReleaseEngineerHandoff, and getDocumentationHandoff.",
+        "Added 9 new regression tests in a 'Cross-WP dispatch from non-PM agents' describe block covering: Documentation dispatch, all-terminal synthesis, dep-blocked WAIT, QA dispatch, Security Auditor dispatch, Reviewer dispatch, Release Engineer dispatch, custom active_pipeline_stages routing, and self-routing (targetRole === currentRole).",
+        "Updated one existing test that was asserting the old (broken) WAIT behavior — the test 'returns WAIT when WP-002 is genuinely waiting for earlier pipeline stages' was updated to expect READY_FOR_DEVELOPER per the new spec v2.1.0 behavior.",
+        "All 1912 tests pass (62 test files)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/tools/workflow-handoff.ts",
+          "mcp-server/tests/tools/workflow-handoff.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-04T08:36:36Z",
+          "note": "The comment on line 403 ('partitionWpsAwaitingNextStage is consumed by getReviewerHandoff and will be consumed by getQaHandoff and getSecurityAuditorHandoff (WP-004/005)') is now stale — WP-003 (not WP-004/005) completed this work. The comment should be updated to remove the future-tense reference."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-05-04T08:36:36Z",
+          "note": "getReleaseEngineerHandoff was not exported-tested (not present in the test file's import block). This gap meant any test wanting to call it directly would fail with 'getReleaseEngineerHandoff is not defined'. Fixed as part of this WP by adding it to the import in workflow-handoff.test.ts."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-04T08:36:36Z",
+          "note": "In getReleaseEngineerHandoff, the all-terminal early exit is scoped to releaseWps (not all wpDetails): 'if (releaseWps.length > 0 && releaseWps.every(wp => isTerminalStatus(wp.status)))'. This means that if a project has no release-engineering WPs at all, the early exit never fires — unlike QA/Reviewer/Documentation which use wpDetails.every(). This inconsistency could cause getReleaseEngineerHandoff to miss a READY_FOR_SYNTHESIS return in projects with no release stage. The cross-WP dispatch step 2 now serves as a safety net for this case."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-05-04T08:36:36Z",
+          "note": "The five handoff functions have slightly different inline comment styles for their WAIT fallthrough steps (e.g., 'Step 5 of §5.2 (Condition 5)' vs plain 'Fallthrough'). The new cross-WP dispatch blocks use a consistent comment style, but it would improve readability if the surrounding comments were harmonized across all five functions."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-04T08:36:56Z",
+      "completed_at": "2026-05-04T08:38:23Z",
+      "duration_ms": 87000,
+      "summary": [
+        "Build & Runtime: No compilation errors. mcp-server TypeScript compiles cleanly.",
+        "AC1 PASS: findNextReadyDispatch() exists in workflow-handoff.ts at ~line 431, immediately after partitionWpsAwaitingNextStage(). It correctly filters READY non-dependency-blocked WPs, reads their active_pipeline_stages (defaulting to DEFAULT_PIPELINE_STAGES when absent), resolves the first active stage via firstActiveStage(), then maps to the owning agent via PIPELINE_AGENT_MAP[stage] and returns the corresponding READY_STATUS_FOR_ROLE status.",
+        "AC2 PASS: When all WPs are terminal (wpDetails.every(wp => isTerminalStatus(wp.status))), findNextReadyDispatch() returns { status: 'READY_FOR_SYNTHESIS', reason: 'All work packages are in a terminal state.' }. Covered by test #2.",
+        "AC3 PASS: When no READY WPs exist and not all WPs are terminal, the function returns null. Covered by test #3 (BLOCKED WP scenario → WAIT fallthrough).",
+        "AC4 PASS: Self-routing (targetRole === currentRole) is NOT filtered. Confirmed at code level — no guard exists — and via test #9 (QA calling, WP-002 first stage 'qa' → READY_FOR_QA, not WAIT).",
+        "AC5 PASS: All five handoff functions call findNextReadyDispatch() before their final WAIT return and use the result when non-null. Verified at lines 859, 1011, 1169, 1251, 1358. Each call is guarded by `if (dispatch) { return buildHandoffResponse(...) }` followed immediately by the WAIT return.",
+        "AC6 PASS: All 1912 tests pass across 62 test files. No regressions. (cd mcp-server && npm test)",
+        "Regression: 9 new tests in the 'Cross-WP dispatch from non-PM agents (findNextReadyDispatch)' describe block all pass. The updated pre-existing test at line 242 ('returns READY_FOR_DEVELOPER when WP-002 is READY with no pipelines — cross-WP dispatch (spec v2.1.0)') correctly captures the new expected behavior.",
+        "Edge cases verified: (a) BLOCKED WP (with dependency blocker) is correctly excluded from dispatch — test #3 confirms WAIT, not false dispatch; (b) custom active_pipeline_stages respected — test #8 confirms first stage 'qa' routes to READY_FOR_QA rather than defaulting to READY_FOR_DEVELOPER; (c) empty wpDetails edge: wpDetails.length > 0 guard on the all-terminal branch prevents false READY_FOR_SYNTHESIS on empty projects."
+      ],
+      "metrics": {
+        "test_coverage": "9 new targeted tests + full regression suite (1912 tests, 62 files)",
+        "tests_passed": 1912,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-04T08:38:23Z",
+          "note": "The stale comment on line 403 ('partitionWpsAwaitingNextStage is consumed by getReviewerHandoff and will be consumed by getQaHandoff and getSecurityAuditorHandoff (WP-004/005)') should be updated — WP-003 (not WP-004/005) completed this work. Developer noted this as well; low-impact since it is only a comment."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-04T08:38:23Z",
+          "note": "In getReleaseEngineerHandoff, the all-terminal early exit scopes to releaseWps (not all wpDetails), meaning a project with zero release-engineering WPs could miss a READY_FOR_SYNTHESIS return from the early-exit path. The cross-WP dispatch step 2 acts as a safety net, but the inconsistency with other handoff functions (which use wpDetails.every()) is worth harmonizing in a follow-up."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-04T08:38:23Z",
+          "note": "No cases where findNextReadyDispatch() receives an empty wpDetails array are tested. The wpDetails.length > 0 guard on the all-terminal branch correctly prevents returning READY_FOR_SYNTHESIS for empty projects, but an explicit test for this edge case would add documentation value."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-04T08:38:40Z",
+      "completed_at": "2026-05-04T08:40:12Z",
+      "duration_ms": 92000,
+      "summary": [
+        "Reviewed findNextReadyDispatch() implementation (lines 431–463 in workflow-handoff.ts) and all five call sites (getQaHandoff, getSecurityAuditorHandoff, getReviewerHandoff, getReleaseEngineerHandoff, getDocumentationHandoff). Logic is sound, well-documented, and correctly placed as the penultimate step before each WAIT fallthrough.",
+        "Verified self-routing is intentionally NOT filtered — the design rationale (auditability / IDE visibility) is clearly explained in the JSDoc.",
+        "Confirmed the `currentRole` parameter is passed purely for diagnostic string composition and never used as a routing filter — clean separation of concerns.",
+        "Applied one Fix-Forward fix: updated the stale comment on line 403 that still referred to future WP-004/005 work that was actually completed in this WP.",
+        "Identified and tagged one documentation-forward item: the getReleaseEngineerHandoff all-terminal early-exit inconsistency (scopeToStage vs. wpDetails.every) should be documented as a known behavioral asymmetry for future contributors.",
+        "All 1912 tests pass after the Fix-Forward edit (62 test files, 0 failures)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/tools/workflow-handoff.ts",
+          "mcp-server/tests/tools/workflow-handoff.test.ts"
+        ]
+      },
+      "metrics": {
+        "test_coverage": "9 new targeted tests for findNextReadyDispatch + full regression suite (1912 tests, 62 files)",
+        "tests_passed": 1912,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-04T08:40:12Z",
+          "note": "Fixed stale comment at line 403 (now line 403 post-edit): changed 'consumed by getReviewerHandoff and will be consumed by getQaHandoff and getSecurityAuditorHandoff (WP-004/005)' to 'consumed by getReviewerHandoff, getQaHandoff, and getSecurityAuditorHandoff' — removing the future-tense WP reference since WP-003 completed this work."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-04T08:40:12Z",
+          "note": "getReleaseEngineerHandoff uses releaseWps.every() for its all-terminal early-exit rather than wpDetails.every() like the other four handoff functions. This means a project with zero release-engineering WPs will not fire the early-exit from getReleaseEngineerHandoff, relying on the cross-WP dispatch Step 2 (all-terminal branch in findNextReadyDispatch) as a safety net. This is functionally safe but architecturally inconsistent. Consider harmonizing in a follow-up."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-04T08:40:12Z",
+          "note": "[documentation-forward] The JSDoc on findNextReadyDispatch() explains the self-routing design rationale well. Consider adding a brief note in the module-level or function-level doc explaining why getReleaseEngineerHandoff's all-terminal early-exit is scoped to releaseWps (not wpDetails) and how findNextReadyDispatch serves as a safety net for zero-release-stage projects. This asymmetry is otherwise invisible to future contributors."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-04T08:40:12Z",
+          "note": "The five dispatch call-site comments have minor style variations: QA/Security Auditor/Reviewer use 'Step N of §X.Y (Condition N)' numbering while Release Engineer uses no step numbering at all. Not a blocker, but harmonizing these would improve readability."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-04T08:40:33Z",
+      "completed_at": "2026-05-04T08:43:37Z",
+      "duration_ms": 184000,
+      "summary": [
+        "Updated §13.5 findNextReadyDispatch pseudocode in handoff.md to match the implementation: (a) removed the assigned_to check — routing is always via PIPELINE_AGENT_MAP[firstActiveStage(wp)]; (b) added currentRole parameter with a note that it is used only for the diagnostic reason string, never as a routing filter; (c) added non-empty wpDetails guard on the all-terminal branch; (d) added dependency-blocked exclusion note (!isBlockedByDependencies(wp)) on the READY scan.",
+        "Added 'assigned_to not consulted' design note to §13.5 explaining the divergence from PM Step 2 and the rationale: findNextReadyDispatch is a lightweight IDE stall-prevention safety net, not a full PM-equivalent router.",
+        "Added 'dependency-blocked exclusion' design note to §13.5 to make the isBlockedByDependencies filter explicit for spec readers.",
+        "Added 'All-terminal scope asymmetry (implementation note)' design note to §13.1 Release Engineer Handoff, documenting that releaseWps.every() is used instead of wpDetails.every() and that findNextReadyDispatch serves as the safety net for zero-release-stage projects.",
+        "Added v2.5.0 changelog entry to spec README.md covering: findNextReadyDispatch helper, the five updated handoff functions, pseudocode corrections, Release Engineer asymmetry documentation, and §21.71 edge case note.",
+        "Updated spec version from 2.4.3 to 2.5.0 and date to 2026-05-04 in README.md.",
+        "Ran ctx generate — all 31 context files regenerated successfully, including the updated mcp-server/workflow-specification.md and mcp-server/source-tools.md."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/workflow-specification/handoff.md",
+          "mcp-server/docs/agents/workflow-specification/README.md",
+          ".context/mcp-server/workflow-specification.md",
+          ".context/mcp-server/source-tools.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-04T08:43:37Z",
+          "note": "[documentation-forward addressed] The Reviewer flagged the getReleaseEngineerHandoff all-terminal early-exit scope asymmetry (releaseWps.every vs wpDetails.every) as a documentation-forward. Documented in §13.1 Release Engineer Handoff with a design note explaining the asymmetry, the safety net provided by findNextReadyDispatch, and when harmonization would be appropriate."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-04T08:43:37Z",
+          "note": "§13.5 pseudocode now accurately reflects the implementation's absence of an assigned_to check. Added an explicit design note explaining the divergence from PM Step 2 routing to prevent future implementors from adding an assigned_to check that would change observable routing behavior."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-04T08:43:37Z",
+          "note": "No README.md changes were needed — findNextReadyDispatch is an internal MCP server helper with no user-facing surface. Documentation scope correctly limited to the workflow specification docs."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-04T08:43:37Z",
+  "last_updated": "2026-05-04T08:43:37Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-04T08:36:36Z",
+      "notes": [
+        "All 6 acceptance criteria are fully satisfied. findNextReadyDispatch() is at line ~404 in workflow-handoff.ts, immediately after partitionWpsAwaitingNextStage().",
+        "9 new regression tests added to tests/tools/workflow-handoff.test.ts in the 'Cross-WP dispatch from non-PM agents (findNextReadyDispatch)' describe block.",
+        "One pre-existing test was updated: the 'returns WAIT when WP-002 is genuinely waiting for earlier pipeline stages' test was asserting the old broken WAIT behavior; it now correctly expects READY_FOR_DEVELOPER (the cross-WP dispatch fires for an unconstrained READY WP).",
+        "All 1912 tests pass across 62 test files. No regressions.",
+        "Note: getReleaseEngineerHandoff was not previously exported in the test imports — added it to the import list in the test file."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-04T08:38:23Z",
+      "notes": [
+        "All 6 AC confirmed PASS via code inspection and full test run (1912 tests, 0 failures). Implementation is clean and correct. Two low/medium observations noted for awareness but none are blockers. Ready for code-review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-04T08:40:12Z",
+      "notes": [
+        "All 6 AC confirmed PASS. Implementation is clean, well-structured, and consistent with the existing patterns in the file. One Fix-Forward applied (stale comment at line 403). One documentation-forward tagged for the Documentation agent regarding the getReleaseEngineerHandoff scope asymmetry. No blocking issues. 1912 tests pass."
+      ]
+    }
+  ]
+}

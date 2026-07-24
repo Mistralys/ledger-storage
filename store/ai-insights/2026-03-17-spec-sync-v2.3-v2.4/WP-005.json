@@ -1,0 +1,159 @@
+{
+  "work_package_id": "WP-005",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "completeSynthesis() sets synthesis_generated_at to a valid ISO 8601 timestamp",
+      "met": true
+    },
+    {
+      "criterion": "synthesis_generated_at appears in the completeSynthesis() response JSON",
+      "met": true
+    },
+    {
+      "criterion": "synthesis_generated_at is cleared to null on COMPLETE → IN_PROGRESS transition",
+      "met": true
+    },
+    {
+      "criterion": "synthesis_generated_at is cleared to null on cascade reblock",
+      "met": true
+    },
+    {
+      "criterion": "synthesis_generated_at is cleared to null when WP is created on COMPLETE project",
+      "met": true
+    },
+    {
+      "criterion": "synthesis_generated_at is cleared to null in project reset",
+      "met": true
+    },
+    {
+      "criterion": "No path exists where synthesis_generated is set to false without also setting synthesis_generated_at = null",
+      "met": true
+    }
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-17T09:54:52Z",
+      "completed_at": "2026-03-17T09:57:15Z",
+      "summary": [
+        "Wired synthesis_generated_at across all five write paths: set to now() in completeSynthesis(), cleared to null in COMPLETE→IN_PROGRESS (updateWorkPackageStatus), cascade reblock (propagateDependencyReblock), WP creation on COMPLETE project (createWorkPackage), project reset (applyProjectReset), and corruption detection (computeHealedStatus). synthesis_generated_at is included in completeSynthesis() response JSON.",
+        "TypeScript compilation succeeds with no errors."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/tools/project-lifecycle.ts",
+          "mcp-server/src/tools/work-package.ts",
+          "mcp-server/src/utils/project-reset.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T09:57:15Z",
+          "note": "The corruption-detection branch in computeHealedStatus (project-lifecycle.ts) was the only path setting synthesis_generated=false via a conditional expression rather than a block — converted to a block to co-locate the companion synthesis_generated_at = null assignment, improving readability and safety."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T09:57:15Z",
+          "note": "All five synthesis_generated = false sites now have the companion synthesis_generated_at = null on the immediately following line, making the invariant visually obvious during code review."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-17T10:08:43Z",
+      "completed_at": "2026-03-17T10:11:59Z",
+      "summary": [
+        "All 7 acceptance criteria verified. completeSynthesis() sets rootIndex.synthesis_generated_at = now() and includes it in the response JSON. Exhaustive regex grep of the source confirms exactly 5 instances of synthesis_generated = false across 3 files (project-lifecycle.ts:339, work-package.ts:408,873,1104, project-reset.ts:435) — each immediately followed by synthesis_generated_at = null. AC #7 (no orphan false-sets) is fully satisfied. TypeScript compilation clean. 1309 total test suite passes; targeted regression (project-lifecycle 67 + work-package 141 + project-reset 17) all pass. Schema correctly declares synthesis_generated_at as z.string().nullable().optional() for backward compatibility."
+      ],
+      "metrics": {
+        "test_coverage": "67 project-lifecycle + 141 work-package + 17 project-reset = 225 targeted tests pass",
+        "tests_passed": 1309,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-03-17T10:11:59Z",
+          "note": "No automated tests assert synthesis_generated_at in any of the 5 clear paths or the set path in completeSynthesis(). The invariant 'synthesis_generated=false always co-occurs with synthesis_generated_at=null' is verified by exhaustive code inspection (regex grep confirmed exactly 5 synthesis_generated=false sites, each immediately followed by synthesis_generated_at=null), but no test will catch a future regression. A test suite covering these six paths should be added — ideally under a dedicated describe block in project-lifecycle.test.ts and work-package.test.ts."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T10:11:59Z",
+          "note": "The corruption-detection branch in computeHealedStatus now uses a block for the co-located assignment pair — readability improvement noted by Developer is confirmed and appropriate."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-17T10:18:32Z",
+      "completed_at": "2026-03-17T10:20:06Z",
+      "summary": [
+        "PASS. Implementation correctly maintains the synthesis_generated/synthesis_generated_at invariant across all 6 lifecycle paths. The pair assignment pattern is consistently applied and visually traceable. No blocking issues found. The Developer's block-refactoring of the corruption-detection branch is a concrete readability improvement. Schema backward compatibility is correct (z.string().nullable().optional())."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T10:20:06Z",
+          "note": "The 5-site repetition of the pair assignment (synthesis_generated = false / synthesis_generated_at = null) is a candidate for a clearSynthesisState(rootIndex) helper. At 5 sites it is within acceptable duplication tolerance under this project's anti-over-engineering discipline, but if a third field is ever added to synthesis tracking state (e.g., synthesis_generated_by), all 5 sites need individual updates. Worth tracking as a future refactor trigger."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-17T10:20:06Z",
+          "note": "No automated tests assert synthesis_generated_at state in any of the 6 lifecycle transitions (set in completeSynthesis, cleared in COMPLETE->IN_PROGRESS, cascade reblock, createWorkPackage, project reset, and corruption detection). The invariant was verified by exhaustive grep inspection, but a formal test suite in project-lifecycle.test.ts and work-package.test.ts would guard against regression. Recommend resolving before any downstream WP consumes this field."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-17T10:23:34Z",
+      "completed_at": "2026-03-17T10:26:50Z",
+      "summary": [
+        "Updated api-surface.md, constraints.md, and data-flows.md to document the synthesis_generated_at lifecycle invariant introduced by WP-005. Changes: (1) ledger_complete_synthesis description now states it sets synthesis_generated_at = now() atomically alongside synthesis_generated = true; (2) getProjectStatus description updated: corruption-detection write callback now also resets synthesis_generated_at = null; (3) computeHealedStatus comment block updated similarly; (4) constraints.md Constraint 39 (COMPLETE→IN_PROGRESS) updated to include synthesis_generated_at = null in the reset list; (5) constraints.md Constraint 51 (propagateDependencyReblock) updated: synthesis_generated reset bullet now includes synthesis_generated_at = null; (6) data-flows.md updateWorkPackageStatus step 8 updated; (7) data-flows.md propagateDependencyReblock Phase 3 updated; (8) data-flows.md corruption mitigation block updated."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/constraints.md",
+          "mcp-server/docs/agents/project-manifest/data-flows.md"
+        ]
+      }
+    }
+  ],
+  "status_changed_at": "2026-03-17T10:26:50Z",
+  "handoff_notes": [
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-17T10:11:59Z",
+      "notes": [
+        "WP-005 PASS. All 7 ACs confirmed. Exhaustive grep of synthesis_generated=false confirms exactly 5 instances, each immediately followed by synthesis_generated_at=null. completeSynthesis() sets now() and includes the field in the response JSON. TypeScript clean. 226 targeted tests (project-lifecycle + work-package + project-reset) all pass. Coverage gap: no automated tests for synthesis_generated_at lifecycle — recommended for a future test-maintenance WP."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-03-17T10:20:06Z",
+      "notes": [
+        "WP-005 PASS. All 7 ACs confirmed. Six modification sites (5 clear-paths + 1 set-path) are correctly implemented with consistent co-located pair assignment. completeSynthesis() reads synthesis_generated_at back from rootIndex (not a second now() call), preventing response/disk timestamp skew. Two low-priority non-blocking items: (1) the clear-pair duplication across 5 sites is a future helper candidate if synthesis tracking state expands; (2) no automated tests for synthesis_generated_at lifecycle — recommend adding before downstream self-healing WPs land."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,199 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-002.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "getProjectManagerAction implements all 5 priorities from §14.1.2 in correct order",
+      "met": true
+    },
+    {
+      "criterion": "Returns UNBLOCK_WP only for non-dependency blockers (decision, external, technical)",
+      "met": true
+    },
+    {
+      "criterion": "REVIEW_REWORK_LIMIT uses rework_counts map (no legacy scalar)",
+      "met": true
+    },
+    {
+      "criterion": "REVIEW_ABANDONED respects grace period using status_changed_at and STALE_PIPELINE_HOURS",
+      "met": true
+    },
+    {
+      "criterion": "REPAIR_ORPHAN_BLOCKED detects orphaned dependency blocks when canStartWorkPackage returns allowed",
+      "met": true
+    },
+    {
+      "criterion": "RESOLVE_BLOCKERS is no longer returned (replaced by UNBLOCK_WP)",
+      "met": true
+    },
+    {
+      "criterion": "All 9 test cases pass",
+      "met": true
+    },
+    {
+      "criterion": "npx tsc --noEmit passes",
+      "met": true
+    },
+    {
+      "criterion": "npx vitest run passes (no regressions)",
+      "met": true
+    }
+  ],
+  "revision": 1,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-02-27T22:25:47Z",
+      "completed_at": "2026-02-27T22:29:58Z",
+      "summary": [
+        "Rewrote getProjectManagerAction in mcp-server/src/tools/workflow-next-action.ts implementing the full 5-priority algorithm from §14.1.2.",
+        "Priority 1 (UNBLOCK_WP): scans BLOCKED WPs for decision/external/technical blockers.",
+        "Priority 2 (REVIEW_REWORK_LIMIT): scans IN_PROGRESS WPs for any rework_counts entry >= MAX_REWORK_COUNT using the canonical map — no legacy scalar.",
+        "Priority 3 (REVIEW_STALE): scans IN_PROGRESS WPs across all 4 pipeline types using extractStalePipelineAction.",
+        "Priority 3b (REVIEW_ABANDONED): detects IN_PROGRESS WPs with no active pipelines; respects status_changed_at grace period for recently-claimed WPs.",
+        "Priority 3c (REPAIR_ORPHAN_BLOCKED): detects BLOCKED WPs with dependency/absent blockers where canStartWorkPackage returns allowed.",
+        "Priority 4/Fallback: WAIT.",
+        "Removed RESOLVE_BLOCKERS action entirely.",
+        "Added imports: canStartWorkPackage from schema/validators.js, STALE_PIPELINE_HOURS + mostRecentEffectivePipeline from workflow-helpers.js, parseTimestamp from utils/timestamp.js.",
+        "Exported getProjectManagerAction for testability.",
+        "Added 9 test cases in describe('PM action logic') block in tests/tools/workflow-next-action.test.ts — all 9 pass.",
+        "npx tsc --noEmit: clean. npx vitest run: 729/729 passed."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/tools/workflow-next-action.ts",
+          "mcp-server/tests/tools/workflow-next-action.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T23:30:00Z",
+          "note": "getProjectManagerAction now loads all WP details via Promise.all on each call. If the project has many WPs, this could become noticeable. Consider gating detail loads behind lazy loading or caching in a future pass if performance becomes a concern — same pattern already used in getDeveloperAction/getQaAction so this is consistent."
+        },
+        {
+          "type": "refactor",
+          "priority": "low",
+          "timestamp": "2026-02-27T23:30:00Z",
+          "note": "The allPipelineTypes array in getProjectManagerAction (Priority 3) is an inline string literal. If new pipeline types are added in the future this list could drift. Consider deriving it from a canonical constant (e.g. Object.keys(PIPELINE_TYPES)) to keep it in sync automatically."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-02-27T22:55:30Z",
+      "completed_at": "2026-02-27T22:56:59Z",
+      "summary": [
+        "Independent build check: npx tsc --noEmit clean (0 errors).",
+        "All 9 PM action logic test cases pass (UNBLOCK_WP, REVIEW_REWORK_LIMIT, REVIEW_STALE, REVIEW_ABANDONED, REPAIR_ORPHAN_BLOCKED, WAIT, priority ordering, grace period, dependency non-trigger).",
+        "Full regression suite: 764/764 tests pass — no regressions.",
+        "RESOLVE_BLOCKERS confirmed fully removed from src/ and tests/.",
+        "Edge-case analysis: empty rework_counts object handled safely; dependency-blocker + COMPLETE dep correctly routes to REPAIR_ORPHAN_BLOCKED; undefined status_changed_at protected by existence guard; all three non-dependency blocker types covered by implementation logic."
+      ],
+      "metrics": {
+        "test_coverage": "9/9 AC covered by dedicated test cases",
+        "tests_passed": 764,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T22:56:00Z",
+          "note": "Test Case 1 covers 'technical' blocker type for UNBLOCK_WP but no dedicated test for 'decision' or 'external'. All three share the same code path so they pass by implication, but explicit tests for each would improve confidence in future refactors."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T22:56:00Z",
+          "note": "The allPipelineTypes array inline literal in getPMAction Priority 3 was noted by the Developer. Confirmed it could drift if new pipeline types are added; low risk now but worth a future constant extraction."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-02-27T23:00:44Z",
+      "completed_at": "2026-02-27T23:02:40Z",
+      "summary": [
+        "Reviewed getProjectManagerAction in mcp-server/src/tools/workflow-next-action.ts. All 5 priorities from §14.1.2 are correctly implemented in strict priority order.",
+        "Priority 1 (UNBLOCK_WP): Correctly scans BLOCKED WPs for decision/external/technical blockers before any lower-priority check.",
+        "Priority 2 (REVIEW_REWORK_LIMIT): Uses rework_counts map exclusively — no legacy scalar access. Iterates Object.entries with typeof guard, safe against empty map.",
+        "Priority 3 (REVIEW_STALE): Iterates all 4 pipeline types per IN_PROGRESS WP using extractStalePipelineAction.",
+        "Priority 3b (REVIEW_ABANDONED): Correctly handles three sub-cases: lastEffective.completed_at present, absent (falls to status_changed_at), and no pipelines + no status_changed_at (grace period, skip). Grace period logic is correct.",
+        "Priority 3c (REPAIR_ORPHAN_BLOCKED): Correctly uses canStartWorkPackage against rootIndex summaries. Handles both absent blocked_by and explicit 'dependency' type.",
+        "RESOLVE_BLOCKERS confirmed fully absent from src/ — no residue.",
+        "All 9 AC criteria verified. Test coverage is structurally sound with shared beforeEach/afterEach and real store interaction.",
+        "Two non-blocking observations recorded in comments. Overall: clean, idiomatic, consistent with existing getDeveloperAction/getQaAction patterns."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/tools/workflow-next-action.ts",
+          "mcp-server/tests/tools/workflow-next-action.test.ts"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 764,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-28T00:00:00Z",
+          "note": "allPipelineTypes is an inline string literal inside getProjectManagerAction (Priority 3 loop). Both Developer and QA flagged this. Confirmed non-blocking: recommend deriving from a typed constant (e.g. a PIPELINE_TYPES array in constants.ts) to guard against future drift when new pipeline types are added."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-28T00:00:00Z",
+          "note": "Double-parse coupling in Priority 3 REVIEW_STALE: getProjectManagerAction calls extractStalePipelineAction, then immediately JSON.parses the result's text field to extract age_hours. The type cast (as { age_hours: number }) provides no runtime safety — if extractStalePipelineAction's output shape changes, age_hours silently becomes undefined in the response. Consider exposing a typed helper or breaking out the age_hours computation from the serialization step."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-28T00:00:00Z",
+          "note": "Test Case 2 (dependency blocker does NOT return UNBLOCK_WP) uses a purely negative assertion: expect(result.action).not.toBe('UNBLOCK_WP'). A positive assertion (e.g., toBe('WAIT') or toBe('REPAIR_ORPHAN_BLOCKED') depending on setup) would make the intent explicit and protect against future regression where the action changes to something unexpected but still not UNBLOCK_WP."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-28T00:00:00Z",
+          "note": "No dedicated test for 'decision' or 'external' blocker types triggering UNBLOCK_WP (only 'technical' is directly tested in Case 1). All three share the same predicate so they pass implicitly. Adding two one-liner parametrize cases would strengthen refactor safety — the union condition is the kind of code that shrinks accidentally."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-02-27T23:06:58Z",
+      "completed_at": "2026-02-27T23:08:33Z",
+      "summary": [
+        "Added getProjectManagerAction to the workflow-next-action.ts section of api-surface.md with full 5-priority algorithm documentation (P1 UNBLOCK_WP, P2 REVIEW_REWORK_LIMIT, P3 REVIEW_STALE, P3b REVIEW_ABANDONED, P3c REPAIR_ORPHAN_BLOCKED, P4 WAIT), including the dependency-blocker exclusion note.",
+        "Updated two PM action bullet points in data-flows.md (Flow 7 agent-specific logic and Flow 9 batch logic) from stubs to accurate descriptions of the full priority algorithm."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/data-flows.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-28T00:00:00Z",
+          "note": "No documentation gaps found. The api-surface.md was missing getProjectManagerAction entirely; data-flows.md had stale stubs for PM action. Both updated to accurately reflect the §14.1.2 implementation."
+        }
+      ]
+    }
+  ]
+}

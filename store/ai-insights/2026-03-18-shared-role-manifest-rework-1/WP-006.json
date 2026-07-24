@@ -1,0 +1,153 @@
+{
+  "work_package_id": "WP-006",
+  "work_package_file": "work/WP-006.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "AgentRole type is inferred from Zod parse output, not manually declared",
+      "met": true
+    },
+    {
+      "criterion": "Manifest parse failure at startup produces a clear error",
+      "met": true
+    },
+    {
+      "criterion": "New file mcp-server/src/schema/workflow-manifest-schema.ts exists with Zod schema",
+      "met": true
+    },
+    {
+      "criterion": "All MCP server tests pass (npm test), build succeeds (npm run build)",
+      "met": true
+    },
+    {
+      "criterion": "All tests pass, build succeeds",
+      "met": true
+    }
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-18T19:19:52Z",
+      "completed_at": "2026-03-18T20:28:15Z",
+      "summary": [
+        "Created mcp-server/src/schema/workflow-manifest-schema.ts with AgentRoleEnum (z.enum with 9 role names), ManifestSchema (full Zod schema), and exported workflowManifest parsed singleton.",
+        "Updated constants.ts: removed manual AgentRole union type + createRequire + _require; now re-exports AgentRole (z.infer<typeof AgentRoleEnum>) and AgentRoleEnum from the schema module.",
+        "Updated enums.ts: removed createRequire + _require + duplicate manifest load; now imports workflowManifest from ./workflow-manifest-schema.js.",
+        "Updated pipeline-maps.ts: removed createRequire + _require + duplicate manifest load; now imports workflowManifest from ../schema/workflow-manifest-schema.js.",
+        "Added 4 startup-time validation tests in workflow-manifest.test.ts: parse succeeds, spec_version shape, role names are valid AgentRole members, parse throws on malformed input.",
+        "npm run build — zero TypeScript errors.",
+        "npm test — 1472/1472 tests pass (4 new tests added) across 45 test files."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/schema/workflow-manifest-schema.ts",
+          "mcp-server/src/utils/constants.ts",
+          "mcp-server/src/schema/enums.ts",
+          "mcp-server/src/utils/pipeline-maps.ts",
+          "mcp-server/tests/utils/workflow-manifest.test.ts"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 1472,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-03-18T20:28:15Z",
+          "note": "workflow-helpers.ts also imports the manifest with createRequire + raw cast (line 21-22). It was not listed in the WP scope but is a natural follow-on. Recommend a future WP or quick fixup to use the workflowManifest singleton from workflow-manifest-schema.ts."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-18T20:38:39Z",
+      "completed_at": "2026-03-18T20:39:25Z",
+      "summary": [
+        "AC1 — AgentRole inferred from Zod: PASS. export type AgentRole = z.infer<typeof AgentRoleEnum> at workflow-manifest-schema.ts:39. constants.ts re-exports it via 'export type { AgentRole }' — no manual union.",
+        "AC2 — Clear startup error: PASS. ManifestSchema.parse() at module load time throws ZodError on invalid input. Verified by test 'ManifestSchema.parse() throws ZodError on malformed input' (line 43-45 of workflow-manifest.test.ts).",
+        "AC3 — New file exists: PASS. mcp-server/src/schema/workflow-manifest-schema.ts confirmed. Contains AgentRoleEnum, ManifestSchema, workflowManifest singleton, AgentRole and Manifest type exports.",
+        "AC4 — Build + tests: PASS. npm run build — zero TypeScript errors. npm test — 1472/1472 pass (4 new startup-time validation tests added in this WP)."
+      ],
+      "metrics": {
+        "tests_passed": 1472,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-03-18T20:39:25Z",
+          "note": "workflow-helpers.ts still uses createRequire + raw cast for its own manifest import (Dev noted this as follow-on debt in the implementation pipeline). This is a minor inconsistency — the file doesn't get the Zod-narrowed types. Non-blocking for this WP, but should be tracked as a follow-on cleanup."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-18T20:46:26Z",
+      "completed_at": "2026-03-18T20:47:18Z",
+      "summary": [
+        "Excellent architectural refactor. New workflow-manifest-schema.ts centralizes all manifest parsing, Zod validation, and type inference. AgentRole derived via z.infer eliminates the previously manual union maintenance. ManifestSchema.parse() at module-load produces a clear ZodError on malformed manifest — fail-fast behavior correctly tested. constants.ts, enums.ts, and pipeline-maps.ts all migrated to import workflowManifest from the singleton, eliminating 3 separate createRequire usages. One remaining raw createRequire in workflow-helpers.ts is correctly flagged as follow-on debt (outside WP scope). ManifestSchema.roles.length(9) + RoleSchema.name: AgentRoleEnum provides a two-layer consistency guard between manifest data and TypeScript types. 1472/1472 tests pass, build clean."
+      ],
+      "comments": [
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-03-18T20:47:18Z",
+          "note": "AgentRoleEnum in workflow-manifest-schema.ts is the one construct that is NOT derived from the manifest — the 9 string literals must match manual updates when roles change. This is architecturally correct for Zod enums (TypeScript needs string literal types), and the ManifestSchema.roles.length(9) + name: AgentRoleEnum guards ensure any divergence causes a startup-time ZodError. Worth documenting explicitly: when adding a new agent role, both workflow-manifest.json AND AgentRoleEnum + .length(9) must be updated atomically. Non-blocking, informational."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-03-18T20:47:18Z",
+          "note": "workflow-helpers.ts (lines 11, 20) still imports the manifest via createRequire + raw cast, bypassing the new Zod-validated singleton. This means workflow-helpers.ts gets loosely-typed manifest access compared to all other consumers. Correctly identified as follow-on debt in both implementation and QA pipelines. Future WP should migrate it to import { workflowManifest } from '../schema/workflow-manifest-schema.js'."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-19T06:48:07Z",
+      "completed_at": "2026-03-19T06:50:55Z",
+      "summary": [
+        "Three documentation gaps found and fixed across two manifest files.",
+        "file-tree.md: Added workflow-manifest-schema.ts entry in src/schema/ (between validators.ts and work-package.ts) with a description of its exports.",
+        "api-surface.md — Constants section: Updated header paragraph to remove stale 'createRequire(import.meta.url)' reference — constants now derive from the Zod singleton. Updated AgentRole comment from 'hardcoded union, must be kept in sync manually' to reflect Zod inference. Added AgentRoleEnum re-export. Updated OrchestratingRole comment to remove the stale 'hardcoded for the same reason as AgentRole' note.",
+        "api-surface.md — Core Types: Updated AgentRole comment from 'Exported from src/utils/constants.ts; canonical string-literal union' to correctly state it is inferred from AgentRoleEnum (z.infer<typeof AgentRoleEnum>) and re-exported by constants.ts.",
+        "api-surface.md — New section 'Workflow Manifest Schema' added before Constants, documenting AgentRoleEnum, AgentRole type, ManifestSchema, Manifest type, and workflowManifest singleton with their semantics, the manual-sync warning for AgentRoleEnum literals, and the list of consumers."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/file-tree.md",
+          "mcp-server/docs/agents/project-manifest/api-surface.md"
+        ]
+      }
+    }
+  ],
+  "status_changed_at": "2026-03-19T06:50:55Z",
+  "handoff_notes": [
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-18T20:39:25Z",
+      "notes": [
+        "All 4 ACs met. workflow-manifest-schema.ts exists with AgentRoleEnum (z.enum), ManifestSchema (full Zod schema), and workflowManifest singleton. AgentRole is z.infer<typeof AgentRoleEnum> — no manual union. Parse failure throws ZodError (tested at line 45 of workflow-manifest.test.ts). 1472/1472 MCP server tests pass, build clean. One low-priority debt note: workflow-helpers.ts still uses raw createRequire cast for manifes (not in WP scope)."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-03-18T20:47:18Z",
+      "notes": [
+        "All 5 ACs met, PASS. workflow-manifest-schema.ts is a well-structured Zod schema module: AgentRoleEnum drives type inference, ManifestSchema validates all 9 roles at startup, workflowManifest singleton is the single parse point for all consumers. constants.ts, enums.ts, and pipeline-maps.ts all migrated to import from the singleton cleanly. workflow-helpers.ts createRequire usage remains as tracked follow-on debt. 1472/1472 tests pass, build clean."
+      ]
+    }
+  ]
+}

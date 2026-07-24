@@ -1,0 +1,283 @@
+{
+  "work_package_id": "WP-004",
+  "work_package_file": "work/WP-008.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "`RawQueueEntry` interface includes `expectedRepo: string | null` field",
+      "met": true
+    },
+    {
+      "criterion": "Legacy queue entries (JSON files without `expected_repo`) are normalized to `expectedRepo: null` at the read boundary",
+      "met": true
+    },
+    {
+      "criterion": "TypeScript compilation passes with the new field — no type errors in downstream consumers",
+      "met": true
+    },
+    {
+      "criterion": "`expectedSlug` retains its original bare-slug semantics (no change to this field)",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-31T15:54:43Z",
+      "completed_at": "2026-05-31T15:57:52Z",
+      "duration_ms": 189000,
+      "summary": [
+        "Added `expectedRepo: string | null` to `RawQueueEntry` interface in types.ts with JSDoc explaining legacy normalization semantics.",
+        "Updated `isRawQueueEntry()` in validate-entry.ts to normalize missing `expectedRepo` to null in-place during the type-guard pass, eliminating the need for callers to handle `undefined`.",
+        "Added `normalizeQueueEntry()` helper in validate-entry.ts as an explicit normalization function for legacy entries (belt-and-suspenders, also useful for future callers that receive entries without running them through the guard).",
+        "Added 6 new test cases (TC-20 through TC-25) to validate-entry.test.ts covering: missing expectedRepo normalized to null, string expectedRepo preserved, explicit null preserved, and all three normalizeQueueEntry() branches.",
+        "TypeScript compilation passes with zero errors (npx tsc --noEmit).",
+        "All 29 queue-related tests pass. 17 pre-existing failures in dialogue-qa.test.ts confirmed to pre-date this WP (verified via git stash)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/gui/queue/types.ts",
+          "mcp-server/src/gui/queue/validate-entry.ts",
+          "mcp-server/tests/gui/queue/validate-entry.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T15:57:52Z",
+          "note": "validate-entry.ts now performs in-place mutation of the entry object inside isRawQueueEntry() to set expectedRepo=null on legacy entries. This is a side-effectful type-guard, which is unusual. The approach is pragmatic (avoids requiring callers to call a second normalization step), but it is worth documenting clearly — the JSDoc now calls this out explicitly. The alternative pure approach (wrapping in a two-step validate+normalize call at the readQueueFile() call site) would be cleaner but was not required by this WP's scope."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-05-31T15:57:52Z",
+          "note": "get-queue.ts still uses entry.expectedSlug directly for ledger lookup (getProjectLedgerStatus) and log resolution (resolveProgress). When WP-007 (queue path resolution) lands, these calls will need to incorporate entry.expectedRepo. The coupling is expected and by design, but noting it here as a reminder for the downstream WPs."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-05-31T15:57:52Z",
+          "note": "The validate-entry.test.ts test IDs jump from TC-17 to TC-18/19 (for the id-empty/whitespace tests) and then TC-20+ for the new tests. The non-sequential numbering pre-dates this WP and is a minor cosmetic inconsistency in the test file."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-31T15:58:33Z",
+      "completed_at": "2026-05-31T16:01:01Z",
+      "duration_ms": 148000,
+      "summary": [
+        "TypeScript compilation: `npx tsc --noEmit` exits 0 — no type errors across the entire mcp-server.",
+        "All 25 validate-entry.test.ts tests pass (TC-01 through TC-25, including TC-20–TC-22 for isRawQueueEntry() normalization and TC-23–TC-25 for normalizeQueueEntry()).",
+        "Full queue test suite: 70/70 pass across all 5 test files — no regressions.",
+        "AC-1 confirmed: `RawQueueEntry` interface in types.ts includes `expectedRepo: string | null` with JSDoc.",
+        "AC-2 confirmed: `isRawQueueEntry()` in validate-entry.ts normalizes missing/non-string `expectedRepo` to `null` in-place — legacy entries are coerced at the read boundary in `readQueueFile()` via `data.filter(isRawQueueEntry)`.",
+        "AC-3 confirmed: TypeScript compilation passes with zero errors; downstream consumers (get-queue.ts, orchestrator-manager.ts) compile cleanly.",
+        "AC-4 confirmed: `expectedSlug` retains bare-slug semantics — used unchanged in get-queue.ts lines 148–149 for `getProjectLedgerStatus` and `resolveProgress` calls.",
+        "8 additional edge-case tests verified and cleaned up: numeric/boolean/object expectedRepo all normalize to null; empty-string is preserved (it is a string); normalizeQueueEntry() returns a new object only when expectedRepo is undefined, same reference otherwise."
+      ],
+      "metrics": {
+        "test_coverage": "validate-entry.ts: 100% (all branches exercised)",
+        "tests_passed": 70,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T16:01:01Z",
+          "note": "isRawQueueEntry() normalizes ANY non-string expectedRepo value to null — not just undefined/missing. This is correct and defensive behaviour: numeric, boolean, or object values (e.g. from a malformed queue file) are all coerced to null, preventing type confusion downstream. Worth noting in the function's JSDoc for clarity."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T16:01:01Z",
+          "note": "normalizeQueueEntry() returns a new spread object only when expectedRepo is undefined; otherwise returns the same reference. This is a minor inconsistency with the function's documented purpose (it advertises always returning a normalized copy), but it is benign since callers use the return value. EC-06 confirmed the 'new object on undefined' path, EC-07/EC-08 confirmed the 'same reference on string|null' path."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T16:01:01Z",
+          "note": "The VALID_ENTRY fixture in validate-entry.test.ts does not include an expectedRepo field, which is intentional for legacy-entry simulation. However, TC-20 asserts the in-place mutation of the fixture object — this is fine but callers should be aware isRawQueueEntry() mutates its argument. The JSDoc now documents this side effect."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-05-31T16:01:25Z",
+      "completed_at": "2026-05-31T16:02:21Z",
+      "duration_ms": 56000,
+      "summary": [
+        "Reviewed 3 files (types.ts, validate-entry.ts, validate-entry.test.ts). 0 Critical, 0 High findings. 1 Medium (design gap for future-proofing, no current exploit path). Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T16:02:21Z",
+          "note": "OWASP A08 — Prototype Pollution (Ruled Out): isRawQueueEntry() mutates the input object in-place via `e['expectedRepo'] = null` where `e` is cast from JSON.parse() output. V8's JSON.parse() returns plain objects with clean prototype chains; a JSON key named '__proto__' is parsed as a regular own property, not a prototype mutation. Bracket-write `e['expectedRepo'] = null` targets an own property only. No prototype pollution risk is present in this code path."
+        },
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-05-31T16:02:21Z",
+          "note": "OWASP A04 — Insecure Design (empty-string expectedRepo): isRawQueueEntry() accepts an empty string ('') as a valid expectedRepo value because the check is `typeof e['expectedRepo'] === 'string'` — no length or content constraint is applied. If expectedRepo is later used in path construction (e.g., `join(root, entry.expectedRepo, ...)`) a caller passing '' would produce an unintended path (effectively the same as root). No current exploit path exists since expectedRepo is only stored/returned in this WP's scope, but downstream WPs (e.g., WP-007 queue path resolution) should add a guard: reject empty-string expectedRepo or treat it as null. Recommend adding a non-empty check analogous to the existing expectedSlug validation."
+        },
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-05-31T16:02:21Z",
+          "note": "OWASP A03 — Injection (planPath / expectedSlug, pre-existing): planPath is accepted as any string with no path-traversal sanitization. expectedSlug is passed to getProjectLedgerStatus(ledgerRoot, entry.expectedSlug) and resolveProgress(logsDir, entry.expectedSlug) via node:path join(). A slug containing '../' sequences could escape the intended directory. This pre-dates WP-004 and is not introduced by these changes, but is noted for completeness. The Python orchestrator that writes the queue file is the appropriate enforcement boundary; a defensive check in readQueueFile() or getProjectLedgerStatus() would harden this layer."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T16:02:21Z",
+          "note": "OWASP A09 — Logging (info): No audit logging is added for queue entry normalization failures (entries silently dropped by the .filter(isRawQueueEntry) call). This is an existing pattern and acceptable for a fail-safe read operation, but a debug-level log on dropped entries would aid incident diagnosis. Low priority, no security impact."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-31T16:02:38Z",
+      "completed_at": "2026-05-31T16:03:58Z",
+      "duration_ms": 80000,
+      "summary": [
+        "Reviewed 3 files: types.ts, validate-entry.ts, validate-entry.test.ts.",
+        "No blocking issues found. All 4 acceptance criteria met. TypeScript compiles clean post-review edits.",
+        "Applied 3 Fix-Forward doc corrections to validate-entry.ts (non-behavioral): (1) module-level docstring incorrectly claimed both functions are pure — corrected to accurately describe isRawQueueEntry()'s in-place mutation side effect; (2) isRawQueueEntry() JSDoc's note about calling normalizeQueueEntry() was misleading since the guard itself normalizes in-place — replaced with a clear description of the side-effect and when normalizeQueueEntry() is still useful; (3) normalizeQueueEntry() @returns clause claimed 'same entry reference' unconditionally — corrected to distinguish the two code paths (same ref when expectedRepo is string|null, new spread object when undefined).",
+        "TypeScript compilation confirmed clean after all edits (npx tsc --noEmit exits 0)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/gui/queue/validate-entry.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "medium",
+          "timestamp": "2026-05-31T16:03:58Z",
+          "note": "validate-entry.ts module docstring: corrected false claim that 'Both functions are pure: no I/O dependencies and no side effects.' isRawQueueEntry() mutates its argument in-place to set expectedRepo=null on legacy entries — this is a deliberate and documented side effect, but the module-level summary was factually wrong. Updated to clearly distinguish the pure normalizeQueueEntry() from the side-effectful isRawQueueEntry()."
+        },
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "medium",
+          "timestamp": "2026-05-31T16:03:58Z",
+          "note": "isRawQueueEntry() JSDoc: the existing 'Call normalizeQueueEntry() after this guard' note was misleading — since the guard itself normalizes expectedRepo in-place, callers do NOT need to call normalizeQueueEntry() post-guard. Replaced with an accurate description of the side effect and clarified when normalizeQueueEntry() is appropriate (for callers holding entries that bypassed the guard). Also added explicit '[Side effect]' callout so developers scanning the JSDoc cannot miss it."
+        },
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-31T16:03:58Z",
+          "note": "normalizeQueueEntry() @returns clause: the original text 'Returns the same entry reference with expectedRepo guaranteed to be string | null' was inaccurate for the undefined path, which returns a new spread object. Corrected to distinguish the two code paths: same reference when expectedRepo is already string|null; new spread object when expectedRepo is undefined. This is the minor inconsistency the QA agent flagged in its pipeline comments."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T16:03:58Z",
+          "note": "The side-effectful type-guard pattern (isRawQueueEntry mutates its argument) is architecturally unusual but pragmatic for the Array.filter() usage pattern in readQueueFile(). It is now clearly documented at both the module and function level. If the codebase grows more consumers of raw queue data, consider revisiting toward a pure two-step approach (validate then normalize at the call site) — but this is not required for the current scope."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-05-31T16:03:58Z",
+          "note": "[documentation-forward] validate-entry.ts is a new module extracted from get-queue.ts. The module-level JSDoc mentions this but the broader queue module README (if one exists) or any architecture docs referencing the queue module should be updated to reflect the new validate-entry.ts module and its exported functions (isRawQueueEntry, normalizeQueueEntry). Downstream consumers (get-queue.ts, orchestrator-manager.ts) should be noted as the primary callers."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-31T16:04:18Z",
+      "completed_at": "2026-05-31T16:07:29Z",
+      "duration_ms": 191000,
+      "summary": [
+        "Addressed the documentation-forward item from code review: updated queue module documentation to reflect the new validate-entry.ts exports and expectedRepo normalization semantics introduced in WP-004.",
+        "file-tree.md: validate-entry.ts annotation revised to accurately describe both exported functions (isRawQueueEntry side-effect behavior + normalizeQueueEntry pure helper), the expectedRepo normalization contract, and added WP-004 to provenance tags.",
+        "file-tree.md: validate-entry.test.ts annotation updated to reflect the expanded test suite (17 → 25 tests), documenting TC-20–TC-22 (isRawQueueEntry expectedRepo normalization) and TC-23–TC-25 (normalizeQueueEntry branches).",
+        "api-surface.md (GUI Queue Helpers — types.ts section): RawQueueEntry interface stub updated to include the new expectedRepo: string | null field with a JSDoc comment explaining the legacy normalization contract.",
+        "api-surface.md (validate-entry.ts section): Section heading corrected (removed false 'pure ... no side effects' claim), module description updated to accurately characterize the side-effectful isRawQueueEntry() and pure normalizeQueueEntry(), and normalizeQueueEntry() function signature + JSDoc added as a new export.",
+        "CTX regeneration: ran ctx generate — both .context/mcp-server/manifest-api-surface.md and .context/mcp-server/manifest-file-tree.md regenerated successfully (all 32 documents clean, 0 errors)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/file-tree.md",
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          ".context/mcp-server/manifest-file-tree.md",
+          ".context/mcp-server/manifest-api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T16:07:29Z",
+          "note": "The documentation-forward item from code review was clear and actionable: the queue module's file-tree and API surface docs were the correct targets. No README existed for the queue sub-module (there is no mcp-server/src/gui/queue/README.md), but the project-manifest file-tree.md and api-surface.md together serve as the equivalent architectural reference for agent consumers — updating those is the right pattern for this codebase."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T16:07:29Z",
+          "note": "The types.ts dependency comment in the source file (line 9) lists 'types.ts ← compute-effective-status.ts ← validate-entry.ts' as the dependency order, which is inverted (validate-entry imports from types, not the other way around). This is a minor inaccuracy in source code comments, not in documentation files. Not updated here as it is outside documentation scope, but worth noting for a future implementation pass."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-31T16:07:29Z",
+  "last_updated": "2026-05-31T16:07:29Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-31T15:57:52Z",
+      "notes": [
+        "All 4 acceptance criteria met. The `expectedRepo: string | null` field is now part of `RawQueueEntry` and legacy entries are normalized at the read boundary in `isRawQueueEntry()`. Downstream consumers (get-queue.ts, orchestrator-manager.ts) can safely access `entry.expectedRepo` and rely on `string | null` semantics.",
+        "Pre-existing test failures in dialogue-qa.test.ts (17 failures) are branch-level regressions unrelated to this WP — they fail identically without my changes.",
+        "QA: focus coverage on (a) isRawQueueEntry() with entries that have various expectedRepo values, (b) normalizeQueueEntry() with undefined/null/string inputs, (c) confirming getQueue() propagates expectedRepo correctly end-to-end."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-05-31T16:01:01Z",
+      "notes": [
+        "All 4 acceptance criteria met and verified. Implementation is clean: isRawQueueEntry() performs in-place normalization at the read boundary (readQueueFile filter), and normalizeQueueEntry() provides an explicit belt-and-suspenders helper. TypeScript compilation is clean (0 errors). Security audit can proceed — focus areas: (a) the in-place mutation pattern in isRawQueueEntry() and whether it creates any prototype-pollution risk with untrusted JSON input; (b) the empty-string expectedRepo case (passes type validation but represents a semantically invalid repo name — downstream callers should guard against it if they use expectedRepo for filesystem paths)."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-31T16:02:21Z",
+      "notes": [
+        "Security audit PASS. 0 Critical/High findings. One Medium design gap noted: empty-string expectedRepo passes type validation but should be guarded against when used in path operations — downstream WPs (queue path resolution) should add a non-empty check analogous to the expectedSlug validation. Pre-existing planPath/expectedSlug path-traversal risk also noted (Low) for awareness but is not introduced by this WP. Code review may proceed."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-31T16:03:58Z",
+      "notes": [
+        "Code review PASS. 3 Fix-Forward doc corrections applied to validate-entry.ts (module docstring purity claim corrected, isRawQueueEntry JSDoc side-effect callout clarified, normalizeQueueEntry @returns corrected for the two code paths). No behavioral changes. TypeScript compiles clean. One documentation-forward item: queue module README/architecture docs should note the new validate-entry.ts module and its exports. All 4 acceptance criteria confirmed met."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,243 @@
+{
+  "work_package_id": "WP-008",
+  "work_package_file": "work/WP-008.md",
+  "status": "COMPLETE",
+  "assigned_to": "Reviewer",
+  "dependencies": [
+    "WP-001",
+    "WP-005"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "GET /api/projects/my-project/runs routes to handleListRunLogs",
+      "met": true
+    },
+    {
+      "criterion": "GET /api/projects/my-project/runs/20260225T113355-my-project.jsonl routes to handleGetRunLog",
+      "met": true
+    },
+    {
+      "criterion": "GET /api/projects/my-project/runs/20260225T113355-my-project.jsonl?after=5 passes afterLine: 5 to the handler",
+      "met": true
+    },
+    {
+      "criterion": "The work-packages/:wpId route still works correctly (not shadowed)",
+      "met": true
+    },
+    {
+      "criterion": "When orchestrator_logs_dir is absent from config, server starts without error",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "code-review"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-23T11:47:37Z",
+      "completed_at": "2026-03-23T11:51:22Z",
+      "duration_ms": 225000,
+      "summary": [
+        "Added imports for handleListRunLogs, handleGetRunLog (from src/gui/handlers/run-log-handlers.js) and resolveOrchestratorLogsDir (from src/gui/log-resolver.js) to gui/server.ts.",
+        "Added getConfig import from src/gui/config.js to allow reading orchestrator_logs_dir at startup.",
+        "Extended matchRoute() signature with a logsDir parameter and added two new GET route cases: GET /api/projects/:slug/runs (rest.length=3, rest[2]==='runs') dispatching to handleListRunLogs, and GET /api/projects/:slug/runs/:filename (rest.length=4, rest[2]==='runs') dispatching to handleGetRunLog with optional ?after= query param parsed as afterLine.",
+        "Updated handleRequest() signature to accept logsDir and thread it through to matchRoute().",
+        "In main(), resolved orchestratorLogsDir via resolveOrchestratorLogsDir(getConfig().orchestrator_logs_dir) immediately after readConfigFromDisk() and closed over it in the server createServer callback.",
+        "Route ordering is safe: the new runs routes discriminate on rest[2]==='runs' which is distinct from all existing rest.length=3 and rest.length=4 patterns (plan, synthesis, health, work-packages, archive, unarchive, complete); the work-packages/:wpId route is not shadowed.",
+        "TypeScript type check: zero errors.",
+        "Test suite: 1571/1571 tests pass across 54 files — no regressions."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/server.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:51:22Z",
+          "note": "In matchRoute(), the existing GET /api/projects/:slug routes (plan, synthesis, health, work-packages) decode the slug from rest[1] without decodeURIComponent — they use rest[1]! directly. The new runs routes use decodeURIComponent(rest[1]!) for consistency with how the PATCH and POST routes decode slugs in handleRequest(). This is correct behaviour but there is a latent inconsistency in the older routes. A follow-up pass to harmonise all slug decoding in matchRoute() would improve consistency."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:51:22Z",
+          "note": "The logsDir is resolved once at server startup from the initial config snapshot. If orchestrator_logs_dir is changed in gui-config.json at runtime (while the server is running), the new value will not take effect until the server is restarted, because the resolved value is captured in a closure. This is acceptable for the current use-case but worth documenting if live config reloading is ever required for this field."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "FAIL",
+      "started_at": "2026-03-23T12:23:07Z",
+      "completed_at": "2026-03-23T12:24:51Z",
+      "duration_ms": 104000,
+      "summary": [
+        "BLOCKING: `instanceof ApiError` check in server.ts will silently swallow run-log errors as 500s.",
+        "The `ApiError` class in `src/gui/log-resolver.ts` is a separate class from the `ApiError` imported by `server.ts` from `./api.js`. JavaScript `instanceof` checks identity of the constructor — two structurally identical classes in different modules are not the same class.",
+        "Consequence: any `ApiError` thrown by `handleListRunLogs` or `handleGetRunLog` (e.g. NOT_FOUND for a bad slug via `assertSafeSlug()`, FORBIDDEN for path-traversal attempts in `readLogEntries()`, NOT_FOUND for a missing log file) will fall through the `else` branch in server.ts's error handler, log to stderr as 'Unhandled error', and return a 500 response to the client instead of the correct 403 or 404.",
+        "Fix options (in order of preference): (1) Extract `ApiError` to a shared `src/gui/errors.ts` module and import from there in both `api.ts` and `log-resolver.ts`. (2) Change the `instanceof` guard in server.ts to a duck-type check: `err instanceof Error && typeof (err as any).code === 'string'`. Option 1 is preferred — it resolves the architectural duplicate noted in the module-level comment of log-resolver.ts and eliminates the latent risk for any future `src/gui/` utility that needs to throw structured errors.",
+        "No existing test exercises the server's HTTP error mapping for these routes (only the underlying resolver functions are unit-tested in isolation). A test that calls the HTTP server with a bad slug or filename and asserts a 404/403 status code would have caught this.",
+        "All other aspects of the implementation are correct: route registration logic is sound, segment-count discrimination prevents shadowing, `afterLine` parsing is correct, logsDir closure is correct, TypeScript types are satisfied, and the security guards in `readLogEntries()` are thorough."
+      ],
+      "comments": [
+        {
+          "type": "convention",
+          "priority": "high",
+          "timestamp": "2026-03-23T12:24:51Z",
+          "note": "BLOCKING — instanceof ApiError mismatch causes run-log errors to be returned as HTTP 500. `server.ts` imports ApiError from `./api.js` (gui/api.ts). The run-log handlers import ApiError from `src/gui/log-resolver.ts`. These are two distinct classes. The `err instanceof ApiError` guard at lines 440, 456, 481, 513, and 535 of server.ts will always evaluate to false for errors thrown from handleListRunLogs or handleGetRunLog. All structured ApiError responses (NOT_FOUND for invalid slug, FORBIDDEN for path traversal, NOT_FOUND for missing file) will be caught by the else-branch, emitting a stderr log and returning a 500 to the client. Fix: create a shared `src/gui/errors.ts` exporting the single ApiError class, then import it in both `gui/api.ts` and `src/gui/log-resolver.ts`."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "high",
+          "timestamp": "2026-03-23T12:24:51Z",
+          "note": "No integration test covers the HTTP-level error mapping for the new run-log routes. The existing tests in `tests/gui/log-resolver.test.ts` test the underlying functions in isolation and would not catch the instanceof mismatch. A test that spins up the real server (or calls handleRequest directly) and asserts that a request with an invalid slug returns 404, and a request with a path-traversal filename returns 403, should be added to `tests/gui/run-log.test.ts` (currently that file tests only the client-side JS)."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T12:24:51Z",
+          "note": "LATENT (pre-existing, noted by Developer): The slug in the GET /api/projects/:slug/runs and GET /api/projects/:slug/runs/:filename routes is decoded via decodeURIComponent(rest[1]!), but the older sibling routes (plan, synthesis, health, work-packages at rest.length=3) use rest[1]! directly without decoding. This inconsistency means a URL-encoded project slug would be handled differently by the two route groups. Should be normalised in a follow-up pass across all matchRoute() branches."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T12:24:51Z",
+          "note": "LATENT (pre-existing): `afterLine` query param is parsed with parseInt(afterParam, 10) without validation for NaN or negative values. If `?after=-5` or `?after=abc` is passed, afterLine will be NaN or -5. In readLogEntries(), the guard `afterLine != null && afterLine > 0` correctly treats NaN and negative values as 0 (skip nothing), so this does not cause incorrect behaviour — but an explicit validation at the parse site would be more defensive and self-documenting."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-03-23T12:24:51Z",
+          "note": "The module-level Known Limitations comment in `src/gui/log-resolver.ts` notes that `resolveOrchestratorLogsDir` and `findRunLogs` do not validate that the path is absolute. Now that these are wired into the HTTP server, the Documentation agent should ensure this limitation is surfaced in the developer guide / API surface doc for the run-log feature, alongside the planned fix (add path.isAbsolute() guard in resolveOrchestratorLogsDir)."
+        }
+      ]
+    },
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-23T12:26:23Z",
+      "completed_at": "2026-03-23T12:30:16Z",
+      "duration_ms": 233000,
+      "summary": [
+        "Created shared src/gui/errors.ts with a single exported ApiError class — the single source of truth for the structured error type used across all GUI modules.",
+        "Updated gui/api.ts: removed the local ApiError class definition, added `import { ApiError } from '../src/gui/errors.js'` and `export { ApiError }` so all existing consumers that import from api.ts continue to work unchanged.",
+        "Updated src/gui/log-resolver.ts: removed the local ApiError class and its Errors section comment, replaced with `import { ApiError } from './errors.js'` and `export { ApiError }`. The module-level JSDoc comment updated to explain the shared module.",
+        "run-log-handlers.ts requires no changes — it imports ApiError from log-resolver.ts which re-exports from errors.ts.",
+        "gui/server.ts imports ApiError from ./api.js (which re-exports from errors.ts). All instanceof ApiError guards in server.ts now resolve to the same constructor as errors thrown by handleListRunLogs/handleGetRunLog — the mismatch is fixed.",
+        "Exported handleRequest from gui/server.ts to enable HTTP-level integration tests without spinning up a full process.",
+        "Added entry-point guard in gui/server.ts so main() only runs when the file is invoked directly (not when imported by tests), eliminating the spurious process.exit(1) unhandled error that occurred when Vitest imported the module.",
+        "Created tests/gui/run-log-server.test.ts with 9 HTTP-level integration tests: invalid slug → 404 (list route), invalid slug → 404 (get-log route), path-traversal filename → 403, disallowed-chars filename → 403, missing file → 404, successful list → 200, successful get → 200 with entries, ?after= param respected → 200 with correct slice.",
+        "TypeScript check: zero errors. Test suite: 1580/1580 tests pass across 55 files — 9 net new tests, no regressions."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/gui/errors.ts",
+          "mcp-server/gui/api.ts",
+          "mcp-server/src/gui/log-resolver.ts",
+          "mcp-server/gui/server.ts",
+          "mcp-server/tests/gui/run-log-server.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T12:30:16Z",
+          "note": "run-log-handlers.ts still imports ApiError from '../log-resolver.js' (which re-exports it). This is correct and works, but a future cleanup could import directly from '../errors.js' to make the dependency graph cleaner."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T12:30:16Z",
+          "note": "The entry-point guard `fileURLToPath(import.meta.url) === resolve(process.argv[1])` is the standard ESM idiom for detecting the main module. It relies on argv[1] being the resolved path of the entry script, which is true for both `tsx gui/server.ts` and compiled `node dist/gui/server.js` invocations."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-23T12:31:50Z",
+      "completed_at": "2026-03-23T12:33:53Z",
+      "duration_ms": 123000,
+      "summary": [
+        "The blocking bug from the previous review cycle has been correctly resolved. The `ApiError` constructor identity mismatch is eliminated by extracting a shared `src/gui/errors.ts` module that is the single source of truth for the class. Both `gui/api.ts` and `src/gui/log-resolver.ts` now import and re-export from `errors.ts`, ensuring all `instanceof ApiError` guards in `server.ts` evaluate against the same constructor as errors thrown by the run-log handlers.",
+        "Import chain verified: `errors.ts` → `log-resolver.ts` (re-export) → `run-log-handlers.ts` (import from log-resolver). `errors.ts` → `api.ts` (re-export) → `server.ts` (import from api). Single constructor at runtime — instanceof checks are correct.",
+        "The 9-test HTTP-level integration suite in `tests/gui/run-log-server.test.ts` exercises the full request/response path via `handleRequest()`, covering: invalid slug (list) → 404, invalid slug (get) → 404, path-traversal filename → 403, disallowed-chars filename → 403, missing file → 404, successful list → 200, successful get with entries → 200, ?after= param respected → 200. This directly guards against regression of the instanceof mismatch.",
+        "The entry-point guard (`fileURLToPath(import.meta.url) === resolve(process.argv[1])`) is a correct ESM idiom for preventing `main()` from executing when the module is imported by test code. It is safe for both `tsx gui/server.ts` and compiled `node dist/gui/server.js` invocations.",
+        "Route registration in `matchRoute()` is correct and non-shadowing. The runs routes discriminate on `rest[2] === 'runs'`, which is distinct from `work-packages`, `plan`, `synthesis`, `health` — no shadowing risk.",
+        "All 5 acceptance criteria remain met. TypeScript check passes with zero errors. 1580/1580 tests pass.",
+        "One pre-existing gap noted (not blocking): `CONFLICT` is not handled in `apiErrorToStatus()` — it falls through to 500. This is outside WP-008 scope and pre-dates this change."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T12:33:53Z",
+          "note": "run-log-handlers.ts imports ApiError from '../log-resolver.js' (which re-exports from errors.ts). This is correct and works without issue. A future cleanup pass could import directly from '../errors.js' to make the dependency graph shallower and more explicit. Not blocking."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T12:33:53Z",
+          "note": "LATENT (pre-existing, acknowledged by Developer): The slug in the new runs routes is decoded via decodeURIComponent(rest[1]!), while the older sibling GET routes (plan, synthesis, health, work-packages) use rest[1]! directly without decoding. This inconsistency predates this WP and is outside scope, but a normalisation pass across all matchRoute() slug accesses would eliminate the edge case where a URL-encoded slug behaves differently depending on which route handles it."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T12:33:53Z",
+          "note": "LATENT (pre-existing): afterLine is parsed with parseInt(afterParam, 10) at the call site without explicit NaN/negative validation. readLogEntries() handles these gracefully (NaN and negatives → skip = 0), so there is no incorrect behaviour. An explicit parse-site guard would be more defensive and self-documenting."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-03-23T12:33:53Z",
+          "note": "The `apiErrorToStatus()` function in server.ts documents CONFLICT → 409 in the JSDoc for errors.ts, but has no `case 'CONFLICT':` branch — it falls through to the default 500. This is a pre-existing gap outside this WP's scope, but the Documentation agent should flag it to the Developer for a follow-up fix. The `conflict()` helper in api.ts is actively used (e.g., handleRenameProject), meaning live code paths currently return HTTP 500 for conflict conditions instead of 409."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-03-23T12:33:53Z",
+          "note": "The Known Limitations section in src/gui/log-resolver.ts notes that resolveOrchestratorLogsDir and findRunLogs do not validate that the supplied path is absolute. Now that this module is wired into the HTTP server, the Documentation agent should ensure this limitation and its planned remediation (add path.isAbsolute() guard in resolveOrchestratorLogsDir) are surfaced in the developer guide for the run-log feature."
+        }
+      ]
+    }
+  ],
+  "rework_counts": {
+    "implementation": 1,
+    "code-review": 1
+  },
+  "status_changed_at": "2026-04-15T08:56:57Z",
+  "last_updated": "2026-04-15T08:56:57Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-23T11:51:22Z",
+      "notes": [
+        "Routes are registered in matchRoute() using segment-count + rest[2] value discrimination — no shadowing risk against existing routes. The logsDir closure is resolved from getConfig() immediately after readConfigFromDisk() in main(), ensuring the default path is used silently when orchestrator_logs_dir is absent. All 1571 tests pass."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Developer",
+      "timestamp": "2026-03-23T12:24:51Z",
+      "notes": [
+        "FAIL: One blocking bug must be fixed before this WP can pass review. The `ApiError` thrown by the run-log handlers comes from `src/gui/log-resolver.ts`, but the `instanceof ApiError` guard in `gui/server.ts` tests against the class imported from `./api.js`. These are two different constructors — the instanceof check always fails, causing all structured run-log errors to be returned as HTTP 500 instead of 403/404. Recommended fix: extract a shared `src/gui/errors.ts` module with a single ApiError class and import from there in both api.ts and log-resolver.ts. Also add an HTTP-level integration test for the new routes to prevent regression."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-03-23T12:33:53Z",
+      "notes": [
+        "PASS: All blocking issues from the previous review cycle are fully resolved. The shared errors.ts module eliminates the ApiError instanceof mismatch. The HTTP-level integration test suite (run-log-server.test.ts) covers all error-mapping paths. Two documentation-forward items are recorded: (1) the pre-existing CONFLICT→500 bug in apiErrorToStatus() should be fixed by the Developer in a follow-up pass; (2) the absolute-path validation gap in resolveOrchestratorLogsDir should be surfaced in the developer guide. All 1580 tests pass. WP-008 is ready for the Documentation pipeline stage."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,290 @@
+{
+  "work_package_id": "WP-007",
+  "work_package_file": "work/WP-007.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-005"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "dryRun: true returns preflight results without spawning any process.",
+      "met": true
+    },
+    {
+      "criterion": "When any preflight check fails, started is false and no process is spawned.",
+      "met": true
+    },
+    {
+      "criterion": "When all checks pass and dryRun is false, a detached process is spawned and started: true + pid returned.",
+      "met": true
+    },
+    {
+      "criterion": "Path traversal is rejected: planPath outside workspaceRoot returns a failed preflight check.",
+      "met": true
+    },
+    {
+      "criterion": "planFolderBasename() validation errors produce a named check failure (not an unhandled exception).",
+      "met": true
+    },
+    {
+      "criterion": "Duplicate plan (already in queue) is detected via the no-conflict preflight check.",
+      "met": true
+    },
+    {
+      "criterion": "The spawned process is detached and unref()-ed (survives GUI server exit).",
+      "met": true
+    },
+    {
+      "criterion": "Cross-platform binary resolution (bin/orchestrate on Unix, Scripts/orchestrate.exe on Windows).",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-05T13:01:12Z",
+      "completed_at": "2026-05-05T13:11:18Z",
+      "duration_ms": 606000,
+      "summary": [
+        "Implemented startOrchestrator(planPath, workspaceRoot, dryRun) in mcp-server/gui/orchestrator-manager.ts.",
+        "7 preflight checks: path-prefix (traversal guard), plan-basename (planFolderBasename wrapper), plan-file (stat), venv (dir + binary), env (.env + API key), mcp-dist (sentinel mtime vs src latest), no-conflict (queue file lookup).",
+        "Path-dependent checks run only when path-prefix passes; env checks always run. All parallel via Promise.all.",
+        "Binary resolution: orchestrator/.venv/bin/orchestrate (Unix) or Scripts/orchestrate.exe (Windows).",
+        "Spawns with detached:true, stdio:ignore, env:PYTHONUTF8=1; calls child.unref() to decouple from GUI server lifecycle.",
+        "New types PreflightResult and StartResult exported.",
+        "Imports added: stat from node:fs/promises; resolve, basename from node:path; spawn from node:child_process; planFolderBasename from ../src/utils/path-validator.js.",
+        "Added 13 new tests across 4 describe blocks. Fixed cross-test call-history pollution with global beforeEach vi.clearAllMocks(). 63 total tests, all green."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/orchestrator-manager.ts",
+          "mcp-server/tests/gui/orchestrator-manager.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T13:11:18Z",
+          "note": "checkMcpDist uses sequential readdir + stat traversal. For large src trees this could be slow. A parallel walk (Promise.all per directory level) would be faster but adds complexity. Acceptable for a preflight check run infrequently."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T13:11:18Z",
+          "note": "checkNoConflict compares planPath strings via resolve(). On case-insensitive filesystems (macOS default, Windows) two differently-cased paths to the same file would be treated as different. Not a critical issue for this use case."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T13:11:18Z",
+          "note": "No improvement — preflight check implementations are clean, well-structured, and consistent with the existing preflight-orchestrator.js patterns."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-05T13:35:36Z",
+      "completed_at": "2026-05-05T13:36:31Z",
+      "duration_ms": 55000,
+      "summary": [
+        "All 8 acceptance criteria verified through code inspection and test execution.",
+        "Build check: tsc --noEmit passes with zero errors.",
+        "Test suite: 63 tests in orchestrator-manager.test.ts, all green (including 13 new WP-007 tests). Full suite: 2064 tests across 65 files — zero regressions.",
+        "AC-1 ✓: dryRun:true returns { checks, started:false } without spawning.",
+        "AC-2 ✓: any check with pass:false gates the spawn path via checks.some((c) => !c.pass).",
+        "AC-3 ✓: all checks pass + dryRun:false → spawn() called with detached:true, child.unref() called, pid returned.",
+        "AC-4 ✓: checkPathPrefix() normalizes backslashes and appends trailing '/' before startsWith — correctly rejects /workspace-evil paths.",
+        "AC-5 ✓: checkPlanBasename() wraps planFolderBasename() in try/catch; any throw becomes a failed check, not an unhandled exception.",
+        "AC-6 ✓: checkNoConflict() finds duplicate plan in queue via resolve()-based path comparison.",
+        "AC-7 ✓: spawn options include detached:true; child.unref() called immediately after spawn.",
+        "AC-8 ✓: resolveOrchestrateBin() returns Scripts/orchestrate.exe on win32, bin/orchestrate elsewhere."
+      ],
+      "metrics": {
+        "test_coverage": "13 new tests cover all 8 WP-007 ACs; 63 total in file; 2064 total in suite",
+        "tests_passed": 63,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T13:36:31Z",
+          "note": "checkPathPrefix normalizes backslashes to forward slashes and appends a trailing '/' to the root before the startsWith check. This correctly prevents the /workspace vs /workspace-evil bypass. Good defensive implementation."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T13:36:31Z",
+          "note": "checkNoConflict uses resolve() to compare paths, but on case-insensitive filesystems (macOS default, Windows) two differently-cased paths to the same directory would be treated as distinct entries — already flagged by Developer. Low risk in practice."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T13:36:31Z",
+          "note": "checkMcpDist uses sequential readdir+stat traversal. For large src trees this could slow preflight. Acceptable for infrequent invocation — already flagged by Developer."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-05-05T13:49:33Z",
+      "completed_at": "2026-05-05T13:50:22Z",
+      "duration_ms": 49000,
+      "summary": [
+        "Reviewed 2 files (orchestrator-manager.ts, orchestrator-manager.test.ts) for WP-007 (startOrchestrator + preflight checks). 0 Critical, 0 High, 0 Medium. checkPathPrefix() trailing-slash guard correctly prevents path-traversal bypass. spawn() uses array args (no shell injection). Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T13:50:22Z",
+          "note": "A01 — checkPathPrefix() correctly appends a trailing '/' to resolvedRoot before startsWith(), preventing the /workspace-evil bypass where a path starting with the same string but not a child directory would pass. The backslash normalisation (replace(/\\\\/g, '/')) ensures Windows paths are handled consistently. Verified: correct and robust."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T13:50:22Z",
+          "note": "A01 (carry-forward): checkNoConflict() uses resolve() for path comparison. On case-insensitive filesystems (macOS HFS+, Windows NTFS) differently-cased paths to the same plan would not be detected as conflicts. Low risk in developer-tool context — already noted by Developer and QA."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T13:50:22Z",
+          "note": "A03 — spawn(bin, [resolvedPlan]) uses an array argument (no shell: true), so no shell injection is possible. The resolvedPlan has already passed the checkPathPrefix guard. The env spread (process.env + PYTHONUTF8:'1') is expected behaviour for a local developer tool. No issues."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T13:50:22Z",
+          "note": "A04 — checkEnv() reads and parses orchestrator/.env to verify API key presence. Key values are never logged; only presence (non-empty string) is checked. No secret exposure risk."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T13:50:22Z",
+          "note": "No security findings — all OWASP Top 10 categories reviewed; no Critical or High issues identified."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-05T13:59:54Z",
+      "completed_at": "2026-05-05T14:01:55Z",
+      "duration_ms": 121000,
+      "summary": [
+        "PASS with Fix-Forward. All 8 ACs verified through prior pipeline artifacts and line-by-line source review.",
+        "checkPathPrefix trailing-slash guard is correct and robust. spawn() uses array args (no shell injection). Promise.all parallelism for independent checks is well-applied.",
+        "Fix-Forward applied: updated stale module-level file header — it still read 'Queue Reader (WP-005)' and only described queue-reading, but the module now also owns preflight checks and process spawning (WP-007). Updated to reflect both responsibilities.",
+        "No behavioral changes. QA validation remains intact.",
+        "Three carry-forward low-priority notes (case-insensitive path comparison, sequential dist traversal, env-spread behaviour) are acknowledged; none blocking."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/orchestrator-manager.ts",
+          "mcp-server/tests/gui/orchestrator-manager.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-05T14:01:55Z",
+          "note": "Updated stale module-level file header in orchestrator-manager.ts. The previous header read 'Orchestrator Manager — Queue Reader (WP-005)' and only described queue-reading behaviour. The module now also owns 7 preflight checks and the startOrchestrator() spawn path (WP-007). Updated header to document both areas of functionality. Non-behavioral change; QA validation unaffected."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-05-05T14:01:55Z",
+          "note": "[documentation-forward] orchestrator-manager.ts exposes three new public exports (PreflightResult, StartResult, startOrchestrator). The project API surface doc should be updated to include these signatures, parameters, and return types."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T14:01:55Z",
+          "note": "checkNoConflict uses resolve() for path comparison. On case-insensitive filesystems (macOS HFS+, Windows NTFS) differently-cased paths to the same plan directory would not be detected as conflicts. Low risk in developer-tool context — noted by Developer, QA, and Security Auditor; acceptable carry-forward."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-05T14:11:28Z",
+      "completed_at": "2026-05-05T14:14:18Z",
+      "duration_ms": 170000,
+      "summary": [
+        "Updated mcp-server/docs/agents/project-manifest/api-surface.md — GUI Orchestrator Manager section. Updated section header from WP-005 to (WP-005, WP-007) and rewrote the intro paragraph from the stale 'read-only' single-responsibility description to dual-responsibility (queue reader + preflight/launch). Added PreflightResult, StartResult, and startOrchestrator() TypeScript signatures with full parameter/return documentation and a preflight checks reference table, addressing the documentation-forward item from the Reviewer."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T14:14:18Z",
+          "note": "The Reviewer's documentation-forward (PreflightResult, StartResult, startOrchestrator signatures) is fully addressed. Section header, intro paragraph, TypeScript signatures, and a preflight-checks reference table have been added. No other documentation gaps identified — all 8 ACs are behavioral and covered by tests from prior pipelines."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-05T14:14:18Z",
+  "last_updated": "2026-05-05T14:14:18Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-05T13:11:18Z",
+      "notes": [
+        "All 8 acceptance criteria met and verified by 13 new tests (63 total, all green).",
+        "startOrchestrator runs path-dependent checks (path-prefix, plan-basename, plan-file, no-conflict) and environment checks (venv, env, mcp-dist) in parallel using Promise.all for efficiency.",
+        "spawn is mocked via vi.mock('child_process') at module level; vi.clearAllMocks() in a global beforeEach prevents cross-test call-history pollution.",
+        "planFolderBasename is imported from '../src/utils/path-validator.js' — no duplication of regex logic."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-05-05T13:36:31Z",
+      "notes": [
+        "All 8 ACs met; 13 new tests pass; 2064 total suite tests green, no regressions.",
+        "checkPathPrefix trailing-slash guard verified: prevents /workspace-evil bypass attack vector.",
+        "Three low-priority improvement notes carried forward (case-insensitive path comparison, sequential dist traversal, no new blocking issues)."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-05T13:50:22Z",
+      "notes": [
+        "All 8 ACs met. checkPathPrefix() path-traversal guard confirmed robust (trailing-slash fix). spawn() uses array args (no shell injection). No new Critical or High findings. Three low-priority carry-forward notes (case-insensitive path comparison, sequential dist traversal, env-spread expected behaviour) — none blocking."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-05T14:01:55Z",
+      "notes": [
+        "All 8 ACs met and confirmed. Fix-Forward applied to module header (non-behavioral). One documentation-forward item: add PreflightResult, StartResult, startOrchestrator() signatures to the API surface doc."
+      ]
+    }
+  ]
+}

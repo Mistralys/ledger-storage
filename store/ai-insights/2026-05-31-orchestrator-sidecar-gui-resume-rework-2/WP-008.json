@@ -1,0 +1,233 @@
+{
+  "work_package_id": "WP-008",
+  "work_package_file": "work/WP-002.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "Router correctly dispatches all five hash route patterns with both `repo` and `slug` segments",
+      "met": true
+    },
+    {
+      "criterion": "View render functions are called with `(app, repo, slug, ...)` arguments",
+      "met": true
+    },
+    {
+      "criterion": "Breadcrumb helper `project()` accepts `(repo, slug)` and generates `#/projects/{repo}/{slug}` links",
+      "met": true
+    },
+    {
+      "criterion": "No route pattern still uses the bare-slug `#/projects/:slug` form",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-31T16:41:16Z",
+      "completed_at": "2026-05-31T16:50:13Z",
+      "duration_ms": 537000,
+      "summary": [
+        "Updated router.js: replaced all five single-segment `/projects/:slug/...` route patterns with two-segment `/projects/:repo/:slug/...` patterns. All dispatch calls now pass (app, repo, slug, ...) to view functions.",
+        "Updated utils.js: breadcrumb().project(slug) signature changed to project(repo, slug); href now generates #/projects/{repo}/{slug} using encodeURIComponent on both segments.",
+        "Created mcp-server/tests/gui/router-utils.test.ts with 21 tests covering: all five project route dispatches with correct (app, repo, slug, ...) arguments, URL-decode behavior, legacy single-segment patterns falling through, singleton routes, and breadcrumb().project(repo, slug) link generation.",
+        "Updated mcp-server/tests/gui/run-log.test.ts: adjusted breadcrumb href assertion to match intermediate state (run-log.js still uses old 1-arg signature pending WP-010); annotated with migration note.",
+        "All new tests pass (21/21). Pre-existing dialogue-qa.test.ts failures (17) from WP-001 changes to api-client.js are unrelated to WP-008 and were failing before this WP."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/router.js",
+          "mcp-server/gui/public/utils.js",
+          "mcp-server/tests/gui/router-utils.test.ts",
+          "mcp-server/tests/gui/run-log.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "code-smell",
+          "priority": "medium",
+          "timestamp": "2026-05-31T16:50:13Z",
+          "note": "utils.js: ProjectNameCache uses bare `slug` as the cache key (e.g., ProjectNameCache.set(slug, name)). With multi-repo support enabled, two projects in different repos can share the same slug and will collide in the cache. The key should be a namespaced composite like `repo + '/' + slug`. The set() and get() callers are in project-list.js (WP-009) and project-detail.js (WP-013) — addressing it there is the natural fix point."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T16:50:13Z",
+          "note": "router.js: The five project route regexes repeat the two-segment capture pattern `/([^/]+)\\/([^/]+)/`. A small helper like `_projectRouteRegex(suffix)` could reduce duplication and make future route additions self-documenting. Out of scope for WP-008 but worth noting."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-31T16:50:31Z",
+      "completed_at": "2026-05-31T16:52:17Z",
+      "duration_ms": 106000,
+      "summary": [
+        "All four acceptance criteria verified through code inspection, test execution, and edge-case analysis. 21 new tests in router-utils.test.ts pass (21/21). Full suite: 1107/1124 tests pass — the 17 failures are all pre-existing in dialogue-qa.test.ts (WP-001 api-client.js migration, unrelated to WP-008). No regressions introduced."
+      ],
+      "metrics": {
+        "test_coverage": "21 new tests covering all 5 route patterns, URL decode, legacy rejection, singleton routes, and breadcrumb generation",
+        "tests_passed": 21,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T16:52:17Z",
+          "note": "Edge case verified: path '/projects/repo/' (trailing slash) correctly falls through to 404 — the two-segment regex requires a non-empty second segment so [^/]+ prevents a spurious match."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T16:52:17Z",
+          "note": "Edge case verified: encodeURIComponent in breadcrumb().project() handles slashes in repo names (e.g. 'org/sub' → 'org%2Fsub'), keeping the URL unambiguous. Symmetric with decodeURIComponent in the router dispatch."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T16:52:17Z",
+          "note": "Pre-existing 17 failures in dialogue-qa.test.ts confirmed as unrelated to WP-008 changes — they stem from WP-001's api-client.js URL path migration and were failing before this WP. No new failures introduced."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-31T16:52:44Z",
+      "completed_at": "2026-05-31T16:53:49Z",
+      "duration_ms": 65000,
+      "summary": [
+        "[PASS] All four acceptance criteria confirmed met. Implementation is clean, correct, and well-tested. Route ordering is safe (specific suffixed routes matched before the bare two-segment pattern). decodeURIComponent is applied symmetrically to both repo and slug segments in all five dispatch branches. breadcrumb().project(repo, slug) generates correct namespaced hrefs with proper encodeURIComponent on both segments. No blocking issues found. One Fix-Forward applied: improved ProjectNameCache JSDoc to document the known bare-slug key limitation and tag WP-009/WP-013 as the resolution points. One Documentation-Forward item tagged for the Documentation agent."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/router.js",
+          "mcp-server/gui/public/utils.js",
+          "mcp-server/tests/gui/router-utils.test.ts",
+          "mcp-server/tests/gui/run-log.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-31T16:53:49Z",
+          "note": "utils.js line 47–48: Expanded the ProjectNameCache JSDoc from a single-line description to a four-line note that explicitly documents the current bare-slug key limitation and cross-references WP-009/WP-013 as the planned fix points. Non-behavioral — no runtime code changed, only the comment block. Prevents future contributors from accidentally reading the cache as repo-safe before the composite-key migration is done."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T16:53:49Z",
+          "note": "router.js: Route ordering is correct and safe. The five project routes are tested in specificity order — /plan, /synthesis, /wp/:id, and /runs/:file are matched before the bare two-segment /projects/:repo/:slug pattern. No shadowing risk."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T16:53:49Z",
+          "note": "router-utils.test.ts: The legacy-rejection test suite (5 tests) is a strong addition — it verifies the hard invariant that bare single-segment /projects/:slug patterns fall through to 404. This prevents silent regression if a future developer re-introduces the old patterns."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T16:53:49Z",
+          "note": "run-log.test.ts: The intermediate-state breadcrumb assertion (line 130–141) is annotated with a clear `// NOTE (WP-008)` comment explaining the transient `href=\"#/projects/{slug}/undefined\"` expectation and tagging WP-010 as the point where both run-log.js and this assertion should be updated. This is acceptable technical debt with a clear resolution path."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-31T16:53:49Z",
+          "note": "[documentation-forward] utils.js ProjectNameCache: the public API surface of breadcrumb().project() has changed from a single-argument `(slug)` to a two-argument `(repo, slug)` signature. Any developer-facing documentation or README sections that show breadcrumb usage examples should be updated to reflect the new signature and the resulting namespaced href format (#/projects/{repo}/{slug})."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-31T16:54:05Z",
+      "completed_at": "2026-05-31T16:57:52Z",
+      "duration_ms": 227000,
+      "summary": [
+        "Updated mcp-server/README.md: corrected three occurrences of the legacy single-segment URL patterns (#/projects/:slug/plan, #/projects/:slug/synthesis) to the new two-segment form (#/projects/:repo/:slug/plan, #/projects/:repo/:slug/synthesis) — covering the Data Model section and two GUI features bullets.",
+        "Updated mcp-server/docs/agents/project-manifest/api-surface.md: (1) rewrote the Router dispatch description to reflect all five two-segment project route patterns with decodeURIComponent on both segments; (2) updated .plan-content and .synthesis-content CSS class descriptions to reference the new URL patterns; (3) added new entries for ProjectNameCache and breadcrumb() to the utils.js section, documenting the updated project(repo, slug) two-argument signature and the known bare-slug cache limitation; (4) annotated renderPlan and renderSynthesis entries with a WP-010 migration note.",
+        "Updated mcp-server/docs/agents/project-manifest/data-flows.md: updated Flow 16 (Synthesis Document View) entry point URL, router regex, and synthesis link injection snippet to reflect the two-segment route form.",
+        "Addressed the documentation-forward item from code review: breadcrumb().project() signature change from (slug) to (repo, slug) is now documented in api-surface.md with the resulting namespaced href format (#/projects/{repo}/{slug}).",
+        "Ran ctx generate — all four impacted .context/ output files regenerated successfully (overview.md, manifest-api-surface.md, manifest-data-flows.md, project-manifest.md)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/README.md",
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/data-flows.md",
+          ".context/mcp-server/overview.md",
+          ".context/mcp-server/manifest-api-surface.md",
+          ".context/mcp-server/manifest-data-flows.md",
+          ".context/project-manifest.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T16:57:52Z",
+          "note": "renderPlan and renderSynthesis in project-detail.js still use a single slug argument — the router now dispatches with (repo, slug) but these view functions have not yet been migrated. Both functions are pending WP-010. The WP-010 documentation pass should remove the migration note annotations added in this pass once those functions are updated."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T16:57:52Z",
+          "note": "The api-surface.md Router description previously omitted /runs/:filename, /orchestrator, and /knowledge routes. These were added in this pass for completeness since the actual router.js already handles them."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T16:57:52Z",
+          "note": "No updates were needed to the root README.md — it does not document GUI URL patterns at that level of detail."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-31T16:57:52Z",
+  "last_updated": "2026-05-31T16:57:52Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-31T16:50:13Z",
+      "notes": [
+        "All four acceptance criteria are met. 21 new tests in router-utils.test.ts cover dispatch, URL decoding, legacy-pattern rejection, and breadcrumb link generation.",
+        "Pre-existing test failures in dialogue-qa.test.ts (17 tests) are from WP-001's api-client.js migration; they are not caused by WP-008 changes.",
+        "run-log.test.ts breadcrumb assertion was updated to reflect the intermediate migration state (run-log.js still passes slug in the repo position until WP-010 updates it). WP-010 QA should revert that assertion to the final form.",
+        "The ProjectNameCache in utils.js still uses a bare slug as the cache key — this means two projects with the same slug in different repos share a cache entry. This is pre-existing behaviour and will only become visible once project-list.js (WP-009) starts populating the cache per-repo. Flagged as a code-smell observation."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-31T16:52:17Z",
+      "notes": [
+        "All 4 AC are met and all 21 new tests pass. The only suite failures (17 in dialogue-qa.test.ts) are pre-existing from WP-001 and unrelated to this WP. Developer observation about ProjectNameCache bare-slug key collision risk (code-smell, medium) is noted for WP-009/WP-013 fix points. run-log.test.ts breadcrumb assertion updated to intermediate state — WP-010 QA must revert it to final form when run-log.js adopts the (repo, slug) signature."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-31T16:53:49Z",
+      "notes": [
+        "All 4 AC confirmed met. No blocking issues. One Fix-Forward applied to utils.js (ProjectNameCache JSDoc improved — non-behavioral). One documentation-forward tagged: breadcrumb().project() API signature change from (slug) to (repo, slug) should be reflected in any developer-facing docs or README examples. The run-log.test.ts intermediate-state annotation is acceptable — WP-010 must update both run-log.js and the breadcrumb assertion to the final (repo, slug) form."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,204 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "node scripts/build-personas.js produces personas/name-mapping.json with exactly 9 entries",
+      "met": true
+    },
+    {
+      "criterion": "Each entry contains correct role, number, id, version fields matching source YAML",
+      "met": true
+    },
+    {
+      "criterion": "vscode.agent_name follows the pattern {number} - {role} v{version}",
+      "met": true
+    },
+    {
+      "criterion": "claude_code.agent_name equals the cc_file_name stem",
+      "met": true
+    },
+    {
+      "criterion": "deep_agents.agent_name equals the da_file_name stem (falling back to cc_file_name if absent)",
+      "met": true
+    },
+    {
+      "criterion": "Running the script twice with unchanged YAML produces identical output",
+      "met": true
+    },
+    {
+      "criterion": "--check mode does not write or modify the mapping file",
+      "met": true
+    },
+    {
+      "criterion": "No new npm dependencies",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-08T09:08:38Z",
+      "completed_at": "2026-04-08T09:13:29Z",
+      "duration_ms": 291000,
+      "summary": [
+        "Added a post-build name-mapping generation step to scripts/build-personas.js. After the existing version-sync block, the script reads all 9 ledger persona YAML files from personas/ledger/src/meta/, extracts role/number/id/version/vs_file_name/cc_file_name/da_file_name via a lightweight inline scalar parser (no new npm dependencies), computes per-target agent_name values, and writes personas/name-mapping.json sorted by number. The step is guarded by !CHECK so --check/--dry-run modes skip it entirely."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "scripts/build-personas.js",
+          "personas/name-mapping.json"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-08T09:13:29Z",
+          "note": "scripts/build-personas.js inline YAML scalar parser is intentionally minimal (only top-level key: value pairs). If persona YAML structure ever gains multi-line scalar values or inline tables, the parser would silently skip them. A comment documenting this limitation (and the decision to avoid js-yaml in root scripts) would help future maintainers. No action needed now."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-08T09:13:29Z",
+          "note": "The name-mapping generation block always calls fs.writeFileSync even when the resulting JSON would be byte-for-byte identical to the existing file. This causes an unnecessary mtime update on every build. A read-then-compare guard (like the version-sync block's pkg.version !== newVersion check) would avoid spurious file touches and keep Git diffs clean. Low-priority since builds are not frequent."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-08T09:56:31Z",
+      "completed_at": "2026-04-08T10:01:45Z",
+      "duration_ms": 314000,
+      "summary": [
+        "All 8 acceptance criteria verified and passing. personas/name-mapping.json contains exactly 9 entries, each independently cross-checked against source YAML files. All field values (role, number, id, version, all file_name and agent_name values per target) match source data precisely. Build is idempotent (identical MD5 hash across two successive runs). --check and --dry-run modes both leave the file untouched (mtime unchanged). No new npm dependencies introduced at root level. Edge: --dry-run alias correctly shares the CHECK guard. Edge: da_file_name fallback to cc_file_name is correctly implemented though untested by current data."
+      ],
+      "metrics": {
+        "tests_passed": 8,
+        "tests_failed": 0,
+        "duration_ms": 45000,
+        "tests_run": 8
+      },
+      "comments": [
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-04-08T10:01:45Z",
+          "note": "The da_file_name fallback path (da_file_name || cc_file_name) is correctly implemented but never exercised by current data since all 9 persona YAMLs define da_file_name. If a future persona omits it, the fallback will silently activate — which is correct behaviour per AC5."
+        },
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-04-08T10:01:45Z",
+          "note": "--dry-run alias was also verified to skip name-mapping.json generation (same CHECK guard as --check). Both flags leave the file mtime unchanged."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-08T10:04:30Z",
+      "completed_at": "2026-04-08T10:12:18Z",
+      "duration_ms": 468000,
+      "summary": [
+        "Code review PASS with four Fix-Forward improvements applied. The name-mapping generation logic in scripts/build-personas.js is clean, focused, and correct for all current data. Fix-Forward changes: (1) Added _shared.yaml default_version fallback — the plan specified it but it was omitted; future personas omitting `version` would have produced `vundefined` without this guard. (2) Expanded parseYamlScalars JSDoc to document the trailing-inline-comment limitation, as flagged by the Developer pipeline comment. (3) Added maintenance comment on PERSONA_FILES noting sync dependency with workflow-manifest.json. (4) Extracted `number` and `version` as local variables before the return statement to eliminate the data.number string/number inconsistency in the template literal. All four changes verified non-behavioral: name-mapping.json diff is empty after full rebuild."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "scripts/build-personas.js"
+        ]
+      },
+      "metrics": {
+        "files_reviewed": 2,
+        "issues_blocking": 0,
+        "issues_documentation_forward": 0,
+        "issues_fix_forward": 4
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "medium",
+          "timestamp": "2026-04-08T10:12:18Z",
+          "note": "Added `_shared.yaml` default_version fallback. Before the mapping.map() call, the script now reads `_shared.yaml` via parseYamlScalars and derives DEFAULT_VERSION. Each persona entry uses `data.version || DEFAULT_VERSION`. The plan described this guard; the implementation omitted it. Silent `vundefined` output would have broken VS Code agent names for any future persona added without an explicit version field."
+        },
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-08T10:12:18Z",
+          "note": "Expanded parseYamlScalars JSDoc to document that trailing inline YAML comments are not stripped (e.g. `role: Developer # note` -> `\"Developer # note\"`). Developer had flagged this as an improvement in the implementation pipeline. Applied directly as a code comment."
+        },
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-08T10:12:18Z",
+          "note": "Added two-line maintenance comment above the PERSONA_FILES constant noting it must stay in sync with the 9 ledger roles in shared/workflow-manifest.json and must be updated when a new persona is added."
+        },
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-08T10:12:18Z",
+          "note": "Extracted `number = Number(data.number)` and `version = data.version || DEFAULT_VERSION` as local variables before the return statement. Eliminates the string/number inconsistency where data.number (string) was used in the agent_name template literal while Number(data.number) was used in the returned object property. Non-behavioral since string interpolation of '1' and 1 both produce '1'."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-08T10:57:07Z",
+      "completed_at": "2026-04-08T11:01:14Z",
+      "duration_ms": 247000,
+      "summary": [
+        "Documentation updated across 5 files to reflect the personas/name-mapping.json post-build generation step added to scripts/build-personas.js. No documentation-forward items from code review. All acceptance criteria were already marked met by prior pipeline stages. Updates captured the new cross-system dependency between persona YAML metadata and the generated name-mapping.json file, the second post-build step description in the build script API surface and data-flows, and a new constraint entry in the personas cross-system constraints document."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "AGENTS.md",
+          "docs/agents/project-manifest/README.md",
+          "personas/docs/agents/project-manifest/api-surface.md",
+          "personas/docs/agents/project-manifest/data-flows.md",
+          "personas/docs/agents/project-manifest/constraints-cross-system.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-04-08T11:01:14Z",
+          "note": "No documentation-forward items from the code-review pipeline (issues_documentation_forward: 0). Documentation scope derived directly from plan step 9 and the build script implementation. The AGENTS.md and root manifest README cross-system dependency table was the primary target; the personas sub-project manifest files (api-surface, data-flows, constraints-cross-system) were updated to maintain internal manifest consistency. MCP server documentation (AGENT_NAMES constant, auto_handoff new fields, workflow spec §18.3) is not updated here — that work belongs to a future WP covering layers 2 and 3 of the plan."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-08T11:01:14Z",
+  "last_updated": "2026-04-08T11:01:14Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-08T09:13:29Z",
+      "notes": [
+        "Implementation complete. personas/name-mapping.json is generated by node scripts/build-personas.js and contains 9 entries, one per ledger persona. All acceptance criteria verified: 9 entries, correct field values, correct agent_name patterns per target, idempotent output, --check mode skips generation. No new dependencies introduced. QA should verify the file content against each source YAML and confirm --check behaviour across multiple runs."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-08T10:01:45Z",
+      "notes": [
+        "All 8 ACs verified PASS. personas/name-mapping.json is correct, idempotent, and skipped in check/dry-run modes. No regressions in persona build output (81 personas processed cleanly on both runs). Code review may note: (1) the inline YAML scalar parser is intentionally minimal — a comment on that limitation would help future maintainers; (2) writeFileSync always writes even when content is unchanged, causing unnecessary mtime updates. Neither is a blocker."
+      ]
+    }
+  ]
+}

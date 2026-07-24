@@ -1,0 +1,266 @@
+{
+  "work_package_id": "WP-004",
+  "work_package_file": "work/WP-004.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-003"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "The orchestrator runs section updates without visible flicker — no full-page flash during data-only polls",
+      "met": true
+    },
+    {
+      "criterion": "Scroll position in the orchestrator runs section is preserved across poll updates that don't change the runs list structure",
+      "met": true
+    },
+    {
+      "criterion": "The status card (Running badge, elapsed time, PID, progress) updates in-place without rebuilding the entire runs list",
+      "met": true
+    },
+    {
+      "criterion": "When a new run appears or the active run becomes inactive, the runs list performs a structural re-render but saves and restores scroll position",
+      "met": true
+    },
+    {
+      "criterion": "Log preview widgets continue to function correctly — they are NOT destroyed/recreated during data-only status card updates",
+      "met": true
+    },
+    {
+      "criterion": "The kill button, dismiss button, and all existing run-event handlers continue to work after in-place status card updates",
+      "met": true
+    },
+    {
+      "criterion": "All unit tests in project-detail-scroll.test.ts pass",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-06-09T17:34:04Z",
+      "completed_at": "2026-06-09T17:42:45Z",
+      "duration_ms": 521000,
+      "summary": [
+        "Implemented flicker-free DOM patching and scroll preservation for the orchestrator runs section.",
+        "Added _orchRunsStructureKey() pure helper: computes a stable JSON key from (sorted run filenames, activeFilename). Same key = same list structure = in-place patch is safe.",
+        "Added _patchOrchStatusCard() helper: replaces innerHTML of #orch-status-card-container without touching sibling log preview widget. No-op when HTML unchanged.",
+        "Modified renderRunsList(): (a) walks up to the nearest scrollable ancestor of #orchestrator-runs-section and saves scrollTop before innerHTML rebuild; (b) restores scrollTop after rebuild; (c) wraps the status card HTML in <div id=\"orch-status-card-container\"> for targeted patching.",
+        "Modified pollQueue(): removed the top-of-function _pdLogPreviewCleanups drain (it was pre-empting the in-place path). Initialised lastRunsStructureKey=null so the first tick always falls through to a full renderRunsList. Subsequent ticks with the same structure key call _patchOrchStatusCard only — log preview widgets are not drained. Ticks with a different key (run left queue, new run appeared) fall through to a full renderRunsList with scroll preservation.",
+        "Updated DOM contract comment in file header to document #orch-status-card-container.",
+        "Created tests/gui/project-detail-scroll.test.ts with 19 unit tests covering: _orchRunsStructureKey (5 tests), _patchOrchStatusCard (4 tests), renderRunsList scroll/container ID (3 tests), pollQueue in-place vs structural (3 tests), log preview lifecycle (2 tests), event handler survival (2 tests).",
+        "All 3183 tests pass (105 test files) with no regressions."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/project-detail.js",
+          "mcp-server/tests/gui/project-detail-scroll.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-09T17:42:45Z",
+          "note": "renderRunsList is a deeply nested closure inside getRunLogs().then() that closes over `sorted`, `repo`, `slug`, `activeFilename`, and now `lastRunsStructureKey`. The existing refactor-candidate comment (line ~1239) is accurate — extracting this as a module-level helper accepting (sorted, repo, slug, activeFilename, matchingQueueEntry, structureKeyRef) would improve testability. The WP-004 in-place patch changes make this slightly more complex to extract, but the opportunity remains valid for a future pass."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-09T17:42:45Z",
+          "note": "The scroll-ancestor walk in renderRunsList (lines ~1268–1279) uses window.getComputedStyle to find a scrollable parent. In jsdom tests `window.getComputedStyle` returns empty objects so `overflowY` is always `''`, causing it to fall back to `document.documentElement`. This is correct behavior for tests but means the scroll-restore path is not exercised in jsdom for real scrollable elements. A future improvement could extract the scroll-anchor logic into a testable helper that accepts a custom getStyle function."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-06-09T17:42:45Z",
+          "note": "pollQueue still calls renderOrchToolbar on every tick (both in-place and structural paths). renderOrchToolbar rebuilds the entire toolbar DOM including Kill and Resume buttons. A future pass could add a similar in-place patch for the toolbar's button enabled/disabled state when the queue entry hasn't structurally changed."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-06-09T17:43:10Z",
+      "completed_at": "2026-06-09T17:45:34Z",
+      "duration_ms": 144000,
+      "summary": [
+        "All 19 unit tests in project-detail-scroll.test.ts pass. Full regression: 105 test files, 3183 tests — 0 failures.",
+        "AC1 PASS: In-place path calls _patchOrchStatusCard() only — no full innerHTML rebuild of runsEl, no page flash.",
+        "AC2 PASS: scrollTop saved before runsEl.innerHTML rebuild and restored immediately after; data-only path skips renderRunsList entirely so scroll is untouched.",
+        "AC3 PASS: _patchOrchStatusCard targets only #orch-status-card-container, leaving the surrounding runs list DOM intact.",
+        "AC4 PASS: When match becomes null (run left queue) the structure key differs from lastRunsStructureKey, triggering the structural else-branch with renderRunsList + scroll preserve.",
+        "AC5 PASS: #orch-project-log-preview is a sibling of #orch-status-card-container (not a child), so _patchOrchStatusCard innerHTML replacement never touches it. Log preview cleanup only drained on structural rebuilds (confirmed by §5 tests).",
+        "AC6 PASS: renderOrchToolbar executes on every poll tick (both paths), so Kill/dismiss/toolbar buttons are always current. §6 tests confirm buttons and View links survive in-place updates.",
+        "AC7 PASS: 19/19 unit tests pass."
+      ],
+      "metrics": {
+        "test_coverage": "19 new tests covering _orchRunsStructureKey (5), _patchOrchStatusCard (4), renderRunsList scroll/container (3), pollQueue branch (3), log preview lifecycle (2), event handler survival (2)",
+        "tests_passed": 3183,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "code-smell",
+          "priority": "low",
+          "timestamp": "2026-06-09T17:45:34Z",
+          "note": "Double-drain of _pdLogPreviewCleanups in the structural rebuild path: both the caller (pollQueue structural branch, onKillDone, catch handler) and renderRunsList itself drain the array. The second drain is a no-op (array is already []) so this is benign, but the redundancy is confusing and could lead to issues if renderRunsList is ever called from a path that didn't pre-drain. Low risk given current call sites, but worth a cleanup pass."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-09T17:45:34Z",
+          "note": "The scroll-ancestor walk in renderRunsList falls back to document.documentElement when no scrollable ancestor is found. In the jsdom test environment window.getComputedStyle returns empty objects so overflowY is always empty string, meaning the walk always falls back to documentElement. The scroll-restore path is exercised in tests via the data attribute workaround on orchContainer, but the IIFE walk itself is not exercised in jsdom. Consider extracting the walk into a testable helper with an injectable getStyle callback (noted by Developer; raised here for Reviewer awareness)."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-09T17:45:34Z",
+          "note": "No observations blocking merge — code is correct and all acceptance criteria are met."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-06-09T17:45:55Z",
+      "completed_at": "2026-06-09T17:47:29Z",
+      "duration_ms": 94000,
+      "summary": [
+        "Reviewed mcp-server/gui/public/views/project-detail.js and mcp-server/tests/gui/project-detail-scroll.test.ts for WP-004.",
+        "All four review dimensions pass: maintainability, best practices, performance, and future-context alignment.",
+        "No blocking issues found. Two low-priority Fix-Forward candidates evaluated; both judged non-trivial enough that they belong in a dedicated future refactor pass, not applied inline here.",
+        "One documentation-forward item tagged for the Documentation agent regarding the scroll-ancestor walk's testability limitation.",
+        "Code is clean, well-structured, and consistent with the existing patch-function pattern established in WP-003."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/project-detail.js",
+          "mcp-server/tests/gui/project-detail-scroll.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-09T17:47:29Z",
+          "note": "Double-drain of _pdLogPreviewCleanups is confirmed benign (QA flagged this too). The structural rebuild paths in pollQueue, onKillDone, and the catch handler all drain the array before calling renderRunsList, which also drains it internally. The second drain is always a no-op since the array is empty by that point. The risk is low at current call sites, but the implicit invariant ('caller must drain before calling renderRunsList') is not documented or enforced. A future cleanup could either (a) remove the drain from callers and leave it solely in renderRunsList, or (b) add a comment at the renderRunsList drain site explicitly noting it is defensive. This is not a blocking concern — it is a minor readability debt."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-09T17:47:29Z",
+          "note": "The _orchRunsStructureKey helper is a clean, pure function with a well-defined contract. Minor observation: the fallback String(item) for items without a filename field is inherited from the broader codebase pattern, and is acceptable given the upstream API guarantees filename presence. No change needed."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-09T17:47:29Z",
+          "note": "lastRunsStructureKey initialized to null and the comment block at lines ~1370-1375 clearly explains why null forces the first tick through the full renderRunsList path. This is a solid use of null-as-sentinel. The pattern is self-documenting and consistent with the rest of the codebase's pollStateRef usage."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-09T17:47:29Z",
+          "note": "The onKillDone callback (lines ~1422-1452) is slightly deep in nesting — it performs a nested orchestratorGetQueue call inside runMetaForToolbar.then(), which is itself inside the outer API.orchestratorGetQueue().then() chain. This is acceptable given the existing closure depth of the entire renderProjectDetail function, and the behaviour is correct. The refactor-candidate comment at line ~1289 remains accurate: extracting renderRunsList to a module-level helper would reduce this nesting. No blocking concern for this WP."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-06-09T17:47:29Z",
+          "note": "[documentation-forward] The scroll-ancestor walk in renderRunsList (lines ~1301-1311) is correct for browser environments but falls back to document.documentElement in jsdom because window.getComputedStyle always returns empty objects there. The file header DOM contract comment (lines 9-46) documents #orch-status-card-container well but does not mention this scroll-ancestor walk or its overflowY-based detection logic. Consider adding a brief note to the DOM contract section describing the scroll anchor detection strategy and the jsdom limitation, so future contributors understand why the test stubs scrollTop via a data-attribute workaround rather than a real CSS overflowY."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-09T17:47:29Z",
+          "note": "Test suite quality is high. The 19 tests map cleanly onto the six coverage areas described in the file header. The renderWithAPI helper with its polling-wait loop and micro-task flushes is a pragmatic solution to the async-chain depth in renderProjectDetail, and the pattern is reusable. The data-attribute scrollTop stub for §3 is a sensible jsdom workaround; the comment explaining it is clear."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-06-09T17:47:57Z",
+      "completed_at": "2026-06-09T19:59:48Z",
+      "duration_ms": 7911000,
+      "summary": [
+        "Addressed the Reviewer's documentation-forward item: added a 'Scroll-anchor detection' and 'jsdom limitation' comment block to the DOM contract section at the top of project-detail.js, describing the overflowY-based ancestor walk strategy and the jsdom getComputedStyle limitation that causes tests to stub scrollTop via a data-attribute workaround.",
+        "Added new section '## 9. Project Detail In-Place DOM Patching' to data-flows.md with an ASCII flow diagram covering the full _orchRunsStructureKey → data-only vs structural branch logic, key invariants (lastRunsStructureKey=null sentinel, _pdLogPreviewCleanups drain only on structural rebuilds, renderOrchToolbar on every tick).",
+        "Updated constraints.md section 11 (Polling Convention) with a bullet describing the in-place patch pattern and referencing data-flows.md §9.",
+        "Regenerated all CTX .context/ files via ctx generate (33 documents, exit 0) after the module-context.yaml was updated by the CTX Architect to include the gui/docs/agents/project-manifest sources in manifest-constraints.md and manifest-data-flows.md outputs."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/project-detail.js",
+          "mcp-server/gui/docs/agents/project-manifest/data-flows.md",
+          "mcp-server/gui/docs/agents/project-manifest/constraints.md",
+          "mcp-server/module-context.yaml"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-06-09T19:59:48Z",
+          "note": "Addressed documentation-forward item from code-review: DOM contract comment in project-detail.js now describes the scroll-ancestor walk strategy (overflowY IIFE, documentElement fallback) and the jsdom limitation that causes tests to use a data-attribute scrollTop stub instead of real CSS overflowY."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-09T19:59:48Z",
+          "note": "data-flows.md §9 covers the full in-place patching flow for future contributors. The double-drain of _pdLogPreviewCleanups noted by QA and Reviewer is a known benign pattern — it is now implicitly visible in the flow diagram (drain only on structural path) but was judged not worth a dedicated documentation callout at this level of detail."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-09T19:59:48Z",
+          "note": "module-context.yaml was updated by the CTX Architect to pull gui/docs/agents/project-manifest into manifest-constraints.md and manifest-data-flows.md CTX outputs. Previously only mcp-server/docs/agents/project-manifest was included; the gui manifest docs were missing from generated context files."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-06-09T19:59:48Z",
+  "last_updated": "2026-06-09T19:59:48Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-06-09T17:42:45Z",
+      "notes": [
+        "All 7 acceptance criteria met. Full test suite passes (3183 tests, 0 failures).",
+        "Key files changed: mcp-server/gui/public/views/project-detail.js (added _orchRunsStructureKey, _patchOrchStatusCard, modified renderRunsList and pollQueue), mcp-server/tests/gui/project-detail-scroll.test.ts (new — 19 unit tests).",
+        "The in-place patch triggers when: same run filenames + same activeFilename (queue match still present). The structural rebuild triggers when: match is null (run left queue) or lastRunsStructureKey is null (first tick). Log preview cleanup is only drained on structural rebuilds, not on data-only status card updates.",
+        "DOM contract: #orch-status-card-container wraps the status card HTML inside .orch-active-run-section. It is a sibling of #orch-project-log-preview (not a parent). The log preview widget survives in-place updates because only the container innerHTML is replaced."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-06-09T17:45:34Z",
+      "notes": [
+        "All 7 ACs verified green. 3183 tests pass, 0 regressions.",
+        "One low-priority code-smell flagged: double-drain of _pdLogPreviewCleanups in structural rebuild paths (pollQueue, onKillDone, catch handler all drain before calling renderRunsList, which also drains internally). Benign no-op today but slightly confusing — worth a cleanup note in code review.",
+        "scroll-ancestor walk is not exercised via jsdom's getComputedStyle (always returns empty overflowY); test §3.1 works around this via a data-attribute scrollTop stub. The walk itself is correct for browser use. Reviewer may want to note the extractable helper opportunity.",
+        "No blocking issues. Implementation is ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-06-09T17:47:29Z",
+      "notes": [
+        "All 7 ACs confirmed. Code review PASS — no blocking issues. One documentation-forward item tagged: add a note to the DOM contract comment block in project-detail.js describing the scroll-ancestor walk strategy and the jsdom overflowY limitation (so future contributors understand the data-attribute scrollTop stub in tests). One low-priority maintainability debt noted but not blocking: the double-drain of _pdLogPreviewCleanups in structural rebuild callers vs. renderRunsList itself — benign today but worth a cleanup comment or consolidation in a future pass."
+      ]
+    }
+  ]
+}

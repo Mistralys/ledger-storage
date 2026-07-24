@@ -1,0 +1,225 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-011.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "`run_queue.register()` accepts `repo_name` parameter and writes `expected_repo` field in queue JSON",
+      "met": true
+    },
+    {
+      "criterion": "`cli.py` derives `repo_name` from `plan_dir.parents[3].name` and passes it to `register()`",
+      "met": true
+    },
+    {
+      "criterion": "Queue entry JSON contains both `slug` (bare plan-directory name) and `expected_repo` (repository name) fields",
+      "met": true
+    },
+    {
+      "criterion": "The `slug` field retains its original bare-slug semantics",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-31T15:33:42Z",
+      "completed_at": "2026-05-31T15:36:38Z",
+      "duration_ms": 176000,
+      "summary": [
+        "Updated run_queue.register() to accept optional repo_name parameter (default None) and write expectedRepo field in queue entry JSON",
+        "Updated module docstring to document the new expectedRepo field in the queue entry shape",
+        "Updated cli.py register() call site to derive repo_name from plan_dir.parents[3].name (with IndexError fallback to None, consistent with _derive_ledger_log_dir pattern) and pass it as repo_name",
+        "Updated test_entry_shape_is_correct to assert expectedRepo is None when repo_name is omitted",
+        "Added test_entry_shape_with_repo_name to TestRegisterCreatesFile for the repo_name path",
+        "Added TestRegisterExpectedRepo class with 5 targeted tests covering: repo written when supplied, null when omitted, null when passed None explicitly, slug retains bare-slug semantics, both keys present in entry",
+        "All 1028 tests pass; 5 skipped (pre-existing). Ruff lint: all checks passed."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/utils/run_queue.py",
+          "orchestrator/src/cli.py",
+          "orchestrator/tests/test_run_queue.py"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T15:36:38Z",
+          "note": "run_queue.py module docstring uses camelCase field names (e.g. expectedSlug, expectedRepo) matching the JSON output. The new expectedRepo field is documented as nullable to signal legacy-entry detection — this pattern is consistent with how the GUI consumer already handles null checks."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-05-31T15:36:38Z",
+          "note": "cli.py derives repo_name with a local try/except IndexError block rather than reusing _derive_ledger_log_dir() internals. This is intentional duplication to keep the register() call site self-contained; the pattern mirrors the existing _derive_ledger_log_dir() implementation. A future refactor could extract a _derive_repo_name(plan_dir) helper to DRY both call sites."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T15:36:38Z",
+          "note": "The empty-string guard `plan_dir.parents[3].name or None` in cli.py converts an empty string to None, matching the _derive_ledger_log_dir() fallback. This is defensive and correct given that Path.name can return an empty string for root-level paths."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-31T15:37:43Z",
+      "completed_at": "2026-05-31T15:39:31Z",
+      "duration_ms": 108000,
+      "summary": [
+        "Build & runtime: module imports cleanly; register() signature confirmed as (pid, plan_path, slug, started_at, repo_name=None).",
+        "AC1 PASS: register() accepts repo_name param (default None) and writes expectedRepo field in queue JSON — confirmed by code inspection and test_entry_shape_with_repo_name.",
+        "AC2 PASS: cli.py derives _repo_name = plan_dir.parents[3].name or None with IndexError fallback to None, then passes repo_name=_repo_name to register() — confirmed at lines 782–790.",
+        "AC3 PASS: Queue entry JSON contains both expectedSlug (bare plan-directory name) and expectedRepo (repo name or null) keys — confirmed by raw JSON output and test_both_slug_and_repo_present_in_entry.",
+        "AC4 PASS: slug field retains bare-slug semantics — expectedSlug holds plan_dir.name unchanged, separate from expectedRepo — confirmed by test_slug_field_retains_bare_slug_semantics.",
+        "Regression: 1023 passed, 7 skipped across full test suite — no regressions introduced.",
+        "Edge cases: (1) shallow path IndexError guard in cli.py correctly falls back to None; (2) deep path parents[3] correctly resolves repo name; (3) None serializes as JSON null (not omitted); (4) multiple entries in queue each get independent expectedRepo values; (5) unicode/special-char repo names serialize correctly.",
+        "Ruff lint: all checks passed on run_queue.py and cli.py."
+      ],
+      "metrics": {
+        "test_coverage": "19/19 run_queue tests pass",
+        "tests_passed": 1023,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T15:39:31Z",
+          "note": "Edge case: passing an empty string '' as repo_name writes expectedRepo: '' in JSON (not null). cli.py guards against this with `or None`, but direct callers of run_queue.register() could pass '' and get an empty-string entry. A guard in register() itself (e.g. `repo_name = repo_name or None`) would make the API more robust, but this is not an AC failure — current behaviour is consistent and testable."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T15:39:31Z",
+          "note": "The unregister() cleanup path in cli.py wraps the entire register block in a bare `except Exception` (line 792), which silently swallows any register() failures. This is intentional by design (non-fatal), but means a broken queue file would go undetected. Acceptable for the current scope but worth noting for future monitoring."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-31T15:39:58Z",
+      "completed_at": "2026-05-31T15:41:29Z",
+      "duration_ms": 91000,
+      "summary": [
+        "Code review PASS with one Fix-Forward applied.",
+        "run_queue.py: Parameter addition is clean and idiomatic. Signature, docstring, and module-level shape documentation are all correct and consistent. Entry dict uses camelCase keys matching all existing fields.",
+        "cli.py: Derivation pattern (lines 781–784) correctly mirrors _derive_ledger_log_dir() structure. The 'or None' empty-string guard is defensive and correct. Intentional difference from _derive_ledger_log_dir() (None vs 'unknown' fallback) is justified by the null-semantics contract of the queue JSON.",
+        "test_run_queue.py: Test coverage is thorough. TestRegisterExpectedRepo class covers all key paths (supplied, omitted, None explicit, slug independence, both keys present). test_entry_shape_is_correct correctly updated to assert expectedRepo: null on default call.",
+        "Fix-Forward applied: Added `repo_name = repo_name or None` normalization inside register() to prevent callers from accidentally writing an empty-string expectedRepo. This makes the function's own contract unambiguous without changing behavior for current callers (cli.py already guards at call-site). All 19 run_queue tests pass post-fix.",
+        "DRY note (not blocking): _derive_ledger_log_dir() and the register() call-site both use plan_dir.parents[3].name with IndexError fallback, but with different defaults (str vs None). Extracting a _derive_repo_name(plan_dir, fallback=None) helper would be a clean future refactor — deferred as tech debt."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/utils/run_queue.py",
+          "orchestrator/src/cli.py",
+          "orchestrator/tests/test_run_queue.py"
+        ]
+      },
+      "metrics": {
+        "test_coverage": "19/19 run_queue tests pass",
+        "tests_passed": 19,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-31T15:41:29Z",
+          "note": "run_queue.py register(): Added `repo_name = repo_name or None` at the top of the function body (before entry dict construction). Rationale: QA correctly flagged that passing repo_name='' would write expectedRepo: '' in JSON — an empty string, not null. This violates the documented str | None contract. The one-liner normalises any falsy string to None, making the function self-consistent. Non-behavioral: no existing caller passes an empty string (cli.py guards with 'or None' at call-site). All 19 tests pass post-fix."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T15:41:29Z",
+          "note": "Future refactor opportunity: _derive_ledger_log_dir() (line 118–121) and the register() call-site (lines 781–784) both derive plan_dir.parents[3].name with an IndexError guard, but use different fallbacks ('unknown' vs None). A shared helper _derive_repo_name(plan_dir, fallback=None) would DRY both sites. Deferred — current duplication is minor and the implementations are correct."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-31T15:41:29Z",
+          "note": "[documentation-forward] run_queue.py module docstring documents the expectedRepo field in the queue entry shape but the docstring for register() parameter 'repo_name' uses the phrase 'namespaced GUI project links' without explaining what that means for a new contributor. Consider expanding with a one-line example of how the GUI uses expectedRepo to route to the correct project namespace."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-31T15:41:48Z",
+      "completed_at": "2026-05-31T15:43:28Z",
+      "duration_ms": 100000,
+      "summary": [
+        "Expanded run_queue.py register() docstring for repo_name parameter — added a concrete example of the GUI namespaced link form (#/projects/{repo_name}/{slug}, e.g. #/projects/my-repo/2026-05-05-feature) and explained the null/legacy-fallback semantics. Addresses the documentation-forward item from code review.",
+        "Updated orchestrator/docs/agents/project-manifest/api-surface.md: added expectedRepo field to the queue entry shape JSON example, added prose explaining its nullable semantics and GUI routing purpose, and updated the register() signature to include repo_name: str | None = None with full description."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/utils/run_queue.py",
+          "orchestrator/docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-31T15:43:28Z",
+          "note": "Addressed documentation-forward from code review: run_queue.py register() docstring for repo_name now explains the GUI namespacing use-case with a concrete link example (#/projects/my-repo/2026-05-05-feature), multi-root workspace context, and null/legacy-fallback semantics."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T15:43:28Z",
+          "note": "api-surface.md queue entry shape was stale — missing expectedRepo field. Updated to match the current JSON output and added a prose note explaining nullable semantics and the GUI routing contract."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T15:43:28Z",
+          "note": "No README.md or architecture guide changes required — the run_queue changes are internal orchestrator utility scope, adequately covered by the module docstring and api-surface.md reference doc."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-31T15:43:28Z",
+  "last_updated": "2026-05-31T15:43:28Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-31T15:36:38Z",
+      "notes": [
+        "WP-002 implementation is complete. All 4 acceptance criteria are met. Three files modified: run_queue.py (new repo_name param + expectedRepo JSON field), cli.py (derive repo_name and pass to register), test_run_queue.py (7 new/updated tests). Full test suite: 1028 passed, 5 skipped, ruff clean. The slug field is unchanged — it still holds the bare plan-directory name as expectedSlug. QA should verify: (1) entries with repo_name set write expectedRepo correctly, (2) entries without repo_name write expectedRepo: null, (3) the slug (expectedSlug) value is unaffected."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-31T15:39:31Z",
+      "notes": [
+        "All 4 ACs verified and passing. Key facts for code review: (1) run_queue.register() new param `repo_name: str | None = None`, written as `expectedRepo` in the entry dict — key is always present, value is null when omitted; (2) cli.py uses a local try/except IndexError block at lines 781–784 to derive _repo_name, consistent with _derive_ledger_log_dir() pattern; (3) full test suite 1023/1023 passed, ruff clean. Minor note: empty string passed as repo_name is written as '' not null — cli.py guards against this but run_queue.register() itself does not normalize empty strings."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-31T15:41:29Z",
+      "notes": [
+        "Code review PASS. One Fix-Forward was applied: `repo_name = repo_name or None` normalization added inside register() to enforce the str | None contract at the API boundary (cli.py already guarded at call-site). All 19 run_queue tests pass. One documentation-forward item logged: expand the 'repo_name' docstring to explain the GUI namespacing use-case. No blocking issues found."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,246 @@
+{
+  "work_package_id": "WP-005",
+  "work_package_file": "work/WP-005.md",
+  "status": "COMPLETE",
+  "assigned_to": "Reviewer",
+  "dependencies": [
+    "WP-002"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "handleListRunLogs with an invalid slug (containing / or ..) throws ApiError NOT_FOUND",
+      "met": true
+    },
+    {
+      "criterion": "handleListRunLogs returns an array (empty when no logs match) for a valid slug",
+      "met": true
+    },
+    {
+      "criterion": "handleGetRunLog with a malicious filename throws ApiError FORBIDDEN",
+      "met": true
+    },
+    {
+      "criterion": "handleGetRunLog with a non-existent but valid filename throws ApiError NOT_FOUND",
+      "met": true
+    },
+    {
+      "criterion": "handleGetRunLog with a valid file and afterLine: 0 returns all entries and a correct totalLines count",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "security-audit",
+    "code-review"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-23T11:40:42Z",
+      "completed_at": "2026-03-23T11:42:00Z",
+      "duration_ms": 78000,
+      "summary": [
+        "Created mcp-server/src/gui/handlers/run-log-handlers.ts with handleListRunLogs and handleGetRunLog",
+        "handleListRunLogs: validates slug via assertSafeSlug() (throws ApiError NOT_FOUND for slugs containing / or ..), then delegates to findRunLogs()",
+        "handleGetRunLog: validates slug via assertSafeSlug(), then delegates to readLogEntries() which provides FORBIDDEN/NOT_FOUND guards for filenames",
+        "Both handlers re-use all security guards from log-resolver.ts (WP-002) with no duplication",
+        "TypeScript compiles clean (tsc --noEmit, no errors)",
+        "All 1571 existing tests continue to pass (54 test files, vitest run)"
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/gui/handlers/run-log-handlers.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:42:00Z",
+          "note": "assertSafeSlug() in run-log-handlers.ts is a local copy of the same guard in gui/api.ts. If a third module needs this guard, it would be worth extracting to src/gui/guards.ts to avoid further duplication."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:42:00Z",
+          "note": "No new npm dependencies added; file is ~80 lines including JSDoc comments."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-03-23T11:42:35Z",
+      "completed_at": "2026-03-23T11:44:10Z",
+      "duration_ms": 95000,
+      "summary": [
+        "Reviewed run-log-handlers.ts (~91 lines) and its dependency log-resolver.ts. Audited all OWASP Top 10 categories. 0 Critical, 0 High findings. 2 Medium, 2 Low/Info observations recorded. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:44:10Z",
+          "note": "OWASP A01 (Broken Access Control) — PASS. assertSafeSlug() rejects empty slugs, slugs containing '/' or '..' before any filesystem access. readLogEntries() in log-resolver.ts applies a two-layer filename defence: an allowlist regex [A-Za-z0-9._-]+ plus a resolved-path escape check (resolvedFilePath.startsWith(resolvedLogsDir + '/')). Both handlers are pure utility functions with no HTTP routing wired at this stage; access-control decisions are delegated entirely to the caller layer (server.ts). No IDOR or privilege-escalation vectors identified."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:44:10Z",
+          "note": "OWASP A02 (Cryptographic Failures) — PASS. No secrets, credentials, tokens, or sensitive data are stored or transmitted by these handlers. Data is read from the local filesystem over loopback-bound HTTP; no encryption requirements apply to this localhost-only server. No hardcoded secrets found."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:44:10Z",
+          "note": "OWASP A03 (Injection) — PASS. No SQL, OS-command, LDAP, template, or shell-injection vectors exist. Filesystem access is via Node's fs/promises APIs (readdir, readFile) with pre-validated paths. Slug and filename inputs are validated before use; JSONL parsing is done with JSON.parse() with per-line try/catch that silently skips malformed lines — no eval or unsafe deserialisation."
+        },
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-03-23T11:44:10Z",
+          "note": "OWASP A04 (Insecure Design) — Medium. log-resolver.ts documents a known limitation: resolveOrchestratorLogsDir() and findRunLogs() do NOT validate that logsDir is an absolute path. If a relative path is supplied from gui-config.json, readdir() resolves it against process.CWD, potentially listing files outside the intended directory. readLogEntries() is protected by its path.resolve() escape check, but findRunLogs() is not. The handlers in run-log-handlers.ts faithfully pass logsDir through to both functions without an isAbsolute() guard. Recommendation: add a path.isAbsolute(logsDir) assertion in resolveOrchestratorLogsDir() or at the top of handleListRunLogs/handleGetRunLog. Severity: Medium — exploitable only if an attacker can influence gui-config.json content, which requires prior filesystem write access."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:44:10Z",
+          "note": "OWASP A05 (Security Misconfiguration) — PASS. CORS in server.ts is restricted to http://localhost:<port> (not wildcard). Error messages returned by these handlers echo back the slug or filename string, which is acceptable given the localhost-only deployment model. No stack traces are surfaced to callers — unhandled fs errors propagate as ApiError NOT_FOUND. No default credentials or debug endpoints exposed."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:44:10Z",
+          "note": "OWASP A06 (Vulnerable & Outdated Components) — PASS. No new npm dependencies were introduced by this WP. Existing dependencies: @modelcontextprotocol/sdk ^1.0.4, proper-lockfile ^4.1.2, zod ^3.24.1. No CVEs identified for these packages at these version ranges as of audit date. Node built-ins (fs/promises, path, os) are used exclusively for filesystem operations."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:44:10Z",
+          "note": "OWASP A07 (Identification & Authentication Failures) — PASS (scope-appropriate). The GUI server runs localhost-only; there is no authentication layer in this codebase, which is consistent with the intended localhost-tool design. No session management, tokens, or credential flows are introduced or modified by this WP."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:44:10Z",
+          "note": "OWASP A08 (Software & Data Integrity Failures) — PASS. No deserialization of untrusted binary data. JSONL parsing uses per-line JSON.parse() with silent error handling. No dynamic require/import, no eval. No package integrity issues."
+        },
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-03-23T11:44:10Z",
+          "note": "OWASP A09 (Security Logging & Monitoring Failures) — Medium/Info. Neither handler emits an audit log entry on access or on security guard rejection. The FORBIDDEN and NOT_FOUND errors are returned to the caller silently from the server's perspective. In a multi-user or network-facing deployment this would be a High finding; at localhost scope it is Medium. Recommendation: emit a process.stderr.write() in assertSafeSlug() and in the FORBIDDEN branch of readLogEntries() to facilitate anomaly detection without sensitive data disclosure."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:44:10Z",
+          "note": "OWASP A10 (Server-Side Request Forgery) — PASS. No outbound HTTP requests are made from these handlers. All I/O is strictly local filesystem reads (readdir, readFile). No URL fetching, no redirect following, no DNS lookups triggered by user input."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:44:10Z",
+          "note": "Input Validation — PASS. Slug validation (assertSafeSlug) is applied before any filesystem access in both handlers. Filename validation in readLogEntries applies: (1) null/empty check, (2) '..' substring check, (3) '/' substring check, (4) allowlist regex test, (5) resolved-path escape check. afterLine is passed through without type coercion; the guard `afterLine != null && afterLine > 0` handles undefined/null/negative safely."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:44:10Z",
+          "note": "Data Handling — PASS. Log files contain orchestrator run data (not PII). Files are read as UTF-8 text; no binary buffers are returned to callers. The return type `entries: unknown[]` correctly avoids asserting shape on parsed JSONL content."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:44:10Z",
+          "note": "Code Duplication / Defence-in-Depth — Info. assertSafeSlug() is a local copy duplicated from gui/api.ts. While not a security vulnerability, divergence risk exists if one copy is updated without the other. This was flagged by the Developer and is already tracked as a low-priority improvement. No remediation required for PASS."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-23T11:44:23Z",
+      "completed_at": "2026-03-23T11:46:55Z",
+      "duration_ms": 152000,
+      "summary": [
+        "Reviewed mcp-server/src/gui/handlers/run-log-handlers.ts (91 lines). Code is clean, minimal, and well-structured. All acceptance criteria met and verified. Architecture, naming, security delegation, error propagation, TypeScript discipline, and JSDoc all satisfy codebase conventions. Two security audit medium findings (logsDir absolute-path guard, no stderr on rejection) acknowledged as acceptable at localhost scope and deferred appropriately to the HTTP wiring WP. No issues requiring rework. PASS."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:46:55Z",
+          "note": "Architecture — PASS. run-log-handlers.ts is correctly placed in src/gui/handlers/ as a new sub-directory, keeping the HTTP plumbing (server.ts) and the business logic cleanly separated. The file is 91 lines and lean."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:46:55Z",
+          "note": "API contract — PASS. handleListRunLogs(slug, logsDir): Promise<string[]> and handleGetRunLog(slug, filename, logsDir, afterLine?): Promise<{entries: unknown[]; totalLines: number}> match the client-side API expectations confirmed in api-client.test.ts and project-detail-runs.test.ts."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:46:55Z",
+          "note": "Security delegation — PASS. assertSafeSlug() fires before any FS access in both handlers. Filename validation (5-layer) is fully delegated to readLogEntries() in log-resolver.ts. ApiError propagates unmodified to the caller — correct for server.ts's apiErrorToStatus() mapping."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:46:55Z",
+          "note": "Server wiring gap — Expected and acceptable. routes GET /api/projects/:slug/runs and GET /api/projects/:slug/runs/:file are not yet in server.ts matchRoute(). This is out of scope for WP-005 (handler creation only). The logsDir absolute-path guard should be added when wiring into handleRequest, as documented in log-resolver.ts header."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:46:55Z",
+          "note": "Security audit mediums — Accepted. (1) logsDir absolute-path guard: documented limitation in log-resolver.ts, deferred to wiring WP — correct. (2) No stderr on rejection: informational at localhost scope, non-blocking. Both are tracked."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:46:55Z",
+          "note": "assertSafeSlug() duplication (low priority debt): local copy in run-log-handlers.ts is identical to gui/api.ts copy. Divergence risk is low; extraction to src/gui/guards.ts is the right long-term fix. Already tracked by Developer and Security Auditor. No action required here."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:46:55Z",
+          "note": "JSDoc quality — PASS. Both exported functions document security behaviour, all @param tags present. The note on handleGetRunLog that slug is 'validated but not used in file resolution' is a valuable maintainability signal."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:46:55Z",
+          "note": "TypeScript discipline — PASS. Imports use .js ESM extensions, consistent with codebase. No dead code, no TODOs, no commented-out blocks. tsc --noEmit clean per Developer pipeline."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-15T08:56:57Z",
+  "last_updated": "2026-04-15T08:56:57Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-23T11:44:10Z",
+      "notes": [
+        "Security audit PASS. 0 Critical, 0 High findings. Two Medium observations (non-blocking): (1) logsDir absolute-path guard missing in resolveOrchestratorLogsDir / findRunLogs — exploitable only if attacker can write gui-config.json; (2) no stderr audit log on security guard rejections — low risk at localhost scope. Code reviewer should verify these are acceptable given the localhost-only deployment model and that the assertSafeSlug() duplication is tracked for future consolidation."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-03-23T11:46:55Z",
+      "notes": [
+        "Code review PASS. All 5 acceptance criteria met. Implementation is clean, secure, and maintainable. Two action items for the wiring WP: (1) add path.isAbsolute(logsDir) guard in server.ts before calling handleListRunLogs/handleGetRunLog, and (2) wire GET /api/projects/:slug/runs and GET /api/projects/:slug/runs/:file into matchRoute() in server.ts — noting that the length-3 and length-4 slot ordering rules documented in matchRoute() apply. assertSafeSlug() extraction to src/gui/guards.ts remains a low-priority backlog item."
+      ]
+    }
+  ]
+}

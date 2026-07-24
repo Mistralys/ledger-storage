@@ -1,0 +1,195 @@
+{
+  "work_package_id": "WP-004",
+  "work_package_file": "work/WP-004.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-002"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "The function returns true only when the downstream pipeline's mostRecent.status is 'FAIL' AND it started after the upstream PASS.",
+      "met": true
+    },
+    {
+      "criterion": "The function returns false when a downstream pipeline re-engaged with PASS status after an upstream PASS.",
+      "met": true
+    },
+    {
+      "criterion": "The JSDoc comment accurately describes the refined semantics: \"Returns true when a downstream agent (whose FAIL routes to Developer) has started a pipeline that resulted in FAIL since the most recent upstream PASS.\"",
+      "met": true
+    },
+    {
+      "criterion": "Existing tests for FAIL re-engagement scenarios continue to pass.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-06-03T10:16:04Z",
+      "completed_at": "2026-06-03T10:18:36Z",
+      "duration_ms": 152000,
+      "summary": [
+        "Added `mostRecent.status === 'FAIL'` to the re-engagement detection loop in `hasDownstreamReengagedSince` — only downstream FAIL pipelines now trigger a rework signal.",
+        "Updated JSDoc to reflect refined semantics per §14.13.",
+        "Updated §14.13 row 3 test expectation from true→false: IN_PROGRESS re-engagement is no longer a rework signal (consistent with the P5 outer guard that already enforces this in production)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/utils/workflow-helpers.ts",
+          "mcp-server/tests/utils/workflow-helpers.test.ts"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 2862,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-03T10:18:36Z",
+          "note": "§14.13 row 3 test was accurately testing the old behavior (IN_PROGRESS → true). The test required both a description update and an expectation flip to reflect the new semantics (IN_PROGRESS → false). Per WP-002 spec, P5's outer `hasDownstreamFail` guard means IN_PROGRESS never reaches this function in practice, but the unit-level contract is now correctly documented."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-03T10:18:36Z",
+          "note": "The `hasDownstreamReengagedSince` function is called from 3 sites (P5 in workflow-next-action.ts and two in workflow-handoff.ts), all guarded by `isMostRecentPipelineFail`. The new FAIL-only semantics at the function level makes the guard redundant but keeps the code consistent and safe for future call sites that might not carry that guard."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-06-03T10:22:29Z",
+      "completed_at": "2026-06-03T10:23:59Z",
+      "duration_ms": 90000,
+      "summary": [
+        "AC #1: workflow-helpers.ts line 318 — `if (mostRecent.status === 'FAIL' && mostRecent.started_at)` — only downstream FAIL pipelines trigger rework signals.",
+        "AC #2: Logically verified — PASS status fails the `=== 'FAIL'` check, loop body skipped, function returns false. Row 3 (IN_PROGRESS→false) exercises the same code path.",
+        "AC #3: JSDoc at line 275 reads 'resulted in FAIL since the most recent upstream PASS' — exact §14.13 spec wording.",
+        "AC #4: All 8 hasDownstreamReengagedSince tests pass; 2862/2862 total tests pass."
+      ],
+      "metrics": {
+        "tests_passed": 2862,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-06-03T10:23:59Z",
+          "note": "AC #2 ('returns false for PASS re-engagement') has no dedicated integration test. The §14.13 test suite covers IN_PROGRESS→false (row 3) but not qa PASS→false explicitly. The condition `mostRecent.status === 'FAIL'` is unambiguous — PASS also evaluates to false — but a qa PASS test case would improve specification coverage."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-03T10:23:59Z",
+          "note": "Edge case verified by logic: [impl PASS, qa PASS] scenario → dsPipelines.at(-1).status = 'PASS'; condition false; returns false. Correct behavior for a successful first-run path."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-06-03T10:26:21Z",
+      "completed_at": "2026-06-03T10:27:11Z",
+      "duration_ms": 50000,
+      "summary": [
+        "hasDownstreamReengagedSince fix reviewed: `mostRecent.status === 'FAIL'` guard correctly restricts the rework signal to failed downstream pipelines only, aligning the function contract with §14.13 spec text.",
+        "JSDoc update verified — 'resulted in FAIL since the most recent upstream PASS' is precise and matches the implementation.",
+        "Test suite update reviewed: row 3 description and expectation correctly changed from IN_PROGRESS→true to IN_PROGRESS→false. All 8 hasDownstreamReengagedSince tests pass.",
+        "Production safety confirmed: all three call sites are guarded by isMostRecentPipelineFail, so the behavioral change has zero runtime impact on existing flows. The fix improves the function's standalone contract for future call sites."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/utils/workflow-helpers.ts",
+          "mcp-server/tests/utils/workflow-helpers.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-03T10:27:11Z",
+          "note": "Coverage gap (low priority, non-blocking): AC #2 ('returns false for downstream PASS re-engagement') has no dedicated test case. The IN_PROGRESS→false row 3 test covers the same code path, and the FAIL-only check is unambiguous, but an explicit test for qa PASS→false would document the contract boundary more precisely."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-03T10:27:11Z",
+          "note": "The refinement makes the function contract precise at the unit level even though all three call sites (P5 in workflow-next-action.ts, two in workflow-handoff.ts) are guarded by isMostRecentPipelineFail before calling this function. This is a net positive: future call sites without that outer guard will now behave correctly without silent reliance on the caller."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-06-03T10:30:20Z",
+      "completed_at": "2026-06-03T10:31:44Z",
+      "duration_ms": 84000,
+      "summary": [
+        "No spec edits were needed for WP-004: §14.13 in recommendations.md was already correct and fully aligned with the implementation fix. The pseudocode, scenario table, and description all already reflected the FAIL-only semantics.",
+        "Added a WorkflowHelpers bullet to the v1.32.3 changelog entry documenting the hasDownstreamReengagedSince fix and JSDoc/test updates, consolidating both plan fixes under a single release entry.",
+        "Reviewer documentation-forward addressed: the low-priority AC #2 test gap (no explicit downstream PASS→false test) is noted as a follow-up recommendation."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/changelog.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-03T10:31:44Z",
+          "note": "§14.13 in recommendations.md is already correct and fully up-to-date: the pseudocode includes `mostRecent.status == 'FAIL'`, the scenario table row 3 shows IN_PROGRESS→false, and the description reads 'resulted in FAIL since the most recent upstream PASS'. The implementation was fixed to match the spec — no spec edits were needed."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-03T10:31:44Z",
+          "note": "Coverage gap (low priority, forwarded from Reviewer): no dedicated test for downstream PASS→false (AC #2). Row 3 (IN_PROGRESS→false) exercises the same code path. The FAIL-only condition is unambiguous, but an explicit qa-PASS test case would document the contract boundary precisely."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-06-03T10:31:44Z",
+  "last_updated": "2026-06-03T10:31:44Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-06-03T10:18:36Z",
+      "notes": [
+        "Two files changed: workflow-helpers.ts (added `mostRecent.status === 'FAIL'` condition + updated JSDoc) and its test file (row 3 expectation flipped from true→false per updated §14.13 spec). All 2862 tests pass. QA should verify: a WP with [impl-PASS, qa-IN_PROGRESS] no longer falsely triggers rework; a WP with [impl-PASS, qa-FAIL] still triggers rework correctly.\""
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-06-03T10:23:59Z",
+      "notes": [
+        "Two-file fix verified. The `mostRecent.status === 'FAIL'` guard correctly restricts rework signals to failed downstream pipelines only. All 2862 tests pass. Low-priority gap: no explicit test for qa PASS → false path (AC #2). JSDoc is accurate and aligned with §14.13 spec text."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-06-03T10:27:11Z",
+      "notes": [
+        "Two-file fix verified correct and aligned with §14.13. The mostRecent.status === 'FAIL' guard tightens the function contract to match its documented semantics. Low-priority coverage gap for PASS→false case noted but non-blocking. PASS."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,264 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "ChunkWriter(slug_dir, wp_id, stage) creates {slug_dir}/orchestrator/chunks/ if absent and opens a .jsonl file with the correct revision number.",
+      "met": true
+    },
+    {
+      "criterion": "The first line of every created JSONL file is a valid JSON object containing chunk_format, stream_mode, and langgraph_stream_version fields.",
+      "met": true
+    },
+    {
+      "criterion": "write_chunk() appends one JSON line per call and calls flush() immediately.",
+      "met": true
+    },
+    {
+      "criterion": "close() is idempotent — calling it multiple times does not raise.",
+      "met": true
+    },
+    {
+      "criterion": "The class works as a context manager (with ChunkWriter(...) as cw:).",
+      "met": true
+    },
+    {
+      "criterion": "All unit tests pass on both Unix and Windows path conventions (using pathlib.Path).",
+      "met": true
+    },
+    {
+      "criterion": "A file I/O error during write_chunk() is logged at DEBUG level and does not propagate.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-10T15:14:12Z",
+      "completed_at": "2026-04-10T15:16:46Z",
+      "duration_ms": 154000,
+      "summary": [
+        "Created orchestrator/src/utils/chunk_writer.py — ChunkWriter class with full public API: constructor, write_chunk(), close(), context manager (__enter__/__exit__), and path property.",
+        "Directory auto-creation: {slug_dir}/orchestrator/chunks/ created with parents=True, exist_ok=True.",
+        "Revision numbering mirrors write_dialogue(): glob {wp_id}-{stage}-r*.jsonl, take max revision + 1 (or 0 for first file).",
+        "Header line written as first JSONL entry: {chunk_format: 1, stream_mode: messages, langgraph_stream_version: v2}, flushed immediately.",
+        "write_chunk(): json.dumps + newline + flush(); OSError caught, logged at DEBUG, swallowed.",
+        "close() idempotent via _closed flag guard; _fh set to None after close.",
+        "Created orchestrator/tests/test_chunk_writer.py — 42 unit tests across 7 test classes covering all acceptance criteria.",
+        "All 42 new tests pass; full suite of 824 tests passes (5 skipped, pre-existing); ruff reports no violations."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/utils/chunk_writer.py",
+          "orchestrator/tests/test_chunk_writer.py"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T15:16:46Z",
+          "note": "chunk_writer.py and dialogue_writer.py share identical revision-numbering logic (_next_revision / the glob-and-rsplit pattern). If a third writer is added, it would be worth extracting a shared _next_revision(dir, pattern) helper into utils/__init__.py or a small private module to eliminate the duplication. Out of scope for this WP."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-10T15:16:46Z",
+          "note": "dialogue_writer.py uses a bare module-level function (write_dialogue) whereas chunk_writer.py uses a class. Both are valid, but the inconsistency is mildly surprising. The class model is more appropriate here given the stateful open-file lifecycle, so no change needed."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T15:16:46Z",
+          "note": "The _CHUNK_HEADER constant is module-level and mutable (dict). A future caller could inadvertently mutate it. Freezing it with types.MappingProxyType or making it a tuple-of-pairs would be a small defensive improvement."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-10T15:30:24Z",
+      "completed_at": "2026-04-10T15:32:16Z",
+      "duration_ms": 112000,
+      "summary": [
+        "Ruff lint: clean (0 violations) on chunk_writer.py and test_chunk_writer.py.",
+        "All 42 unit tests in test_chunk_writer.py pass across 7 test classes.",
+        "Full regression suite: 825 passed, 7 skipped — no regressions introduced.",
+        "All 7 acceptance criteria verified by manual code trace and test execution.",
+        "Edge-case testing: 10k-chunk write (no errors, 1.25 MB output), Unicode/emoji content (correct UTF-8 round-trip), and non-JSON-serializable chunk (TypeError propagates — consistent with WP spec which only requires OSError suppression)."
+      ],
+      "metrics": {
+        "test_coverage": "42/42 targeted tests pass; 7 test classes cover all AC",
+        "tests_passed": 825,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T15:32:16Z",
+          "note": "write_chunk() only catches OSError (per spec). A non-JSON-serializable value (e.g. a set or custom object) causes an unhandled TypeError that propagates to the caller. This is consistent with the WP which limits suppression to file I/O errors, but callers should be made aware. Consider adding a TypeError catch with a DEBUG log in a follow-on WP if upstream callers pass untrusted chunk data."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T15:32:16Z",
+          "note": "10,000-chunk write test completed successfully (1.25 MB JSONL, all lines valid). No memory or performance issues observed at this scale."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T15:32:16Z",
+          "note": "Unicode and emoji content (including CJK characters) serializes and deserializes correctly via json.dumps with ensure_ascii=False. No encoding issues."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-10T15:40:24Z",
+      "completed_at": "2026-04-10T15:42:12Z",
+      "duration_ms": 108000,
+      "summary": [
+        "Reviewed orchestrator/src/utils/chunk_writer.py (187 lines) and orchestrator/tests/test_chunk_writer.py (400 lines) in full. Cross-referenced dialogue_writer.py for pattern consistency.",
+        "All four review dimensions PASS: Maintainability, Best Practices, Performance, Future Context.",
+        "No Blocking issues found. No Fix-Forward changes applied (attempted MappingProxyType for _CHUNK_HEADER but reverted — json.dumps on Python 3.14 does not natively serialize MappingProxyType, confirming the change would be behavioral, not eligible for Fix-Forward).",
+        "Two Documentation-Forward items tagged for the Documentation agent.",
+        "One cross-cutting architectural note recorded at project level: shared revision-numbering logic between chunk_writer and dialogue_writer is a refactor candidate if a third writer is ever added."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/utils/chunk_writer.py",
+          "orchestrator/tests/test_chunk_writer.py"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T15:42:12Z",
+          "note": "Maintainability — PASS. Module and class docstrings are exemplary: they document the public API, parameters, raises contract, JSONL file layout (with line-numbered examples), and a cross-coupling note about the parallel orchestrator/chunks vs orchestrator/dialogues directory structure. Variable names throughout are precise and self-documenting."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T15:42:12Z",
+          "note": "Best Practices — PASS. Path(slug_dir) coercion in __init__ correctly handles str inputs. __exit__ does NOT return True — exceptions propagate correctly (common pitfall avoided). _closed flag check precedes _fh is None check in both write_chunk and close, which is the correct defensive ordering. finally: self._fh = None in close() is the right pattern to prevent double-close issues. Static method _next_revision is correctly isolated."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T15:42:12Z",
+          "note": "Performance — PASS. flush() after every write is intentional per spec (durability contract). _next_revision glob+sort is O(n) over existing revision files, called once at construction. No concerns at expected scale."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T15:42:12Z",
+          "note": "Fix-Forward ATTEMPTED and REVERTED: _CHUNK_HEADER is a module-level mutable dict. Attempted to wrap with types.MappingProxyType to prevent accidental external mutation (the Developer noted this as a low-priority improvement). Reverted because Python 3.14's json.dumps does not natively serialize MappingProxyType — applying the fix would require a custom JSONEncoder, which changes the serialization code path (behavioral). This is not eligible for Fix-Forward. Reclassified as documentation-forward."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-10T15:42:12Z",
+          "note": "[documentation-forward] _CHUNK_HEADER is a module-level mutable dict exported from the module (imported directly in tests via 'from src.utils.chunk_writer import _CHUNK_HEADER'). The module docstring and class docstring should note that _CHUNK_HEADER is a private implementation detail and must not be mutated by callers — external mutation would silently corrupt all subsequent header writes. Consider adding a # DO NOT MUTATE comment inline on the constant as well."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-04-10T15:42:12Z",
+          "note": "[documentation-forward] write_chunk() type annotation is 'chunk: dict[str, Any]'. The docstring should clarify that non-JSON-serializable values (e.g. a set, a custom object) will raise a TypeError that propagates to the caller — only OSError from file I/O is suppressed. This distinction is critical for callers passing untrusted chunk data from upstream LangGraph streams."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-10T15:46:54Z",
+      "completed_at": "2026-04-10T15:49:03Z",
+      "duration_ms": 129000,
+      "summary": [
+        "Addressed both documentation-forward items from the code-review pipeline.",
+        "chunk_writer.py — module docstring: added `.. warning:: _CHUNK_HEADER is a private implementation detail` block explaining that external mutation silently corrupts all subsequent header writes.",
+        "chunk_writer.py — _CHUNK_HEADER constant: added `# DO NOT MUTATE` inline comment with guidance on how to use a different header (subclass or construct locally).",
+        "chunk_writer.py — write_chunk() docstring: added `.. warning:: TypeError propagates.` block clarifying that only OSError is suppressed; TypeError from non-JSON-serialisable values propagates to the caller unmodified. Parameter description updated to reflect the serialisability requirement.",
+        "orchestrator/docs/public-api.md — Utilities section: added ChunkWriter, ChunkWriter.write_chunk(), ChunkWriter.close(), and ChunkWriter.path entries. Added _CHUNK_HEADER mutation warning callout.",
+        "orchestrator/README.md — Folder Overview: added chunk_writer.py to src/utils/ description; updated test count from 374 to 825 to reflect current suite.",
+        "orchestrator/changelog.md — added v0.14.0 entry covering ChunkWriter implementation, test additions (+42 = 825 total), and documentation updates.",
+        "CTX files regenerated successfully via `ctx generate` — all 31 documents updated."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/utils/chunk_writer.py",
+          "orchestrator/docs/public-api.md",
+          "orchestrator/README.md",
+          "orchestrator/changelog.md",
+          ".context/orchestrator/overview.md",
+          ".context/orchestrator/documentation.md",
+          ".context/orchestrator/source-utils.md",
+          ".context/orchestrator/file-structure.md",
+          ".context/orchestrator/tests.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-04-10T15:49:03Z",
+          "note": "[documentation-forward resolved] _CHUNK_HEADER mutation warning: added `# DO NOT MUTATE` inline comment on the constant and a `.. warning::` block in the module docstring. The public-api.md entry also carries a standalone callout. Reviewer's suggestion to add the warning to the class docstring was considered but not applied — the module-level warning and inline comment are the canonical location for a module-level constant; the class docstring would be a misleading place to document a module-level side effect."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T15:49:03Z",
+          "note": "[documentation-forward resolved] write_chunk() TypeError propagation: added a `.. warning:: TypeError propagates.` block documenting that only OSError is caught, that TypeError from non-serialisable values propagates unmodified, and giving concrete examples (set, custom object, bytes). Also updated the `chunk` parameter description to reflect the serialisability requirement."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-10T15:49:03Z",
+          "note": "No changes to README.md top-level or mcp-server/README.md were needed — ChunkWriter is an internal orchestrator utility with no user-facing surface. The orchestrator/README.md Folder Overview and test count were the correct scope for surface-level documentation."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-10T15:49:03Z",
+  "last_updated": "2026-04-10T15:49:03Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-10T15:16:46Z",
+      "notes": [
+        "All 7 acceptance criteria met and marked. 42 unit tests cover: directory creation, revision numbering (including non-sequential gaps), header line content, write_chunk append+flush behaviour, idempotent close(), context manager protocol, OSError suppression + DEBUG logging, and cross-platform pathlib usage. Full suite (824 tests) passes. Ruff clean."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-10T15:32:16Z",
+      "notes": [
+        "All 7 ACs verified by code trace and passing test execution. 42 targeted tests + 825-test full-suite regression both pass clean. One low-priority observation: non-JSON-serializable chunks (TypeError) are not suppressed — consistent with spec but worth noting for Reviewer. Ruff clean."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-10T15:42:12Z",
+      "notes": [
+        "All 7 ACs confirmed met. Code is clean, well-structured, and production-ready. No blocking issues. Two documentation-forward items to address: (1) add a mutation warning to _CHUNK_HEADER's docstring/comment; (2) clarify in write_chunk()'s docstring that TypeError from non-serializable values propagates (only OSError is suppressed). No code changes required before documentation pass."
+      ]
+    }
+  ]
+}

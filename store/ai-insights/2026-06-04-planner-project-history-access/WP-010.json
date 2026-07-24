@@ -1,0 +1,203 @@
+{
+  "work_package_id": "WP-010",
+  "work_package_file": "work/WP-008.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-006",
+    "WP-008"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "When a project's detected folder name matches a declared repository's folder_names, the project list displays the repository's label instead of the raw folder name.",
+      "met": true
+    },
+    {
+      "criterion": "Projects with folder names not in any declared repository entry continue to display the raw folder name (no regression).",
+      "met": true
+    },
+    {
+      "criterion": "Multiple projects from different folder names that belong to the same declared repository display the same label.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-06-05T10:24:47Z",
+      "completed_at": "2026-06-05T10:28:16Z",
+      "duration_ms": 209000,
+      "summary": [
+        "Implemented repository label resolution in the project list view.",
+        "Added `repoFolderMap` module-level variable (folder_name → {label, id}) populated on each load.",
+        "Modified `load()` to use `Promise.all` to fetch both projects and the repo registry in parallel; `listRepos()` failure is caught gracefully and falls back to an empty array (no crash).",
+        "Updated `buildTable` repo-column rendering: when a project's `repository_name` matches a registry folder_name, the label is displayed and linked to `#/strategy/:repoId`; unmatched folder names fall back to raw display.",
+        "Updated `renderList` test helper to inject per-URL mock data distinguishing `/api/repos` from `/api/projects`.",
+        "Added 5 new test cases covering all three acceptance criteria plus the fallback/degradation scenario.",
+        "All 3066 tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/project-list.js",
+          "mcp-server/tests/gui/project-list.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T10:28:16Z",
+          "note": "project-list.js: the `load()` function now fetches repos on every poll cycle (every 10 s). Since repository declarations change rarely, caching the repo registry with a longer TTL (e.g. only refetch when navigating away and back, or on explicit Refresh) would reduce unnecessary API calls. Not a correctness issue — worth noting for a future optimisation pass."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T10:28:16Z",
+          "note": "project-list.js: `repoFolderMap` is declared inside `renderProjectList` closure scope (not at module level). This is correct, but the variable is reset to `{}` at parse-time and then populated during `load()`. A concurrent poll cycle that starts before the first `load()` completes will briefly use an empty map, which is harmless but worth documenting."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-06-05T10:28:16Z",
+          "note": "tests/gui/project-list.test.ts: the `renderList` helper now uses a URL-discriminating fetch mock — a pattern not yet used by the other helpers in this file. If more two-endpoint views are added in future, extracting a shared `makeFetchMock(urlMap)` utility could reduce duplication."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-06-05T10:28:40Z",
+      "completed_at": "2026-06-05T10:30:01Z",
+      "duration_ms": 81000,
+      "summary": [
+        "All 3 acceptance criteria verified through code inspection and test execution. Full suite of 3066 tests passes (0 failures). 14 project-list.test.ts tests pass including 6 WP-010-specific tests covering all three ACs plus graceful degradation. Build check confirmed — no syntax errors, view loads and renders correctly."
+      ],
+      "metrics": {
+        "test_coverage": "All 3 ACs + graceful degradation covered by dedicated test suite",
+        "tests_passed": 3066,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T10:30:01Z",
+          "note": "project-list.js load(): repos endpoint is fetched on every 10s poll cycle. Since repository declarations change rarely, a longer-TTL cache (e.g. refetch only on navigation) would reduce unnecessary API calls. Not a correctness issue — inherited from Developer's implementation notes."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T10:30:01Z",
+          "note": "project-list.js buildTable(): repoFolderMap[repo] lookup uses repository_name as the key, which correctly matches the folder_names array entries. Edge case confirmed: a repo with only r.id and no r.label gracefully falls back to r.id as the label (line: var label = r.label || r.id)."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T10:30:01Z",
+          "note": "No improvement needed — code is clean and consistent with existing patterns. All AC met, all tests pass, no regressions detected."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-06-05T10:30:19Z",
+      "completed_at": "2026-06-05T10:31:14Z",
+      "duration_ms": 55000,
+      "summary": [
+        "Code review PASS — implementation is clean, well-scoped, and architecturally sound.",
+        "repoFolderMap is correctly declared at closure scope and reassigned each load() cycle; no module-level pollution.",
+        "Promise.all parallelises the two fetches; API.listRepos().catch(()=>[]) provides silent graceful degradation as required by AC-3.",
+        "Flat folder_name → {label, id} lookup map is the correct data structure for O(1) per-row resolution across multiple folder_names per repo.",
+        "buildTable repo cell correctly guards against null repo and missing registry entry; escapeHtml applied throughout.",
+        "renderList test helper URL-discriminating fetch mock is well-designed; consistent with existing test patterns in this file.",
+        "All 14 project-list tests pass (0 failures). No blocking issues identified."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/project-list.js",
+          "mcp-server/tests/gui/project-list.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T10:31:14Z",
+          "note": "load() fetches /api/repos on every 10s poll cycle. Since repo declarations change rarely, a longer-TTL cache (fetch only on navigation or explicit Refresh) would reduce API load. Low priority — correctness is not affected."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T10:31:14Z",
+          "note": "renderList() uses setTimeout(r, 20) to yield for microtask resolution. This timing-based approach is pragmatic and consistent with existing test patterns, but could become flaky on heavily loaded CI runners. A queueMicrotask-based drain or a test-specific promise flush would be more robust if new tests surface intermittent failures."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-06-05T10:31:14Z",
+          "note": "[documentation-forward] project-list.test.ts file-level comment block (lines 3–11) lists only the 5 AC-7 test cases in its 'Covers:' section. Update to include the 6 WP-010 repository label resolution test cases (describes block 'buildTable — repository label resolution (WP-010)') so the header accurately reflects the full test scope."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-06-05T10:31:32Z",
+      "completed_at": "2026-06-05T10:32:10Z",
+      "duration_ms": 38000,
+      "summary": [
+        "Updated the file-level `Covers:` comment block in project-list.test.ts (lines 3–11) to include all 6 WP-010 repository label resolution test cases alongside the existing 5 AC-7 cases. The block now accurately reflects the full test scope: tests 6–11 covering AC-1 (label display + link), AC-2 (no regression for unmatched folders + mixed-row correctness), AC-3 (same label for multiple folder_names), and graceful degradation when the repos endpoint fails. No other documentation gaps identified — all acceptance criteria were already reflected in the WP spec, the implementation code is self-documenting, and no README or API reference changes are required for this UI-only change."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/tests/gui/project-list.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T10:32:10Z",
+          "note": "Addressed documentation-forward from code review: updated 'Covers:' block to enumerate all 11 test cases (5 AC-7 + 6 WP-010). The block now serves as an accurate index of the full test file scope."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-06-05T10:32:10Z",
+  "last_updated": "2026-06-05T10:32:10Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-06-05T10:28:16Z",
+      "notes": [
+        "All three acceptance criteria are implemented and test-covered. The label also links to `#/strategy/:repoId` (optional deliverable included). The fetch is parallel with `Promise.all`; `listRepos` failures degrade gracefully to raw folder names. No changes to api-client.js or router.js were needed — `API.listRepos()` already existed from WP-008."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-06-05T10:30:01Z",
+      "notes": [
+        "All 3 acceptance criteria confirmed PASS. 3066/3066 tests pass. Implementation correctly: (1) maps each folder_name entry across all declared repos into a flat lookup; (2) renders declared label as a link to #/strategy/:repoId when matched; (3) falls back to raw folder name when unmatched; (4) gracefully degrades when /api/repos endpoint fails. No issues to fix — clear to proceed to code-review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-06-05T10:31:14Z",
+      "notes": [
+        "Code review PASS. One documentation-forward item: update the test file's 'Covers:' comment block (lines 3–11) to list the 6 WP-010 repository label resolution test cases alongside the existing 5 AC-7 cases. No code changes required — all acceptance criteria met, all 14 tests pass."
+      ]
+    }
+  ]
+}

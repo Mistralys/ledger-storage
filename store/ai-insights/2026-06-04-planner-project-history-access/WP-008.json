@@ -1,0 +1,528 @@
+{
+  "work_package_id": "WP-008",
+  "work_package_file": "work/WP-007.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-006"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "Navigating to #/strategy renders a list of declared repositories showing label, folder names, and vision status.",
+      "met": true
+    },
+    {
+      "criterion": "Clicking a repository in the list navigates to #/strategy/:repoId with a detail/editor view.",
+      "met": true
+    },
+    {
+      "criterion": "The detail view shows editable label, editable folder names (add/remove), and three textarea fields for strategic vision (short-term, mid-term, long-term).",
+      "met": true
+    },
+    {
+      "criterion": "Saving changes on the detail view calls PUT /api/repos/:repoId and persists the updates.",
+      "met": true
+    },
+    {
+      "criterion": "The \"Add Repository\" form creates a new entry via POST /api/repos and refreshes the list.",
+      "met": true
+    },
+    {
+      "criterion": "A \"Strategy\" link appears in the top-level navigation alongside existing links (Projects, Insights, Knowledge, etc.).",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-06-05T09:45:15Z",
+      "completed_at": "2026-06-05T09:51:55Z",
+      "duration_ms": 400000,
+      "summary": [
+        "Implemented the Strategy GUI frontend (WP-008): created views/strategy.js with renderStrategyList and renderStrategyDetail view functions, added five repository CRUD API client methods to api-client.js (listRepos, getRepo, createRepo, updateRepo, deleteRepo), wired two SPA routes (#/strategy and #/strategy/:repoId) into router.js, added the Strategy nav link and script tag to index.html. Updated router-utils.test.ts to stub the two new render functions and added three new router dispatch tests for the strategy routes. All 3058 tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/api-client.js",
+          "mcp-server/gui/public/views/strategy.js",
+          "mcp-server/gui/public/router.js",
+          "mcp-server/gui/public/index.html",
+          "mcp-server/tests/gui/router-utils.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T09:51:55Z",
+          "note": "views/strategy.js: The vision status badge logic (visionStatus function) checks has_any vs has_full using field truthiness. If the backend returns an empty-string vision field (not null), this correctly detects it as no-vision. The logic is sound but slightly verbose — could be extracted to a shared utility if a second view ever needs vision status display."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-06-05T09:51:55Z",
+          "note": "api-client.js: The repo CRUD methods follow the established single-line style for simple endpoints (listRepos, getRepo, createRepo, updateRepo, deleteRepo). Consistent with the pattern used by getConfig, getInsights, etc."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-06-05T09:51:55Z",
+          "note": "router-utils.test.ts: The test file previously lacked stubs for renderStrategyList and renderStrategyDetail — if the router dispatch was ever called with a #/strategy hash in any existing test, it would have thrown ReferenceError. This gap was filled as part of this WP."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-06-05T09:51:55Z",
+          "note": "views/strategy.js: The renderStrategyList function calls renderList(repos) which is defined as an inner function. The naming is slightly inconsistent with the outer function (renderStrategyList vs renderList inner) — a minor readability debt, but does not affect correctness."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "FAIL",
+      "started_at": "2026-06-05T09:52:26Z",
+      "completed_at": "2026-06-05T09:55:52Z",
+      "duration_ms": 206000,
+      "summary": [
+        "Build check: PASS — all 3058 tests pass (npm test exit 0).",
+        "AC-2 (clicking repo navigates to detail): PASS — strategy list renders anchor tags with href='#/strategy/{encodeURIComponent(r.id)}', router dispatches correctly.",
+        "AC-3 (detail view fields): PASS — label input, folder names add/remove, three vision textareas (short-term, mid-term, long-term) all present.",
+        "AC-4 (Save calls PUT /api/repos/:repoId): PASS — save form handler builds correct payload and calls API.updateRepo(repoId, payload) which issues PUT /api/repos/{repoId}.",
+        "AC-5 (Add Repository form): PASS — form validates empty ID, calls API.createRepo(), redirects to Router.navigate('#/strategy/' + encodeURIComponent(id)) on success.",
+        "AC-6 (Strategy nav link present): PASS — <a href='#/strategy'>Strategy</a> is in index.html nav; router-utils tests for strategy routes all pass.",
+        "AC-1 (vision status badges): FAIL — visionStatus() function uses repo.vision (full object) but API.listRepos() returns RepoListItem with only has_vision: boolean (no vision object). All repos will always display 'No vision' badge regardless of actual content.",
+        "Regression: All 3058 tests pass — no regressions introduced.",
+        "Edge-case: The Strategy nav link is not highlighted when on #/strategy/:repoId (detail route). This is consistent with the existing SPA pattern for all nav links on sub-routes and is not a bug."
+      ],
+      "metrics": {
+        "tests_passed": 3058,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "bug",
+          "priority": "high",
+          "timestamp": "2026-06-05T09:55:52Z",
+          "note": "views/strategy.js renderStrategyList — visionStatus(repo) uses 'repo.vision' (expecting the full { short_term, mid_term, long_term } object), but API.listRepos() returns RepoListItem which only carries 'has_vision: boolean' (no 'vision' property). When visionStatus() checks '!vision', vision is undefined, so the function always returns the 'No vision (badge-blocked)' path. Repos with partial or full vision will incorrectly display 'No vision'. Fix: use repo.has_vision boolean directly in visionStatus(), e.g. if (!repo.has_vision) return badge-blocked; and distinguish partial vs full requires either (a) returning the vision object from the list API, or (b) adding has_full_vision: boolean to the list API response alongside has_vision."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-06-05T09:55:52Z",
+          "note": "The Strategy nav link (href='#/strategy') is not highlighted when navigating to a detail page (#/strategy/:repoId). The updateNavActive() function does an exact path match — '/strategy/my-repo' != '/strategy'. This is consistent with existing SPA behavior: the Projects link also doesn't highlight on #/projects/:repo/:slug routes. Not a bug for this WP, but worth noting as a UX consideration."
+        }
+      ]
+    },
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-06-05T09:56:59Z",
+      "completed_at": "2026-06-05T09:58:16Z",
+      "duration_ms": 77000,
+      "summary": [
+        "Rework: fixed visionStatus() bug where it referenced repo.vision (undefined in RepoListItem) causing all repos to show 'No vision'. Applied Option A from QA bounce: (1) added has_full_vision: boolean to RepoListItem interface and toListItem() in gui/api-repos.ts — true when all three horizons are non-null; (2) rewrote visionStatus() in views/strategy.js to use repo.has_vision and repo.has_full_vision booleans directly; (3) updated tests/gui/api-repos.test.ts: added has_full_vision assertion to the AC-1 shape test, and two new tests covering has_full_vision true (all horizons non-null) and false (partial). All 3060 tests pass (2 new tests added)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/api-repos.ts",
+          "mcp-server/gui/public/views/strategy.js",
+          "mcp-server/tests/gui/api-repos.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T09:58:16Z",
+          "note": "gui/api-repos.ts toListItem(): the has_full_vision boolean is computed independently of has_vision rather than short-circuiting on has_vision=false. This is correct and readable — both fields derive cleanly from the vision object with explicit null checks."
+        },
+        {
+          "type": "refactor",
+          "priority": "low",
+          "timestamp": "2026-06-05T09:58:16Z",
+          "note": "views/strategy.js visionStatus(): the rewrite from 13 lines to 3 lines eliminates redundant truthiness checks (the original also called .trim() on vision fields that were already proven non-null by the vision object check). The new version is cleaner and relies on the backend's boolean semantics, which is the appropriate contract boundary."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-06-05T09:58:36Z",
+      "completed_at": "2026-06-05T10:00:07Z",
+      "duration_ms": 91000,
+      "summary": [
+        "Rework QA — focused on AC-1 fix only (per rework protocol).",
+        "AC-1 (vision status badges): PASS — visionStatus() now correctly uses repo.has_vision and repo.has_full_vision booleans from the list API. Logic verified: !has_vision → 'No vision' badge; has_vision && !has_full_vision → 'Partial vision' badge; has_full_vision → 'Full vision' badge. Backend toListItem() computes has_vision (≥1 non-null horizon) and has_full_vision (all 3 non-null) correctly.",
+        "Test suite: PASS — all 3060 tests pass (48 api-repos tests including 2 new has_full_vision tests; 24 router-utils tests including 3 strategy route tests). Zero regressions.",
+        "Previously-failed ACs now resolved: AC-1 is fully corrected. All 6 ACs remain met from previous QA pass."
+      ],
+      "metrics": {
+        "tests_passed": 3060,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T10:00:07Z",
+          "note": "The boolean contract boundary (has_vision, has_full_vision on RepoListItem) is cleaner than passing the vision object through the list endpoint — avoids over-fetching and keeps the list payload lean. Good API design choice."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T10:00:07Z",
+          "note": "No edge cases found in the rework scope. The only previously-noted edge case (nav link not highlighted on sub-routes) is still present but confirmed as consistent SPA behavior — not a bug for this WP."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "FAIL",
+      "started_at": "2026-06-05T10:00:31Z",
+      "completed_at": "2026-06-05T10:02:13Z",
+      "duration_ms": 102000,
+      "summary": [
+        "[FAIL — 2 Blocking Issues] The Strategy GUI frontend is well-structured and architecturally clean overall, but two behavioral bugs were found that must be fixed before PASS can be issued. Both are in the save form handler in views/strategy.js and relate to incorrect payload construction for PUT /api/repos/:repoId."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/strategy.js",
+          "mcp-server/gui/api-repos.ts",
+          "mcp-server/gui/public/api-client.js",
+          "mcp-server/gui/public/router.js",
+          "mcp-server/gui/public/index.html",
+          "mcp-server/tests/gui/api-repos.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T10:02:13Z",
+          "note": "PASS: api-client.js repo CRUD methods (listRepos, getRepo, createRepo, updateRepo, deleteRepo) are clean, minimal, and fully consistent with the established single-line pattern used by the rest of the API client. No issues."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T10:02:13Z",
+          "note": "PASS: router.js strategy routes (/strategy and /strategy/:repoId) are correctly wired. Pattern-matching order is safe — the specific /strategy singleton is checked before the parameterised /strategy/:repoId match. No issues."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T10:02:13Z",
+          "note": "PASS: index.html script-tag placement and nav link position are correct. strategy.js is loaded before app.js (which calls Router.init()), ensuring the render functions are defined when the router first dispatches."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T10:02:13Z",
+          "note": "PASS: api-repos.ts architecture is excellent. toListItem() correctly decouples the list payload from the storage schema, exposing has_vision/has_full_vision booleans instead of the full vision object — avoids over-fetching and keeps the list response lean. The folder name uniqueness check (assertNoFolderNameConflicts) is robust and correctly uses excludeId for update operations so a no-change PUT always succeeds."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T10:02:13Z",
+          "note": "PASS: api-repos.test.ts has thorough coverage including first-run empty-registry scenarios, has_vision/has_full_vision boolean edge cases (all horizons null, partial, all non-null), folder_names conflict tests, and id uniqueness tests. Test structure with real temp directories is clean and well-established."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T10:02:13Z",
+          "note": "PASS: renderStrategyList — visionStatus() after the rework is clean and correct. Three-way branch (no vision / partial / full) maps cleanly to the two booleans. buildTableHtml uses encodeURIComponent on r.id for the href (correct) and escapeHtml for display values (correct). Empty-state message is user-friendly."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T10:02:13Z",
+          "note": "PASS: renderStrategyDetail folder add/remove UX is well-implemented. collectFolderNamesFromDOM() is called before any splice/push to capture in-flight edits — this is the correct approach for a DOM-driven list editor. wireRemoveButtons() is called after each rebuildFolderSection() ensuring event listeners are always fresh. Enter-key on the add-folder input also triggers doAddFolder() — good UX detail."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T10:02:13Z",
+          "note": "PASS: 404 detection in renderStrategyDetail catch handler checks err.code === 'NOT_FOUND' first (the expected path from the API client), then falls back to a string-based '404' check. Both cases show a user-friendly message rather than a raw error dump. Good defensive coding."
+        },
+        {
+          "type": "code-smell",
+          "priority": "high",
+          "timestamp": "2026-06-05T10:02:13Z",
+          "note": "BLOCKING BUG 1 — views/strategy.js renderStrategyDetail save handler (lines ~265-269): Vision fields are serialized as trimmed strings regardless of whether the user cleared them. When a textarea is empty, (document.getElementById('vision-short').value || '').trim() produces ''. This empty string is sent in the PUT payload as: { vision: { short_term: '', mid_term: '', long_term: '' } }. However StrategicVisionSchema (src/schema/repository-registry.ts) validates each horizon as z.string().min(1).nullable() — empty strings are explicitly rejected with a validation error. The file-level comment in api-repos.ts documents this: 'empty strings are rejected'. Result: a user who clears any vision textarea and clicks Save will get a 400 error ('Invalid request body') — the field cannot be cleared through the UI. Fix: convert empty strings to null before sending: short_term: (document.getElementById('vision-short').value || '').trim() || null. Apply the same pattern to mid_term and long_term."
+        },
+        {
+          "type": "code-smell",
+          "priority": "high",
+          "timestamp": "2026-06-05T10:02:13Z",
+          "note": "BLOCKING BUG 2 — views/strategy.js renderStrategyDetail save handler (line ~264): The payload always includes folder_names: collectFolderNamesFromDOM(). If the user removes all folder entries, collectFolderNamesFromDOM() returns []. The backend RepoUpdateBodySchema validates folder_names as z.array(z.string().min(1)).min(1).optional() — an empty array is rejected with a 400 validation error (fieldError on folder_names). Result: a user who removes all folder names and clicks Save will get a 400 error and cannot save. This is a behavioral trap because the 'Remove' button works correctly for individual entries, but the final save silently breaks when the last entry is removed. Fix: before constructing the payload, check if collectFolderNamesFromDOM() is empty. Either (a) show a client-side validation error ('At least one folder name is required') before calling the API — consistent with how the Add Repository form validates empty ID — or (b) omit folder_names from the payload entirely when empty so the field is left unchanged (partial update semantics). Option (a) is preferable for clarity."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-06-05T10:02:13Z",
+          "note": "Minor readability note (non-blocking): In renderStrategyList, the inner function is named renderList while the outer function is renderStrategyList. This is functionally fine but slightly inconsistent naming — a future refactor could rename the inner function to renderListContent or similar. Already noted by Developer in implementation pipeline."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-06-05T10:02:13Z",
+          "note": "[documentation-forward] views/strategy.js has a section header comment (Section 4g) that establishes its place in the SPA module list. The README or developer docs should document the dependency chain: strategy.js depends on API, Router, escapeHtml, showLoading, showError. These are currently noted only in the file-level comment but not in any external doc. A brief entry in the frontend architecture doc would help future contributors."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-06-05T10:02:13Z",
+          "note": "[documentation-forward] api-repos.ts RepoCreateBodySchema requires folder_names to have at least one entry (min(1)). This constraint is not surfaced in the GUI Add Repository form — the folder_names input is optional in the UI and sends [] if left blank. This creates a hidden validation error on submit. The docs for the POST /api/repos endpoint should clearly state the folder_names min-length requirement, and the GUI form should be updated to enforce it with client-side validation (or mark the field as required). Consider flagging this as a linked fix."
+        }
+      ]
+    },
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-06-05T10:02:53Z",
+      "completed_at": "2026-06-05T10:04:09Z",
+      "duration_ms": 76000,
+      "summary": [
+        "Rework #2: fixed 3 issues flagged by code-review FAIL.",
+        "BUG 1 (empty vision → 400): In the detail save handler, vision textarea values are now converted to null when empty via `|| null` after .trim(). This matches StrategicVisionSchema (z.string().min(1).nullable()) which rejects empty strings — clearing a textarea now sends null and saves correctly.",
+        "BUG 2 (empty folder_names → 400 on save): Detail save handler now reads folder names into `currentFolderNames` before building the payload and aborts early with an error banner ('At least one folder name is required') if the array is empty. The payload now uses `currentFolderNames` directly instead of calling collectFolderNamesFromDOM() twice.",
+        "ADDITIONAL (empty folder_names → 400 on add-repo): The Add Repository form's submit handler now validates that the parsed folderNames array is non-empty after splitting the comma-separated input, showing the same 'At least one folder name is required' error banner and aborting before calling the API.",
+        "All 3060 tests pass — zero regressions."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/strategy.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T10:04:09Z",
+          "note": "views/strategy.js detail save handler: refactored to read collectFolderNamesFromDOM() into a local variable `currentFolderNames` before validation and payload construction, eliminating the redundant second call inside the payload object. Minor cleanup that also makes the validation check read more naturally."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T10:04:09Z",
+          "note": "views/strategy.js Add Repository form: the validation guard order is now: (1) check empty ID, (2) check empty folder names array. This is consistent with the UX priority — ID is the primary key and validated first, folders second. The error messages use the same 'error-banner' class as the rest of the form error UI."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-06-05T10:04:30Z",
+      "completed_at": "2026-06-05T10:05:56Z",
+      "duration_ms": 86000,
+      "summary": [
+        "Rework QA #2 — focused on 3 issues flagged by code-review FAIL.",
+        "BUG 1 (cleared vision textarea → 400): FIXED and VERIFIED. Detail save handler now applies `|| null` after `.trim()` for each vision horizon. Empty textarea → null sent in payload → accepted by StrategicVisionSchema (z.string().min(1).nullable()). Whitespace-only content also correctly reduces to null via trim → falsy → null.",
+        "BUG 2 (empty folder_names on detail save → 400): FIXED and VERIFIED. Save handler reads collectFolderNamesFromDOM() into `currentFolderNames` before building payload. If empty, shows 'At least one folder name is required.' error banner and returns early — API never called. Whitespace-only folder inputs are also caught (collectFolderNamesFromDOM uses .trim() + non-empty filter).",
+        "ADD REPO (blank folder_names → 400): FIXED and VERIFIED. Add Repository submit handler validates folderNames.length after split+filter. Empty or whitespace-only input yields [] → shows same error banner → API.createRepo never called. Validation order: (1) empty ID check, (2) empty folder names check.",
+        "Regression: All 3060 tests pass (101 test files, exit 0). Zero regressions.",
+        "Edge cases: whitespace-only folder input ('  ,   ') → filter(Boolean) removes blanks → [] → error shown. Whitespace-only vision → trim → '' → null. All boundary cases handled correctly.",
+        "All 6 ACs remain met from previous QA passes. WP-008 is clear for code review."
+      ],
+      "metrics": {
+        "tests_passed": 3060,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T10:05:56Z",
+          "note": "views/strategy.js detail save handler: using `|| null` after `.trim()` is idiomatic and concise for the empty-string-to-null coercion. Correctly handles all cases: null value from .value, empty string, and whitespace-only strings."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T10:05:56Z",
+          "note": "views/strategy.js detail save handler: refactoring collectFolderNamesFromDOM() into `currentFolderNames` local variable is a clean improvement — eliminates the redundant second call and makes the empty-check read naturally before payload construction."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T10:05:56Z",
+          "note": "views/strategy.js Add Repository form: validation guard order (ID first, folders second) is consistent with UX priority and mirrors the schema's field ordering. Error message text ('At least one folder name is required.') is identical between both forms — consistent user experience."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T10:05:56Z",
+          "note": "No new edge cases found beyond rework scope. The whitespace-only inputs for both vision and folder names are handled correctly by existing trim+filter logic without any additional code required."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-06-05T10:06:19Z",
+      "completed_at": "2026-06-05T10:07:20Z",
+      "duration_ms": 61000,
+      "summary": [
+        "[PASS] WP-008 Strategy GUI frontend passes code review on re-evaluation. Both previously-blocking issues are correctly resolved in rework #2. Full re-read of views/strategy.js confirms the fixes are exactly correct and no new issues were introduced.",
+        "BUG 1 (vision empty string → 400): Lines 277-279 now apply `|| null` after `.trim()` for each vision horizon. Empty or whitespace-only textarea → null in payload → accepted by StrategicVisionSchema. Fix is minimal, targeted, and correct.",
+        "BUG 2 (empty folder_names → 400 on save): Lines 267-271 collect currentFolderNames first, then abort early with 'At least one folder name is required.' error banner if the array is empty. Payload is constructed only when validation passes — no redundant collectFolderNamesFromDOM() call inside the object literal.",
+        "ADDITIONAL (empty folder_names on add-repo): Lines 101-104 validate folderNames.length after split+filter before calling API.createRepo(). Error message is identical to the detail form — consistent UX.",
+        "All previously-PASSed areas remain clean: api-client.js CRUD methods, router.js strategy routes, index.html script ordering, api-repos.ts toListItem() boolean contract, and the folder add/remove DOM logic in renderStrategyDetail."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/strategy.js",
+          "mcp-server/gui/api-repos.ts",
+          "mcp-server/gui/public/api-client.js",
+          "mcp-server/gui/public/router.js",
+          "mcp-server/gui/public/index.html",
+          "mcp-server/tests/gui/api-repos.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T10:07:20Z",
+          "note": "PASS: BUG 1 fix (vision null coercion) — `(el.value || '').trim() || null` on lines 277-279 is idiomatic JavaScript for empty-string-to-null coercion and correctly handles empty strings, whitespace-only inputs, and null el.value in one expression. Exactly right."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T10:07:20Z",
+          "note": "PASS: BUG 2 fix (folder_names guard) — extracting collectFolderNamesFromDOM() into `currentFolderNames` before validation is a clean improvement over the original; the validation check reads naturally, and the payload reuses the already-collected value. No redundant DOM traversal."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T10:07:20Z",
+          "note": "PASS: Add-repo form folder validation (additional fix) — validation guard at lines 101-104 is correctly placed after the ID check and before the API call. folderNames is already filtered (split + trim + filter(Boolean)), so the length check on [] is the correct test for the blank-input case."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-06-05T10:07:20Z",
+          "note": "[documentation-forward] views/strategy.js has a section header comment (Section 4g) establishing its place in the SPA module list. The README or developer docs should document the dependency chain: strategy.js depends on API, Router, escapeHtml, showLoading, showError. Currently noted only in the file-level comment — not in any external doc. A brief entry in the frontend architecture doc would help future contributors."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-06-05T10:07:20Z",
+          "note": "[documentation-forward] api-repos.ts RepoCreateBodySchema requires folder_names.min(1). This is now also enforced in the GUI Add Repository form (client-side validation). The POST /api/repos API reference docs should explicitly call out the min-1 constraint so API consumers know upfront that [] is rejected — currently the constraint is only documented in-code (Zod schema and the file-level comment)."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-06-05T10:07:42Z",
+      "completed_at": "2026-06-05T10:11:41Z",
+      "duration_ms": 239000,
+      "summary": [
+        "Addressed both documentation-forward items from code review.",
+        "1. mcp-server/README.md — Added 'GUI Frontend — Strategy view (views/strategy.js)' section after the Knowledge API client section. Documents: the module's place as Section 4g of the SPA; its five dependencies (API, Router, escapeHtml, showLoading, showError) with source file and purpose; all five API methods (listRepos, getRepo, createRepo, updateRepo, deleteRepo) with endpoint references; the three-way vision status badge logic (has_vision / has_full_vision → No vision / Partial / Full); and the client-side folder_names and vision empty-string validation enforced before API calls.",
+        "2. mcp-server/docs/agents/project-manifest/api-surface.md — (a) Added has_full_vision: boolean to the RepoListItem interface definition, with a doc comment explaining the semantics (true when all three horizons are non-null) and a prose note clarifying the relationship to has_vision. (b) Added a 'folder_names min-1 constraint (POST and PUT)' bullet to the HTTP Route Table notes section, calling out that [] is rejected with HTTP 400 and that API clients must enforce this client-side.",
+        "3. CTX context regenerated — no context.yaml changes required; both updated files were already covered by existing filePattern entries. All 33 CTX documents regenerated cleanly (exit 0)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/README.md",
+          "mcp-server/docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T10:11:41Z",
+          "note": "Both documentation-forward items from the code-review pipeline were addressed. No documentation gaps remain unresolved."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-05T10:11:41Z",
+          "note": "api-surface.md RepoListItem interface was also updated to include has_full_vision: boolean (added in the implementation rework but not reflected in the prior API surface doc). This was a documentation gap discovered during gap analysis."
+        }
+      ]
+    }
+  ],
+  "rework_counts": {
+    "implementation": 2,
+    "qa": 2,
+    "code-review": 1
+  },
+  "status_changed_at": "2026-06-05T10:11:41Z",
+  "last_updated": "2026-06-05T10:11:41Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-06-05T09:51:55Z",
+      "notes": [
+        "The Strategy GUI frontend is fully wired. The QA agent should test: (1) #/strategy list renders correctly with vision status badges when repos exist and when empty; (2) clicking a repo link navigates to #/strategy/:repoId; (3) the detail view populates all fields from the API response; (4) adding/removing folder names works correctly including editing existing folder inputs before save; (5) the Save Changes button calls PUT /api/repos/:repoId with the correct payload; (6) the Add Repository form validates that ID is required and redirects to the detail view on success; (7) the Strategy nav link is highlighted when on a strategy route. Note: the backend API (WP-006) must be running for end-to-end tests."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Developer",
+      "timestamp": "2026-06-05T09:55:52Z",
+      "notes": [
+        "QA BOUNCE: AC-1 failed. The visionStatus() function in views/strategy.js uses repo.vision (the full vision object) but the list API (GET /api/repos) only returns has_vision: boolean in RepoListItem — no vision object is present. Fix options: (A) Change visionStatus() to use repo.has_vision boolean for the 'No vision' check, and add has_full_vision: boolean to the RepoListItem API response to enable partial vs full distinction; or (B) have the list API include the full vision object. Option A is preferred as it avoids over-fetching data in the list response. All other ACs pass."
+      ]
+    },
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-06-05T09:58:16Z",
+      "notes": [
+        "Rework complete. AC-1 is now fixed: visionStatus() uses has_vision and has_full_vision booleans from RepoListItem instead of the missing repo.vision object. Backend (api-repos.ts) now returns has_full_vision in the list response. All 3060 tests pass. QA should re-verify AC-1: repos with no vision show 'No vision' badge, repos with partial vision show 'Partial vision', repos with all three horizons filled show 'Full vision'."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-06-05T10:00:07Z",
+      "notes": [
+        "All 6 ACs verified and passing. The Strategy GUI frontend (WP-008) is ready for code review. Key files: mcp-server/gui/public/views/strategy.js (frontend view), mcp-server/gui/api-repos.ts (backend handlers with has_full_vision on RepoListItem), mcp-server/gui/public/api-client.js (5 CRUD API methods), mcp-server/gui/public/router.js (#/strategy routes), mcp-server/gui/public/index.html (nav link + script tag). All 3060 tests pass."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Developer",
+      "timestamp": "2026-06-05T10:02:13Z",
+      "notes": [
+        "REVIEW FAIL — 2 Blocking Issues require Developer rework before re-entering the pipeline. BLOCKING BUG 1 (high priority): In renderStrategyDetail save handler (views/strategy.js ~line 265-269), empty vision textarea values are sent as '' (empty string) instead of null. StrategicVisionSchema rejects empty strings (z.string().min(1).nullable()), so any user who clears a vision field will receive a 400 error on Save. Fix: replace '' with null for each horizon — e.g., short_term: (document.getElementById('vision-short').value || '').trim() || null. BLOCKING BUG 2 (high priority): Same save handler always sends folder_names: collectFolderNamesFromDOM(). If all folder entries are removed, the array is [] and the backend rejects it (min(1) on folder_names in RepoUpdateBodySchema). Fix: add client-side validation before submit — if collectFolderNamesFromDOM().length === 0, show an error message ('At least one folder name is required') and abort the API call. ADDITIONAL NOTE: The Add Repository form (renderStrategyList) does not validate that folder_names is non-empty either (it sends [] if the folder field is blank), which will produce the same 400 error from POST /api/repos. This should be fixed in the same rework pass. QA should re-verify: (a) saving with a cleared vision textarea succeeds and saves null to storage; (b) the save form shows a clear error when all folder names are removed; (c) the add-repo form shows a clear error when no folder names are entered."
+      ]
+    },
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-06-05T10:04:09Z",
+      "notes": [
+        "Rework #2 complete. Three issues from the code-review FAIL are now fixed: (a) saving with cleared vision textareas sends null (not empty string) — backend accepts it; (b) detail save form shows 'At least one folder name is required' and aborts if all folder entries are removed; (c) Add Repository form shows the same error if no folder names are entered. All 3060 tests pass. QA should re-verify: clearing a vision textarea and saving succeeds; removing all folder entries on detail view shows error and does not call API; submitting Add Repo with blank folders shows error and does not call API."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-06-05T10:05:56Z",
+      "notes": [
+        "QA PASS (Rework #2). All 6 ACs verified and met. All 3 code-review-flagged issues are correctly fixed: (1) cleared vision textareas send null — backend accepts it; (2) detail save form shows 'At least one folder name is required.' and aborts if all folder entries are removed; (3) Add Repository form shows the same error when no folder names are entered. 3060/3060 tests pass. WP-008 is ready for code review to re-evaluate the two previously-blocking issues. Files changed in this rework: mcp-server/gui/public/views/strategy.js only."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-06-05T10:07:20Z",
+      "notes": [
+        "Code review PASS. All 6 ACs met. Two documentation-forward items are tagged for the Documentation agent: (1) document strategy.js dependency chain (API, Router, escapeHtml, showLoading, showError) in the frontend architecture doc; (2) add an explicit note to the POST /api/repos API reference that folder_names requires at least one entry (min-1 constraint, already enforced client-side but not yet documented externally). Files reviewed: mcp-server/gui/public/views/strategy.js, mcp-server/gui/api-repos.ts, mcp-server/gui/public/api-client.js, mcp-server/gui/public/router.js, mcp-server/gui/public/index.html, mcp-server/tests/gui/api-repos.test.ts."
+      ]
+    }
+  ]
+}

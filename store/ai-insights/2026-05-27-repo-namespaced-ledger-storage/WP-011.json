@@ -1,0 +1,282 @@
+{
+  "work_package_id": "WP-011",
+  "work_package_file": "work/WP-010.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-005",
+    "WP-009"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "Every LedgerStore construction in gui/api.ts resolves storageDir to the correct namespaced path",
+      "met": true
+    },
+    {
+      "criterion": "All approximately 14 call sites are updated — a grep for 'new LedgerStore(' before and after should confirm none are missed",
+      "met": true
+    },
+    {
+      "criterion": "URL-parameter-driven lookups use resolveProjectDir() before constructing the store",
+      "met": true
+    },
+    {
+      "criterion": "No regression in existing API handler behavior",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-27T16:51:03Z",
+      "completed_at": "2026-05-27T17:09:04Z",
+      "duration_ms": 1081000,
+      "summary": [
+        "Migrated all 15 LedgerStore call sites in gui/api.ts to use namespaced storage paths. Two meta-available cases (handleGetInsights, handleListProjects fallback) updated to use meta.plan_path instead of meta.slug. All 13 URL-parameter-driven handlers now use the new resolveProjectStore() helper which calls resolveProjectDir() before constructing the store. Fixed three direct join(ledgerRoot, slug, ...) path bugs in handleDeleteProject, handleGetPlanDocument, handleGetSynthesisDocument. Added resolveProjectStore() async helper after assertSafeQueueId. Added resolveProjectDir and ProjectMetaSchema imports. Updated tests/gui/api.test.ts: badLedgerPath, plan/synthesis happy paths, handleDeleteProject directory assertions, handleRenameProject disk check, same-slug no-op assertion all updated to use store.storageDir. WP-009 createProjectHandlerPath helper updated to use planPath with 'my-repo' in the hierarchy so deriveRepoName() returns 'my-repo'. TypeScript check clean. 158/158 tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/api.ts",
+          "mcp-server/tests/gui/api.test.ts"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 158,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-05-27T17:09:04Z",
+          "note": "gui/api.ts: handleListDialogues (line ~1332), handleGetDialogueFile (~1394), handleListChunks (~1465), handleGetChunkFile (~1527) still use join(ledgerRoot, slug, DIALOGUES_DIR/CHUNKS_DIR) non-namespaced paths. They have no LedgerStore calls and are out of scope for WP-011, but will produce wrong paths once projects are stored in namespaced directories. Should be addressed in a follow-up WP."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T17:09:04Z",
+          "note": "gui/api.ts: resolveProjectStore() reads .meta.json once to get plan_path, then several callers (handleDeleteProject, handleArchiveProject, etc.) call store.readProjectMeta() a second time. The double-read is a minor inefficiency. A future refactor could return {store, meta} from resolveProjectStore to avoid the re-read, but this is not a correctness issue."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T17:09:04Z",
+          "note": "tests/gui/api.test.ts: The WP-009 createProjectHandlerPath helper comment now accurately documents the planPath structure and how it derives 'my-repo' via deriveRepoName(). The comment is clear and self-contained."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-27T17:09:42Z",
+      "completed_at": "2026-05-27T17:13:47Z",
+      "duration_ms": 245000,
+      "summary": [
+        "TypeScript build clean (zero errors). 2312/2312 tests pass across 78 test files, including 158/158 in tests/gui/api.test.ts.",
+        "AC-1: Verified — every LedgerStore construction resolves storageDir to the correct namespaced path. resolveProjectStore() calls resolveProjectDir() to get the namespaced storageDir, reads .meta.json for plan_path, and constructs LedgerStore(meta.plan_path, ledgerRoot). The two direct constructions in handleGetInsights and handleListProjects use meta.plan_path from listAllProjects() which already contains the correct namespaced plan_path.",
+        "AC-2: Verified — reduced from ~15 direct new LedgerStore(slug, ...) calls to 3 total (all using meta.plan_path). Confirmed via grep: no old join(ledgerRoot, slug)-based store constructions remain.",
+        "AC-3: Verified — all 13 URL-parameter-driven handlers now call resolveProjectStore(ledgerRoot, slug, repoName) which internally calls resolveProjectDir() before store construction. repoName is validated via assertSafeSlug before use.",
+        "AC-4: Verified — no regressions. The WP-009 describe block exercises 14 handlers with the optional repoName parameter. Path-traversal via repoName is blocked by assertSafeSlug (SAFE_SLUG_REGEX = /^[a-z0-9][a-z0-9-]*$/) before resolveProjectDir is called. AMBIGUOUS resolution errors are remapped to NOT_FOUND."
+      ],
+      "metrics": {
+        "tests_passed": 2312,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-05-27T17:13:47Z",
+          "note": "gui/api.ts resolveProjectStore(): no dedicated test for an invalid repoName (e.g. '../evil'). The security guard (assertSafeSlug(repoName)) is correct and works, but a targeted test would document this invariant explicitly. Not a blocker."
+        },
+        {
+          "type": "bug",
+          "priority": "medium",
+          "timestamp": "2026-05-27T17:13:47Z",
+          "note": "gui/api.ts: handleListDialogues, handleGetDialogueFile, handleListChunks, handleGetChunkFile still use join(ledgerRoot, slug, DIALOGUES_DIR/CHUNKS_DIR) — non-namespaced paths. Confirmed by Developer as out-of-scope for WP-011 and flagged as technical debt. Will produce wrong paths once projects are in namespaced directories. A follow-up WP is needed."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T17:13:47Z",
+          "note": "gui/api.ts resolveProjectStore(): AMBIGUOUS resolution errors from resolveProjectDir() are silently remapped to NOT_FOUND. This is correct for security (avoids leaking multi-repo slug existence) but could benefit from a comment explaining the intentional downgrade."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-05-27T17:14:32Z",
+      "completed_at": "2026-05-27T17:17:46Z",
+      "duration_ms": 194000,
+      "summary": [
+        "Reviewed mcp-server/gui/api.ts and mcp-server/gui/server.ts (WP-011 modified files). 0 Critical, 0 High, 2 Low, 1 Info findings. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T17:17:46Z",
+          "note": "A01 / Defense-in-depth gap — gui/server.ts resolveRepoName(): The function accepts repoUrlParam and slugUrlParam without internally validating them against SAFE_SLUG_REGEX. It relies entirely on each call site to have run the regex check before invoking it. All current callers (lines ~524, ~573, ~600, ~630, ~645, ~660) do validate before calling, so there is no active path-traversal risk. Recommendation: add assertSafeSlug() calls at the top of resolveRepoName() as a defense-in-depth measure so the function is safe-by-default if reused."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T17:17:46Z",
+          "note": "A04 / Insecure Design — gui/api.ts resolveProjectStore() (~line 175): plan_path is read from .meta.json and passed directly to new LedgerStore(meta.plan_path, ledgerRoot) without a path-containment check. The ProjectMetaSchema (src/schema/project-meta.ts) validates plan_path only as z.string() — no traversal-safety constraint. A tampered .meta.json could supply a traversal plan_path. Risk is acceptable for a local developer tool (attacker would need filesystem write access to the storage directory already), but a resolve()-based containment check would provide defense-in-depth."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T17:17:46Z",
+          "note": "A09 / Security Logging — gui/api.ts resolveProjectStore() (~line 168-172): The catch block intentionally downgrades both NOT_FOUND and AMBIGUOUS errors from resolveProjectDir() to a generic NOT_FOUND ApiError. This is correct security behavior (prevents cross-namespace slug existence leakage), but the code has no comment explaining the intentional AMBIGUOUS downgrade. QA also flagged this. Recommendation: add an inline comment documenting the security rationale so future maintainers do not inadvertently restore the original error message."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T17:17:46Z",
+          "note": "A01 / Known Technical Debt (out-of-scope for WP-011) — gui/api.ts: handleListDialogues (~line 1335), handleGetDialogueFile (~line 1392), handleListChunks (~line 1465), handleGetChunkFile (~line 1527) accept a repoName parameter but still construct paths as join(ledgerRoot, slug, DIALOGUES_DIR/CHUNKS_DIR). No active path-traversal vulnerability (slug is validated via assertSafeSlug() before join), but will serve data from non-existent or stale non-namespaced paths once projects are fully migrated to namespaced storage. Confirmed by Developer and QA as a follow-up WP. No security block."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-27T17:18:19Z",
+      "completed_at": "2026-05-27T17:23:13Z",
+      "duration_ms": 294000,
+      "summary": [
+        "Code review PASS with Fix-Forward edits applied. Implementation is clean and well-structured.",
+        "resolveProjectStore() helper is correctly designed: assertSafeSlug() validates repoName before joining, resolveProjectDir() provides namespaced lookup, AMBIGUOUS is silently downgraded to NOT_FOUND (correct security behaviour), meta.plan_path drives LedgerStore construction.",
+        "All 13 URL-parameter-driven handlers uniformly delegate to resolveProjectStore() — consistent, maintainable, no missed call sites.",
+        "Non-null assertions (meta!, rootIndex!) are used appropriately after catch-blocks that always throw via notFound() — a well-established TypeScript workaround for this pattern.",
+        "No blocking issues found across all Review Dimensions (Maintainability, Best Practices, Performance, Future Context).",
+        "Fix-Forward: Applied 18 non-behavioral edits — 17 stale @param repoName JSDoc comments updated (13 handlers: 'Currently unused' → 'Optional repository name used to resolve the namespaced storage path.'; 4 dialogue/chunk handlers: 'Currently unused' → 'Accepted for API forward-compatibility; path construction not yet namespaced (follow-up WP).'), plus 1 inline security-rationale comment added to the AMBIGUOUS→NOT_FOUND catch in resolveProjectStore(). TypeScript check confirmed clean after edits."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/api.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-27T17:23:13Z",
+          "note": "gui/api.ts: Removed 17 stale @param repoName JSDoc comments that read 'Will be used in WP-011 to resolve the namespaced storage path. Currently unused.' — WP-011 IS this implementation, so they were factually wrong. For the 13 handlers using resolveProjectStore(), updated to 'Optional repository name used to resolve the namespaced storage path.' For the 4 out-of-scope dialogue/chunk handlers, updated to 'Accepted for API forward-compatibility; path construction not yet namespaced (follow-up WP).' Non-behavioral change."
+        },
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-27T17:23:13Z",
+          "note": "gui/api.ts resolveProjectStore() line ~171: Added inline comment explaining the intentional AMBIGUOUS→NOT_FOUND downgrade. Both QA and Security Auditor flagged the lack of documentation for this security decision. Comment reads: 'Intentionally downgrade AMBIGUOUS to NOT_FOUND: the caller must not learn that multiple repos contain this slug (prevents cross-namespace existence leak).' Non-behavioral change."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T17:23:13Z",
+          "note": "gui/api.ts: resolveProjectStore() reads .meta.json once, but several callers (handleDeleteProject, handleArchiveProject, handleUnarchiveProject, handleMarkProjectComplete) immediately call store.readProjectMeta() again for a second read. A future refactor could return {store, meta} from resolveProjectStore() to avoid the double-read. Not a correctness issue — flagged as a future optimisation. Already noted by Developer in implementation pipeline."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-27T17:23:13Z",
+          "note": "[documentation-forward] gui/api.ts: resolveProjectStore() JSDoc does not document the security contract around AMBIGUOUS→NOT_FOUND downgrade. The doc comment explains what the function does but not why both AMBIGUOUS and NOT_FOUND map to the same NOT_FOUND ApiError. Consider adding a @security or @remarks note to the JSDoc so future contributors understand the intentional information-hiding design."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-05-27T17:23:13Z",
+          "note": "[documentation-forward] The dialogue/chunk handlers (handleListDialogues, handleGetDialogueFile, handleListChunks, handleGetChunkFile) now have accurate @param repoName comments noting they are out-of-scope for namespace migration. The technical debt should also be captured in api-surface.md or constraints.md so it is visible to future agents consulting the manifest rather than only in inline JSDoc."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-27T17:23:48Z",
+      "completed_at": "2026-05-27T17:26:56Z",
+      "duration_ms": 188000,
+      "summary": [
+        "Addressed both documentation-forward items from code-review pipeline.",
+        "1. gui/api.ts resolveProjectStore() JSDoc: Added @remarks block documenting the AMBIGUOUS→NOT_FOUND security downgrade contract — explains that cross-namespace existence leakage is the reason for the intentional downgrade, and warns against restoring the original error without a security review.",
+        "2. api-surface.md: Added resolveProjectStore() helper entry in the GUI API Module 'Path-traversal guards' section with full signature, parameter notes, and the security contract comment block.",
+        "3. api-surface.md: Updated CHUNKS_DIR constant comment to reflect the non-namespaced path pattern still in use, with a reference to the new KL-4 Known Limitation.",
+        "4. constraints.md: Added KL-4 'Dialogue and Chunk Handlers Use Non-Namespaced Paths' under Known Limitations — documents the four affected handlers, the no-active-traversal-risk status, the impact of future namespace migration, and the resolution path (follow-up WP must use resolveProjectStore() / resolveProjectDir()).",
+        "TypeScript build clean after JSDoc change (zero errors)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/api.ts",
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/constraints.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-27T17:26:56Z",
+          "note": "api-surface.md: resolveProjectStore() was absent from the manifest before this pass despite being the central store-resolution helper introduced in WP-011. Added a full entry with signature, parameter semantics, and the security-contract comment block so future agents consulting the manifest understand the AMBIGUOUS→NOT_FOUND design decision without reading the source."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-27T17:26:56Z",
+          "note": "constraints.md KL-4 (new): Dialogue/chunk handlers (handleListDialogues, handleGetDialogueFile, handleListChunks, handleGetChunkFile) still use non-namespaced join(ledgerRoot, slug, DIR) paths. No active security risk today, but will serve incorrect data once namespace migration is complete. Documented as a Known Limitation with resolution guidance (follow-up WP required)."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-27T17:26:56Z",
+  "last_updated": "2026-05-27T17:26:56Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-27T17:09:04Z",
+      "notes": [
+        "All 15 LedgerStore call sites migrated. resolveProjectStore() helper introduced — validates repoName if provided, calls resolveProjectDir() to locate namespaced storageDir, reads .meta.json for plan_path, constructs LedgerStore(plan_path, ledgerRoot). The dialogue/chunk handlers (handleListDialogues, handleGetDialogueFile, handleListChunks, handleGetChunkFile) still use join(ledgerRoot, slug, DIALOGUES_DIR/CHUNKS_DIR) without LedgerStore — noted as technical debt observation. These are outside WP-011 scope and a separate WP should address them.",
+        "TypeScript clean, 158/158 tests pass (no regressions)."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-05-27T17:13:47Z",
+      "notes": [
+        "WP-011 QA passed. All 4 AC confirmed met. 2312 tests pass. One medium-priority issue noted: dialogue/chunk handlers (handleListDialogues, handleGetDialogueFile, handleListChunks, handleGetChunkFile) still use non-namespaced paths — this is known technical debt outside WP-011 scope and needs a follow-up WP. No security issues with the WP-011 changes; repoName path-traversal is correctly blocked by assertSafeSlug."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-27T17:17:46Z",
+      "notes": [
+        "Security audit PASS. 0 Critical, 0 High findings. Three Low-priority defense-in-depth recommendations recorded as pipeline comments (resolveRepoName lacks internal validation guard; plan_path from meta has no containment check; AMBIGUOUS→NOT_FOUND downgrade needs a comment). Known technical debt for dialogue/chunk non-namespaced paths confirmed out-of-scope. All 4 AC remain met. Ready for code-review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-27T17:23:13Z",
+      "notes": [
+        "Code review PASS. Fix-Forward applied: 17 stale @param repoName JSDoc comments updated to reflect actual implementation behaviour; security-rationale comment added to the AMBIGUOUS→NOT_FOUND catch in resolveProjectStore(). TypeScript build clean.",
+        "Two documentation-forward items logged for the Documentation agent: (1) resolveProjectStore() JSDoc security contract, (2) dialogue/chunk handler technical-debt note in api-surface.md/constraints.md.",
+        "No blocking issues — all 4 AC confirmed met, 2312 tests pass, zero TypeScript errors."
+      ]
+    }
+  ]
+}

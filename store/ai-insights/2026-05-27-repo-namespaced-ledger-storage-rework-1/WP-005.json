@@ -1,0 +1,283 @@
+{
+  "work_package_id": "WP-005",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "All four handlers construct paths using join(store.storageDir, …) — not join(ledgerRoot, slug, …).",
+      "met": true
+    },
+    {
+      "criterion": "All four handlers pass repoName to resolveProjectStore(); the parameter is no longer silently ignored.",
+      "met": true
+    },
+    {
+      "criterion": "The existing assertSafeSlug(slug) guard is preserved in each handler and still runs before resolveProjectStore().",
+      "met": true
+    },
+    {
+      "criterion": "The inline module-private guard no longer references SAFE_SLUG_REGEX directly; it calls assertSafeSegment(slug).",
+      "met": true
+    },
+    {
+      "criterion": "assertSafeSegment is imported from path-validator.ts in the file's import block.",
+      "met": true
+    },
+    {
+      "criterion": "All existing tests for handlers in gui/api.ts continue to pass.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-28T08:04:37Z",
+      "completed_at": "2026-05-28T08:14:16Z",
+      "duration_ms": 579000,
+      "summary": [
+        "Imported assertSafeSegment from path-validator.ts; removed SAFE_SLUG_REGEX from the constants import in gui/api.ts.",
+        "Refactored the module-private assertSafeSlug guard to call assertSafeSegment(slug) instead of the inline SAFE_SLUG_REGEX.test() check.",
+        "Also updated handleRenameProject's inline slug-format validation to use assertSafeSegment(newSlug) — required after removing SAFE_SLUG_REGEX from the import.",
+        "Migrated handleListDialogues, handleGetDialogueFile, handleListChunks, and handleGetChunkFile to call resolveProjectStore(ledgerRoot, slug, repoName) and construct subdirectory paths via join(store.storageDir, DIR).",
+        "Updated api.test.ts fixture helpers (createDialoguesDir, createDialogueFile, createChunksDir, createChunkFile) to use createProject()+store.storageDir, aligning test fixtures with the new namespaced storage layout.",
+        "All 2330 tests pass (79 test files)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/api.ts",
+          "mcp-server/tests/gui/api.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-28T08:14:16Z",
+          "note": "handleRenameProject (line ~1078) also used SAFE_SLUG_REGEX inline for new-slug format validation. Removing SAFE_SLUG_REGEX from the import broke it. Updated to use assertSafeSegment() for consistency. This was an unintended casualty of the import cleanup — worth noting as a risk when removing an import shared across many usages."
+        },
+        {
+          "type": "refactor",
+          "priority": "low",
+          "timestamp": "2026-05-28T08:14:16Z",
+          "note": "Four dialogue/chunk handler tests used flat join(ledgerRoot, slug, DIR) paths in their fixture helpers, matching the old (non-namespaced) storage layout. Tests updated to use createProject() + store.storageDir so fixtures align with the new namespaced paths. The helper refactor is minimal and co-located."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-28T08:14:16Z",
+          "note": "The resolveProjectStore() call in handleListDialogues/handleListChunks now means a missing project returns NOT_FOUND (previously the handlers would silently return []). The 'absent directory' tests were updated to establish a project first — the intent (directory absent → []) is preserved, but the project itself must exist."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-28T08:16:49Z",
+      "completed_at": "2026-05-28T08:18:11Z",
+      "duration_ms": 82000,
+      "summary": [
+        "All 6 acceptance criteria verified via source inspection and full test suite run.",
+        "AC1: handleListDialogues, handleGetDialogueFile, handleListChunks, handleGetChunkFile all use join(store.storageDir, DIR) for path construction — no join(ledgerRoot, slug, …) pattern remains.",
+        "AC2: All four handlers call resolveProjectStore(ledgerRoot, slug, repoName) — repoName parameter is fully threaded through.",
+        "AC3: assertSafeSlug(slug) is called as the first line of all four handlers, before resolveProjectStore.",
+        "AC4: The module-private assertSafeSlug at gui/api.ts:109-111 delegates to assertSafeSegment(slug). SAFE_SLUG_REGEX is not present anywhere in gui/api.ts.",
+        "AC5: assertSafeSegment imported from '../src/utils/path-validator.js' at line 24.",
+        "AC6: All 2330 tests pass (79 test files).",
+        "Edge case 1 — repoName path traversal: caught inside resolveProjectStore's own assertSafeSlug(repoName) call (gui/api.ts:172). Defense is present.",
+        "Edge case 2 — missing project: handleListDialogues/handleListChunks now return NOT_FOUND (not []) when the project slug does not exist. Tests were updated to reflect this. Behavioral change is intentional."
+      ],
+      "metrics": {
+        "test_coverage": "79 test files",
+        "tests_passed": 2330,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-28T08:18:11Z",
+          "note": "Behavioral change flagged by Developer: handleListDialogues and handleListChunks now return NOT_FOUND when the project does not exist (resolveProjectStore throws) instead of silently returning []. This is correct behavior but is a semantic change that the Reviewer should note — callers that previously relied on [] for missing projects may need updates."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-28T08:18:11Z",
+          "note": "In handleGetDialogueFile and handleGetChunkFile, assertSafeSlug runs first, then the filename allowlist regex, then resolveProjectStore. The ordering is deliberate (fail fast on bad slug/filename before incurring I/O). The pattern is consistent and correct."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-28T08:18:11Z",
+          "note": "Edge case: repoName with path-traversal content (e.g. '../etc') is caught inside resolveProjectStore via its own assertSafeSlug(repoName) call — not in the handler-level guard. Defense is present but layered differently from slug validation. Acceptable."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-05-28T08:18:48Z",
+      "completed_at": "2026-05-28T08:20:55Z",
+      "duration_ms": 127000,
+      "summary": [
+        "Reviewed 2 files (mcp-server/gui/api.ts, mcp-server/tests/gui/api.test.ts). 0 Critical, 0 High, 0 Medium, 1 Low (noted). Security sign-off: PASS. All OWASP Top 10 categories reviewed. Path traversal controls are layered and sound; filename allowlists and defence-in-depth prefix checks are correctly applied."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-28T08:20:55Z",
+          "note": "A01/A03 — repoName path-traversal validation: repoName is validated inside resolveProjectStore() via assertSafeSlug(repoName) rather than at the handler call site. This is a valid security layering choice (the guard runs before any path construction), but the defence-in-depth note from QA (ledger-root.ts also validates each segment independently inside resolveProjectDir) confirms multiple independent barriers are present. No vulnerability — Low for awareness."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-28T08:20:55Z",
+          "note": "No security findings for the assertSafeSegment refactor. assertSafeSegment() in path-validator.ts uses the same SAFE_SLUG_REGEX (/^[a-z0-9][a-z0-9-]*$/) that was previously used inline. The Boolean(segment) guard is retained as defence-in-depth for empty-string rejection. Semantic equivalence confirmed — no regression in security guarantees."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-28T08:20:55Z",
+          "note": "A03 — Filename allowlists: DIALOGUE_FILENAME_RE (/^[A-Za-z0-9_-]+\\.md$/) and CHUNK_FILENAME_RE (/^[A-Za-z0-9_-]+\\.jsonl$/) both enforce strict allowlist patterns before any filesystem access. A secondary resolve()+startsWith(dir+sep) prefix check is present in handleGetDialogueFile and handleGetChunkFile as defence-in-depth. Both guards are correctly ordered (allowlist first, I/O second)."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-28T08:23:47Z",
+      "completed_at": "2026-05-28T08:25:38Z",
+      "duration_ms": 111000,
+      "summary": [
+        "Reviewed mcp-server/gui/api.ts and mcp-server/tests/gui/api.test.ts.",
+        "All four handlers (handleListDialogues, handleGetDialogueFile, handleListChunks, handleGetChunkFile) correctly call assertSafeSlug(slug) first, then resolveProjectStore(ledgerRoot, slug, repoName), and construct subdirectory paths via join(store.storageDir, DIR).",
+        "SAFE_SLUG_REGEX fully removed from gui/api.ts imports. assertSafeSlug now delegates to assertSafeSegment() throughout the module.",
+        "resolveProjectStore correctly validates repoName via assertSafeSlug(repoName) before constructing the qualified {repo}/{slug} path. AMBIGUOUS→NOT_FOUND downgrade is correctly documented as a security invariant.",
+        "handleRenameProject uses assertSafeSegment(newSlug) directly with validationError() — semantically correct (invalid proposed slug is a validation error, not NOT_FOUND). No change needed.",
+        "Behavioral change for missing projects (NOT_FOUND instead of [] from handleListDialogues/handleListChunks) is semantically correct and intentional.",
+        "No Blocking issues. No Fix-Forward changes applied."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/api.ts",
+          "mcp-server/tests/gui/api.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-28T08:25:38Z",
+          "note": "handleRenameProject uses assertSafeSegment(newSlug) directly (boolean predicate) rather than the throwing assertSafeSlug wrapper, then calls validationError(). This distinction is semantically correct — an invalid proposed new slug is a validation error, not a NOT_FOUND. The inconsistency is intentional and appropriate. No change needed."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-28T08:25:38Z",
+          "note": "The behavioral change in handleListDialogues and handleListChunks — returning NOT_FOUND (not []) when the project does not exist — is the more semantically correct behavior. The old behavior (silently returning [] for a non-existent project slug) masked configuration errors. Any callers that relied on the empty-array response for missing projects must be updated."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-28T08:25:38Z",
+          "note": "[documentation-forward] The AMBIGUOUS → NOT_FOUND downgrade in resolveProjectStore() (api.ts line ~183) is a security-critical design decision preventing cross-namespace existence leaks. It is documented only in an inline comment. The api-surface.md should capture this invariant explicitly so future maintainers know not to restore the AMBIGUOUS message path without a security review."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-05-28T08:25:38Z",
+          "note": "[documentation-forward] The api-surface.md should document the distinction between assertSafeSegment() (boolean predicate, used when the calling site constructs its own error type) and assertSafeSlug() (throwing guard, used at handler entry points). handleRenameProject demonstrates the canonical pattern for using assertSafeSegment() with validationError() — this pattern is not currently documented in the manifest."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-28T08:29:39Z",
+      "completed_at": "2026-05-28T08:37:30Z",
+      "duration_ms": 471000,
+      "summary": [
+        "Updated mcp-server/docs/agents/project-manifest/api-surface.md for WP-003 (gui/api.ts dialogue/chunk handler migration).",
+        "Path-traversal guards section: added handleListDialogues and handleGetDialogueFile to the assertSafeSlug handler list; added a new paragraph documenting the assertSafeSegment() (boolean predicate) vs assertSafeSlug() (throwing wrapper) usage pattern with handleRenameProject as the canonical example.",
+        "handleListDialogues: added DialogueEntry interface documentation, added repoName? parameter, corrected return type string[] → DialogueEntry[], clarified that missing project → NOT_FOUND while absent subdirectory → [] (behavioral change from this WP).",
+        "handleGetDialogueFile: added repoName? parameter; noted store.storageDir path construction.",
+        "CHUNKS_DIR constant: removed stale 'NOTE: this is non-namespaced' warning and 'Technical debt: see KL-4' comment; updated path comment to reflect {repo}/{slug} layout.",
+        "handleListChunks: added repoName? parameter, clarified missing project → NOT_FOUND vs absent subdirectory → [].",
+        "handleGetChunkFile: added repoName? parameter; noted store.storageDir path construction.",
+        "Updated mcp-server/docs/agents/project-manifest/constraints.md: KL-4 (non-namespaced dialogue/chunk paths) and KL-3 (assertSafeSlug duplication) both marked as Resolved, with before/after summaries and ongoing invariants captured."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/constraints.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-28T08:37:30Z",
+          "note": "Both documentation-forward items from the code-review pipeline were addressed: (1) The AMBIGUOUS→NOT_FOUND downgrade security invariant was already present in api-surface.md's resolveProjectStore() block — no change needed. (2) The assertSafeSegment() vs assertSafeSlug() usage pattern distinction is now documented in the path-traversal guards section with the handleRenameProject canonical example."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-28T08:37:30Z",
+          "note": "KL-3 (assertSafeSlug duplication) and KL-4 (non-namespaced dialogue/chunk paths) in constraints.md are now marked as Resolved, reflecting the implementations in WP-002 and WP-003 respectively. The ongoing invariants are captured in each resolved entry."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-28T08:37:30Z",
+  "last_updated": "2026-05-28T08:37:30Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-28T08:14:16Z",
+      "notes": [
+        "WP-003 (gui/api.ts refactor) is complete. All four dialogue/chunk handlers now resolve storage via resolveProjectStore+store.storageDir. assertSafeSlug uses assertSafeSegment. SAFE_SLUG_REGEX removed from import entirely. Tests updated for new namespaced fixture paths. All 2330 tests pass. Ready for QA + security-audit pipeline."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-05-28T08:18:11Z",
+      "notes": [
+        "WP-005 (gui/api.ts refactor) passes QA. All 6 AC met, 2330/2330 tests pass. Medium-priority note for Reviewer: handleListDialogues + handleListChunks now return NOT_FOUND for missing projects (was previously []). Behavioral change is intentional and tests were updated, but callers should be aware."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-28T08:20:55Z",
+      "notes": [
+        "WP-005 passes security audit. 0 Critical/High findings. Path traversal controls are layered and sound across all four dialogue/chunk handlers. The assertSafeSegment refactor is semantically equivalent to the previous inline regex. Reviewer note: handleListDialogues/handleListChunks now return NOT_FOUND (not []) for missing projects — intentional behavioral change already flagged by Developer and QA."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-28T08:25:38Z",
+      "notes": [
+        "WP-005 passes code review. All six AC met. Four dialogue/chunk handlers correctly use store.storageDir for path construction and thread repoName through resolveProjectStore(). Module-private assertSafeSlug correctly delegates to assertSafeSegment. The AMBIGUOUS→NOT_FOUND downgrade security invariant in resolveProjectStore is well-documented inline. The behavioral change (NOT_FOUND for missing projects in list handlers) is semantically correct. Documentation agent: two documentation-forward comments recorded — (1) api-surface.md should capture the AMBIGUOUS→NOT_FOUND downgrade as a security invariant; (2) document the assertSafeSegment vs assertSafeSlug usage pattern distinction."
+      ]
+    }
+  ]
+}

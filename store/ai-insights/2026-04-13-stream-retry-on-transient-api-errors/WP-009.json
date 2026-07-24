@@ -1,0 +1,183 @@
+{
+  "work_package_id": "WP-009",
+  "work_package_file": "work/WP-009.md",
+  "status": "COMPLETE",
+  "assigned_to": "Reviewer",
+  "dependencies": [
+    "WP-004"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "Each retry attempt emits a stage_retry JSONL entry",
+      "met": true
+    },
+    {
+      "criterion": "Entry contains attempt number, error message, and delay",
+      "met": true
+    },
+    {
+      "criterion": "Entries appear in the structured run log",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-13T10:09:06Z",
+      "completed_at": "2026-04-13T10:13:14Z",
+      "duration_ms": 248000,
+      "summary": [
+        "Added run_logger: Any = None parameter to _accumulate_stream() signature in src/nodes/__init__.py.",
+        "In the retry handler (after computing exponential backoff delay), emits a stage_retry JSONL entry via run_logger.stream_entry() with all required fields: action, stage, wp_id, attempt (1-based), max_attempts, error string, delay_s, level=WARNING.",
+        "Passed run_logger from node_fn() to _accumulate_stream() at the call site.",
+        "Added TestStageRetryLogEntry class (5 tests) to tests/test_stream_retry.py covering all 3 ACs. Full suite 931 tests, 0 regressions."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/nodes/__init__.py",
+          "orchestrator/tests/test_stream_retry.py"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T10:13:14Z",
+          "note": "No observations — the run_logger optional-parameter pattern is consistent with how run_logger is used elsewhere in the module (e.g., _handle_rollback, _read_pipeline_result). Code is clean."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-13T10:16:07Z",
+      "completed_at": "2026-04-13T10:17:21Z",
+      "duration_ms": 74000,
+      "summary": [
+        "AC1 verified: Each retry emits exactly one stage_retry entry — confirmed by test_retry_emits_stage_retry_entry (1 retry → 1 call) and test_multiple_retries_emit_one_entry_each (2 retries → 2 calls).",
+        "AC2 verified: Entry contains attempt (1-based), max_attempts, error string, delay_s, plus stage, wp_id, timestamp, level — confirmed by test_retry_entry_fields with HTTP 529 error.",
+        "AC3 verified: Entries are streamed via run_logger.stream_entry() — confirmed by all log entry tests; test_no_entry_when_run_logger_is_none shows graceful no-op when logger is absent.",
+        "Edge cases covered: success-without-retry emits no entry (test_no_entry_on_success_without_retry); run_logger=None produces no crash (test_no_entry_when_run_logger_is_none).",
+        "Call site (src/nodes/__init__.py:884-893) confirmed: run_logger=run_logger passed alongside max_retries and base_delay_s.",
+        "Full regression: 931 passed, 6 skipped, 0 failures. No regressions."
+      ],
+      "metrics": {
+        "tests_passed": 931,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T10:17:21Z",
+          "note": "No observations — code is clean and consistent. The optional run_logger pattern matches existing module conventions (_handle_rollback, _read_pipeline_result). The guard `if run_logger is not None` correctly prevents crashes in test-only contexts where no logger is supplied. Entry fields (action, stage, wp_id, attempt, max_attempts, error, delay_s, level, timestamp) are well-structured for JSONL consumers."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-13T10:22:18Z",
+      "completed_at": "2026-04-13T10:23:19Z",
+      "duration_ms": 61000,
+      "summary": [
+        "Reviewed WP-009 scope: run_logger parameter added to _accumulate_stream() (src/nodes/__init__.py); TestStageRetryLogEntry added to tests/test_stream_retry.py (5 tests). All OWASP Top 10 categories reviewed. 0 Critical, 0 High, 0 Medium findings. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T10:23:19Z",
+          "note": "No security findings — all OWASP Top 10 categories reviewed; no Critical or High issues identified. WP-009 adds run_logger: Any = None to _accumulate_stream() and emits a stage_retry dict via run_logger.stream_entry() on each retry. The logger object is internal (passed from node_fn() closure), not user-controlled. The if run_logger is not None guard correctly prevents any runtime crash when logging is absent."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T10:23:19Z",
+          "note": "Info — 'error': str(_exc) in the stage_retry entry (src/nodes/__init__.py:~530) logs the raw API exception string. JSON serialization by the JSONL writer escapes all special characters, eliminating log injection risk. The run log is a local developer file (orchestrator/logs/). Provider error messages sometimes include contextual data (e.g. rate-limit policy hints); this is standard practice for developer tooling and carries no significant security risk given the local-only target."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-13T10:25:51Z",
+      "completed_at": "2026-04-13T10:27:24Z",
+      "duration_ms": 93000,
+      "summary": [
+        "Reviewed _accumulate_stream() signature extension (run_logger: Any = None) and stage_retry JSONL emission in src/nodes/__init__.py, plus TestStageRetryLogEntry (5 tests) in tests/test_stream_retry.py.",
+        "Implementation is clean: the guard 'if run_logger is not None:' is placed correctly in the retry handler (only reached after a transient error is confirmed, before the sleep). The entry dict includes all required AC2 fields (attempt, error, delay_s) plus enrichments (stage, wp_id, max_attempts, level, timestamp). 'delay_s' uses round(delay, 1) for stable log values.",
+        "Test suite covers all three ACs plus both boundary cases (success-without-retry and None logger). Using MagicMock for run_logger and asserting on stream_entry call counts and call_args is idiomatic and precise. No blocking issues found."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/nodes/__init__.py",
+          "orchestrator/tests/test_stream_retry.py"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T10:27:24Z",
+          "note": "Minor style note: the new guard 'if run_logger is not None:' (line 529) is slightly inconsistent with existing guards 'if run_logger:' used in _handle_rollback (line 647) and _read_pipeline_result (line 725). Both forms are functionally equivalent for a logger object and 'is not None' is arguably more semantically precise. Not a blocking issue; worth normalising in a future cleanup pass if the team prefers a single idiom throughout the module."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-13T10:27:24Z",
+          "note": "[documentation-forward] The stage_retry JSONL entry (action, stage, wp_id, attempt, max_attempts, error, delay_s, level, timestamp) is a new log entry type added by WP-009 but is not yet documented in the orchestrator log schema reference. The log schema docs should be updated to include the full field list, types, semantics, and an example entry so future log consumers (read-log.js, external tooling) can parse it correctly."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-13T10:27:24Z",
+  "last_updated": "2026-04-13T10:27:24Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-13T10:13:14Z",
+      "notes": [
+        "Added run_logger: Any = None parameter to _accumulate_stream() in src/nodes/__init__.py. On each retry, a stage_retry JSONL dict is streamed via run_logger.stream_entry() with keys: action, stage, wp_id, attempt (1-based), max_attempts, error, delay_s, level.",
+        "run_logger is now passed from node_fn() to _accumulate_stream() so live orchestrator runs emit the entry to the JSONL log file.",
+        "New test class TestStageRetryLogEntry added to tests/test_stream_retry.py (5 tests). Full suite: 931 passed, 6 skipped, 0 failures."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-04-13T10:17:21Z",
+      "notes": [
+        "QA PASS. All 5 TestStageRetryLogEntry tests pass. 931/931 tests green. All 3 ACs met: stage_retry entries are emitted per-retry, contain attempt/error/delay fields, and appear in the structured run log via run_logger.stream_entry(). Call site at src/nodes/__init__.py:884 passes run_logger=run_logger correctly alongside max_retries and base_delay_s."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-13T10:23:19Z",
+      "notes": [
+        "Security PASS. 0 Critical/High findings. WP-009 adds structured JSONL logging for retry events. str(_exc) in the error field is JSON-encoded before writing, preventing log injection. Logger is internal — not user-controlled. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-04-13T10:27:24Z",
+      "notes": [
+        "Code review PASS. _accumulate_stream() extension and stage_retry logging are clean and correct. All 3 ACs confirmed met. No Fix-Forward edits applied. One documentation-forward filed for the stage_retry schema docs. WP-009 ready for the Documentation stage."
+      ]
+    }
+  ]
+}

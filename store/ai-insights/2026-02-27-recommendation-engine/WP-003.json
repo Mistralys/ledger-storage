@@ -1,0 +1,204 @@
+{
+  "work_package_id": "WP-003",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "Priority order exactly matches §14.2: REWORK(direct) before IMPLEMENT",
+      "met": true
+    },
+    {
+      "criterion": "CONTINUE_PIPELINE emitted for active non-stale implementation pipelines",
+      "met": true
+    },
+    {
+      "criterion": "WAIT_FOR_DOWNSTREAM emitted when downstream FAIL but developer already re-passed and downstream hasn't re-engaged",
+      "met": true
+    },
+    {
+      "criterion": "REWORK (Priority 5) emitted only when hasDownstreamReengagedSince returns true",
+      "met": true
+    },
+    {
+      "criterion": "Legacy rework_count scalar fallback removed from Priority 1",
+      "met": true
+    },
+    {
+      "criterion": "All 9 test cases pass",
+      "met": true
+    },
+    {
+      "criterion": "npx tsc --noEmit passes",
+      "met": true
+    },
+    {
+      "criterion": "npx vitest run passes (no regressions)",
+      "met": true
+    }
+  ],
+  "revision": 1,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-02-27T22:31:42Z",
+      "completed_at": "2026-02-27T22:40:41Z",
+      "summary": [
+        "Rewrote getDeveloperAction in mcp-server/src/tools/workflow-next-action.ts using a per-WP priority evaluation loop from §14.2.",
+        "Priority 1 (BLOCK_FOR_REWORK_LIMIT): uses rework_counts.implementation directly — legacy compat shim (rework_count fallback) removed.",
+        "Priority 2 (RESUME_OR_CANCEL): stale implementation pipeline detection via extractStalePipelineAction.",
+        "Priority 3 (CONTINUE_PIPELINE): new priority — fires when isActivePipeline returns true for implementation.",
+        "Priority 4 (REWORK direct): most recent implementation FAIL — now correctly precedes IMPLEMENT (P6).",
+        "Priority 5 (REWORK downstream): hasDownstreamFail + hasDownstreamReengagedSince guard — fires only after temporal re-engagement is confirmed.",
+        "Priority 5b (WAIT_FOR_DOWNSTREAM): new — fires when downstream FAIL exists but developer already re-passed and downstream hasn't re-engaged yet.",
+        "Priority 6 (IMPLEMENT): IN_PROGRESS WP with no implementation pipeline.",
+        "Priority 7 (CLAIM_WP): READY WP with dependencies satisfied — replaces legacy IMPLEMENT-for-READY pattern.",
+        "Added imports: isActivePipeline, hasDownstreamFail, hasDownstreamReengagedSince from workflow-helpers.",
+        "Updated rework-circuit-breaker.test.ts: last test expectation changed from IMPLEMENT to CLAIM_WP (READY WPs now return CLAIM_WP).",
+        "Updated workflow-handoff.test.ts: added sequential timestamps to setupAndGetDevAction helper; updated 5 test expectations to reflect temporal guard and BLOCKED WP scope change.",
+        "Added 9 test cases in describe('Developer action logic') in workflow-next-action.test.ts.",
+        "npx tsc --noEmit: clean. npx vitest run: 738/738 passed."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/tools/workflow-next-action.ts",
+          "mcp-server/tests/tools/workflow-next-action.test.ts",
+          "mcp-server/tests/tools/rework-circuit-breaker.test.ts",
+          "mcp-server/tests/tools/workflow-handoff.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T23:42:00Z",
+          "note": "The per-WP evaluation loop in getDeveloperAction iterates all WPs for each priority per WP. A slight optimization would be to break early once P1 fires for any WP, but since it already returns on first match this is moot—already optimal."
+        },
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-02-27T23:42:00Z",
+          "note": "workflow-handoff.test.ts setupAndGetDevAction helper now assumes sequential timestamps for historical pipelines. If a future test needs non-sequential pipeline ordering within a WP, the helper would need to be extended. A more flexible helper accepting explicit timestamps per pipeline would be more robust long-term."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-02-27T23:42:00Z",
+          "note": "BLOCKED WPs with downstream FAILs are now silently WAIT from Developer's perspective. A future improvement could be to surface a specific WAIT_BLOCKED_DOWNSTREAM action so the Developer knows WHY they are waiting, rather than a generic WAIT."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-02-27T22:57:07Z",
+      "completed_at": "2026-02-27T22:58:01Z",
+      "summary": [
+        "Independent build: npx tsc --noEmit clean.",
+        "All 9 Developer action logic tests pass (BLOCK_FOR_REWORK_LIMIT, CONTINUE_PIPELINE, REWORK P4, WAIT_FOR_DOWNSTREAM, REWORK P5, IMPLEMENT, CLAIM_WP, WAIT, priority ordering).",
+        "158/158 tests pass across workflow-next-action.test.ts, rework-circuit-breaker.test.ts, workflow-handoff.test.ts — no regressions.",
+        "Legacy wpDetail.rework_count scalar removed: confirmed no references in src/ via grep.",
+        "Edge-case confirmation: BLOCKED WPs skipped, temporal guard tested with ordered timestamps, CLAIM_WP only fires for READY WPs with satisfied dependencies."
+      ],
+      "metrics": {
+        "test_coverage": "9/9 Developer action logic AC covered by dedicated test cases",
+        "tests_passed": 158,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-27T22:58:00Z",
+          "note": "No issues found. Code is clean, temporal guards are correctly tested with ordered timestamps, and the removal of the legacy scalar is confirmed. Developer debt note re: workflow-handoff helper design is noted and low-risk."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-02-27T23:02:51Z",
+      "completed_at": "2026-02-27T23:03:58Z",
+      "summary": [
+        "Reviewed getDeveloperAction in mcp-server/src/tools/workflow-next-action.ts. Full 7-priority per-WP evaluation loop is correctly implemented per §14.2.",
+        "P1 (BLOCK_FOR_REWORK_LIMIT): uses rework_counts?.implementation only — legacy scalar fallback confirmed removed.",
+        "P2 (RESUME_OR_CANCEL): delegates to extractStalePipelineAction for stale impl detection.",
+        "P3 (CONTINUE_PIPELINE): correctly guards active non-stale impl pipelines via isActivePipeline.",
+        "P4 (REWORK direct): isMostRecentPipelineFail correctly precedes P6 (IMPLEMENT) — priority ordering verified by tests.",
+        "P5/P5b (REWORK downstream / WAIT_FOR_DOWNSTREAM): hasDownstreamReengagedSince temporal guard gates the split correctly. Test cases 4 and 5 with correctly-ordered timestamps validate both branches.",
+        "P6 (IMPLEMENT): fires for IN_PROGRESS WPs with no impl pipeline.",
+        "P7 (CLAIM_WP): fires for READY WPs assigned to Developer with satisfied dependencies. rework-circuit-breaker.test.ts and workflow-handoff.test.ts updated correctly.",
+        "BLOCKED WPs, dependency-blocked WPs, and non-Developer-assigned WPs correctly skipped via guards.",
+        "All 9 ACs met. 4 non-blocking low-priority observations recorded in comments."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/tools/workflow-next-action.ts",
+          "mcp-server/tests/tools/workflow-next-action.test.ts",
+          "mcp-server/tests/tools/rework-circuit-breaker.test.ts",
+          "mcp-server/tests/tools/workflow-handoff.test.ts"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 764,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-28T00:10:00Z",
+          "note": "hasPassImpl local variable at P5 is a defensive redundancy: if execution reaches P5, P3 has already eliminated active IN_PROGRESS impl pipelines and P4 has eliminated direct FAIL impl pipelines. The only case remaining where hasPassImpl would be false is when there is no implementation pipeline at all — which P6 (IMPLEMENT) handles. The variable is harmless and aids readability, but a future reader may wonder why it's needed. A short comment explaining the invariant would make the intent explicit."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-28T00:10:00Z",
+          "note": "Test Cases 3 and 9 exercise near-identical scenarios: both verify that P4 (REWORK for direct FAIL) fires before P6 (IMPLEMENT). Case 9 labels itself a 'priority ordering' test but notes 'Same as case 3.' They share the same setup. Merging into a single parameterized test or giving Case 9 a distinct scenario (e.g., three WPs to prove the ordering holds across more than two) would eliminate redundancy without losing coverage confidence."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-02-28T00:10:00Z",
+          "note": "BLOCKED WPs with downstream FAILs fall through all priorities and ultimately return WAIT. The Developer debt note (from implementation pipeline) flags this accurately. No action needed now, but consider a WAIT_BLOCKED_DOWNSTREAM action when the PM action system matures to give the Developer a specific reason for waiting rather than a generic WAIT response."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-02-28T00:10:00Z",
+          "note": "The test helper makeWpDetail hardcodes assigned_to: 'Developer'. QA Case 7 (CLAIM_WP for QA) correctly sets assigned_to: 'QA' explicitly. The Developer Case 7 relies on the default. This is fine but could trip up a future developer adding a test who doesn't notice the implicit assignment. A comment on the helper would prevent confusion."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-02-27T23:08:44Z",
+      "completed_at": "2026-02-27T23:09:52Z",
+      "summary": [
+        "Updated getDeveloperAction entry in api-surface.md: expanded comment to document the full 7-priority algorithm (P1 BLOCK_FOR_REWORK_LIMIT, P2 RESUME_OR_CANCEL, P3 CONTINUE_PIPELINE, P4 REWORK direct, P5 REWORK downstream with temporal guard, P5b WAIT_FOR_DOWNSTREAM, P6 IMPLEMENT, P7 CLAIM_WP) and removal of legacy rework_count scalar fallback.",
+        "Updated Developer agent-specific logic description in data-flows.md Flow 7 (get_next_action) from a 2-line stub to the full 7-priority algorithm.",
+        "Updated Developer batch description in data-flows.md Flow 9 (get_next_actions) to list all priority-derived action types.",
+        "Expanded the return action type enum in Flow 7 to include CLAIM_WP, CONTINUE_PIPELINE, WAIT_FOR_DOWNSTREAM, REVIEW_STALE, REVIEW_ABANDONED, REVIEW_REWORK_LIMIT, UNBLOCK_WP, REPAIR_ORPHAN_BLOCKED, REWORK_DOCS, and GENERATE_SYNTHESIS."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/data-flows.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-28T00:00:00Z",
+          "note": "No documentation gaps found. getDeveloperAction was missing its full algorithm description in api-surface.md (one-liner only) and data-flows.md had a 2-line stub. Both updated to reflect the complete §14.2 7-priority algorithm including CONTINUE_PIPELINE, REWORK (direct vs downstream), WAIT_FOR_DOWNSTREAM, and CLAIM_WP. Action type list in Flow 7 return value expanded to enumerate all known actions."
+        }
+      ]
+    }
+  ]
+}

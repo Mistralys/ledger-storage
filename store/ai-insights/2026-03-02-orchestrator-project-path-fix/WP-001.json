@@ -1,0 +1,253 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "orchestrator/src/utils/tool_wrappers.py exists with inject_project_path function",
+      "met": true
+    },
+    {
+      "criterion": "inject_project_path injects project_path when absent from tool call arguments",
+      "met": true
+    },
+    {
+      "criterion": "inject_project_path does not override an explicit project_path already present",
+      "met": true
+    },
+    {
+      "criterion": "inject_project_path does not inject when cwd_path is already present",
+      "met": true
+    },
+    {
+      "criterion": "orchestrator/src/nodes/__init__.py wraps tools before passing to create_deep_agent",
+      "met": true
+    },
+    {
+      "criterion": "Existing tests in orchestrator/tests/ pass without regression",
+      "met": true
+    }
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-02T16:44:00Z",
+      "completed_at": "2026-03-02T16:57:41Z",
+      "summary": [
+        "Created orchestrator/src/utils/tool_wrappers.py with inject_project_path function using setdefault semantics.",
+        "Updated orchestrator/src/nodes/__init__.py to import and use inject_project_path, wrapping mcp_tools before create_deep_agent.",
+        "162 tests pass, 1 skipped (live test)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/nodes/__init__.py",
+          "orchestrator/src/utils/tool_wrappers.py"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-02T17:00:00Z",
+          "note": "tool_wrappers.py uses monkeypatching (replacing tool.ainvoke) rather than a proxy class. This is simpler but works well since BaseTool doesn't validate ainvoke type. If that changes, switching to a BaseTool subclass proxy would be safer."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-02T16:59:36Z",
+      "completed_at": "2026-03-02T17:06:21Z",
+      "summary": [
+        "All 6 ACs verified. inject_project_path correctly injects project_path using setdefault semantics (no override of explicit project_path); skips injection when cwd_path is present; passes non-dict inputs through unchanged.",
+        "nodes/__init__.py correctly extracts project_path from state (distinct from target_project_path) and wraps mcp_tools before create_deep_agent.",
+        "162 tests passed, 1 skipped (live integration test), 0 failures."
+      ],
+      "metrics": {
+        "tests_passed": 162,
+        "tests_failed": 0,
+        "tests_skipped": 1
+      },
+      "comments": [
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-02T17:10:00Z",
+          "note": "The monkeypatch approach (replacing tool.ainvoke directly) is simple and correct. Default parameter binding (_orig, _proj) in the closure properly avoids late-binding issues across multiple tools. No concerns found."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "FAIL",
+      "started_at": "2026-03-02T17:08:52Z",
+      "completed_at": "2026-03-02T17:10:29Z",
+      "summary": [
+        "Code is clean and well-documented, but one blocking issue requires a fix before approval: unbounded monkeypatch stacking on shared tool objects.",
+        "inject_project_path mutates tool.ainvoke in-place. list(mcp_tools) in nodes/__init__.py shallow-copies the list shell but not the tool objects. Every node_fn invocation therefore wraps an already-wrapped ainvoke, chaining closures indefinitely.",
+        "After N runs each tool carries N nested async wrapper frames and N live closure references — a memory leak that will degrade long-running orchestrations. Correctness is preserved (setdefault semantics flatten), but the growth is unbounded.",
+        "Fix: save the true original ainvoke once using a sentinel attribute (e.g. _orig_ainvoke) so repeated calls are idempotent. Non-blocking: add regression test in WP-005 for repeated inject_project_path calls on the same tools list."
+      ],
+      "comments": [
+        {
+          "type": "blocking",
+          "priority": "high",
+          "timestamp": "2026-03-02T17:10:00Z",
+          "note": "Unbounded wrapper stacking on shared tool objects. inject_project_path captures tool.ainvoke on each call, but list(mcp_tools) is a shallow copy — the tool objects are the same references. After the first node_fn run, tool.ainvoke is already a _wrapped_ainvoke; the second run wraps the wrapper; the Nth run has N closures chained. Fix: use a sentinel attribute to capture the true original once: `orig = getattr(tool, '_orig_ainvoke', None); if orig is None: tool._orig_ainvoke = tool.ainvoke; orig = tool._orig_ainvoke`. This makes inject_project_path idempotent."
+        },
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-02T17:10:00Z",
+          "note": "Non-blocking: the module docstring says 'Mutation is in-place; the original list reference is also returned for convenience.' This is accurate but should note, after the sentinel fix, that subsequent calls on already-wrapped tools are idempotent."
+        },
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-02T17:10:00Z",
+          "note": "Non-blocking (WP-005): When test_tool_wrappers.py is written, add an explicit test that calls inject_project_path twice on the same tools list and asserts ainvoke is not double-wrapped — i.e., the sentinel guard works."
+        }
+      ]
+    },
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-02T17:13:46Z",
+      "completed_at": "2026-03-02T17:14:32Z",
+      "summary": [
+        "Fixed unbounded wrapper stacking: added sentinel _orig_ainvoke attribute so inject_project_path is idempotent on shared tool objects.",
+        "Updated module docstring to document idempotency guarantee.",
+        "162 tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/utils/tool_wrappers.py"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "high",
+          "timestamp": "2026-03-02T17:15:00Z",
+          "note": "Fixed wrapper-stacking bug: inject_project_path now uses a sentinel attribute (_orig_ainvoke) on the tool object to capture the true original ainvoke only once. Subsequent calls on already-wrapped tools reuse the same sentinel, making the function idempotent. Module docstring updated to document this guarantee."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-02T18:00:00Z",
+      "completed_at": "2026-03-02T18:15:00Z",
+      "summary": [
+        "Build & runtime check: 162 tests pass, 1 skipped in orchestrator/tests/ (exit code 0). No compilation errors.",
+        "AC-1 PASS: orchestrator/src/utils/tool_wrappers.py exists with inject_project_path function.",
+        "AC-2 PASS: inject_project_path injects project_path using setdefault semantics when absent from call arguments.",
+        "AC-3 PASS: inject_project_path does NOT override explicit project_path already present (setdefault enforces this).",
+        "AC-4 PASS: inject_project_path does NOT inject when cwd_path is already present (guarded by \"cwd_path\" not in input check).",
+        "AC-5 PASS: nodes/__init__.py wraps tools via inject_project_path(list(mcp_tools), project_path) before passing to create_deep_agent.",
+        "AC-6 PASS: All 162 existing tests pass — no regressions introduced.",
+        "Blocking fix verified: sentinel attribute (_orig_ainvoke) now set on first wrap. Subsequent calls on the same tool object retrieve the sentinel rather than re-wrapping, preventing unbounded closure stacking.",
+        "Edge case (1): Triple-wrap scenario — after 3 inject_project_path calls on same tool, original ainvoke is called exactly once per invocation. Verified by code inspection and logic trace.",
+        "Edge case (2): Shallow-copy scenario — list(mcp_tools) in node_fn creates a new list shell but the same tool object references. Sentinel guard makes this idempotent across node_fn invocations."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/utils/tool_wrappers.py"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 162,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-02T18:15:00Z",
+          "note": "The sentinel fix is correct and idempotent. The default-parameter binding (_orig, _proj) in _wrapped_ainvoke correctly captures values at definition time, avoiding late-binding issues when multiple tools are wrapped in a loop."
+        },
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-02T18:15:00Z",
+          "note": "WP-005 (test_tool_wrappers.py) should include an explicit double/triple-wrap idempotency assertion as noted by the Reviewer in the code-review FAIL. This is out of scope for this WP but tracked in WP-005 AC."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-02T17:25:21Z",
+      "completed_at": "2026-03-02T17:26:19Z",
+      "summary": [
+        "Rework review: blocking issue (unbounded wrapper stacking) is fully resolved.",
+        "The sentinel _orig_ainvoke attribute correctly captures the true original ainvoke on the first call and is reused on all subsequent calls, making inject_project_path idempotent regardless of how many times node_fn re-invokes it with list(mcp_tools).",
+        "All six ACs are met. 162 tests pass. Code quality is high across all review dimensions."
+      ],
+      "metrics": {
+        "tests_passed": 162,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "observation",
+          "priority": "high",
+          "timestamp": "2026-03-02T18:25:00Z",
+          "note": "Blocking fix verified: sentinel _orig_ainvoke is stored before the first mutation. hasattr guard prevents re-wrapping on the same tool object. Default-parameter binding (_orig=_original_ainvoke, _proj=project_path) in _wrapped_ainvoke avoids late-binding issues in the loop. The wrapper chain is provably bounded to exactly one level."
+        },
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-02T18:25:00Z",
+          "note": "Non-blocking: _wrapped_ainvoke mutates the input dict in-place via setdefault. For LangChain MCP StructuredTools, inputs are ephemeral per-call dicts so this is harmless. If LangChain ever caches or reuses input dicts, this could cause silent side-effects. A defensive copy (input = dict(input)) before setdefault would eliminate any future risk at negligible cost."
+        },
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-02T18:25:00Z",
+          "note": "Non-blocking: module docstring is thorough and explicitly documents the idempotency guarantee and the sentinel design note. Gold-star quality for maintainability."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-02T18:25:00Z",
+          "note": "WP-005 should include double/triple-wrap idempotency assertions as previously flagged — still outstanding and correctly deferred there."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-02T17:28:21Z",
+      "completed_at": "2026-03-02T17:29:54Z",
+      "summary": [
+        "Updated orchestrator/README.md to reflect the inject_project_path mechanism introduced in WP-001.",
+        "Fixed the Stage nodes step list: removed the incorrect 'llm.invoke' description (predates Deep Agents integration), replaced with the actual flow: wrap tools via inject_project_path, create Deep Agent, call agent.ainvoke.",
+        "Added new 'MCP Tool Wrapping (src/utils/tool_wrappers.py)' subsection in the Architecture section documenting the Layer 2 safety-net purpose, idempotency via the _orig_ainvoke sentinel, non-destructive monkeypatching, and setdefault injection semantics.",
+        "All six acceptance criteria were already marked met by prior QA and code-review pipelines; no documentation gaps remain."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/README.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-02T19:00:00Z",
+          "note": "The pre-existing README.md step 2 for Stage nodes incorrectly stated 'Calls llm.invoke([SystemMessage(persona), HumanMessage(prompt)])' — this predated the Deep Agents integration and did not reflect the current code. The fix also surfaced the inject_project_path safety net in the architecture docs."
+        }
+      ]
+    }
+  ],
+  "rework_counts": {
+    "implementation": 1,
+    "code-review": 1
+  },
+  "status_changed_at": "2026-03-02T17:29:54Z"
+}

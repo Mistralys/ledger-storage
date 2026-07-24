@@ -1,0 +1,167 @@
+{
+  "work_package_id": "WP-007",
+  "work_package_file": "work/WP-007.md",
+  "status": "COMPLETE",
+  "assigned_to": "Reviewer",
+  "dependencies": [
+    "WP-003",
+    "WP-004"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "renderRunLog shows a breadcrumb trail Projects / {slug} / Run Log with correct href values",
+      "met": true
+    },
+    {
+      "criterion": "The timeline renders event cards in chronological order with newest at bottom",
+      "met": true
+    },
+    {
+      "criterion": "Each event card shows at minimum: timestamp, stage badge, action-specific content — unknown action types fall back to generic card without throwing",
+      "met": true
+    },
+    {
+      "criterion": "Polling initiates at 5-second intervals via Router._setPolling() and stops on run_end or run_error",
+      "met": true
+    },
+    {
+      "criterion": "Incremental fetch uses ?after=N so only new lines are fetched on each poll tick",
+      "met": true
+    },
+    {
+      "criterion": "A progress_snapshot entry updates the progress bar in-place without re-rendering the full timeline",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "code-review"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-23T11:17:48Z",
+      "completed_at": "2026-03-23T11:20:38Z",
+      "duration_ms": 170000,
+      "summary": [
+        "Created gui/public/views/run-log.js with renderRunLog(app, slug, filename)",
+        "Breadcrumb: Projects / {slug} / Run Log with encoded hrefs",
+        "Initial load fetches all entries via API.getRunLogEntries without afterLine param",
+        "Polling: Router._setPolling(fn, 5000) called after initial load; stops automatically on run_end or run_error via Router._clearPolling()",
+        "Incremental fetch: poll ticks pass totalLinesSeen as afterLine so only new lines are fetched",
+        "Progress snapshot: progress_snapshot entries update #run-progress-bar-fill style.width in-place without appending a card",
+        "All 8 known action types handled (step_start/end, llm_call_start/end, tool_call_start/end, progress_snapshot, run_start/end/error) plus generic fallback for unknown types",
+        "Added route for /projects/{slug}/runs/{filename} to gui/public/router.js",
+        "Created tests/gui/run-log.test.ts with 16 tests covering all 6 acceptance criteria",
+        "All 1571 tests pass across 54 test files; TypeScript compiles clean"
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/run-log.js",
+          "mcp-server/gui/public/router.js",
+          "mcp-server/tests/gui/run-log.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:20:38Z",
+          "note": "run-log.js uses totalLinesSeen = result.totalLines from the API response as the afterLine cursor. This is correct but assumes the server always returns an accurate totalLines count. If the log file is truncated or has been modified between requests, the cursor could drift. A more robust approach would be to track the exact line count seen by the client independently."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:20:38Z",
+          "note": "The stage badge in buildRunEventCard uses entry.stage if present, otherwise falls back to action.replace(/_/g, ' '). This means run_error renders as 'run error' in the badge. Consider mapping action names to more human-readable badge labels (e.g., 'Run Error') for visual polish."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:20:38Z",
+          "note": "The progress bar fill element id (#run-progress-bar-fill) appears both in the page shell and in buildRunEventContent for progress_snapshot entries, but since progress_snapshot entries don't append a card, the duplicate id in buildRunEventContent is dead code. The buildRunEventContent switch case for progress_snapshot builds HTML with the fill id, but that HTML is never inserted into the DOM. This is harmless but slightly misleading — the actual progress update happens in appendEntries() via direct DOM manipulation."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-23T11:27:13Z",
+      "completed_at": "2026-03-23T11:28:45Z",
+      "duration_ms": 92000,
+      "summary": [
+        "Reviewed run-log.js (full implementation), router.js (new route), and tests/gui/run-log.test.ts (16 tests)",
+        "Architecture is clean: synchronous buildPageShell() sets the DOM skeleton, appendEntries() incrementally patches the timeline; progress bar uses direct DOM update rather than full re-render — correct pattern for AC6",
+        "Guard in appendEntries() (typeof entry !== 'object') correctly handles malformed entries (null, undefined, primitives) without crashing",
+        "All user-controlled fields (slug, filename, entry fields) pass through escapeHtml(); encodeURIComponent used for URL segments — no XSS vectors",
+        "Polling lifecycle is correct: _setPolling() called only when not already terminal; _clearPolling() called on run_end or run_error; inner pollingActive guard prevents duplicate terminal processing",
+        "Router route addition is clean: [^/]+ captures filename segment; both slug and filename are decodeURIComponent'd before passing to renderRunLog",
+        "All 6 acceptance criteria met; all 16 tests pass after Fix-Forward changes",
+        "Fix-Forward #1 applied: removed redundant else-if branch in runEventSeverity (returned run-event--info which was identical to default fallback — dead code)",
+        "Fix-Forward #2 applied: removed duplicate #run-progress-bar-fill id from progress_snapshot case in buildRunEventContent (dead code since appendEntries() intercepts this action type before card is built); replaced with explanatory NOTE comment"
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/run-log.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:28:45Z",
+          "note": "Removed redundant else-if branch in runEventSeverity(). The branch `if (action === 'llm_call_end' || action === 'step_end' || action === 'run_end') return 'run-event--info'` returned the same value as the final default `return 'run-event--info'`, making it dead code. Removed it so the intent of the function is immediately clear: only run_error deviates from the default severity. All 16 tests pass unchanged."
+        },
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:28:45Z",
+          "note": "Removed duplicate `id='run-progress-bar-fill'` from the progress_snapshot case in buildRunEventContent(). This HTML was never inserted into the DOM (appendEntries() returns early for progress_snapshot without calling buildRunEventCard), so the id would never have caused a duplicate-id bug in practice. Replaced the body with a simpler label-only return and a NOTE comment explaining why the case is unreachable. Eliminates potential confusion for future contributors."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:28:45Z",
+          "note": "totalLinesSeen cursor defaults to 0 if result.totalLines is not a number (line 241). In that edge case the first poll would re-fetch from line 0, duplicating all existing entries in the DOM. Low risk since the API should always return totalLines, but worth adding a defensive guard: `totalLinesSeen = typeof result.totalLines === 'number' && result.totalLines > 0 ? result.totalLines : entries.length`."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:28:45Z",
+          "note": "runEventSeverity only distinguishes run_error from the info default. Consider adding run-event--success for run_end (a completed run is a positive terminal event) and run-event--warning for step_end (signals completion of a stage). This would make the timeline visually scannable at a glance. Non-blocking — pure visual polish."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-03-23T11:28:45Z",
+          "note": "renderRunLog's JSDoc is good. The appendEntries() and fetchAndAppend() inner functions also have JSDoc. Missing: a brief comment on the pollingActive + _clearPolling two-layer pattern (why both are needed) and a note that buildRunEventContent's progress_snapshot case is unreachable by design."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-15T08:56:57Z",
+  "last_updated": "2026-04-15T08:56:57Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-23T11:20:38Z",
+      "notes": [
+        "New file: gui/public/views/run-log.js — full implementation",
+        "Modified: gui/public/router.js — /projects/{slug}/runs/{filename} route added",
+        "New test: tests/gui/run-log.test.ts — 16 tests, all passing",
+        "Note: the progress bar fill in buildRunEventContent's progress_snapshot case is dead code — actual update is in appendEntries()"
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-03-23T11:28:45Z",
+      "notes": [
+        "Code review passed with two Fix-Forward improvements applied (dead-branch removal in runEventSeverity, dead-id removal from buildRunEventContent progress_snapshot case). All 16 tests pass post-fix. Minor low-priority improvements logged as comments. WP-007 is ready for Documentation pipeline."
+      ]
+    }
+  ]
+}

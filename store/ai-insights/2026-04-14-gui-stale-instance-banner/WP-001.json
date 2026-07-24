@@ -1,0 +1,190 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "captureWorkspaceVersions() returns correct version strings for all three components when called in a development environment.",
+      "met": true
+    },
+    {
+      "criterion": "Path resolution works equivalently from both src/utils/ (dev via tsx) and dist/utils/ (compiled) locations.",
+      "met": true
+    },
+    {
+      "criterion": "The function reads files synchronously and throws on missing files (no silent fallback).",
+      "met": true
+    },
+    {
+      "criterion": "No external dependencies are introduced (uses only Node.js built-ins).",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-14T09:50:39Z",
+      "completed_at": "2026-04-14T09:52:52Z",
+      "duration_ms": 133000,
+      "summary": [
+        "Created mcp-server/src/utils/workspace-versions.ts with WorkspaceVersions type and captureWorkspaceVersions() function.",
+        "Reads mcpServer from mcp-server/package.json (JSON parse), personas from personas/package.json (JSON parse), and orchestrator from orchestrator/pyproject.toml (regex /^version\\s*=\\s*\"([^\"]+)\"/m).",
+        "Path resolution uses join(__dirname, '..', '..') for serverDir and join(serverDir, '..') for workspaceRoot — identical offsets from both src/utils/ (dev) and dist/utils/ (compiled).",
+        "All reads use readFileSync; throws on missing files (ENOENT) and on unparseable toml. No external dependencies.",
+        "Verified at runtime via tsx: returns { mcpServer: '1.24.0', personas: '3.15.1', orchestrator: '0.16.0' }.",
+        "Type-check passes (tsc --noEmit: no output). Full test suite: 1809/1809 tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/utils/workspace-versions.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-14T09:52:52Z",
+          "note": "workspace-versions.ts computes serverDir and workspaceRoot inline — these constants are also computed in src/utils/ledger-root.ts. If workspace-versions.ts were ever extended or if the root derivation logic changed, there would be two places to update. A shared internal constant (e.g., exported from ledger-root.ts) would eliminate the duplication, but that would introduce a code dependency. Left as-is because it matches the parallel-module intent stated in the plan and the existing server-version.ts follows the same inline pattern."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-14T09:56:38Z",
+      "completed_at": "2026-04-14T10:00:38Z",
+      "duration_ms": 240000,
+      "summary": [
+        "All four acceptance criteria verified. captureWorkspaceVersions() returns { mcpServer: '1.24.0', personas: '3.15.1', orchestrator: '0.16.0' } at runtime. Path offsets are correct for both src/utils/ and dist/utils/ locations. ENOENT propagates naturally from readFileSync; malformed TOML triggers an explicit throw. All imports are Node.js built-ins (fs, url, path). Full regression suite: 1809/1809 tests pass across 59 files."
+      ],
+      "metrics": {
+        "test_coverage": "n/a (unit under separate test files)",
+        "tests_passed": 1809,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-14T10:00:38Z",
+          "note": "The TOML version regex /^version\\s*=\\s*\"([^\"]+)\"/m requires the version key at the start of a line with no leading whitespace. This is the standard pyproject.toml format (PEP 518/621) and matches the real file at line 3. An indented version key (e.g., inside a nested section) would silently fail and throw the parse error. Not a defect given the file format, but worth noting if pyproject.toml structure ever changes."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-14T10:00:38Z",
+          "note": "No dedicated unit test file exists for workspace-versions.ts. The function was verified via runtime tsx execution rather than Vitest. A test file at tests/utils/workspace-versions.test.ts would improve long-term confidence and cover the throw paths with mocked fs."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-14T10:03:31Z",
+      "completed_at": "2026-04-14T10:04:53Z",
+      "duration_ms": 82000,
+      "summary": [
+        "workspace-versions.ts passes code review. Implementation is clean, idiomatic, and consistent with the existing server-version.ts pattern. All four ACs are confirmed met via QA pipeline. No blocking issues found. No Fix-Forward edits required.",
+        "The three 'as string' casts are all valid: for JSON parse paths, they make intent explicit (any → string); for the TOML regex path, noUncheckedIndexedAccess:true makes match[1] type as string|undefined so the cast is necessary for type safety.",
+        "Module-level constants (serverDir, workspaceRoot, path constants) are evaluated once at load time — efficient and consistent with server-version.ts. The documented code duplication with ledger-root.ts is an accepted trade-off per the implementation plan.",
+        "Two QA-flagged low-priority items echoed as improvement comments. One documentation-forward item raised for api-surface.md."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/utils/workspace-versions.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-14T10:04:53Z",
+          "note": "TOML regex /^version\\s*=\\s*\"([^\"]+)\"/m is section-unaware — it matches the first occurrence of 'version = ...' at any line start in the file. In the current orchestrator/pyproject.toml this lands on the [project] section version (line 3) before any other version keys. If a dependency pin like 'version = \">=1.0\"' were ever placed above [project], the regex would match the wrong value. Not a defect today but fragile. Future-proofing option: anchor the search with a [project] header match first."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-14T10:04:53Z",
+          "note": "No dedicated Vitest unit test file exists for workspace-versions.ts. The function was verified at runtime but test coverage for the throw paths (ENOENT, malformed TOML) would improve long-term confidence and protect against future regressions. Suggested location: mcp-server/tests/utils/workspace-versions.test.ts."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-14T10:04:53Z",
+          "note": "[documentation-forward] captureWorkspaceVersions() and the WorkspaceVersions type are new exports in mcp-server/src/utils/workspace-versions.ts. Both should be added to mcp-server/docs/agents/project-manifest/api-surface.md so the function is discoverable to agents working in this module. Include: function signature, return type shape, throw conditions (ENOENT, malformed TOML), and a note that it reads from disk on every call (not cached)."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-14T10:06:40Z",
+      "completed_at": "2026-04-14T10:10:09Z",
+      "duration_ms": 209000,
+      "summary": [
+        "Added WorkspaceVersions type and captureWorkspaceVersions() function to mcp-server/docs/agents/project-manifest/api-surface.md under a new '### Workspace Versions' subsection in Utility Functions.",
+        "Documented function signature, WorkspaceVersions type fields, throw conditions (ENOENT on missing files, explicit throw on malformed TOML regex), read-on-every-call behaviour, and path resolution equivalence across src/utils/ and dist/utils/ locations.",
+        "Added workspace-versions.ts entry to mcp-server/docs/agents/project-manifest/file-tree.md in the src/utils/ listing.",
+        "Addressed the documentation-forward item raised in the code-review pipeline."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/file-tree.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-14T10:10:09Z",
+          "note": "The code-review documentation-forward item (captureWorkspaceVersions + WorkspaceVersions in api-surface.md) has been addressed. All four fields documented: function signature, WorkspaceVersions return type, ENOENT and malformed-TOML throw conditions, and the reads-on-every-call note."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-14T10:10:09Z",
+          "note": "No README or other documentation required changes — workspace-versions.ts is an internal utility consumed by other modules rather than a user-facing feature. The manifest docs (api-surface.md + file-tree.md) are the appropriate documentation targets for this change."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-14T10:10:09Z",
+  "last_updated": "2026-04-14T10:10:09Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-14T09:52:52Z",
+      "notes": [
+        "WP-001 is complete. workspace-versions.ts is production-ready: runtime-verified, type-clean, zero regressions. QA should test: (1) all three version strings return correctly, (2) behavior when one of the three files is missing (expects an ENOENT throw), (3) behavior when pyproject.toml has a malformed version line (expects 'Could not parse orchestrator version' error)."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-14T10:00:38Z",
+      "notes": [
+        "WP-001 QA PASS. workspace-versions.ts is clean: all 4 ACs met, 1809/1809 tests green, no regressions. Two low-priority improvement notes for the Reviewer: (1) TOML regex assumes no leading whitespace on version key — matches real file format but fragile if pyproject.toml structure changes; (2) no dedicated Vitest test file for the new module."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-14T10:04:53Z",
+      "notes": [
+        "WP-001 code-review PASS. Implementation is clean and production-ready. One documentation-forward item: captureWorkspaceVersions() and WorkspaceVersions type need to be added to mcp-server/docs/agents/project-manifest/api-surface.md — include function signature, return type, throw conditions (ENOENT, malformed TOML), and note that it reads from disk on every call."
+      ]
+    }
+  ]
+}

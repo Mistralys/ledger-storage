@@ -1,0 +1,207 @@
+{
+  "work_package_id": "WP-004",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "isRawQueueEntry is exported as a named export from mcp-server/src/gui/queue/validate-entry.ts",
+      "met": true
+    },
+    {
+      "criterion": "get-queue.ts imports isRawQueueEntry from ./validate-entry.js and no longer contains the function definition",
+      "met": true
+    },
+    {
+      "criterion": "The RawQueueEntry type import in validate-entry.ts resolves correctly from ./types.js",
+      "met": true
+    },
+    {
+      "criterion": "TypeScript compilation succeeds with no errors",
+      "met": true
+    },
+    {
+      "criterion": "All existing get-queue.test.ts tests pass without modification (the extraction is transparent to consumers)",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-20T12:46:37Z",
+      "completed_at": "2026-05-20T12:48:37Z",
+      "duration_ms": 120000,
+      "summary": [
+        "Created mcp-server/src/gui/queue/validate-entry.ts — new module exporting isRawQueueEntry() as a named export, with the full JSDoc (all 5 rules including the .trim() fix from WP-001), importing RawQueueEntry from ./types.js.",
+        "Updated mcp-server/src/gui/queue/get-queue.ts: removed local isRawQueueEntry() function definition, added `import { isRawQueueEntry } from './validate-entry.js'`, updated file header JSDoc to note the extraction. The data.filter(isRawQueueEntry) call site is unchanged.",
+        "TypeScript compilation: no errors (npx tsc --noEmit exit 0).",
+        "All 4 existing get-queue.test.ts tests pass without modification.",
+        "Full regression suite: 2206 tests across 73 test files — all pass, 0 failures."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/gui/queue/validate-entry.ts",
+          "mcp-server/src/gui/queue/get-queue.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-20T12:48:37Z",
+          "note": "The queue module now has a clean separation of concerns: validate-entry.ts (pure type-guard), get-queue.ts (I/O + orchestration). This pattern is consistent with compute-effective-status.ts (also a pure, independently testable module). No code smells found in the touched files."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-05-20T12:48:37Z",
+          "note": "get-queue.ts still imports `type RawQueueEntry` from ./types.js (line 22) even though it is no longer used directly in the file body — it appears only in the readQueueFile return type signature. This is valid TypeScript but the import line could be trimmed to remove `type RawQueueEntry` once WP-005 lands (the QA agent or a follow-up can confirm whether any other usage remains). Not blocking."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-20T12:48:52Z",
+      "completed_at": "2026-05-20T12:50:55Z",
+      "duration_ms": 123000,
+      "summary": [
+        "AC1 ✅ — isRawQueueEntry exported as named export from validate-entry.ts (confirmed by reading the file).",
+        "AC2 ✅ — get-queue.ts imports from './validate-entry.js' (line 23); grep confirms no local function definition — only JSDoc mention, import, and filter call site.",
+        "AC3 ✅ — validate-entry.ts imports `type RawQueueEntry` from './types.js' (line 9); TypeScript resolved it cleanly.",
+        "AC4 ✅ — npx tsc --noEmit: exit 0, no errors.",
+        "AC5 ✅ — All 4 get-queue.test.ts tests pass (including the two whitespace-slug tests added in WP-001).",
+        "Regression ✅ — Full suite: 73 test files, 2206 tests, 0 failures.",
+        "Edge-case verification: null/undefined inputs handled by null guard; array inputs rejected by field checks; pid=0 and negatives rejected; float pids rejected; whitespace-only expectedSlug correctly rejected via .trim().length > 0 (WP-001 fix confirmed in place). Omission of status field validation is consistent with the original pre-extraction implementation — not a regression."
+      ],
+      "metrics": {
+        "test_coverage": "73 test files",
+        "tests_passed": 2206,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-20T12:50:55Z",
+          "note": "The extracted function is a faithful copy of the original with the WP-001 .trim() fix applied. Verified against git HEAD of get-queue.ts — the original lacked .trim() and the new version correctly adds it. No behavioral divergence."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-20T12:50:55Z",
+          "note": "The validator does not check the status field (which must be 'pending' per RawQueueEntry). This omission is consistent with the original pre-extraction implementation and is therefore not a regression. It is a pre-existing design choice: status validation is left to the compute-effective-status layer."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-20T12:50:55Z",
+          "note": "get-queue.ts retains `type RawQueueEntry` in its import from types.js (line 22) — still used in the readQueueFile return-type annotation, so the import is valid. The Developer's debt note is accurate but non-blocking."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-20T12:51:21Z",
+      "completed_at": "2026-05-20T12:51:58Z",
+      "duration_ms": 37000,
+      "summary": [
+        "Reviewed validate-entry.ts and get-queue.ts line-by-line against all four Review Dimensions.",
+        "validate-entry.ts: pure module, excellent JSDoc coverage, correct named export, faithful extraction with WP-001 .trim() fix intact. No issues.",
+        "get-queue.ts: clean import, filter call site unchanged, header JSDoc accurately documents the extraction. The RawQueueEntry type import on line 22 is valid (used in readQueueFile return type). No issues.",
+        "types.ts: dependency chain comment in file header omits validate-entry.ts — tagged as documentation-forward for the Documentation agent.",
+        "No blocking issues found. No Fix-Forward changes required. One Documentation-Forward item recorded."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/gui/queue/validate-entry.ts",
+          "mcp-server/src/gui/queue/get-queue.ts",
+          "mcp-server/src/gui/queue/types.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-20T12:51:58Z",
+          "note": "validate-entry.ts is a textbook pure module: no I/O, no side effects, single responsibility. The JSDoc is thorough and accurately enumerates all five validation rules. The cast to Record<string, unknown> before field access is the correct pattern for type-narrowing unknown objects in TypeScript. No code smells."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-20T12:51:58Z",
+          "note": "get-queue.ts header JSDoc clearly documents the extraction and the downstream consumers of each exported symbol. The fail-safe pattern (return [] on any I/O or parse error) is consistent and correct for all three try/catch blocks."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-05-20T12:51:58Z",
+          "note": "[documentation-forward] types.ts file-header JSDoc lists the dependency chain comment (lines 8–13) but omits validate-entry.ts, which is now a new module in the queue directory sitting between types.ts and get-queue.ts in the dependency order. Update the chain to: `types.ts ← compute-effective-status.ts ← validate-entry.ts ← format-progress-entry.ts ← resolve-progress.ts ← get-queue.ts ← orchestrator-manager.ts`."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-20T12:52:19Z",
+      "completed_at": "2026-05-20T12:52:46Z",
+      "duration_ms": 27000,
+      "summary": [
+        "Addressed the single documentation-forward item from the code-review pipeline. Updated the dependency chain comment in types.ts (lines 8–13) to include validate-entry.ts — the chain now reads: types.ts ← compute-effective-status.ts ← validate-entry.ts, and the get-queue.ts row now lists validate-entry as an explicit dependency. No README or external documentation changes were required — the extraction is an internal refactor with no public API surface changes."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/gui/queue/types.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-20T12:52:46Z",
+          "note": "The only documentation gap was the dependency chain in types.ts, which omitted the newly-created validate-entry.ts. The fix accurately places validate-entry.ts between compute-effective-status.ts and get-queue.ts in the chain, consistent with its actual import graph. All existing inline JSDoc in validate-entry.ts and get-queue.ts is thorough and required no changes."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-20T12:52:46Z",
+  "last_updated": "2026-05-20T12:52:46Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-20T12:48:37Z",
+      "notes": [
+        "All 5 acceptance criteria met. validate-entry.ts is live as a named-export module. The extraction is transparent to all existing consumers — get-queue.ts, the test suite, and any importer of readQueueFile are unaffected. WP-005 (direct unit tests for isRawQueueEntry) can now import from ./validate-entry.js without filesystem setup."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-20T12:50:55Z",
+      "notes": [
+        "All 5 AC verified and passing. validate-entry.ts is a clean, pure module with no I/O dependencies — directly importable by WP-005 unit tests without any filesystem setup. The .trim() fix from WP-001 is confirmed present in the extracted function. Full regression suite clean at 2206/2206."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-20T12:51:58Z",
+      "notes": [
+        "All 5 AC confirmed met through direct file inspection. validate-entry.ts is a clean, pure module — correct export, correct JSDoc, correct .trim() fix from WP-001. get-queue.ts import and filter call site are correct. One documentation-forward item: update the dependency chain comment in types.ts to include validate-entry.ts. No blocking issues."
+      ]
+    }
+  ]
+}

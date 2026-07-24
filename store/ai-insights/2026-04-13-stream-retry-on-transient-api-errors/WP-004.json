@@ -1,0 +1,220 @@
+{
+  "work_package_id": "WP-004",
+  "work_package_file": "work/WP-004.md",
+  "status": "COMPLETE",
+  "assigned_to": "Reviewer",
+  "dependencies": [
+    "WP-001",
+    "WP-002"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "Retryable errors trigger retry with exponential backoff",
+      "met": true
+    },
+    {
+      "criterion": "Fatal errors propagate immediately",
+      "met": true
+    },
+    {
+      "criterion": "Exhausted retries propagate the last error",
+      "met": true
+    },
+    {
+      "criterion": "Accumulators reset on each attempt",
+      "met": true
+    },
+    {
+      "criterion": "ChunkWriter partial files cleaned up on retry",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-13T09:41:11Z",
+      "completed_at": "2026-04-13T09:48:09Z",
+      "duration_ms": 418000,
+      "summary": [
+        "Refactored _accumulate_stream() in orchestrator/src/nodes/__init__.py to wrap the streaming loop in a retry loop (for attempt in range(max_retries + 1)). On a retryable error: calls chunk_writer.delete() to clean up the partial file, resets all accumulators, computes exponential backoff delay (base_delay_s * 2**attempt * (0.5 + random() * 0.5)), awaits asyncio.sleep(delay), and retries. Fatal errors (401/403) and non-retryable exceptions propagate immediately. Exhausted retries re-raise the last error. Added max_retries and base_delay_s parameters with defaults matching the Config fields. Updated the call site in create_stage_node to pass _app_config.stream_max_retries and _app_config.stream_retry_base_delay_s. Added asyncio and random imports. Updated conftest and _FakeConfig in test_nodes.py to include the new config fields. Fixed two pre-existing _TrackingChunkWriter stubs in test_streaming_capture.py (added delete() method). Added test_stream_retry.py with 16 tests covering all 5 ACs."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/nodes/__init__.py",
+          "orchestrator/tests/conftest.py",
+          "orchestrator/tests/test_nodes.py",
+          "orchestrator/tests/test_streaming_capture.py",
+          "orchestrator/tests/test_stream_retry.py"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T09:48:09Z",
+          "note": "The _accumulate_stream docstring previously described the finally-block pattern for partial message recovery; that description is now removed since retry discards partial state instead. The updated docstring accurately reflects the retry semantics."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-04-13T09:48:09Z",
+          "note": "In test_streaming_capture.py the three _TrackingChunkWriter classes are defined inline in different test methods. Since delete() now needs to delegate to close(), both error-path stubs needed the same fix. Extracting a shared _TrackingChunkWriter base class at module scope would prevent this class of fix in future."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-04-13T09:48:09Z",
+          "note": "The 'nan' and 'inf' edge cases for stream_retry_base_delay_s (noted by WP-003 tests) could silently produce nonsensical delays (NaN delay or infinite sleep). A guard check for math.isfinite() in load_config() would close this gap; currently both slip through the float() conversion."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-13T09:48:44Z",
+      "completed_at": "2026-04-13T09:51:11Z",
+      "duration_ms": 147000,
+      "summary": [
+        "All 5 acceptance criteria verified by executing the 16 tests in test_stream_retry.py and the full 923-test suite (0 failures, 6 skipped). Config wiring confirmed: call site in create_stage_node passes _app_config.stream_max_retries (default 2) and _app_config.stream_retry_base_delay_s (default 10.0) to _accumulate_stream. Accumulator reset, ChunkWriter cleanup, backoff formula, fatal-error propagation, and exhausted-retry semantics all verified end-to-end."
+      ],
+      "metrics": {
+        "tests_passed": 923,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T09:51:11Z",
+          "note": "No direct test for mid-stream chunk-processing errors (e.g. if write_chunk() raises). The OSError guard in _accumulate_stream handles ChunkWriter open failures, but a write_chunk() error mid-loop would propagate to the except BaseException block and be subject to retry classification. Low risk in practice — worth a future coverage note."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T09:51:11Z",
+          "note": "No improvement — code is clean, tests are well-structured, and AC coverage is complete."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-13T09:54:37Z",
+      "completed_at": "2026-04-13T09:57:03Z",
+      "duration_ms": 146000,
+      "summary": [
+        "Reviewed 5 files (nodes/__init__.py, config.py, test_stream_retry.py, test_nodes.py, test_streaming_capture.py). 0 Critical, 0 High, 0 Medium, 3 Low, 1 Info. Security sign-off: PASS. The retry logic is well-contained and introduces no exploitable attack surface — fatal auth errors (401/403) short-circuit immediately, config values are strictly numeric-parsed, no secrets are logged, and ChunkWriter cleanup is correct on both retry and error paths. Three low-risk misconfiguration edge cases noted (no retries ceiling, inf base-delay, broad BaseException catch), all require deliberate env var abuse."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-04-13T09:57:03Z",
+          "note": "Low | A04 Insecure Design | config.py load_config() stream_max_retries parsing. No upper ceiling on STREAM_MAX_RETRIES. A value such as 99999 would cause a near-infinite run; beyond attempt ~1074, base_delay_s * 2**attempt overflows float to inf and asyncio.sleep(inf) hangs indefinitely. Risk requires deliberate misconfiguration. Remediation: add a reasonable cap (e.g. max 10) with a warning in load_config()."
+        },
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-04-13T09:57:03Z",
+          "note": "Low | A04 Insecure Design | config.py load_config() stream_retry_base_delay_s parsing (lines ~440-447). STREAM_RETRY_BASE_DELAY_S=inf passes the `< 0` guard because float('inf') < 0 is False, so asyncio.sleep(inf) on the first retry hangs indefinitely. float('nan') would cause asyncio.sleep(nan) to raise ValueError (propagated as non-retryable — safe with controlled retry count, but confusing). Already flagged by Developer as a debt item. Remediation: add math.isfinite() guard before the < 0 check and also enforce a sensible ceiling (e.g. <= 3600.0)."
+        },
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-04-13T09:57:03Z",
+          "note": "Low | A04 Insecure Design | nodes/__init__.py _accumulate_stream() except BaseException block. The broad clause catches KeyboardInterrupt / SystemExit / GeneratorExit for the duration of the chunk file cleanup before immediately re-raising any non-retryable exception. The re-raise path is correct (non-retryable errors — including all three interrupt types — are re-raised immediately after cleanup). This is the standard async cleanup pattern in Python but merits documenting. No exploitable risk in a developer-local tool."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T09:57:03Z",
+          "note": "Info | A09 Security Logging | nodes/__init__.py _build_error_log_entry(). `str(exc)` is written to the stage_error JSONL log. Major LLM provider SDKs (Anthropic, Google) do not embed API key material in exception messages, so leakage risk is minimal. The logs are developer-local files. No action required, but worth confirming this assumption if additional providers with verbose error messages are added in future."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T09:57:03Z",
+          "note": "No additional findings — all OWASP Top 10 categories reviewed. A01: no new access-control surfaces. A02: API keys from env vars, never logged. A03: retry params are strictly numeric-parsed; no interpreter injection vectors. A05: no stack traces or key material exposed externally. A06: no new dependencies introduced. A07: 401/403 classified as fatal and never retried (_is_fatal_error walks exception chain correctly). A08: ChunkWriter.delete() correctly removes partial files before each retry; no deserialization risks. A10: no new server-side URLs fetched."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-13T09:57:54Z",
+      "completed_at": "2026-04-13T10:01:13Z",
+      "duration_ms": 199000,
+      "summary": [
+        "Reviewed 5 files: orchestrator/src/nodes/__init__.py (retry loop, error classifiers), orchestrator/src/config.py (new fields), orchestrator/tests/test_stream_retry.py (16 new tests), orchestrator/tests/conftest.py (stub updates), orchestrator/tests/test_streaming_capture.py (delete() stub fixes). Code quality: clean. Retry loop is idiomatic — accumulators and ChunkWriter references reset at top of each for-attempt iteration; no stale state can bleed across retries. Error classification is well-isolated: _is_fatal_error / _is_retryable_api_error are pure functions with correct precedence (fatal check gates retryable check). except BaseException is the standard async cleanup pattern; re-raise is immediate for all non-retryable errors. delete() -> close() delegation in test stubs is correct — both existing streaming-capture error-path tests still pass because the assertion only checks that cleanup ran, not which method triggered it. stream_max_retries=0 in all config stubs correctly decouples existing tests from retry behaviour. Backoff formula verified against test-asserted intervals. Call site passes both config fields explicitly; function defaults provide a safe off-state. One documentation-forward item recorded (env vars undocumented in config reference). inf base-delay passthrough remains known debt — classification unchanged from prior pipeline stages (Low risk, requires deliberate misconfiguration).\""
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/nodes/__init__.py",
+          "orchestrator/src/config.py",
+          "orchestrator/tests/test_stream_retry.py",
+          "orchestrator/tests/conftest.py",
+          "orchestrator/tests/test_streaming_capture.py"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T10:01:13Z",
+          "note": "No blocking issues found — code is clean, well-structured, and architecturally sound."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-13T10:01:13Z",
+          "note": "[documentation-forward] The two new environment variables STREAM_MAX_RETRIES and STREAM_RETRY_BASE_DELAY_S are not documented in the orchestrator configuration reference. The Documentation agent should add entries covering: accepted types (int / float), defaults (2 / 10.0), the < 0 guard, and the known inf passthrough caveat (float('inf') < 0 is False, so inf silently bypasses the guard and causes asyncio.sleep(inf) to hang — a deliberate-misconfiguration risk noted by both the Developer and Security Auditor)."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-13T10:01:13Z",
+          "note": "test_streaming_capture.py: the two error-path _TrackingChunkWriter stubs have delete() delegating to close(), so the assertion variable close_called is set whether close() or delete() is called. The tests remain correct (cleanup is verified), but the variable name and assertion text are misleading after the control-flow change from calling close() to delete() on the error path. Low-priority naming tech-debt, consistent with the Developer's existing observation about extracting a shared stub class."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-13T10:01:13Z",
+  "last_updated": "2026-04-13T10:01:13Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-13T09:48:09Z",
+      "notes": [
+        "All 5 acceptance criteria met and verified by 16 new tests in test_stream_retry.py. 923 tests pass, 0 failures. Key integration point: the call site now reads max_retries and base_delay_s from _app_config — QA should verify the Config.stream_max_retries=2 / stream_retry_base_delay_s=10.0 defaults wire correctly end-to-end. The 'nan'/'inf' gap in stream_retry_base_delay_s parsing is a low-priority issue noted in Code Insight observations."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-04-13T09:51:11Z",
+      "notes": [
+        "All 5 ACs met. 923 tests pass. Implementation is a clean retry loop in _accumulate_stream() with correct exponential backoff, accumulator reset, ChunkWriter.delete() on failure, fatal-error short-circuit, and exhausted-retry re-raise. Config defaults (max_retries=2, base_delay=10.0s) wire correctly from Config to call site. The medium-priority nan/inf gap in stream_retry_base_delay_s parsing (noted by Developer) is an out-of-scope debt item — no security or correctness risk here as it requires deliberate env var misconfiguration."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-04-13T10:01:13Z",
+      "notes": [
+        "All 5 acceptance criteria met and verified. Code quality PASS — no changes made by Reviewer. One documentation-forward item: document STREAM_MAX_RETRIES and STREAM_RETRY_BASE_DELAY_S in the orchestrator config reference, including defaults, validation behaviour, and the inf passthrough caveat."
+      ]
+    }
+  ]
+}

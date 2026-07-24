@@ -1,0 +1,254 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "GET /api/projects/:repo/:slug/run-metadata returns the same JSON as GET /api/projects/:slug/run-metadata when called with valid repo/slug parameters.",
+      "met": true
+    },
+    {
+      "criterion": "GET /api/projects/:repo/:slug/run-metadata returns 404 for unknown repo/slug combinations (via resolveRepoName existence check).",
+      "met": true
+    },
+    {
+      "criterion": "GET /api/projects/:repo/:slug/run-metadata returns 404 for path-traversal attempts (e.g., ../ in repo or slug segments).",
+      "met": true
+    },
+    {
+      "criterion": "Keyword exclusion guards in the new route block include all existing rest[2] keywords (plan, synthesis, health, work-packages, dialogues, chunks, runs).",
+      "met": true
+    },
+    {
+      "criterion": "All existing tests pass without modification (regression-free).",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-31T11:04:10Z",
+      "completed_at": "2026-05-31T11:12:41Z",
+      "duration_ms": 511000,
+      "summary": [
+        "Added GET /api/projects/:repo/:slug/run-metadata namespaced route to gui/server.ts immediately before the /:repo/:slug/work-packages block, following the established pattern with SAFE_SLUG_REGEX guard, resolveRepoName() project-existence check, and delegation to handleGetRunMetadata(ledgerRoot, slug, repoName). Keyword exclusion guards on rest[2] include all required keywords (plan, synthesis, health, work-packages, dialogues, chunks, runs).",
+        "Added 7 HTTP-level integration tests to api-run-metadata.test.ts in a new describe block: 2 happy-path tests (AC-NS-1) returning 200 with correct JSON, 2 not-found tests (AC-NS-2) returning 404 for missing project and missing run file, and 3 path-traversal tests (AC-NS-3) returning 404 for '..' in repo and slug segments and URL-encoded slash. Tests use handleRequest() via a real HTTP server, mirroring the run-log-server.test.ts pattern. Key fix discovered: planPath in .meta.json must end with YYYY-MM-DD-name pattern (LedgerStore constructor calls planFolderBasename() which enforces this).",
+        "Updated api-surface.md with a documentation entry for the new namespaced route, placed directly after the existing handleGetRunMetadata() function declaration.",
+        "All 2771 tests pass across 89 test files."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/server.ts",
+          "mcp-server/tests/gui/api-run-metadata.test.ts",
+          "mcp-server/docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T11:12:41Z",
+          "note": "The resolveProjectStore() catch block in gui/api.ts (line ~194) swallows all errors including LedgerStore constructor failures (e.g. planFolderBasename pattern mismatch) and returns NOT_FOUND. This makes debugging difficult when .meta.json has a plan_path that fails internal validation — the error message from the constructor is lost. A debug-level stderr log of the caught error inside the catch block would help operators diagnose corrupt .meta.json entries without leaking path information to API clients."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-05-31T11:12:41Z",
+          "note": "The writeMetaJson() helper in run-log-server.test.ts uses plan_path: '/fake/{repo}/{slug}/plan.md' (no YYYY-MM-DD prefix) which would break if the handler ever calls resolveProjectStore(). The api-run-metadata.test.ts tests discovered this constraint the hard way. A shared test-fixture factory that enforces the correct plan_path format would prevent similar issues in future test files."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T11:12:41Z",
+          "note": "The namespaced route block for GET /:repo/:slug/run-metadata at rest.length===4 correctly includes 'run-metadata' keyword exclusion guards on rest[2]. However the existing /:slug/run-metadata route at rest.length===3 appears before the /:repo/:slug catch-all, while the catch-all (rest.length===3) already excludes 'run-metadata' from rest[2]. This is correctly ordered and guarded — no change needed, but worth noting the exclusion was already in place before this WP."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-31T11:14:33Z",
+      "completed_at": "2026-05-31T11:16:25Z",
+      "duration_ms": 112000,
+      "summary": [
+        "All 5 acceptance criteria verified. 17/17 tests pass in api-run-metadata.test.ts (7 new namespaced HTTP-level tests + 10 existing handler-level tests). Full regression suite: 2771/2771 tests pass across 89 test files. Route block placement and keyword exclusion guards are correct. No regressions."
+      ],
+      "metrics": {
+        "test_coverage": "7 new HTTP-level integration tests for namespaced route (AC-NS-1a, AC-NS-1b, AC-NS-2a, AC-NS-2b, AC-NS-3a, AC-NS-3b, AC-NS-3c)",
+        "tests_passed": 2771,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T11:16:25Z",
+          "note": "Edge-case analysis: SAFE_SLUG_REGEX (/^[a-z0-9][a-z0-9-]*$/) correctly rejects empty strings, dots, and slashes — the regex alone is sufficient to block all path-traversal attempts including URL-encoded variants (decoded before regex check). No gap found."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T11:16:25Z",
+          "note": "The rest[2] keyword exclusion list in the new run-metadata block omits 'run-metadata' itself (i.e., a project slug named 'run-metadata' at /api/projects/repo/run-metadata/run-metadata would be accepted). This is consistent with all other namespaced route blocks (none exclude their own segment from rest[2]). Not a bug — correct by design."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T11:16:25Z",
+          "note": "api-surface.md documents the new route at lines 3238–3243 with a concise inline comment. The GUI Server Routes table in api-surface.md does not appear to have a tabular entry for the namespaced route — only an inline comment block. This is consistent with how other namespaced routes are documented and is not a QA failure, but a future documentation pass could add a proper table row."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-05-31T11:16:50Z",
+      "completed_at": "2026-05-31T11:18:27Z",
+      "duration_ms": 97000,
+      "summary": [
+        "Reviewed 3 files: gui/server.ts (lines 648–672 new route block + resolveRepoName helper), gui/api.ts (handleGetRunMetadata handler, resolveProjectStore, assertSafeSlug), tests/gui/api-run-metadata.test.ts (namespaced route tests). 0 Critical, 0 High, 0 Medium findings. 1 Low/Info observation (pre-existing pattern, not introduced by this WP). Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T11:18:27Z",
+          "note": "No Critical or High security findings. All OWASP Top 10 categories reviewed. The new GET /api/projects/:repo/:slug/run-metadata route (server.ts lines 648–672) follows the established defence-in-depth security pattern: (1) SAFE_SLUG_REGEX enforced at routing layer before decodeURIComponent values are used; (2) assertSafeSlug() re-applied inside the handler via resolveProjectStore() — double validation; (3) resolveRepoName() acts as project-existence gate requiring a valid .meta.json before any handler dispatch; (4) A03/path-traversal: regex /^[a-z0-9][a-z0-9-]*$/ structurally excludes '.', '/', '%', and all traversal characters — URL-encoded variants decoded first then rejected; (5) A05: CORS restricted to localhost:port, security headers (X-Content-Type-Options, X-Frame-Options, CSP, Referrer-Policy) present on all responses; (6) A01: route is read-only GET, no privilege escalation surface; (7) A10/SSRF: no outbound requests, file I/O bounded to validated path segments."
+        },
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-05-31T11:18:27Z",
+          "note": "Info/Low — A09 (Security Logging): resolveRepoName() at server.ts line 322 writes the full metaPath to process.stderr when .meta.json is malformed (e.g., '[server] Warning: malformed .meta.json at /ledger/root/repo/slug/.meta.json'). This exposes internal ledger directory structure in server logs. This is a pre-existing pattern shared by all namespaced routes (not introduced by this WP), and acceptable for a local developer tool. No remediation required for this WP; operators should treat server logs as privileged if the ledger root contains sensitive path components."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-31T11:18:47Z",
+      "completed_at": "2026-05-31T11:20:02Z",
+      "duration_ms": 75000,
+      "summary": [
+        "Code review PASS. The new GET /api/projects/:repo/:slug/run-metadata route block (server.ts:648–672) is a structurally correct and consistent addition to the namespaced routing layer. All four review dimensions pass: (1) Maintainability — the block is visually and structurally identical to the six surrounding namespaced routes; a future reader can understand its intent instantly. (2) Best Practices — correctly follows the established three-layer pattern (SAFE_SLUG_REGEX guard → resolveRepoName project-existence check → handler delegation), DRY reuse of the existing handleGetRunMetadata handler with the optional repoName parameter. (3) Performance — no new I/O paths beyond the existing resolveRepoName .meta.json read, which is consistent with every other namespaced route. (4) Future Context — no technical debt introduced; the route composes cleanly with the existing handler's optional repoName parameter rather than adding a new handler. Two documentation-forward items noted for the Documentation agent (file-tree.md stale test count, api client surface table missing the namespaced variant). No blocking issues found. Zero Fix-Forward changes applied."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/server.ts",
+          "mcp-server/tests/gui/api-run-metadata.test.ts",
+          "mcp-server/docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T11:20:02Z",
+          "note": "The new route block (server.ts:648–672) is structurally identical to the surrounding namespaced route blocks — keyword exclusion guards, decodeURIComponent calls, SAFE_SLUG_REGEX check, resolveRepoName delegation, and handler call are all placed in the canonical order. This consistency makes the router very easy to audit; no suggestions for change."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T11:20:02Z",
+          "note": "The writeNamespacedProject() fixture helper in api-run-metadata.test.ts includes an explicit JSDoc comment explaining the planPath YYYY-MM-DD naming constraint (line 282–288). This is a good practice that will prevent similar test-fixture confusion for future contributors. The constraint is also exercised by the existing createProject() fixture used in the handler-level tests."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-31T11:20:02Z",
+          "note": "[documentation-forward] file-tree.md line ~140 describes api-run-metadata.test.ts as having '5 tests' — it now has 17 (10 existing handler-level + 7 new HTTP integration tests added by this WP). The description should be updated to reflect the new test count and the additional describe block for the namespaced HTTP route."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-05-31T11:20:02Z",
+          "note": "[documentation-forward] api-surface.md line ~3887 (API client surface table) lists getRunMetadata(slug) → GET /api/projects/:slug/run-metadata but does not mention the namespaced variant. A note should be added documenting that the API client can also call GET /api/projects/:repo/:slug/run-metadata for namespaced projects, once the GUI client is updated to use this route."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-31T11:20:20Z",
+      "completed_at": "2026-05-31T11:21:15Z",
+      "duration_ms": 55000,
+      "summary": [
+        "Addressed both documentation-forward items from the code-review pipeline.",
+        "file-tree.md line 140: Updated api-run-metadata.test.ts entry — corrected test count from 5 to 17 (10 handler-level + 7 new HTTP-level integration tests), described the new namespaced HTTP route describe block (AC-NS-1 happy path, AC-NS-2 not-found, AC-NS-3 path-traversal), and noted the writeNamespacedProject() fixture's YYYY-MM-DD planPath constraint.",
+        "api-surface.md line 3887 (API client table): Extended the getRunMetadata(slug) entry to note the server-side namespaced route GET /api/projects/:repo/:slug/run-metadata — its identical JSON shape, the handler's optional repoName parameter, and that the GUI client does not yet call the namespaced variant directly."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/file-tree.md",
+          "mcp-server/docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T11:21:15Z",
+          "note": "The inline comment block at api-surface.md lines 3238–3244 already documents the namespaced route's routing logic (route block structure, SAFE_SLUG_REGEX, resolveRepoName, delegation pattern, 404 behaviour). No changes were needed there — it was added by the Developer during implementation and remains accurate."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-31T11:21:15Z",
+          "note": "file-tree.md line 141 (api-client.test.ts) already notes that getRunMetadata(slug) lacks coverage in api-client.test.ts and tracks it as a follow-up gap from WP-004. No update was needed — the namespaced route is a server-side addition and the GUI client wrapper was not changed in this WP."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-31T11:21:15Z",
+  "last_updated": "2026-05-31T11:21:15Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-31T11:12:41Z",
+      "notes": [
+        "WP-002 implements GET /api/projects/:repo/:slug/run-metadata. The route is placed at rest.length===4 / rest[3]==='run-metadata' with standard keyword exclusion guards on rest[2]. Handler delegation is handleGetRunMetadata(ledgerRoot, slug, repoName) where repoName comes from resolveRepoName(). 7 new HTTP-level integration tests added to api-run-metadata.test.ts.",
+        "Key implementation note: planPath stored in .meta.json must conform to the YYYY-MM-DD-name basename format (enforced by planFolderBasename() in the LedgerStore constructor). Test fixtures must respect this constraint.",
+        "All 2771 tests pass."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-05-31T11:16:25Z",
+      "notes": [
+        "WP-002 PASSES QA. Route block at server.ts:648-672 is correctly implemented with all required keyword exclusion guards (plan, synthesis, health, work-packages, dialogues, chunks, runs). 7 HTTP-level integration tests exercise all 3 namespaced AC (happy path x2, unknown repo/slug x2, path-traversal x3). All 2771 tests pass. Ready for security-audit."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-31T11:18:27Z",
+      "notes": [
+        "WP-002 passes security audit. 0 Critical, 0 High findings. The new GET /api/projects/:repo/:slug/run-metadata route is correctly guarded: SAFE_SLUG_REGEX at routing layer + assertSafeSlug() at handler layer, resolveRepoName() as project-existence gate, information-hiding 404 responses for all invalid inputs, no CORS/header regressions, no new dependencies. One Low/Info observation (pre-existing stderr logging pattern) recorded — no remediation required. Ready for code-review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-31T11:20:02Z",
+      "notes": [
+        "WP-002 PASSES code-review. Route implementation is correct, consistent, and maintainable — no blocking issues. Two documentation-forward items recorded for the Documentation agent: (1) file-tree.md test count for api-run-metadata.test.ts is stale (says 5, should be 17); (2) api-surface.md API client table entry for getRunMetadata() should note the namespaced route variant. No code changes were made by the Reviewer (zero Fix-Forward edits). All 5 acceptance criteria confirmed met. Ready for documentation pipeline."
+      ]
+    }
+  ]
+}

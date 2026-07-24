@@ -1,0 +1,273 @@
+{
+  "work_package_id": "WP-007",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001",
+    "WP-005"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "Stage node that errors after calling begin_work auto-cancels the orphaned pipeline",
+      "met": true
+    },
+    {
+      "criterion": "Rollback call uses auto_cancelled = true",
+      "met": true
+    },
+    {
+      "criterion": "Rollback is logged as INFO with action pipeline_rollback",
+      "met": true
+    },
+    {
+      "criterion": "If rollback itself fails, original error is preserved and a WARNING is logged",
+      "met": true
+    },
+    {
+      "criterion": "Unit test verifies rollback is called when begin_work was invoked before error",
+      "met": true
+    },
+    {
+      "criterion": "Unit test verifies rollback is NOT called when begin_work was NOT invoked",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-25T16:55:03Z",
+      "completed_at": "2026-03-25T16:57:00Z",
+      "duration_ms": 117000,
+      "summary": [
+        "WP-007 implementation verified: orphaned pipeline rollback logic is fully implemented in orchestrator/src/nodes/__init__.py.",
+        "The create_stage_node error handler tracks whether ledger_begin_work was called via _install_begin_work_tracker (sets _begin_work_state['called'] and captures pipeline_type). On error, if begin_work was called and a wp_id+wrapped_tools are available, it calls ledger_cancel_pipeline with auto_cancelled=True, logs a pipeline_rollback INFO entry, and handles cancel failures with a WARNING while preserving the original error.",
+        "_STAGE_PIPELINE_TYPE dict maps stage names to pipeline types as a fallback when the tracker's pipeline_type is missing.",
+        "All 4 unit tests in TestPipelineRollback pass (132/132 total). The auto_cancelled dependency (WP-005) is confirmed implemented in mcp-server/src/tools/pipeline.ts."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/nodes/__init__.py",
+          "orchestrator/tests/test_nodes.py"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-25T16:57:00Z",
+          "note": "In create_stage_node error handler (orchestrator/src/nodes/__init__.py), the rollback block silently skips if _pipeline_type is None or _cancel_tool is missing. A debug-level log when either guard fires would improve observability for future incident diagnosis without adding noise to normal runs."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-25T16:57:00Z",
+          "note": "_STAGE_PIPELINE_TYPE maps 'security_auditor' and 'release_engineer' using underscores, while the equivalent deep-agent stage file names use underscores too — this is consistent. However the mapping is defined twice, once here and once in the orchestrator supervisor ROLE_STAGE_MAP. A shared constants module would eliminate the duplication, though scope of this WP is limited to nodes/__init__.py."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-25T16:57:30Z",
+      "completed_at": "2026-03-25T17:00:16Z",
+      "duration_ms": 166000,
+      "summary": [
+        "All 6 acceptance criteria met. 4 TestPipelineRollback tests pass; full 132/132 test_nodes.py suite green. 9 pre-existing test_graph.py failures due to missing aiosqlite/langgraph.checkpoint.sqlite environment dependencies (unrelated to WP-007, no diff to test_graph.py or src/graph.py).",
+        "AC1: create_stage_node error handler detects begin_work via _begin_work_state tracker and calls cancel_pipeline. AC2: auto_cancelled=True confirmed in cancel call and test assertion. AC3: pipeline_rollback INFO entry appended to run_log, verified by test. AC4: original error preserved in errors list even when cancel_pipeline itself raises. AC5+6: dedicated unit tests for each path pass.",
+        "WP-005 dependency confirmed: auto_cancelled parameter exists in mcp-server/src/tools/pipeline.ts with correct rework-budget exclusion filter."
+      ],
+      "metrics": {
+        "tests_passed": 132,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-25T17:00:16Z",
+          "note": "orchestrator/src/nodes/__init__.py rollback block silently skips when _pipeline_type resolves to None (tracker captured no type AND stage not in _STAGE_PIPELINE_TYPE) or when ledger_cancel_pipeline is absent from wrapped_tools. A debug-level log on either guard would improve incident diagnosis without runtime noise."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-25T17:00:16Z",
+          "note": "_STAGE_PIPELINE_TYPE in nodes/__init__.py duplicates the stage-to-pipeline-type mapping already present in supervisor.py ROLE_STAGE_MAP. No AC impact, but a shared constants module would eliminate the duplication."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-03-25T17:00:16Z",
+          "note": "The double-wrap sentinel (_tracking_begin_work attribute) correctly prevents stacking when _install_begin_work_tracker is called multiple times on the same tool list. Verified by code inspection."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-25T17:00:16Z",
+          "note": "Pre-existing environment issue: 9 tests in tests/test_graph.py fail with ModuleNotFoundError (aiosqlite / langgraph.checkpoint.sqlite not installed). Not a WP-007 regression — test_graph.py and src/graph.py are unchanged. Recommend installing missing deps in CI/dev environment."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-03-25T17:01:45Z",
+      "completed_at": "2026-03-25T17:03:15Z",
+      "duration_ms": 90000,
+      "summary": [
+        "Reviewed 2 files (orchestrator/src/nodes/__init__.py, orchestrator/tests/test_nodes.py). 0 Critical, 0 High, 0 Medium. 1 Low/Info observation recorded. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-25T17:03:15Z",
+          "note": "A01 — Broken Access Control: CLEAR. The _wp_id and project_path are sourced from the orchestrator's internal WorkflowState (supervisor-managed), not from external/user input. No authorization gaps."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-25T17:03:15Z",
+          "note": "A02 — Cryptographic Failures: CLEAR. No cryptographic operations, no secrets, no keys. No cleartext credential handling in any modified path."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-25T17:03:15Z",
+          "note": "A03 — Injection: CLEAR. The rollback reason field `f'Orchestrator stage error: {exc}'` is written to the ledger JSON file. The MCP server uses proper JSON serialization (zod schema), not string concatenation, so JSON injection is not possible. LLM-controlled exception messages are a theoretical prompt-injection surface, but the data path never reaches an interpreter or shell."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-25T17:03:15Z",
+          "note": "A04 — Insecure Design: CLEAR. _begin_work_state is allocated fresh per node_fn invocation — no cross-request state leakage. The double-wrap sentinel (_tracking_begin_work) prevents stacking. The input['args']['type'] extraction is guarded by isinstance(input, dict). The default-argument closure pattern for _orig avoids late-binding and is correct."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-25T17:03:15Z",
+          "note": "A05 — Security Misconfiguration: CLEAR. exc_info=True in error logs is appropriate for a local developer tool. The rollback reason string persisted to the ledger is a low-risk verbosity, not a misconfiguration."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-25T17:03:15Z",
+          "note": "A06 — Vulnerable Components: CLEAR. WP-007 introduces no new dependencies. All code uses Python stdlib (datetime, pathlib, logging) and existing project packages."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-25T17:03:15Z",
+          "note": "A07 — Auth Failures: Not applicable. This is a local developer tool with no authentication layer."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-25T17:03:15Z",
+          "note": "A08 — Data Integrity: CLEAR. object.__setattr__ monkey-patching of LangChain tool objects follows the existing project pattern (inject_project_path). Controlled scope; no supply-chain risk introduced."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-25T17:03:15Z",
+          "note": "A09 — Logging Failures: CLEAR. Rollback emits an INFO log on success and a WARNING log when cancel itself fails. The original error is always preserved. Audit trail is maintained."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-25T17:03:15Z",
+          "note": "A10 — SSRF: Not applicable. No URL fetching or HTTP requests in the modified paths."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-25T17:03:15Z",
+          "note": "Info: In orchestrator/src/nodes/__init__.py (rollback error handler, ~line 366), the cancel reason string embeds the Python exception message: `f'Orchestrator stage error: {exc}'`. If the LLM agent produces output that propagates into an exception message containing adversarially crafted content, that string is persisted to the ledger JSON file. Since the MCP server uses zod-validated JSON serialisation (not string concatenation), this does not constitute an injection risk. Recorded for awareness only; no remediation required."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-25T17:03:42Z",
+      "completed_at": "2026-03-25T17:04:12Z",
+      "duration_ms": 30000,
+      "summary": [
+        "PASS. WP-007 covers the same orchestrator/src/nodes/__init__.py rollback implementation reviewed in-depth during WP-006's code review. The Developer correctly identified that WP-006's implementation satisfies all 6 WP-007 ACs without additional changes. The code has been reviewed line-by-line: _STAGE_PIPELINE_TYPE, _install_begin_work_tracker with double-wrap guard and default-parameter closure capture, _begin_work_state tracker before the try block for except-block accessibility, and the rollback in the except block with graceful cancel failure handling. All patterns follow established codebase conventions. 4 unit tests in TestPipelineRollback exercise all meaningful paths via real node code invocation using _RecordingTool stubs. No blocking issues; no Fix-Forward changes needed."
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-25T17:06:32Z",
+      "completed_at": "2026-03-25T17:09:45Z",
+      "duration_ms": 193000,
+      "summary": [
+        "Updated orchestrator/docs/architecture.md to document the WP-007 pipeline rollback mechanism.",
+        "Step 4 of the Stage Node lifecycle now notes that _install_begin_work_tracker() is called after inject_project_path() to track ledger_begin_work invocations.",
+        "Step 7 now states that an exception triggers the pipeline rollback path when ledger_begin_work was previously called.",
+        "Added new '### Pipeline Rollback (Orphaned Pipeline Cleanup)' subsection after the Individual Stage Modules table — documents the 5-step rollback sequence (_begin_work_state detection, pipeline type resolution, ledger_cancel_pipeline with auto_cancelled=True, pipeline_rollback log emission, and original error preservation on rollback failure).",
+        "WP-006 documentation-forward: both pipeline_rollback and halted_wp_cancelled entries were already present in architecture.md (JSONL Log Entry Types table) and jsonl-log-schema.md — no changes needed for those items."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/docs/architecture.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-25T17:09:45Z",
+          "note": "orchestrator/docs/architecture.md: The new Pipeline Rollback subsection references _STAGE_PIPELINE_TYPE as a fallback for pipeline type resolution. If a future stage is added without a corresponding entry in _STAGE_PIPELINE_TYPE, the rollback will silently skip. A note in the subsection or a dedicated dev-guide entry would help prevent this drift."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-25T17:09:45Z",
+          "note": "WP-006 documentation-forward addressed: pipeline_rollback and halted_wp_cancelled were already present in both the architecture.md JSONL Log Entry Types table and jsonl-log-schema.md Action Values table — no further changes required."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-03-25T17:09:45Z",
+  "last_updated": "2026-03-25T17:09:45Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-03-25T16:57:00Z",
+      "notes": [
+        "All 6 acceptance criteria met and verified by 4 passing unit tests (test_rollback_called_when_begin_work_invoked_before_error, test_rollback_not_called_when_begin_work_not_invoked, test_rollback_run_log_contains_pipeline_rollback_entry, test_rollback_original_error_preserved_when_cancel_fails). Implementation in orchestrator/src/nodes/__init__.py: _install_begin_work_tracker wraps ledger_begin_work to set _begin_work_state, error handler checks the state and calls ledger_cancel_pipeline(auto_cancelled=True). Full test suite: 132/132 pass."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-03-25T17:00:16Z",
+      "notes": [
+        "All 6 ACs verified; 132/132 test_nodes.py tests pass. The 9 test_graph.py failures are pre-existing env issues (aiosqlite missing), not regressions. Implementation in orchestrator/src/nodes/__init__.py is clean; two low-priority improvement observations noted (debug log for skipped rollback guards; shared constants for stage-pipeline-type map). Ready for security-audit."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-25T17:03:15Z",
+      "notes": [
+        "All 6 ACs confirmed met. 0 Critical/High/Medium security findings. 1 Low/Info observation (exception message embedded in cancel reason is persisted to ledger JSON — no injection risk due to zod serialization, recorded for awareness only). Implementation in orchestrator/src/nodes/__init__.py is security-clean. Ready for code-review."
+      ]
+    }
+  ]
+}

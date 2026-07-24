@@ -1,0 +1,277 @@
+{
+  "work_package_id": "WP-009",
+  "work_package_file": "work/WP-009.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-008"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "All four routes are reachable and dispatch to the correct handler functions.",
+      "met": true
+    },
+    {
+      "criterion": "POST /api/orchestrator/start correctly parses the JSON body.",
+      "met": true
+    },
+    {
+      "criterion": "Route parameter :id is correctly extracted for kill and dismiss.",
+      "met": true
+    },
+    {
+      "criterion": "workspaceRoot is available in all handlers that need it.",
+      "met": true
+    },
+    {
+      "criterion": "No regressions in existing routes.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-05T15:17:58Z",
+      "completed_at": "2026-05-05T15:20:22Z",
+      "duration_ms": 144000,
+      "summary": [
+        "Wired all four orchestrator API routes into the Express-style router in mcp-server/gui/server.ts.",
+        "Added WORKSPACE_ROOT import from src/utils/ledger-root.js — used by POST /api/orchestrator/start so workspaceRoot is always available to the handler.",
+        "Added imports for handleOrchestratorStart, handleGetOrchestratorQueue, handleOrchestratorKill, handleOrchestratorDismiss from ./api.js.",
+        "GET /api/orchestrator/queue wired in matchRoute() — receives orchestratorLogsDir and ledgerRoot from the function signature.",
+        "POST /api/orchestrator/start wired as a special-case block in handleRequest() with full JSON body parsing; dispatches to handleOrchestratorStart(WORKSPACE_ROOT, body).",
+        "POST /api/orchestrator/kill/:id wired in handleRequest(); extracts :id via decodeURIComponent(path.slice(...)).",
+        "POST /api/orchestrator/dismiss/:id wired in handleRequest(); extracts :id the same way; responds with 204 No Content on success.",
+        "All 2096 tests pass (66 test files), including 23 tests in api-orchestrator.test.ts that cover WP-008 handler behaviour, and no regressions in any existing route."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/server.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T15:20:21Z",
+          "note": "The matchRoute() function uses a documented segment-count ordering comment block (lines ~190-200) to warn future maintainers about shadowing risk. The new GET /api/orchestrator/queue route (rest.length === 2, rest[0] === 'orchestrator') has no current sibling routes at that segment count, so there is no ordering concern. The comment block is already a useful convention — no change needed."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-05-05T15:20:21Z",
+          "note": "POST /api/orchestrator/start uses the module-level WORKSPACE_ROOT constant imported at the top of server.ts, consistent with how ORCHESTRATOR_LOGS_DIR is used. This keeps workspaceRoot out of the matchRoute() signature while remaining testable at the api.ts handler level. Clean pattern."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-05T15:20:52Z",
+      "completed_at": "2026-05-05T15:23:09Z",
+      "duration_ms": 137000,
+      "summary": [
+        "All four orchestrator routes verified in server.ts: GET /api/orchestrator/queue (matchRoute), POST /api/orchestrator/start (special-case with body parsing), POST /api/orchestrator/kill/:id and POST /api/orchestrator/dismiss/:id (special-case blocks with decodeURIComponent).",
+        "TypeScript compiles cleanly (tsc --noEmit produces no output).",
+        "All 2096 tests pass across 66 test files including 23 tests in api-orchestrator.test.ts (handler-level AC) and 642 tests across the entire GUI suite — no regressions.",
+        "AC verification: (1) All four routes dispatch to correct handlers ✓; (2) POST start body parsed with readBody + JSON.parse, VALIDATION_ERROR on invalid JSON ✓; (3) :id extracted via path.slice + decodeURIComponent ✓; (4) WORKSPACE_ROOT imported at module level, always available ✓; (5) No regressions ✓.",
+        "Edge-case analysis: empty/traversal IDs (handled by handler's NOT_FOUND guard), missing trailing slash on kill/dismiss paths (falls through to matchRoute → 404), invalid JSON body on start (400 VALIDATION_ERROR), double-encoded path traversal (decodes to / which handler rejects). All paths safe."
+      ],
+      "metrics": {
+        "tests_passed": 2096,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T15:23:09Z",
+          "note": "POST /api/orchestrator/kill and /dismiss without a trailing slash (e.g. /api/orchestrator/kill without /:id) fall through to matchRoute() which returns null → 404. This is correct behaviour, but worth noting for documentation consistency."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T15:23:09Z",
+          "note": "No server-level integration test for the orchestrator routes in server.ts (handleRequest). The handler-level tests in api-orchestrator.test.ts provide strong coverage. Adding one integration test exercising handleRequest directly (as done in api.test.ts) would give defence-in-depth but is not a hard blocker."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-05-05T15:23:44Z",
+      "completed_at": "2026-05-05T15:26:28Z",
+      "duration_ms": 164000,
+      "summary": [
+        "Reviewed mcp-server/gui/server.ts (sole modified file). 0 Critical, 0 High, 1 Medium (pre-existing readBody size-cap gap, noted). Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T15:26:28Z",
+          "note": "Info — A01 (Broken Access Control): Static file serving uses resolve(filePath) + startsWith(PUBLIC_DIR) containment guard (server.ts ~line 478). Path traversal outside PUBLIC_DIR is correctly rejected with 404. PASS."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T15:26:28Z",
+          "note": "Info — A01 (Broken Access Control): POST /api/orchestrator/start planPath traversal: user-supplied planPath is passed through resolve() then checkPathPrefix() in orchestrator-manager.ts (~line 556). The root path is normalised to always end with '/' before the startsWith check, preventing false matches against sibling directories (e.g. /workspace-evil). Orchestrator is not spawned if check fails. PASS."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T15:26:28Z",
+          "note": "Info — A01 (Broken Access Control): Queue entry IDs for kill/dismiss: assertSafeQueueId (api.ts line 127) rejects empty, '/', or '..' values. The ID is used only for string equality lookup in the in-memory queue array — it is never concatenated into a file path. The per-plan lock file removal uses entry.planPath from the trusted queue file, not the user-supplied ID. PASS."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T15:26:28Z",
+          "note": "Info — A03 (Injection): POST /api/orchestrator/start spawns via spawn(bin, [resolvedPlan], ...) with arguments passed as an array, bypassing the shell entirely. No shell injection vector. PASS."
+        },
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-05-05T15:26:28Z",
+          "note": "Medium — A04 (Insecure Design): readBody() (server.ts ~line 168) buffers the full request body in memory with no size limit. The new POST /api/orchestrator/start route adds one more call site to this pre-existing pattern (also used by PUT /api/config, PATCH /api/projects/:slug, POST /api/projects/:slug/reset). A local network client or a bug in the front-end could send an arbitrarily large body, causing unbounded memory growth. For a localhost-only dev tool the exploitability is low, but a Content-Length or cumulative byte cap (e.g. 1 MB) would eliminate the risk entirely. Recommendation: add a maxBytes guard inside readBody(). Does not block approval for this WP."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T15:26:28Z",
+          "note": "Info — A05 (Security Misconfiguration): CORS origin is locked to http://localhost:${port} (not a wildcard). Security headers (X-Content-Type-Options, X-Frame-Options, Referrer-Policy, CSP) are applied to all response paths including the new 204 dismiss response and OPTIONS preflight. Internal errors log to stderr only — no stack traces are returned to the client. PASS."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T15:26:28Z",
+          "note": "Info — A06 (Vulnerable & Outdated Components): WP-009 introduced no new npm dependencies. Only server.ts routing was modified. PASS."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-05T15:27:05Z",
+      "completed_at": "2026-05-05T15:29:22Z",
+      "duration_ms": 137000,
+      "summary": [
+        "WP-009 code review: PASS with one Fix-Forward applied. Reviewed mcp-server/gui/server.ts — all four orchestrator route additions (GET /api/orchestrator/queue in matchRoute(), POST /api/orchestrator/start, POST /api/orchestrator/kill/:id, POST /api/orchestrator/dismiss/:id as special-case blocks in handleRequest()) are correctly implemented. Implementation is consistent with established server patterns: body-parsing routes go to special-case blocks, parameter-free routes go to matchRoute(). Error handling, CORS/security headers (including on the 204 dismiss response), and WORKSPACE_ROOT usage all follow existing conventions. Fix-Forward applied: extended the route-map comment block in matchRoute() to enumerate the three new orchestrator POST routes handled outside it, maintaining the existing maintainability convention. TypeScript compiles cleanly after the edit. No blocking issues found."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/server.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-05T15:29:22Z",
+          "note": "Extended the route-map comment block at the bottom of matchRoute() (lines ~460-475) to enumerate the three new orchestrator POST routes (start, kill/:id, dismiss/:id) that are handled in handleRequest() rather than matchRoute(). The existing block only mentioned /api/config and /api/projects/:slug/reset; the new routes follow the same pattern but were not listed. Change is comment-only — no behavioural effect. TypeScript still compiles cleanly."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T15:29:22Z",
+          "note": "kill/:id and dismiss/:id are POST routes that don't require body parsing, yet they are wired as special-case blocks in handleRequest() rather than in matchRoute(). Functionally equivalent and consistent with path.slice() extraction used for PATCH /api/projects/:slug, but segment-based matching in matchRoute() would be marginally more precise (rejects extra path segments via rest.length check). Not a blocking concern for a localhost-only dev tool."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T15:29:22Z",
+          "note": "The handleRequest() special-case section now has 9 early-return blocks before the matchRoute() fallback. If more orchestrator routes are added (e.g. a GET /api/orchestrator/status/:id that needs no body but is kept alongside its siblings), a sub-router for /api/orchestrator/* could improve organisation. Not an issue at current scale."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-05T15:29:51Z",
+      "completed_at": "2026-05-05T15:34:20Z",
+      "duration_ms": 269000,
+      "summary": [
+        "Reviewed WP-009 implementation (gui/server.ts route wiring) and all pipeline artifacts (implementation, QA, security, code-review).",
+        "api-surface.md was already fully up-to-date: all four orchestrator handler signatures and their route-table entries (matchRoute vs special-case blocks) had been documented by the WP-008 documentation pass.",
+        "Updated file-tree.md gui/api.ts annotation to include the orchestrator lifecycle handlers (handleOrchestratorStart, handleGetOrchestratorQueue, handleOrchestratorKill, handleOrchestratorDismiss) added in WP-008.",
+        "Updated file-tree.md gui/server.ts annotation to reflect the two-tier routing architecture (matchRoute for segment-based dispatch vs special-case blocks in handleRequest for body-parsing and path-parameter routes).",
+        "Added constraints.md §71 documenting the matchRoute() route-map comment convention as a mandatory maintainability pattern: the comment block must be kept current whenever a new route is handled in handleRequest() rather than matchRoute(). Includes the current route-split table and the test coverage gap noted by the Reviewer and QA (no handleRequest()-level integration test for orchestrator routes)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/file-tree.md",
+          "mcp-server/docs/agents/project-manifest/constraints.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T15:34:20Z",
+          "note": "api-surface.md was already current — all four handler signatures and the route table (including the matchRoute-vs-special-case distinction) were documented during the WP-008 documentation pass. No change needed there."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T15:34:20Z",
+          "note": "Addressed Reviewer forward (1): added constraints.md §71 documenting the route-map comment block in matchRoute() as a maintainability convention to preserve when adding future routes."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T15:34:20Z",
+          "note": "Addressed Reviewer forward (2) / QA observation: the handleRequest()-level test coverage gap for orchestrator routes is now captured in §71 of constraints.md so future contributors are aware of it without it being a blocking issue."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-05T15:34:20Z",
+  "last_updated": "2026-05-05T15:34:20Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-05T15:20:22Z",
+      "notes": [
+        "WP-009 route wiring is complete. All four orchestrator routes are live in server.ts. The QA agent should verify: (1) POST /api/orchestrator/start returns 400 on missing planPath, (2) GET /api/orchestrator/queue returns an array, (3) POST /api/orchestrator/kill/:id handles path-traversal IDs with 404, (4) POST /api/orchestrator/dismiss/:id returns 204. Existing test file tests/gui/api-orchestrator.test.ts covers handler-level AC; server-level integration tests (if desired) should call handleRequest() directly as done in tests/gui/api.test.ts."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-05-05T15:23:09Z",
+      "notes": [
+        "WP-009 passes QA. All five AC are met. TypeScript clean, 2096/2096 tests pass. Route wiring in server.ts is correct: GET /api/orchestrator/queue via matchRoute; POST start/kill/:id/dismiss/:id as special-case blocks in handleRequest. Security reviewer should note: kill and dismiss IDs are decoded with decodeURIComponent before being passed to handlers which validate for / and .. — safe against path traversal. WORKSPACE_ROOT is a module-level constant, not user-controlled input."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-05T15:26:28Z",
+      "notes": [
+        "WP-009 passes security audit. 0 Critical/High findings. One Medium pre-existing observation (readBody() missing size cap) recorded for awareness — does not block approval. All five AC confirmed met. Route wiring in server.ts is clean: CORS scoped to localhost, security headers applied uniformly, spawn() uses array args (no shell injection), planPath traversal blocked by checkPathPrefix(), queue IDs validated by assertSafeQueueId() and used only for equality lookup. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-05T15:29:22Z",
+      "notes": [
+        "WP-009 passes code review. One Fix-Forward applied: route-map comment in matchRoute() extended to list the three new orchestrator POST routes handled outside it — comment-only, TypeScript still clean. All five AC confirmed met. No blocking findings. Documentation agent: consider noting (1) the route-map comment convention in matchRoute() as a maintainability pattern to preserve when adding future routes, and (2) the QA-flagged gap that there are no server-level integration tests for orchestrator routes via handleRequest() — handler-level coverage in api-orchestrator.test.ts is strong but a handleRequest()-level test would give defence-in-depth."
+      ]
+    }
+  ]
+}

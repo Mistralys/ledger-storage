@@ -1,0 +1,203 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-002.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "After launching an orchestrator run, the \"Waiting for the run to appear in the queue below...\" success banner is automatically cleared once the queue table renders with at least one entry.",
+      "met": true
+    },
+    {
+      "criterion": "Error banners in `#orch-preflight-results` are NOT cleared by this logic (only the success banner is affected).",
+      "met": true
+    },
+    {
+      "criterion": "If the queue is empty on refresh, the banner remains visible (it is only cleared on a non-empty render).",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-20T07:58:05Z",
+      "completed_at": "2026-05-20T07:59:07Z",
+      "duration_ms": 62000,
+      "summary": [
+        "Added banner-clearing logic inside `renderQueueTable` in `orchestrator.js`. When the queue renders with at least one entry, `resultsEl.querySelector('.success-banner')` is called and the element removed if found. The logic lives in the non-empty branch only, so an empty queue refresh leaves the banner in place. Error banners (class `error-banner`) are never targeted — only `.success-banner` is removed. The implementation uses the existing `resultsEl` closure variable already in scope within `renderOrchestrator`."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/orchestrator.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-20T07:59:07Z",
+          "note": "The `statusPollTimer` in the Start Run handler (lines ~143–161) polls for a run-status tombstone but never clears the interval reference on view teardown. If the user navigates away while the poll is in flight, `resultsEl` will have been replaced and the callback will silently no-op (because `renderOrchestrator` reinitialises `resultsEl` on each call), but the interval itself continues running. Adding a cleanup registration (similar to `_orchLogPreviewCleanups`) for this timer would prevent the orphaned interval. Low-priority since the effect is benign, but it is mild resource debt."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-05-20T07:59:07Z",
+          "note": "The `renderQueueTable` function has grown to ~100 lines and mixes HTML string building, DOM injection, event binding, and now state mutation (banner clearing). Consider splitting into smaller helpers (e.g. `_buildQueueHtml`, `_bindQueueEvents`, `_mountLogPreviews`) in a future refactor to improve readability and testability."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-20T08:00:33Z",
+      "completed_at": "2026-05-20T08:03:03Z",
+      "duration_ms": 150000,
+      "summary": [
+        "All 3 acceptance criteria verified against the implementation in mcp-server/gui/public/views/orchestrator.js (lines 199-204).",
+        "AC-1 PASS: renderQueueTable clears the .success-banner element from #orch-preflight-results when entries.length > 0. Code path verified at lines 199-204.",
+        "AC-2 PASS: Only .success-banner is targeted via querySelector — error banners (.error-banner) are never touched by this logic.",
+        "AC-3 PASS: Banner-clearing code lives exclusively in the non-empty branch; the empty-queue early-return (line 194-197) never touches resultsEl.",
+        "Build check PASS — orchestrator.js is valid vanilla JS with no syntax errors.",
+        "Regression suite PASS — 41 orchestrator-widgets tests + 25 orchestrator-view tests all green after the change.",
+        "Edge cases analysed: stale resultsEl on navigation (safe, no-op), multiple banners (impossible given single innerHTML assignment), null resultsEl (impossible given DOM structure)."
+      ],
+      "metrics": {
+        "tests_passed": 66,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "coverage-gap",
+          "priority": "medium",
+          "timestamp": "2026-05-20T08:03:03Z",
+          "note": "No dedicated test cases exist for the new banner-clearing behavior. The orchestrator-view.test.ts suite does not cover the scenario: 'Start Run → success banner appears → queue renders with entries → banner cleared'. This means a future regression in this path would not be caught automatically. Consider adding 2–3 tests to orchestrator-view.test.ts: (1) success banner removed when renderQueueTable receives non-empty entries, (2) error banner NOT removed when renderQueueTable receives non-empty entries, (3) banner remains when queue is empty."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-20T08:03:03Z",
+          "note": "The resultsEl closure used in renderQueueTable is captured at renderOrchestrator invocation time. If renderOrchestrator is ever called again (re-render), the old closure's resultsEl reference becomes stale. The current code already handles this correctly because _orchLogPreviewCleanups are drained on re-render and renderQueueTable is only called via refreshQueue (bound in the same render call). No action needed, but worth documenting for maintainers."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-20T08:03:22Z",
+      "completed_at": "2026-05-20T08:04:14Z",
+      "duration_ms": 52000,
+      "summary": [
+        "Code review PASS. The 5-line banner-clearing addition at orchestrator.js lines 199–204 is minimal, correct, and well-scoped.",
+        "Maintainability: Clean, self-documenting with an inline comment. The .success-banner class selector precisely targets the element written at line 130. No magic strings.",
+        "Best Practices: Correct use of querySelector + element.remove(). Closure over resultsEl is appropriate and consistent with the surrounding code. Follows existing file patterns.",
+        "Performance: No concerns. querySelector on a small DOM subtree is negligible.",
+        "Future Context: The existing Developer-noted debt (orphaned statusPollTimer, renderQueueTable complexity) is already documented in the implementation pipeline. No new architectural concerns introduced by this change.",
+        "AC-1, AC-2, AC-3 all met by the implementation as verified by the QA pipeline (66/66 tests passing). The success banner is cleared only in the non-empty branch; error banners are never touched; empty-queue refreshes leave the banner intact.",
+        "No blocking issues found. No Fix-Forward (Tier 2) changes applied — code is already clean. One Documentation-Forward (Tier 3) tag added for test coverage gap."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/orchestrator.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-20T08:04:14Z",
+          "note": "Lines 199–204: resultsEl.querySelector('.success-banner') has no null guard on resultsEl itself. This is architecturally safe — resultsEl is bound unconditionally from the static skeleton at line 64 and renderQueueTable is only reachable within the same renderOrchestrator scope — but a comment to that effect would help future maintainers who might refactor renderQueueTable into a standalone function."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-20T08:04:14Z",
+          "note": "[documentation-forward] No dedicated test cases exist for the new banner-clearing behaviour in orchestrator-view.test.ts. The Documentation agent should flag this gap for the QA/Developer team: add tests for (1) success banner removed when renderQueueTable receives non-empty entries, (2) error banner NOT removed, (3) banner remains when queue is empty. Reference: QA pipeline coverage-gap comment."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-20T08:04:14Z",
+          "note": "No observations beyond the above — the core change (lines 199–204) is clean, minimal, and architecturally consistent with the surrounding code."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-20T08:04:33Z",
+      "completed_at": "2026-05-20T08:06:51Z",
+      "duration_ms": 138000,
+      "summary": [
+        "Updated mcp-server/README.md orchestrator view bullet to describe the new auto-clearing success banner behavior (banner cleared once Run Queue renders with ≥1 entry; error banners unaffected; banner preserved when queue is empty). Added v1.30.2 changelog entry in mcp-server/changelog.md. CTX context regenerated — .context/mcp-server/overview.md updated to reflect README changes."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/README.md",
+          "mcp-server/changelog.md",
+          ".context/mcp-server/overview.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-20T08:06:51Z",
+          "note": "[documentation-forward addressed] The code-review pipeline flagged a test coverage gap via documentation-forward: orchestrator-view.test.ts has no dedicated tests for the banner-clearing path. Recommended test cases for a follow-up: (1) success banner removed when renderQueueTable receives non-empty entries, (2) error banner NOT removed when renderQueueTable receives non-empty entries, (3) banner remains when queue is empty on refresh. This gap was noted in both the QA and code-review pipelines. No documentation change is applicable here — flagged for Developer/QA follow-up."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-20T08:06:51Z",
+          "note": "The Developer noted mild resource debt: statusPollTimer (lines 143–160) is not cleared on view teardown. Effect is benign (the callback no-ops on stale resultsEl), but adding a cleanup registration to _orchLogPreviewCleanups would be consistent with the existing pattern. Flagged for a potential follow-up WP if the pattern recurs."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-20T08:06:51Z",
+  "last_updated": "2026-05-20T08:06:51Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-20T07:59:07Z",
+      "notes": [
+        "Single-file change in `mcp-server/gui/public/views/orchestrator.js`. Added 5 lines inside `renderQueueTable` at the top of the non-empty branch. The success banner is identified by class `.success-banner` and removed from `#orch-preflight-results` (via the `resultsEl` closure) only when entries.length > 0. Error banners use class `error-banner` and are unaffected. No new dependencies, no test suite changes needed for this vanilla-JS view file."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-20T08:03:03Z",
+      "notes": [
+        "Implementation in orchestrator.js lines 199-204 is clean, minimal, and correct. The 5-line banner-clearing addition is well-scoped to the non-empty branch of renderQueueTable and uses the existing resultsEl closure appropriately. Consider asking the Developer or QA to add test coverage for the banner-clearing path in orchestrator-view.test.ts before the code-review stage (medium-priority gap noted in comments)."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-20T08:04:14Z",
+      "notes": [
+        "All 3 acceptance criteria met. The implementation is clean and minimal — no changes required.",
+        "Open documentation-forward item: orchestrator-view.test.ts lacks test coverage for the banner-clearing path. Documentation agent should note this gap for Developer/QA to address in a follow-up.",
+        "The Developer's debt note about the orphaned statusPollTimer (lines 143–160) is low-priority but worth tracking — a cleanup registration on view teardown would prevent the orphaned interval. Consider a follow-up WP if this pattern recurs."
+      ]
+    },
+    {
+      "from_agent": "Documentation",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-05-20T08:06:51Z",
+      "notes": [
+        "Documentation pipeline PASS. README and changelog updated. Test coverage gap for the banner-clearing path in orchestrator-view.test.ts flagged for Developer/QA follow-up (3 recommended test cases in pipeline comments)."
+      ]
+    }
+  ]
+}

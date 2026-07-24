@@ -1,0 +1,176 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "archiveDocuments() is a public async method on LedgerStore",
+      "met": true
+    },
+    {
+      "criterion": "It correctly copies each listed file from planPath to storageDir",
+      "met": true
+    },
+    {
+      "criterion": "Missing source files are silently skipped (warning to stderr, no thrown error)",
+      "met": true
+    },
+    {
+      "criterion": "Returns { archived: string[], skipped: string[] }",
+      "met": true
+    },
+    {
+      "criterion": "All 4 unit tests pass (copy succeeds, source missing, mixed, empty array)",
+      "met": true
+    },
+    {
+      "criterion": "All existing ledger-store tests continue to pass",
+      "met": true
+    }
+  ],
+  "revision": 2,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-02-28T15:47:50Z",
+      "completed_at": "2026-02-28T15:49:07Z",
+      "summary": [
+        "Added copyFile to fs/promises import in ledger-store.ts",
+        "Implemented archiveDocuments() public async method on LedgerStore that copies files from planPath to storageDir, skips missing sources with a stderr warning, and returns { archived, skipped }",
+        "Added 4 unit tests in the archiveDocuments describe block covering: copy succeeds, source missing, mixed, and empty array scenarios",
+        "All 28 ledger-store tests pass; full suite of 519 tests passes with no regressions"
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/storage/ledger-store.ts",
+          "mcp-server/tests/storage/ledger-store.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-28T15:49:30Z",
+          "note": "In ledger-store.test.ts, the archiveDocuments beforeEach/afterEach performs a manual readdir+rm loop to clean up files written to store.planPath. This is slightly fragile — if a future test writes subdirectories to planPath the loop will fail silently (rm with { force: true } on a directory without { recursive: true } does nothing). A simpler cleanup would be rm(store.planPath, { recursive: true, force: true }) followed by mkdir(store.planPath) in the next test's beforeEach; this mirrors the pattern already used for tempLedgerRoot."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-02-28T15:49:30Z",
+          "note": "The archiveDocuments tests use repeated await (await import('fs/promises')) inline calls instead of adding the needed fs/promises symbols to the top-level import statement (which already imports mkdtemp, rm, readFile). This was a pragmatic choice to avoid touching the outer import, but it slightly inconsistent with the existing test style. A clean follow-up would consolidate: add writeFile and mkdir to the top-level import."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-02-28T16:05:43Z",
+      "completed_at": "2026-02-28T16:07:04Z",
+      "summary": [
+        "Build check: TypeScript compiles cleanly, no errors",
+        "AC-1: archiveDocuments() confirmed as public async method on LedgerStore (ledger-store.ts line 288)",
+        "AC-2: Files correctly copied from planPath to storageDir via copyFile(join(planPath,fn), join(storageDir,fn))",
+        "AC-3: Missing source files silently skipped — catch block logs to stderr and appends to skipped[], no thrown error",
+        "AC-4: Return type { archived: string[], skipped: string[] } confirmed",
+        "AC-5: All 4 unit tests pass — copy succeeds, source missing, mixed, empty array",
+        "AC-6: All 28 ledger-store tests pass, full 529-test suite passes with zero regressions",
+        "Edge case: catch block catches ALL errors (not only ENOENT), so storageDir permission errors or other I/O failures are also silently skipped — acceptable for the archiving use-case but noted",
+        "Edge case: no path-traversal guards on filenames passed to archiveDocuments() — callers must sanitize inputs; acceptable as an internal tool method"
+      ],
+      "metrics": {
+        "test_coverage": "4/4 archiveDocuments unit tests + 28 ledger-store tests pass",
+        "tests_passed": 529,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-28T17:06:00Z",
+          "note": "archiveDocuments() catch block catches all Error types (not just ENOENT). A storageDir permissions failure or disk-full condition would be silently swallowed and the filename added to skipped[] with no distinction from a missing-source skip. For production hardening consider differentiating ENOENT (source not found) from other I/O errors and rethrowing non-ENOENT errors."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-28T17:06:00Z",
+          "note": "Tests use repeated inline `await import('fs/promises')` calls (noted by the Developer in the implementation pipeline). Clean-up follow-up: consolidate writeFile and mkdir into the top-level import statement to match the existing test style — no functional impact, pure readability."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-02-28T16:07:50Z",
+      "completed_at": "2026-02-28T16:08:51Z",
+      "summary": [
+        "Reviewed archiveDocuments() implementation in ledger-store.ts and corresponding unit tests in ledger-store.test.ts",
+        "Implementation is clean, well-documented, and follows established project patterns (named fs/promises imports, JSDoc, section header, explicit return type)",
+        "No blocking issues found across all four Review Dimensions: Maintainability, Best Practices, Security/Performance, and Future Context",
+        "Three non-blocking observations logged; none prevent approval"
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-02-28T16:08:30Z",
+          "note": "ledger-store.ts archiveDocuments(): the console.error message reads 'Archive skipped (source not found)' but the catch block catches ALL errors — not just ENOENT. If copyFile fails due to a destination-side error (storageDir missing, permission denied, disk full), the log message actively misleads callers into thinking the source file was absent. Non-blocking for this scope (existing AC only require the skip behavior, and QA confirmed acceptable), but the message should be updated to something like 'Archive skipped (copy failed)' or differentiate ENOENT vs other errors."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-28T16:08:30Z",
+          "note": "ledger-store.ts archiveDocuments(): no path-traversal guard on filenames. If a caller passes '../../../etc/passwd' the join(planPath, filename) will resolve outside planPath. This is documented by QA as 'callers must sanitize', which is acceptable for an internal method. A one-liner defensive check `if (path.basename(fn) !== fn) { skipped.push(fn); continue; }` would harden the method for free with no behavioral changes for valid inputs."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-28T16:08:30Z",
+          "note": "ledger-store.test.ts archiveDocuments tests: the 'copy succeeds' test does not spy on console.error for the non-ENOENT path, and the 'source missing' test does not assert that console.error was called with the expected message. Adding a vi.spyOn(console, 'error') assertion would lock in the observable side-effect contract. Non-blocking — functional correctness is fully covered."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-02-28T16:13:26Z",
+      "completed_at": "2026-02-28T16:15:22Z",
+      "summary": [
+        "Added archiveDocuments() to the LedgerStore class definition in api-surface.md: signature, parameter semantics (copies filenames from planPath to storageDir, best-effort), and return type { archived, skipped }. Existing docs required no other changes for this WP."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-02-28T17:30:00Z",
+          "note": "No code is outdated in api-surface.md; only the LedgerStore class was missing the new method entry. Note to future agents: the catch-all error handling in archiveDocuments() (all errors counted as 'skipped') is mentioned inline in the doc to prevent confusion about the 'not found' wording in stderr output."
+        }
+      ]
+    }
+  ],
+  "handoff_notes": [
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-02-28T16:07:04Z",
+      "notes": [
+        "WP-001 implementation is functionally correct and fully tested. All 6 AC are met. Minor improvement suggestions logged but are non-blocking. Safe to proceed to code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-02-28T16:08:51Z",
+      "notes": [
+        "WP-001 code review PASS. Implementation is clean and correct. Three non-blocking observations logged: (1) misleading error message when non-ENOENT errors are caught, (2) no path-traversal guard on filenames, (3) no console.error spy in tests. None are blocking. Safe to proceed to Documentation."
+      ]
+    }
+  ]
+}
