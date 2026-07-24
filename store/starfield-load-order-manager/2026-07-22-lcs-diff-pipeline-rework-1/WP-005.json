@@ -1,0 +1,221 @@
+{
+  "work_package_id": "WP-005",
+  "work_package_file": "work/WP-005.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-003"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "The Step 6b block in DiffService.cs no longer contains the .Where(s => !assignedShifted.Contains(s) && s.CurrentNumber >= inserted.CurrentNumber).OrderBy(s => s.CurrentNumber).FirstOrDefault() LINQ chain for finding the first affected shifted mod.",
+      "met": true
+    },
+    {
+      "criterion": "The replacement code uses a two-pointer or index-advancing approach (a shiftedByCurPos list sorted by CurrentNumber with an advancing shiftedIdx pointer, or equivalent linear-scan mechanism).",
+      "met": true
+    },
+    {
+      "criterion": "All existing tests (including the 10 ClassifyChanges isolation tests from WP-002, especially 9j: insertion with dependent-change attribution) continue to pass.",
+      "met": true
+    },
+    {
+      "criterion": "The amortized time complexity for the insertion attribution loop is O(n) across all insertions when attribution ranges are disjoint, down from the previous O(n²) worst case of repeated full-list scans.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-07-22T13:29:43Z",
+      "completed_at": "2026-07-22T13:32:57Z",
+      "duration_ms": 194000,
+      "summary": [
+        "Replaced the O(n²) LINQ pattern in Step 6b of ClassifyChanges (Services/DiffService.cs) with a two-pointer scan approach.",
+        "The old code called .Where(s => !assignedShifted.Contains(s) && s.CurrentNumber >= inserted.CurrentNumber).OrderBy(s => s.CurrentNumber).FirstOrDefault() for every insertion — an O(k) scan per insertion yielding O(r×k) total for firstAffected lookups.",
+        "The new code pre-sorts shiftedByRefPos by CurrentNumber into a shiftedByCurPos list and maintains a single advancing shiftedIdx pointer. Because insertedEntries is sorted ascending by CurrentNumber, shiftedIdx never retreats — the total cost of all firstAffected lookups is O(k) amortized.",
+        "The inner range-attribution foreach over shiftedByRefPos (sorted by ReferenceNumber) is preserved unchanged — it remains correct and its cost is O(r×k) in the worst case but O(k) total when insertion attribution ranges are disjoint.",
+        "The nextRemoved lookup per insertion (O(r) LINQ scan over removedEntries) is preserved as-is per the WP spec, which explicitly defers O(log r) binary-search optimization.",
+        "All 4 acceptance criteria are met: (1) old LINQ chain removed, (2) two-pointer with shiftedIdx pointer used, (3) 439/440 tests pass (1 pre-existing encoding bug unrelated to this WP), (4) amortized O(k) firstAffected lookups replace the previous O(r×k) LINQ scans."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "Services/DiffService.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-22T13:32:57Z",
+          "note": "Services/DiffService.cs Step 6b: the two-pointer approach preserves the existing shiftedByRefPos sorted list for range attribution and adds a separate shiftedByCurPos list for the firstAffected lookup. The two lists hold references to the same DiffLineModel objects — no duplication of data, only a different sort order on the same set of references."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-22T13:32:57Z",
+          "note": "Services/DiffService.cs Step 6b: the nextRemoved lookup per insertion is still O(r) (a LINQ Where+OrderBy+FirstOrDefault over removedEntries). The WP spec explicitly defers this to a future O(log r) binary search optimization. For typical mod-list sizes this is negligible and the current approach is simple and correct."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-22T13:32:57Z",
+          "note": "Services/DiffService.cs Step 6b: the `break` guard after `shiftedIdx >= shiftedByCurPos.Count` is correctly placed before accessing shiftedByCurPos[shiftedIdx], and the outer foreach over insertedEntries will exit early once all shifted mods are consumed — preventing unnecessary iterations over insertions that cannot affect any remaining unassigned shifted mods."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-07-22T13:33:21Z",
+      "completed_at": "2026-07-22T13:35:58Z",
+      "duration_ms": 157000,
+      "summary": [
+        "Full Verification Stack executed against WP-005 (Step 6b insertion attribution O(n²) optimization).",
+        "AC1 PASS: Grepped DiffService.cs — the old LINQ chain '.Where(s => !assignedShifted.Contains(s) && s.CurrentNumber >= inserted.CurrentNumber).OrderBy(s => s.CurrentNumber).FirstOrDefault()' is absent from Step 6b.",
+        "AC2 PASS: shiftedByCurPos list (sorted by CurrentNumber) and advancing shiftedIdx pointer confirmed at lines 468–490 of Services/DiffService.cs.",
+        "AC3 PASS: Test run 439/440 pass. ClassifyChanges_InsertionWithDependents_AttributesDependentsToInsertion (9j) PASSED. All 10 ClassifyChanges isolation tests PASSED. All DiffService and ScenarioTests PASSED. Sole failure (ProfileServiceTests.GenerateProfileId_AccentedCharacters_RemovesAccents) is the pre-existing file-encoding bug confirmed in WP-001 and WP-003, unrelated to WP-005.",
+        "AC4 PASS: Two-pointer analysis confirms amortized O(k) for firstAffected lookups — shiftedIdx starts at 0 and only advances; insertedEntries is sorted ascending, so shiftedIdx never retreats. Inner foreach over shiftedByRefPos is O(k) total when attribution ranges are disjoint (each shifted mod is assigned once, then skipped by the assignedShifted guard on subsequent passes).",
+        "Edge cases verified: (1) null CurrentNumber handled — nullable int comparison returns false for null, leaving null-CurrentNumber entries at end of sorted list consistent with int.MaxValue sentinel; (2) break at shiftedIdx >= Count correctly exits the entire outer foreach since no further insertions can find a firstAffected; (3) shiftedIdx not reset per-insertion is correct by design — two-pointer amortization depends on this; (4) shiftedIdx entry at firstAffected position is not pre-incremented, so next insertion's while loop re-evaluates it via assignedShifted guard after range-attribution."
+      ],
+      "metrics": {
+        "tests_passed": 439,
+        "tests_failed": 1
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-22T13:35:58Z",
+          "note": "Services/DiffService.cs L482: The while-loop condition 'shiftedByCurPos[shiftedIdx].CurrentNumber < insertedCurPos' uses a nullable int comparison. When CurrentNumber is null (which cannot occur for shifted lines per the construction invariant and Debug.Assert at L409), C# nullable semantics return false for null < int, so null-CurrentNumber entries would be treated as 'at infinity' — consistent with the int.MaxValue sort sentinel at L469. Behavior is safe; a defensive comment noting this invariant would improve maintainability, but is not a defect."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-22T13:35:58Z",
+          "note": "Services/DiffService.cs Step 6b L495–498: The nextRemoved O(r) LINQ scan per insertion is preserved as per spec. For completeness, a future binary-search optimization (deferred by the WP) would drop this to O(log r) per insertion but is not required at current mod-list scales."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-22T13:35:58Z",
+          "note": "No edge-case defects found. Scenarios tested mentally: (a) zero insertions — outer foreach body never executes; (b) zero shifted mods — shiftedByCurPos is empty, shiftedIdx >= Count on first check, break exits immediately; (c) multiple insertions with disjoint attribution ranges — each shifted mod assigned once, assignedShifted guard prevents re-attribution; (d) insertion at exact position of a shifted mod — condition is '< insertedCurPos' (strict less-than) so the shifted mod at the same position is correctly included as firstAffected."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-07-22T13:36:27Z",
+      "completed_at": "2026-07-22T13:38:22Z",
+      "duration_ms": 115000,
+      "summary": [
+        "Code review PASS with one Fix-Forward applied and one Documentation-Forward tagged. The Step 6b two-pointer implementation is architecturally sound, well-commented, correctly amortized, and aligns with the established classification pipeline ordering (KN-0001). No blocking issues found.",
+        "Maintainability: Excellent. Block comment at L452–460 explains the two-list rationale, the amortization guarantee, and the ascending-sort precondition clearly. The shiftedByRefPos/shiftedByCurPos naming pair is symmetric and self-describing. The shiftedIdx declaration scope and the break guard are both explained inline.",
+        "Best Practices: Correct use of ReferenceEqualityComparer.Instance throughout (consistent with prior WP pattern). int.MaxValue sentinel for null CurrentNumber in sort is consistent with the same sentinel used in the final result.Sort(). Two-pointer precondition (insertedEntries sorted ascending) is guaranteed by the preceding .OrderBy() and documented.",
+        "Performance: Amortized O(k) for firstAffected lookups confirmed. shiftedIdx advances monotonically; at most k total increments across all insertions. nextRemoved O(r) LINQ scan deferred per spec — acceptable at current scale. Inner foreach O(k) total for disjoint attribution ranges.",
+        "Future Context: Change is confined to Step 6b; classification pipeline ordering invariant (KN-0001) preserved. removedEntries is already sorted for a future binary-search upgrade. Two-list pattern is now established and commented, making future extensions straightforward.",
+        "Fix-Forward applied: Extended the Debug.Assert block at the top of the Step 6 shiftedLines guard (L409) to also assert CurrentNumber.HasValue for all shifted lines, covering the invariant required by the Step 6b two-pointer sort (shiftedByCurPos). Non-behavioral — Debug.Assert is compiled out in Release."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "Services/DiffService.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-07-22T13:38:22Z",
+          "note": "Services/DiffService.cs L409-412: Extended the existing Debug.Assert (which covered ReferenceNumber.HasValue) to also assert CurrentNumber.HasValue for all shifted lines. The Step 6b two-pointer sort (shiftedByCurPos, L468-470) relies on CurrentNumber being non-null — without the assert, a future regression where curPos is null would produce incorrect sort ordering (null sorts to int.MaxValue sentinel) without a clear diagnostic. The new assert fires immediately in Debug builds if the construction invariant is ever violated. Non-behavioral change — Debug.Assert is a no-op in Release builds."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-07-22T13:38:22Z",
+          "note": "[documentation-forward] Services/DiffService.cs L480-485 (Step 6b while-loop): The while-loop advances shiftedIdx for two logically distinct reasons — (1) the entry is already assigned to a prior causal change (assignedShifted.Contains), and (2) the entry's CurrentNumber is below the current insertion position. Both are combined in a single || clause. A brief inline comment distinguishing the two advancement reasons (e.g., '// Skip entries already attributed in Step 6a or by a prior insertion' and '// Skip entries that precede this insertion position (won't be affected)') would improve readability for future contributors unfamiliar with two-pointer patterns."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-07-22T13:38:50Z",
+      "completed_at": "2026-07-22T13:41:31Z",
+      "duration_ms": 161000,
+      "summary": [
+        "Addressed the documentation-forward item from code review: added inline comments to the Step 6b while-loop in DiffService.cs (L480-485) distinguishing the two advancement reasons — (1) already attributed to a prior causal change, and (2) precedes this insertion's position. The || clause is now annotated inline and a preceding block comment explains both reasons in full.",
+        "Updated api-surface.md ClassifyChanges description to document the Step 6a/6b sub-step split and the two-pointer amortization guarantee for Step 6b.",
+        "Updated api-surface.md Step 6 Debug.Assert bullet to reflect that two asserts now fire: one for ReferenceNumber.HasValue (pre-existing, replacing the former vacuous filter) and one for CurrentNumber.HasValue (new fix-forward from WP-005 code review, covering the invariant required by the shiftedByCurPos sort).",
+        "Added ClassifyChangesTests.cs to file-tree.md — this file was created in WP-003 but was missing from the manifest file tree."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "Services/DiffService.cs",
+          "Docs/Agents/project-manifest/api-surface.md",
+          "Docs/Agents/project-manifest/file-tree.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-22T13:41:31Z",
+          "note": "Services/DiffService.cs L480-485: The documentation-forward item requested two separate comments — one per advancement reason. The applied approach uses trailing inline comments on each condition in the || clause plus a preceding block comment explaining both reasons. This is slightly more compact than two consecutive stand-alone comments and avoids widening the line further, while still clearly associating each label with its condition."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-22T13:41:31Z",
+          "note": "Docs/Agents/project-manifest/api-surface.md: The Step 6 description now explicitly names Steps 6a and 6b and documents the two-pointer amortization (O(k) for firstAffected lookups). This brings the manifest in sync with the implementation's block comment at DiffService.cs L452-463."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-22T13:41:31Z",
+          "note": "No documentation gaps remain from the documentation-forward item. README.md and data-flows.md required no changes — the Monitoring & Diffing section already correctly describes the pipeline at a high level and does not reference Step 6 internals."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-07-22T13:41:31Z",
+  "last_updated": "2026-07-22T13:41:31Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-07-22T13:32:57Z",
+      "notes": [
+        "AC1–AC4 all met. Old LINQ chain removed; two-pointer with shiftedByCurPos list and shiftedIdx advancing pointer implemented in its place.",
+        "Test run: 439/440 pass — the 1 failure (ProfileServiceTests.GenerateProfileId_AccentedCharacters_RemovesAccents) is the pre-existing file-encoding bug confirmed in WP-001 and WP-003, not a regression.",
+        "Test 9j (insertion with dependents) passes: single insertion at pos 2 correctly attributes b.esm and c.esm as DependentChanges.",
+        "The nextRemoved O(r) LINQ lookup per insertion was intentionally left unchanged per WP-005 spec; the WP notes 'optimizing it to O(log r) via binary search is not justified at current scale'.",
+        "No build errors introduced — the change is limited to the Step 6b block in ClassifyChanges."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-07-22T13:35:58Z",
+      "notes": [
+        "All 4 ACs verified and met. Implementation is correct, clean, and well-commented. The two-pointer approach is sound: shiftedIdx advances monotonically across all insertions (sorted ascending by CurrentNumber), achieving amortized O(k) for firstAffected lookups. Test 9j (insertion with dependents) passes — single insertion at pos 2 correctly attributes b.esm and c.esm as DependentChanges. 439/440 tests pass; the 1 failure is the pre-existing ProfileServiceTests encoding bug unrelated to this WP. No regressions introduced. The inner foreach over shiftedByRefPos and the nextRemoved LINQ scan are preserved unchanged as per spec. No code-review blockers identified — only low-priority improvement notes documented in comments."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-07-22T13:38:22Z",
+      "notes": [
+        "All 4 ACs confirmed met. PASS with Fix-Forward (Debug.Assert extended to cover CurrentNumber invariant) and one Documentation-Forward tagged (while-loop dual-advancement-reason comment). No blocking issues. The two-pointer implementation is clean, well-commented, and correct. The nextRemoved O(r) LINQ scan is intentionally preserved per spec. The inner foreach over shiftedByRefPos is unchanged. Ready for Documentation pipeline."
+      ]
+    }
+  ]
+}

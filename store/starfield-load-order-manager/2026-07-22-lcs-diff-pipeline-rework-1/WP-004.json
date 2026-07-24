@@ -1,0 +1,239 @@
+{
+  "work_package_id": "WP-004",
+  "work_package_file": "work/WP-004.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-003"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "DiffService.cs Step 1 LCS loop contains Debug.Assert(reference[ri].LineNumber.HasValue) (or equivalent assertion covering current[ci] as well) before the existing LineNumber ?? (ri + 1) fallback, with a comment explaining the invariant.",
+      "met": true
+    },
+    {
+      "criterion": "DiffService.cs Step 3 remainingNew loop contains Debug.Assert(m.LineNumber.HasValue) (or equivalent) before the existing LineNumber ?? 0 fallback, with a comment explaining why the sentinel differs from Step 1.",
+      "met": true
+    },
+    {
+      "criterion": "The .Where(s => s.ReferenceNumber.HasValue) filter on shiftedLines in Step 6 is removed, replaced by a Debug.Assert verifying all shifted lines have ReferenceNumber.",
+      "met": true
+    },
+    {
+      "criterion": "using System.Diagnostics; is present in the file's using directives.",
+      "met": true
+    },
+    {
+      "criterion": "All existing tests (including the 10 new ClassifyChanges isolation tests from WP-002) continue to pass after these changes.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-07-22T13:20:41Z",
+      "completed_at": "2026-07-22T13:22:32Z",
+      "duration_ms": 111000,
+      "summary": [
+        "Added `using System.Diagnostics;` to the top of DiffService.cs (was not previously imported).",
+        "Step 1 (LCS loop): Added Debug.Assert for both reference[ri].LineNumber.HasValue and current[ci].LineNumber.HasValue before the existing ?? (ri+1)/(ci+1) fallbacks. Added a comment explaining the invariant (FileService.ReadFileAsync always sets LineNumber) and why the proxy-position fallback is kept as defensive code.",
+        "Step 3 (remainingNew loop): Added Debug.Assert for m.LineNumber.HasValue before the existing ?? 0 sentinel fallback. Added a comment explaining the invariant and explicitly noting why the 0 sentinel differs from the Step 1 proxy (0 is outside the valid line-number range so unpositioned entries are naturally excluded from replacement matching).",
+        "Step 6 (shiftedLines): Removed the vacuous .Where(s => s.ReferenceNumber.HasValue) LINQ filter and replaced it with Debug.Assert(shiftedLines.All(s => s.ReferenceNumber.HasValue), ...) with an explanatory message. The .OrderBy call now operates directly on shiftedLines without the preceding filter.",
+        "Build: 0 errors, 7 pre-existing warnings (unchanged from baseline).",
+        "Tests: 439 pass, 1 pre-existing locale-dependent failure in ProfileServiceTests.GenerateProfileId_AccentedCharacters_RemovesAccents — unrelated to DiffService and pre-dates this WP."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "Services/DiffService.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-22T13:22:32Z",
+          "note": "The two Debug.Assert calls in the Step 1 LCS loop are vertically aligned with extra whitespace for readability (reference[ri] vs current[ci]). This is a minor style deviation from the rest of the file but improves scannability of parallel assertions. No action required."
+        },
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-07-22T13:22:32Z",
+          "note": "Services/DiffService.cs Step 2 (L239–240) uses `removed.LineNumber ?? 0` and `matchingNew.LineNumber ?? 0` as fallback sentinels in the MovedText_Description string interpolation without a Debug.Assert. These are not covered by this WP but are subject to the same invariant: FileService.ReadFileAsync guarantees LineNumber is set. A follow-up assertion here would be consistent with the pattern established in Steps 1 and 3."
+        },
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-07-22T13:22:32Z",
+          "note": "Services/DiffService.cs Step 3 `removedByRefPos` sort (around L297) uses `OrderBy(m => m.LineNumber ?? 0)` without a Debug.Assert. Same invariant applies — should be asserted for consistency if this pattern is adopted project-wide."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-07-22T13:23:00Z",
+      "completed_at": "2026-07-22T13:25:00Z",
+      "duration_ms": 120000,
+      "summary": [
+        "AC1 PASS — Step 1 LCS loop (L216-217): Debug.Assert(reference[ri].LineNumber.HasValue, ...) and Debug.Assert(current[ci].LineNumber.HasValue, ...) are both present before the ?? (ri+1)/(ci+1) fallbacks. Comment explains the FileService.ReadFileAsync invariant and the defensive proxy-position rationale.",
+        "AC2 PASS — Step 3 remainingNew loop (L276): Debug.Assert(m.LineNumber.HasValue, ...) is present before the ?? 0 sentinel. Comment explicitly distinguishes the 0-sentinel purpose from the Step 1 proxy approach.",
+        "AC3 PASS — Step 6 (L409): .Where(s => s.ReferenceNumber.HasValue) filter is fully removed. Replaced by Debug.Assert(shiftedLines.All(s => s.ReferenceNumber.HasValue), ...) with an explanatory comment. The .OrderBy call now operates directly on shiftedLines.",
+        "AC4 PASS — 'using System.Diagnostics;' is present at line 1 of DiffService.cs.",
+        "AC5 PASS — Test suite: 440 total, 439 pass, 1 fail. The single failure (ProfileServiceTests.GenerateProfileId_AccentedCharacters_RemovesAccents) is a pre-existing locale-dependent failure confirmed via git diff — DiffService.cs changes do not touch ProfileService.cs or the test file. This failure predates WP-004 and is unrelated to the assertions.",
+        "Build: 0 errors, pre-existing warnings unchanged. All 10 ClassifyChanges isolation tests (WP-002) pass. All ScenarioTests pass.",
+        "Edge-case analysis: (1) Debug.Assert is a no-op in Release — fallbacks remain as intended by WP rationale. (2) shiftedLines.All(...) in the Step 6 assert is O(n) but Debug-only — zero cost in Release. (3) Empty lcs path is safe (Step 1 body skips, Step 6 skipped via Count guard). (4) If Step 1 assert fires (Debug), execution continues with proxy refPos; Step 6 assert remains consistent because DiffLineModel.ReferenceNumber is non-null int? constructed from int refPos."
+      ],
+      "metrics": {
+        "tests_passed": 439,
+        "tests_failed": 1
+      },
+      "comments": [
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-07-22T13:25:00Z",
+          "note": "Debug.Assert is elided in Release builds — if LineNumber were ever null in a Release scenario, the ?? fallbacks would silently activate with no diagnostic signal. This is the explicitly accepted trade-off per the WP rationale (fallbacks kept as defensive code). No action required."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-07-22T13:25:00Z",
+          "note": "shiftedLines.All(s => s.ReferenceNumber.HasValue) in the Step 6 Debug.Assert is O(n) over the shifted-lines list. In Release the assert is elided; in Debug for typical load-order sizes this is negligible. No action required."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-07-22T13:25:00Z",
+          "note": "Developer implementation note (debt from implementation pipeline): Step 2 (L251) uses removed.LineNumber ?? 0 and matchingNew.LineNumber ?? 0 in MovedText_Description interpolation without a Debug.Assert. Same invariant applies. Consistent follow-up assertion would complete the pattern established by this WP — consider bundling with any future DiffService.cs cleanup pass."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-07-22T13:25:00Z",
+          "note": "Developer implementation note (debt from implementation pipeline): Step 3 removedByRefPos sort (L297-ish) uses OrderBy(m => m.LineNumber ?? 0) without a Debug.Assert. Same invariant applies — consistent follow-up would complete the pattern."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-07-22T13:25:00Z",
+          "note": "ProfileServiceTests.GenerateProfileId_AccentedCharacters_RemovesAccents is a confirmed pre-existing locale-dependent failure (1 of 440). Not caused by this WP. The test source contains Windows-1252 encoded accented characters that the test runner's locale cannot transliterate correctly on this system. The 439/440 pass rate is the current baseline for this machine."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-07-22T13:25:27Z",
+      "completed_at": "2026-07-22T13:27:02Z",
+      "duration_ms": 95000,
+      "summary": [
+        "Reviewed Services/DiffService.cs — the three Debug.Assert insertions and the Step 6 .Where removal are clean and correct.",
+        "Step 1 (L216-217): Both reference[ri] and current[ci] assertions present, messages name the invariant source (FileService.ReadFileAsync). ?? (ri+1) proxy is sound — 1-based avoids the 0-sentinel collision used by Step 3. Comment is clear and accurate.",
+        "Step 3 (L276): Assert on m.LineNumber.HasValue present with filename in message. Comment explicitly distinguishes the 0-sentinel from the Step 1 proxy — this cross-reference is valuable for future maintainers. The pos > 0 guard at L280 correctly handles the Release-elided case.",
+        "Step 6 (L409): shiftedLines.All(...) assert is correct — shiftedLines is populated from lcsShifted whose refPos is always an int (from ?? (ri+1)), so ReferenceNumber is never null here. Subsequent ReferenceNumber!.Value usages are sound under the assert. The vacuous .Where filter removal is clean.",
+        "using System.Diagnostics; at L1: present and correctly placed.",
+        "No Fix-Forward changes applied — no trivial non-behavioral improvements needed.",
+        "Two debt items noted (Step 2 MovedText_Description fallbacks, Step 3 removedByRefPos sort) — correctly scoped out of this WP and tracked as documentation-forward items for the Documentation agent."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "Services/DiffService.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-22T13:27:02Z",
+          "note": "Step 1 vertical alignment of the two Debug.Assert calls (reference[ri] vs current[ci]) is a minor style deviation from the surrounding code but aids scannability of parallel assertions. No action required."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-07-22T13:27:02Z",
+          "note": "[documentation-forward] Step 2 (L247-248) uses removed.LineNumber ?? 0 and matchingNew.LineNumber ?? 0 in MovedText_Description without a Debug.Assert. The same FileService.ReadFileAsync invariant applies. This gap should be documented in any DiffService.cs API or maintenance notes as a known deferred assertion — a follow-up cleanup pass should add Debug.Assert here for consistency with the pattern established in Steps 1 and 3."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-07-22T13:27:02Z",
+          "note": "[documentation-forward] Step 3 removedByRefPos sort (L298-300) uses OrderBy(m => m.LineNumber ?? 0) without a Debug.Assert, and L305 uses removed.LineNumber ?? 0 without an assertion. The same invariant applies. Document as a deferred assertion gap in any DiffService maintenance notes — should be addressed in a future cleanup pass to complete the pattern."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-22T13:27:02Z",
+          "note": "Step 4 maxSurvivingRefCurPos loop (L329-333) uses current[ci].LineNumber ?? (ci+1) — same invariant applies but no assert is present. Consistent with the pre-existing Step 2 and Step 3 debt; not in scope for this WP but worth noting for the cleanup pass."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-07-22T13:27:35Z",
+      "completed_at": "2026-07-22T13:29:16Z",
+      "duration_ms": 101000,
+      "summary": [
+        "Updated `ClassifyChanges` documentation in `Docs/Agents/project-manifest/api-surface.md` to reflect the WP-004 changes.",
+        "Added a new `LineNumber` invariant and `Debug.Assert` pattern sub-section describing all three assertion sites: Step 1 (LCS loop, proxy-position fallback rationale), Step 3 (remainingNew loop, 0-sentinel distinction from Step 1), and Step 6 (shiftedLines sort, rationale for removing the vacuous .Where filter).",
+        "Added a `Deferred assertion gaps` sub-section documenting the two reviewer-forwarded maintenance debt items: Step 2 MovedText_Description fallbacks (L247–248) and Step 3 removedByRefPos sort fallbacks (L298–305) — both lacking Debug.Assert despite sharing the same FileService.ReadFileAsync invariant. Flagged as known debt for a future cleanup pass.",
+        "No changes to README.md, changelog.md, or other files — this WP's scope was purely DiffService.cs internals already documented in the project manifest."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "Docs/Agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-22T13:29:16Z",
+          "note": "The api-surface.md ClassifyChanges entry is the only documentation location that describes DiffService internals. No other manifest files (data-flows.md, constraints.md, tech-stack.md) needed updates — the high-level descriptions there accurately describe the pipeline steps and do not reference the assertion pattern."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-07-22T13:29:16Z",
+          "note": "[documentation-forward resolved] Step 2 MovedText_Description ?? 0 fallbacks and Step 3 removedByRefPos sort ?? 0 fallbacks: both gaps are now documented in api-surface.md under the `Deferred assertion gaps` sub-section, per the Reviewer's documentation-forward request. The deferred items are not yet asserted in code — this documents the gap for the next maintainer."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-07-22T13:29:16Z",
+  "last_updated": "2026-07-22T13:29:16Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-07-22T13:22:32Z",
+      "notes": [
+        "All three Debug.Assert insertions are complete and the vacuous .Where filter in Step 6 is removed. The single test failure (ProfileServiceTests.GenerateProfileId_AccentedCharacters_RemovesAccents) is a pre-existing locale-dependent failure unrelated to DiffService — QA should confirm this is a known skip/exclusion rather than a regression."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-07-22T13:25:00Z",
+      "notes": [
+        "All 5 AC are met. 439/440 tests pass — the single failure (ProfileServiceTests.GenerateProfileId_AccentedCharacters_RemovesAccents) is a pre-existing locale-dependent failure unrelated to DiffService changes. The implementation is clean: using System.Diagnostics; added, three Debug.Assert statements in place with explanatory comments, vacuous .Where filter removed. Two medium-priority debt items exist for Step 2 and Step 3 sort-order assertions (not in scope for this WP) — see pipeline comments."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-07-22T13:27:02Z",
+      "notes": [
+        "All 5 AC confirmed met. Implementation is architecturally clean: assertions are correct, comments are clear and cross-reference the invariant source, the 0-sentinel vs proxy-position distinction is well-documented. No blocking issues. Two documentation-forward items flagged: (1) Step 2 MovedText_Description ?? 0 fallbacks lacking assertions, (2) Step 3 removedByRefPos sort ?? 0 fallbacks lacking assertions — both are deferred to a future cleanup pass. Documentation agent should note these gaps in DiffService.cs maintenance documentation."
+      ]
+    }
+  ]
+}
