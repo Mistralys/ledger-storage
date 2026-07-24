@@ -1,0 +1,233 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "MoviesListViewModel has a public Dispose() method that cancels _coverLoadCts and _dataChangedDebounce without throwing.",
+      "met": true
+    },
+    {
+      "criterion": "MovieEditorViewModel.DisposeImageViewModels() unsubscribes all child-VM event handlers before calling Dispose() on them (verified by code inspection; no double-seek on LoadAsync re-entry).",
+      "met": true
+    },
+    {
+      "criterion": "MoviesListView.axaml.cs and MovieEditorView.axaml.cs each contain an OnUnloaded handler that calls Dispose() on their DataContext.",
+      "met": true
+    },
+    {
+      "criterion": "constraints.md contains the IDisposable VM obligation rule.",
+      "met": true
+    },
+    {
+      "criterion": "dotnet build -c Release produces 0 warnings and 0 errors.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-30T10:42:05Z",
+      "completed_at": "2026-05-30T10:45:57Z",
+      "duration_ms": 232000,
+      "summary": [
+        "Implemented IDisposable on MoviesListViewModel: added using System;, added IDisposable to class declaration, added Dispose() that unsubscribes from ITagsManager.DataChanged, cancels/disposes _coverLoadCts and _dataChangedDebounce, and calls DisposeCoverBitmap().",
+        "Implemented IDisposable on MovieEditorViewModel: added IDisposable to class declaration, added Dispose() that calls DisposeImageViewModels() (which already unsubscribes cross-VM event handlers before child-VM Dispose) and then disposes TaggerVm.",
+        "Updated MoviesListView.axaml.cs OnUnloaded to call _vm?.Dispose() after CTS teardown.",
+        "Updated MovieEditorView.axaml.cs OnUnloaded to call (DataContext as MovieEditorViewModel)?.Dispose() after CTS teardown.",
+        "Added IDisposable VM obligation rule to docs/agents/project-manifest/constraints.md in the UI & MVVM section.",
+        "dotnet build -c Release: 0 errors, 0 warnings. All 941 tests pass (0 failed)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/ViewModels/MoviesListViewModel.cs",
+          "src/VideoIndexer.App/ViewModels/MovieEditorViewModel.cs",
+          "src/VideoIndexer.App/Views/MoviesListView.axaml.cs",
+          "src/VideoIndexer.App/Views/MovieEditorView.axaml.cs",
+          "docs/agents/project-manifest/constraints.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-30T10:45:57Z",
+          "note": "MoviesListViewModel.Dispose() also unsubscribes _tagsManager.DataChanged beyond what the AC required — this prevents a potential leak where a debounce-driven LoadAsync could be started after disposal if the event fired between _dataChangedDebounce?.Cancel() and the object being GC-eligible."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-05-30T10:45:57Z",
+          "note": "MoviesListViewModel did not have `using System;` at the top despite using several System types (Array.Empty, StringSplitOptions, etc.) via fully-qualified names throughout the file. The fully-qualified style is inconsistent with the rest of the codebase (MovieEditorViewModel uses `using System;`). Added `using System;` as part of this WP; the remaining fully-qualified references are harmless but could be cleaned up for stylistic consistency."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-30T10:45:57Z",
+          "note": "MovieEditorView.axaml.cs does not cache a _vm reference (unlike MoviesListView.axaml.cs), so OnUnloaded uses `(DataContext as MovieEditorViewModel)?.Dispose()`. This is safe but slightly asymmetric. A future consistency pass could cache the VM reference the same way MoviesListView does."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-30T11:25:16Z",
+      "completed_at": "2026-05-30T11:27:12Z",
+      "duration_ms": 116000,
+      "summary": [
+        "AC1 ✅ — MoviesListViewModel.Dispose() cancels/disposes _coverLoadCts and _dataChangedDebounce (null-checked, set to null after disposal), unsubscribes _tagsManager.DataChanged, and calls DisposeCoverBitmap(). Method is idempotent.",
+        "AC2 ✅ — DisposeImageViewModels() unsubscribes thumbs.CoverImageUpdated and thumbs.Thumbnails.CollectionChanged BEFORE calling thumbs.Dispose(). Event-unsubscription order verified by code inspection.",
+        "AC3 ✅ — MoviesListView.axaml.cs OnUnloaded calls _vm?.Dispose() after CTS teardown. MovieEditorView.axaml.cs OnUnloaded calls (DataContext as MovieEditorViewModel)?.Dispose() after CTS teardown.",
+        "AC4 ✅ — constraints.md line 105 contains the new IDisposable VM obligation rule, covering Bitmap handles, native resources, long-lived event subscriptions, OnUnloaded wiring, and event-unsubscribe-before-dispose ordering.",
+        "AC5 ✅ — dotnet build -c Release: Build succeeded in 4.6s, 0 errors, 0 warnings.",
+        "Regression: 956 tests passed (315 VideoIndexer.Tests + 436 VideoIndexer.App.Tests + 205 VideoIndexer.Infrastructure.Tests), 6 skipped (live integration tests), 0 failed.",
+        "Edge-case: Dispose() is safe to call multiple times — CTSes are nulled after disposal (null-safe operators guard re-entry), event -= is a no-op if handler was already removed, DisposeCoverBitmap() nulls the field before disposing."
+      ],
+      "metrics": {
+        "test_coverage": "956 passed / 6 skipped (live integration tests)",
+        "tests_passed": 956,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-30T11:27:12Z",
+          "note": "constraints.md line 164 contains a stale *(M9)* debt note stating 'IDisposable not implemented on MovieEditorViewModel or MoviesListViewModel'. This note is now factually incorrect — both VMs implement IDisposable as of this WP. The note should be removed or updated to avoid misleading downstream developers. The new authoritative rule is at line 105. Not a blocker since the AC only requires the new rule to be present, but leaving the stale note is actively misleading."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-30T11:27:12Z",
+          "note": "MovieEditorView.axaml.cs OnUnloaded uses (DataContext as MovieEditorViewModel)?.Dispose() rather than a cached _vm reference (as MoviesListView.axaml.cs does). This is functionally correct but slightly asymmetric. Noted by Developer; acceptable for now, minor consistency improvement for a future pass."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-30T11:27:12Z",
+          "note": "MoviesListViewModel.Dispose() does not null-guard _tagsManager before the event unsubscription — the null check at line 648 uses 'if (_tagsManager is not null)' which is correct and safe. No issue."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-30T11:36:40Z",
+      "completed_at": "2026-05-30T11:38:42Z",
+      "duration_ms": 122000,
+      "summary": [
+        "WP-001 code-review PASS. All 5 acceptance criteria verified by line-by-line inspection against the four review dimensions (maintainability, best practices, performance, future context). No blocking issues found. One Fix-Forward applied: removed the stale *(M9)* debt note at constraints.md line 164 ('IDisposable not implemented on MovieEditorViewModel or MoviesListViewModel') — this note was factually closed by this WP and was actively misleading. The authoritative rule at line 105 is the correct reference. Formatting on the subsequent DapperThumbnailRepository entry also restored."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "docs/agents/project-manifest/constraints.md",
+          "src/VideoIndexer.App/ViewModels/MoviesListViewModel.cs",
+          "src/VideoIndexer.App/ViewModels/MovieEditorViewModel.cs",
+          "src/VideoIndexer.App/Views/MoviesListView.axaml.cs",
+          "src/VideoIndexer.App/Views/MovieEditorView.axaml.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "medium",
+          "timestamp": "2026-05-30T11:38:42Z",
+          "note": "Removed stale constraints.md line 164: '**IDisposable not implemented on MovieEditorViewModel or MoviesListViewModel** *(M9)*'. This WP implements IDisposable on both VMs, closing the debt. The note remained after the implementation, making it actively misleading. Removed the entire entry; the new authoritative rule at line 105 is the canonical reference. Formatting on the following DapperThumbnailRepository entry was also restored (two spaces before *(M9)* were re-added after they were lost during the stale-note removal)."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-30T11:38:42Z",
+          "note": "MoviesListViewModel.Dispose() is idempotent: _coverLoadCts and _dataChangedDebounce are nulled after disposal (null-conditional guards prevent re-entry), event -= is a no-op if already removed, and DisposeCoverBitmap() nulls the bitmap field before disposing. No structural issues."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-30T11:38:42Z",
+          "note": "MovieEditorView.axaml.cs OnUnloaded uses (DataContext as MovieEditorViewModel)?.Dispose() rather than a cached _vm field (as MoviesListView.axaml.cs does). This asymmetry is architecturally justified: MovieEditorView subscribes to no PropertyChanged events on the VM (only sets PageHeader.BackCommand via DataContextChanged), so no cached reference is needed for event unsubscription. The constraints.md line 105 rule explicitly covers both patterns. No action required."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-30T11:38:42Z",
+          "note": "DisposeImageViewModels() correctly captures ThumbnailsVm via pattern-match (if (ThumbnailsVm is { } thumbs)) before unsubscribing its two cross-VM events and calling Dispose(), then nulls all three image VM properties. CoverImageVm and GeneratorVm are set to null without explicit Dispose() calls — correct because neither holds unmanaged resources or long-lived event subscriptions requiring disposal. Clean unsubscribe-before-dispose ordering is established and documented in constraints.md line 105 as the reference pattern."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-30T11:49:16Z",
+      "completed_at": "2026-05-30T11:51:34Z",
+      "duration_ms": 138000,
+      "summary": [
+        "Updated docs/agents/project-manifest/api-surface.md to reflect WP-001 IDisposable implementation on MoviesListViewModel and MovieEditorViewModel.",
+        "MoviesListViewModel heading updated from 'ObservableObject' to 'ObservableObject, IDisposable *(WP-001)*' (line 1300).",
+        "MovieEditorViewModel heading updated from 'ObservableObject' to 'ObservableObject, IDisposable' with WP-001 added to the milestone tag (line 1376).",
+        "Replaced stale 4-line comment at lines 1449-1452 ('IMPORTANT: MovieEditorViewModel does NOT implement IDisposable … future milestone') with accurate IDisposable contract note documenting Dispose() behaviour: DisposeImageViewModels() unsubscribes before dispose, TaggerVm disposal, and OnUnloaded wiring.",
+        "constraints.md already contained the IDisposable VM obligation rule at line 105 (added by Developer) and the stale debt note at former line 164 had already been removed by the Reviewer — no further changes needed there.",
+        "README.md: MoviesListViewModel prose section does not assert disposal behaviour and needed no update; MovieEditorViewModel has no dedicated README prose section."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-30T11:51:34Z",
+          "note": "api-surface.md line 1341-1343 already contained an inline IDisposable comment block for MoviesListViewModel (added as part of WP-001 implementation artifacts). The heading at line 1300 was the only missing update — now aligned. No duplication: the heading declares the interface, the inline comment documents the disposal contract."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-30T11:51:34Z",
+          "note": "README.md line 479 contains a stale note: 'LoadFilterSlotsAsync is intentionally deferred to a future M5 work package'. api-surface.md line 1326 already documents it as 'Called from MoviesListView.axaml.cs OnLoaded handler alongside LoadAsync'. This pre-existing inconsistency is outside the WP-001 scope (not a reviewer-forwarded item) and not introduced by this WP. Recorded here for a future documentation pass."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-30T11:51:34Z",
+  "last_updated": "2026-05-30T11:51:34Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-30T10:45:57Z",
+      "notes": [
+        "All 5 acceptance criteria are met and verified by build + test suite (941 tests, 0 failures).",
+        "DisposeImageViewModels() already unsubscribes thumbsVm.CoverImageUpdated and thumbsVm.Thumbnails.CollectionChanged BEFORE calling thumbsVm.Dispose() — the event-unsubscription order is correct and safe for LoadAsync re-entry.",
+        "MovieEditorViewModel.Dispose() calls DisposeImageViewModels() first (covers CoverImageVm, ThumbnailsVm, GeneratorVm), then TaggerVm?.Dispose(). This order matches the construction order in LoadAsync (image VMs created after TaggerVm).",
+        "WP-001 Notes flag that DisposeImageViewModels() will be extended in WP-21 (Video tab) and WP-25 (Bookmarks panel) — downstream WPs must follow the same event-unsubscribe-before-dispose ordering established here."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-30T11:27:12Z",
+      "notes": [
+        "All 5 ACs verified and met. Build: 0 errors/warnings. Tests: 956 passed, 0 failed, 6 skipped. Medium-priority observation: constraints.md line 164 has a stale *(M9)* debt note saying IDisposable is not implemented on these VMs — it should be removed/superseded since this WP closes that debt. The new constraint rule at line 105 is the authoritative reference."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-30T11:38:42Z",
+      "notes": [
+        "All 5 ACs confirmed PASS by code-review. No blocking issues. Fix-Forward applied: stale constraints.md debt note (line 164) removed — it incorrectly stated IDisposable was not implemented on MoviesListViewModel/MovieEditorViewModel; this WP closes that debt. The authoritative IDisposable VM obligation rule is at constraints.md line 105. Build and test results (956 passed, 0 failed) validated by QA — no code changes made to any .cs file, so those results remain valid."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,260 @@
+{
+  "work_package_id": "WP-018",
+  "work_package_file": "work/WP-018.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-004",
+    "WP-011",
+    "WP-012",
+    "WP-013",
+    "WP-016"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "ShowPropertiesCommand calls _moviePropertiesService.ShowAsync(…) (not Task.CompletedTask).",
+      "met": true
+    },
+    {
+      "criterion": "SelectedActorIndex=1 → MoveActorUpCommand.CanExecute=true; SelectedActorIndex=0 → false.",
+      "met": true
+    },
+    {
+      "criterion": "After LoadAsync, ActorList populated from Movie.ActorNames; TaggerVm is non-null.",
+      "met": true
+    },
+    {
+      "criterion": "TaggerVm.connectTag closure captures _originalMovie.MovieId correctly.",
+      "met": true
+    },
+    {
+      "criterion": "dotnet build produces 0 errors, 0 warnings.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-18T12:42:50Z",
+      "completed_at": "2026-05-18T12:58:06Z",
+      "duration_ms": 916000,
+      "summary": [
+        "(a) Wired ShowPropertiesCommand: injected IMoviePropertiesService, IAppPaths, IFileLauncherService; command loads original filename and constructs MoviePropertiesViewModel, then calls ShowAsync.",
+        "(b) Renamed SelectedActorName→SelectedActor; added ObservableCollection<string> ActorList; added int SelectedActorIndex (default -1, NotifyCanExecuteChanged for both move commands); updated MoveActorUp/Down to use index-based CanExecute (CanMoveActorUp/CanMoveActorDown) with safety guards; added ActorNamesText↔ActorList sync via _actorListSyncInProgress guard flag; added LoadAsync and RebuildActorList/SyncActorNamesFromList helpers.",
+        "(c) Injected ITagsManager/ITagEditorService/ITagMergeService/IGrantsManagementService; LoadAsync calls EnsureLoadedAsync then constructs TaggerViewModel with captured movieId closure for connectTag/disconnectTag.",
+        "Updated DI factory in Program.cs to pass 12 services via GetRequiredService.",
+        "Updated tests: 7 existing MoveActorUp/Down tests migrated to async + SelectedActorIndex; 6 new tests added for WP-018 ACs. Added FakeTagDialogServices.cs and extended FakeTagsManager with ConnectMovieTagAsync call tracking.",
+        "Build: 0 errors, 0 warnings. Tests: 302 pass (VideoIndexer.App.Tests) + 255 pass (VideoIndexer.Tests) = 557 total."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/ViewModels/MovieEditorViewModel.cs",
+          "src/VideoIndexer.App/Program.cs",
+          "tests/VideoIndexer.App.Tests/MovieEditorViewModelTests.cs",
+          "tests/VideoIndexer.App.Tests/TestHelpers/FakeTagsManager.cs",
+          "tests/VideoIndexer.App.Tests/TestHelpers/FakeTagDialogServices.cs",
+          "docs/agents/project-manifest/file-tree.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-18T12:58:06Z",
+          "note": "MovieEditorViewModel.cs now has 12 constructor parameters (7 optional). While this is manageable, a future refactoring to introduce a dedicated MovieEditorOptions record or a service container struct could improve readability when the WP-019+ carry-forwards add more dependencies."
+        },
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-05-18T12:58:06Z",
+          "note": "MovieEditorView.axaml still has the MoveActorUp/Down buttons hardcoded as IsEnabled='False'. A follow-on WP should add the actor ListBox, bind ActorList/SelectedActorIndex, and remove the hardcoded IsEnabled='False'. Until then, the buttons are never enabled in the UI despite CanExecute logic being correct in the ViewModel."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T12:58:06Z",
+          "note": "TaggerViewModel is created in LoadAsync and held as a property, but the ITagsManager.DataChanged subscription inside TaggerViewModel is never unsubscribed when the editor closes. MovieEditorViewModel should unsubscribe by calling a cleanup method (or implementing IDisposable) to avoid memory leaks when the editor is opened/closed repeatedly."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-18T13:32:47Z",
+      "completed_at": "2026-05-18T13:35:26Z",
+      "duration_ms": 159000,
+      "summary": [
+        "All 5 AC verified and confirmed met.",
+        "Build: 0 errors, 0 warnings (dotnet build src/VideoIndexer.sln -c Debug).",
+        "Test suite: 756 passed, 0 failed, 6 skipped (pre-existing environment skips). 43 MovieEditorViewModelTests all pass including all 6 new WP-018 tests.",
+        "AC1 confirmed: ShowPropertiesCommand implementation calls _moviePropertiesService.ShowAsync(vm, ct); test ShowProperties_CallsShowAsync_OnMoviePropertiesService verifies WasShowCalled = true.",
+        "AC2 confirmed: CanMoveActorUp() = SelectedActorIndex > 0; tests MoveActorUp_CanExecute_WhenSelectedActorIndexGreaterThanZero (index=1→true) and MoveActorUp_CannotExecute_WhenSelectedActorIndexIsZero (index=0→false) both pass.",
+        "AC3 confirmed: LoadAsync calls RebuildActorList then constructs TaggerVm; tests LoadAsync_PopulatesActorList_FromMovieActorNames and LoadAsync_InitializesTaggerVm_WhenTagsManagerProvided both pass.",
+        "AC4 confirmed: var movieId = _originalMovie.MovieId captured as local variable before lambda closures; test LoadAsync_TaggerVm_ConnectTagClosure_UsesOriginalMovieId toggles IsCheckedStored=true and asserts LastConnectMovieId == 42 (PASS).",
+        "AC5 confirmed: 0 errors, 0 warnings from clean build."
+      ],
+      "metrics": {
+        "tests_passed": 756,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "edge-case",
+          "priority": "medium",
+          "timestamp": "2026-05-18T13:35:26Z",
+          "note": "MovieEditorViewModel.LoadAsync creates a new TaggerViewModel on each call. TaggerViewModel subscribes to ITagsManager.DataChanged in its constructor but never unsubscribes. If LoadAsync is called more than once (e.g. after an ApplyChanges that replaces _originalMovie), the prior TaggerVm retains a live DataChanged subscription, causing a memory leak. No test covers this scenario. A future WP should add a Dispose/cleanup call when TaggerVm is replaced."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-18T13:35:26Z",
+          "note": "ShowPropertiesCommand guard requires all three of _moviePropertiesService, _appPaths, and _fileLauncherService to be non-null. In the test BuildSutWithShowProperties, all three are injected. The guard means if any one is null the command silently no-ops rather than throwing. This is correct defensive behavior; no issue."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-05-18T13:35:26Z",
+          "note": "MoveActorUp/MoveActorDown CanExecute boundary at ActorList.Count boundary is not tested as a separate CanExecute assertion (only behavioral no-op tests exist). The CanExecute formula SelectedActorIndex >= 0 && SelectedActorIndex < ActorList.Count - 1 is correct, verified by IsNoOp tests. No critical gap."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-18T13:44:42Z",
+      "completed_at": "2026-05-18T13:46:53Z",
+      "duration_ms": 131000,
+      "summary": [
+        "Reviewed all six artifacts from the implementation pipeline: MovieEditorViewModel.cs, Program.cs (DI factory update), MovieEditorViewModelTests.cs, FakeTagsManager.cs (extended), FakeTagDialogServices.cs (new), file-tree.md (manifest update).",
+        "No blocking issues found. Code is correct, well-structured, follows all project conventions. Compiles with 0 errors/0 warnings. 756 tests pass including all 43 MovieEditorViewModelTests.",
+        "Key debt: TaggerViewModel DataChanged subscription created in LoadAsync is never cleaned up. ITagsManager is a DI singleton with longer lifetime, so the backward reference prevents GC of stale TaggerViewModel instances. Acknowledged by Developer and QA; fix requires a dedicated IDisposable WP.",
+        "MoviePropertiesViewModel inline construction in ShowPropertiesCommand is architecturally correct: same-layer direct instantiation is permitted; only cross-layer calls must go through interfaces.",
+        "_actorListSyncInProgress try/finally guard and movieId closure capture are both implemented correctly.",
+        "All 5 acceptance criteria confirmed met by QA and verified by reviewer."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/ViewModels/MovieEditorViewModel.cs",
+          "src/VideoIndexer.App/Program.cs",
+          "tests/VideoIndexer.App.Tests/MovieEditorViewModelTests.cs",
+          "tests/VideoIndexer.App.Tests/TestHelpers/FakeTagsManager.cs",
+          "tests/VideoIndexer.App.Tests/TestHelpers/FakeTagDialogServices.cs",
+          "docs/agents/project-manifest/file-tree.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-05-18T13:46:53Z",
+          "note": "TaggerViewModel DataChanged subscription leak: LoadAsync creates a new TaggerViewModel that subscribes to _tagsManager.DataChanged, but MovieEditorViewModel never unsubscribes it. Since ITagsManager is a DI singleton with a longer lifetime than MovieEditorViewModel, the old TaggerVm is kept alive by the DataChanged delegate list until the app exits or the ITagsManager is disposed. Severity: medium. Path to fix: add IDisposable to TaggerViewModel (unsubscribes in Dispose) and dispose from MovieEditorViewModel. This requires a dedicated WP and is consistent with the acknowledged tech debt from WP-017."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T13:46:53Z",
+          "note": "MoviePropertiesViewModel is constructed inline inside ShowPropertiesCommand. Both MovieEditorViewModel and MoviePropertiesViewModel are in VideoIndexer.App.ViewModels (same layer), so this is architecturally acceptable — cross-layer calls must go through Core interfaces, but same-layer direct instantiation is fine. The IMoviePropertiesService interface correctly abstracts the dialog display, so the coupling is to a concrete construction shape within the same layer. No interface abstraction overhead warranted for a single-caller relationship."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T13:46:53Z",
+          "note": "CanMoveActorUp() only checks SelectedActorIndex > 0 but not SelectedActorIndex < ActorList.Count. An out-of-range selected index (positive but beyond list bounds) could cause an IndexOutOfRangeException in ActorList[idx] if the UI selection model were to allow it. In practice the UI ListBox resets selection when items change, and SelectedActorIndex is reset to -1 in RebuildActorList, so this edge case cannot occur. The redundant double-guard in MoveActorUp() (calls CanMoveActorUp() again before acting) provides an extra safety net. Acceptable."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T13:46:53Z",
+          "note": "LoadAsync has no re-entry guard. The doc comment says 'called once after construction, before the view becomes visible,' but nothing prevents a second call in unexpected usage. A second call would re-create TaggerVm (leaking the first subscription) and reset SelectedActorIndex/-1, disrupting any in-flight selection. Adding `if (TaggerVm is not null) return;` (or a dedicated `_isLoaded` bool) would make the single-call invariant explicit in code. This is Fix-Forward eligible but deferred because a proper fix needs IDisposable cleanup for the old TaggerVm first."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-18T13:46:53Z",
+          "note": "[documentation-forward] LoadAsync single-call invariant should be documented in api-surface.md: 'LoadAsync must be called exactly once after construction, before the view is shown. Calling it a second time creates a second TaggerViewModel with an unmanaged DataChanged subscription; a future IDisposable implementation will guard against this.' Also note that MovieEditorViewModel itself will need IDisposable when TaggerViewModel.Dispose is added."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-18T13:46:53Z",
+          "note": "[documentation-forward] api-surface.md is missing WP-018 additions: (1) MovieEditorViewModel new properties: ActorList (ObservableCollection<string>), SelectedActorIndex (int), TaggerVm (TaggerViewModel?). (2) New public method: LoadAsync(CancellationToken) : Task. (3) New commands: ShowPropertiesCommand. Update the App layer section of api-surface.md."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T13:46:53Z",
+          "note": "No observable issue — _actorListSyncInProgress try/finally guard is correctly implemented to prevent feedback loop between ActorNamesText and ActorList. movieId capture in LoadAsync closures is correct: local variable captured before lambda creation ensures stable identity even if _originalMovie is replaced by a later ApplyChanges call."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-18T14:13:11Z",
+      "completed_at": "2026-05-18T14:15:09Z",
+      "duration_ms": 118000,
+      "summary": [
+        "Updated api-surface.md §MovieEditorViewModel for WP-018: expanded constructor signature (12 params, 7 optional), added ActorList/SelectedActor/SelectedActorIndex/TaggerVm properties, added LoadAsync with single-call invariant comment, updated MoveActorUp/Down to index-based CanExecute, corrected ShowPropertiesCommand from stub to fully wired. Added MovieEditorViewModel.LoadAsync single-call invariant rule to constraints.md §UI & MVVM."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "docs/agents/project-manifest/api-surface.md",
+          "docs/agents/project-manifest/constraints.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T14:15:09Z",
+          "note": "api-surface.md §MovieEditorViewModel fully updated: constructor signature expanded to 12 parameters (7 optional), added ActorList/SelectedActor/SelectedActorIndex/TaggerVm properties, added LoadAsync method with single-call invariant note, updated MoveActorUp/Down to reflect index-based CanExecute, fixed ShowPropertiesCommand description (no longer a stub). LoadAsync single-call invariant also added to constraints.md §UI & MVVM alongside the TaggerViewModel lifecycle rule."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-18T14:15:09Z",
+  "last_updated": "2026-05-18T14:15:09Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-18T12:58:06Z",
+      "notes": [
+        "All 5 AC met. Build: 0 errors, 0 warnings. 557 tests passing (255 core + 302 app).",
+        "New features: ShowPropertiesCommand wired to IMoviePropertiesService; ActorList ObservableCollection + SelectedActorIndex; MoveActorUp/Down use index-based CanExecute with safety guards; LoadAsync populates ActorList and initialises TaggerVm.",
+        "SelectedActorName renamed to SelectedActor; existing MoveActorUp/Down tests updated to use LoadAsync + SelectedActorIndex.",
+        "New test fakes: FakeTagDialogServices.cs (ITagEditorService/ITagMergeService/IGrantsManagementService stubs); FakeTagsManager.ConnectMovieTagAsync now tracks calls.",
+        "DI factory in Program.cs updated to pass all 12 services to MovieEditorViewModel."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-18T13:35:26Z",
+      "notes": [
+        "All 5 AC met. Build 0 errors/0 warnings. 756 tests passing (0 regressions); 43 MovieEditorViewModelTests all pass.",
+        "Key concern for code review: TaggerViewModel DataChanged subscription in LoadAsync is never cleaned up — developer noted this as a known debt. Code review should assess severity.",
+        "ShowPropertiesCommand constructs MoviePropertiesViewModel inline in the command body; no ViewModel factory or interface abstraction. Code review may want to assess whether this couples the command too tightly to MoviePropertiesViewModel construction details."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-18T13:46:53Z",
+      "notes": [
+        "PASS — no blocking issues. All 5 AC confirmed met. 756 tests passing, 0 regressions.",
+        "Open technical debt (medium, not blocking): TaggerViewModel.DataChanged subscription is never unsubscribed. Path to fix: TaggerViewModel implements IDisposable, MovieEditorViewModel disposes TaggerVm when replacing it or on its own disposal. Recommend a dedicated WP before M7 ships.",
+        "LoadAsync single-call invariant is documented but not enforced in code. A re-entry guard (`if (TaggerVm is not null) return;`) would make the contract explicit, but a proper fix requires IDisposable cleanup first. Document in api-surface.md.",
+        "Documentation gaps for Documentation agent: (1) api-surface.md missing ActorList, SelectedActorIndex, TaggerVm, LoadAsync, ShowPropertiesCommand; (2) LoadAsync lifecycle contract (single-call, IDisposable future work) should appear in constraints.md or api-surface.md."
+      ]
+    }
+  ]
+}

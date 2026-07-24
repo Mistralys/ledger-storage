@@ -1,0 +1,242 @@
+{
+  "work_package_id": "WP-009",
+  "work_package_file": "work/WP-009.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-002",
+    "WP-003",
+    "WP-006"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "The factory never concatenates the connection string by hand; all assembly goes through MySqlConnectionStringBuilder.",
+      "met": true
+    },
+    {
+      "criterion": "Throws InvalidOperationException with a clear message when IDatabaseConnectionStore reports no active connection.",
+      "met": true
+    },
+    {
+      "criterion": "Builds with zero warnings; the MySqlConnector namespace is referenced only inside Infrastructure.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-27T21:14:55Z",
+      "completed_at": "2026-04-27T21:15:41Z",
+      "duration_ms": 46000,
+      "summary": [
+        "Created MySqlConnectionFactory using MySqlConnectionStringBuilder (no manual concatenation).",
+        "Throws InvalidOperationException with clear message when no active connection.",
+        "Release build: 0 errors, 0 warnings. MySqlConnector only referenced in Infrastructure."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Database/MySqlConnectionFactory.cs"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 43,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T21:15:41Z",
+          "note": "Port is cast from int to uint for MySqlConnectionStringBuilder. The guard `active.Port > 0 ? active.Port : 3306` silently replaces 0 with the MySQL default. If port 0 is a deliberate sentinel (e.g. 'not set'), callers could be surprised. A validation step in DatabaseConnectionOptions or a Guard.Against.NonPositive at the DI boundary would make the contract explicit."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T21:15:41Z",
+          "note": "SslMode is mapped to Required vs. Disabled with no in-between option (e.g. Preferred). This is intentional for clarity; future callers wanting Preferred would need an enum expansion on DatabaseConnectionOptions."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-27T21:20:51Z",
+      "completed_at": "2026-04-27T21:22:34Z",
+      "duration_ms": 103000,
+      "summary": [
+        "All 3 acceptance criteria verified. AC1: MySqlConnectionStringBuilder used for all assembly — no manual concatenation. AC2: null guard on GetActiveAsync result throws InvalidOperationException with clear message. AC3: Release build 0 errors/0 warnings; MySqlConnector referenced only in VideoIndexer.Infrastructure.csproj.",
+        "Regression: 87 tests pass across VideoIndexer.Tests (44) and VideoIndexer.Infrastructure.Tests (43).",
+        "Interface contract correct: CreateOpenConnectionAsync returns IDbConnection (not MySqlConnection), keeping MySqlConnector namespace contained within Infrastructure.",
+        "CancellationToken correctly propagated through both GetActiveAsync and OpenAsync calls."
+      ],
+      "metrics": {
+        "tests_passed": 87,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-04-27T21:22:34Z",
+          "note": "If MySqlConnection.OpenAsync throws (e.g., connection refused), the created MySqlConnection instance is not disposed before the exception propagates. This is a minor resource management gap — the connection will be finalized by GC. Not an AC concern since factory callers own the lifetime of the returned connection, but a future refactor could wrap the open in try/finally to dispose on failure."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T21:22:34Z",
+          "note": "Port=0 fallback to 3306 carries forward from the Developer's implementation note. Explicit validation in DatabaseConnectionOptions or at the DI boundary would make the contract clearer. Non-blocking for this WP."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-27T21:24:36Z",
+      "completed_at": "2026-04-27T21:26:32Z",
+      "duration_ms": 116000,
+      "summary": [
+        "Reviewed 1 primary artifact (MySqlConnectionFactory.cs) plus supporting context (DatabaseConnectionOptions.cs, JsonDatabaseConnectionStore.cs, JsonSettingsService.cs, Sha256FixedSaltPasswordHasher.cs). Full OWASP Top 10 review completed. 0 Critical, 0 High, 2 Medium, 2 Low findings. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-04-27T21:26:32Z",
+          "note": "A02 — Cryptographic Failures | MEDIUM | File: src/VideoIndexer.Core/Options/DatabaseConnectionOptions.cs, line 37 (Password property). MySQL connection passwords are persisted as plaintext strings in the JSON settings file. The field docstring explicitly acknowledges this: 'Login password (plaintext; stored at the user's discretion).' Because the password must be recoverable to authenticate to MySQL, hashing/KDF is not viable. However, the credential is unprotected at rest — any process running as the same OS user (or with file-read access to the settings path) can recover it in cleartext. Remediation: Encrypt credentials at rest using Windows DPAPI (System.Security.Cryptography.ProtectedData.Protect) keyed to the current user, or store in Windows Credential Manager via Windows.Security.Credentials.PasswordVault. Decrypt only at the moment CreateOpenConnectionAsync is called."
+        },
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-04-27T21:26:32Z",
+          "note": "A02/A04 — Cryptographic Failures / Insecure Design | MEDIUM | File: src/VideoIndexer.Infrastructure/Database/MySqlConnectionFactory.cs, line 43. SslMode is set to MySqlSslMode.Disabled when UseSsl = false (the default value). A user connecting to a remote MySQL server over an untrusted network without enabling SSL will transmit credentials and query data in cleartext. The binary choice (Required vs. Disabled) also skips MySqlSslMode.Preferred, which would negotiate encryption when the server supports it without failing on servers that don't. Remediation: Change the ternary to: active.UseSsl ? MySqlSslMode.Required : MySqlSslMode.Preferred. Reserve Disabled for an explicit third enum value (e.g., SslPolicy.ForceOff) to prevent accidental unencrypted connections."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T21:26:32Z",
+          "note": "A05 — Security Misconfiguration | LOW | File: src/VideoIndexer.Infrastructure/Settings/JsonSettingsService.cs. The settings file (which contains plaintext DB credentials) is written without explicit file-permission hardening. File.WriteAllTextAsync uses the system default ACL, leaving the file readable by other processes running as the same user account and by administrators. Remediation: On Windows, after writing the file, apply a restrictive ACL via System.Security.AccessControl.FileSecurity restricting access to the current user SID only. On Linux/macOS, chmod 600 via File.SetUnixFileMode."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T21:26:32Z",
+          "note": "A09 — Security Logging & Monitoring Failures | LOW | File: src/VideoIndexer.Infrastructure/Database/MySqlConnectionFactory.cs. No ILogger is injected; connection open events and failures are not logged. If OpenAsync throws (e.g., authentication failure, connection refused), the exception propagates silently with no audit trail. Remediation: Inject ILogger<MySqlConnectionFactory> and log (at Debug level) successful opens and (at Warning/Error level) connection failures, omitting the password from log output."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-27T21:28:17Z",
+      "completed_at": "2026-04-27T21:30:37Z",
+      "duration_ms": 140000,
+      "summary": [
+        "Code review PASS. Implementation is clean, well-structured, and meets all three acceptance criteria. One Fix-Forward applied: wrapped MySqlConnection.OpenAsync in try/catch to dispose the connection on failure, preventing a resource leak when the open fails (e.g., wrong credentials, network error). Fix is non-behavioral on the happy path; all 87 tests remain green. No Blocking issues found.",
+        "Reviewed: MySqlConnectionFactory.cs, DatabaseConnectionOptions.cs, IDbConnectionFactory.cs, IDatabaseConnectionStore.cs."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Database/MySqlConnectionFactory.cs"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 87,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "medium",
+          "timestamp": "2026-04-27T21:30:37Z",
+          "note": "Resource leak on OpenAsync failure (Fix-Forward applied). File: src/VideoIndexer.Infrastructure/Database/MySqlConnectionFactory.cs. If MySqlConnection.OpenAsync throws (e.g., wrong credentials, connection refused, CancellationToken triggered), the MySqlConnection instance was previously abandoned without disposal. Wrapped the open call in try/catch to call DisposeAsync() before re-throwing. This is a non-behavioral change on the success path; all 87 tests pass unchanged. Pattern: try { await connection.OpenAsync(...); return connection; } catch { await connection.DisposeAsync(); throw; }"
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-27T21:30:37Z",
+          "note": "[documentation-forward] MySqlConnectionFactory.cs passes DatabaseConnectionOptions nullable string properties (Host, Database, Username) directly to MySqlConnectionStringBuilder without null guards. If a saved connection has a null Host or Database, the failure will manifest as a MySqlConnector exception rather than an application-level ArgumentException. Document in the factory XML doc or in DatabaseConnectionOptions that callers/persistence layer must ensure these fields are non-null before a connection entry is considered valid for use."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T21:30:37Z",
+          "note": "Port guard '(uint)(active.Port > 0 ? active.Port : 3306)' is slightly redundant: DatabaseConnectionOptions.Port already defaults to 3306, so Port=0 can only occur if a caller explicitly sets it. Not blocking — the guard is a safe fallback — but if Port=0 is invalid, a validation step at the save/DI boundary would make the contract explicit (consistent with the Developer's own improvement note)."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-28T07:29:57Z",
+      "completed_at": "2026-04-28T07:32:18Z",
+      "duration_ms": 141000,
+      "summary": [
+        "Updated README.md to reflect WP-009 (MySqlConnectionFactory) implementation. Four changes applied: (1) updated VideoIndexer.Infrastructure project description to include 'database services'; (2) updated UseSsl config table row to document the MySqlSslMode.Required / Disabled mapping; (3) added two new blockquote notes after the existing password security notice — one documenting the nullable-field validity contract (Host/Database/Username must be non-null), one explaining the SSL binary-choice design and planned Preferred upgrade path; (4) added a new 'Database Connection Factory' architecture subsection covering connection string assembly, error conditions, SSL mode mapping, the nullable field contract, and DI registration deferral. Both reviewer-forwarded documentation items (nullable contract, SSL design) addressed."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "README.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-28T07:32:18Z",
+          "note": "No documentation gaps found beyond the two reviewer-forwarded items. Both have been addressed. The Security Model section already documented the plaintext password concern; the new notes complement it at the configuration layer."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-06T09:28:49Z",
+  "last_updated": "2026-05-06T09:28:49Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-27T21:15:41Z",
+      "notes": [
+        "MySqlConnectionFactory: GetActiveAsync → MySqlConnectionStringBuilder → MySqlConnection.OpenAsync.",
+        "No dedicated unit tests per WP spec (exercised end-to-end by WP-011 SpdbConfigRepositoryTests).",
+        "Release build: 0 errors, 0 warnings. MySqlConnector referenced only in Infrastructure.",
+        "No DI registration yet — deferred to WP-016."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-04-27T21:22:34Z",
+      "notes": [
+        "WP-009 QA PASS. All ACs met, 87 tests green. Implementation is clean — no security concerns anticipated beyond standard connection credential handling. Recommend checking credential handling in the security-audit pipeline."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-27T21:26:32Z",
+      "notes": [
+        "WP-009 security-audit PASS. 0 Critical/High findings — no rework required. 2 Medium findings recorded for awareness (plaintext credential storage; SSL defaulting to Disabled rather than Preferred). 2 Low findings (settings file ACL hardening; missing connection event logging). All ACs met. Ready for code-review pipeline."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-27T21:30:37Z",
+      "notes": [
+        "WP-009 code-review PASS. One Fix-Forward applied: MySqlConnection now disposed on OpenAsync failure (try/catch wrap). All 87 tests green, 0 warnings. Two items for Documentation agent: (1) document nullable-property validation contract on DatabaseConnectionOptions Host/Database/Username; (2) document the SSL binary-choice design (Required vs Disabled) and the planned Preferred upgrade path. No blockers — ready for documentation pipeline."
+      ]
+    }
+  ]
+}

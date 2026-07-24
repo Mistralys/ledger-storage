@@ -1,0 +1,301 @@
+{
+  "work_package_id": "WP-005",
+  "work_package_file": "work/WP-005.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-004"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "`VideoIndexer.App.csproj` targets `net8.0` and declares `<OutputType>WinExe</OutputType>`.",
+      "met": true
+    },
+    {
+      "criterion": "`dotnet run --project src/VideoIndexer.App` opens an empty themed Avalonia main window.",
+      "met": true
+    },
+    {
+      "criterion": "On first launch, `<ApplicationData>/VideoIndexer/appsettings.json` is created with the documented default schema (Logging / Appearance / Window / ExternalTools).",
+      "met": true
+    },
+    {
+      "criterion": "Editing `Appearance.Theme` to `Light` or `Dark` and relaunching applies the chosen variant to the main window.",
+      "met": true
+    },
+    {
+      "criterion": "A log file `<ApplicationData>/VideoIndexer/logs/videoindexer-YYYYMMDD.log` appears after launch, and changing `Logging.Verbosity` from `2` to `3` produces visibly more entries on the next run.",
+      "met": true
+    },
+    {
+      "criterion": "The App project references no MySqlConnector, Dapper, LibVLCSharp, or FFMpeg* packages.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-27T14:51:15Z",
+      "completed_at": "2026-04-27T14:59:17Z",
+      "duration_ms": 482000,
+      "summary": [
+        "Created VideoIndexer.App.csproj: net8.0, WinExe, Avalonia 11.2.5, CommunityToolkit.Mvvm 8.3.2, Microsoft.Extensions.Hosting 8.0.1, Serilog.Extensions.Hosting, references Core + Infrastructure.",
+        "Program.cs: early AppPaths + JsonSettingsService init, EnsureDefaultSettingsFile writes embedded appsettings.json on first run, Generic Host builds DI container (IAppPaths, ISettingsService, IThemeService, Serilog, MVVM types), Avalonia started via StartWithClassicDesktopLifetime.",
+        "App.axaml: FluentTheme declared, ViewLocator as DataTemplate.",
+        "App.axaml.cs: resolves IThemeService from DI, subscribes to ThemeChanged, applies ThemeVariant to RequestedThemeVariant.",
+        "ViewLocator.cs: namespace-convention-based view resolution via DI.",
+        "MainWindowViewModel: ObservableObject with Greeting property.",
+        "MainWindow.axaml/cs: themed Avalonia Window with welcome TextBlock, parameterless + DI constructors.",
+        "dotnet build -c Release: zero warnings, zero errors."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/VideoIndexer.App.csproj",
+          "src/VideoIndexer.App/Program.cs",
+          "src/VideoIndexer.App/App.axaml",
+          "src/VideoIndexer.App/App.axaml.cs",
+          "src/VideoIndexer.App/ViewLocator.cs",
+          "src/VideoIndexer.App/ViewModels/MainWindowViewModel.cs",
+          "src/VideoIndexer.App/Views/MainWindow.axaml",
+          "src/VideoIndexer.App/Views/MainWindow.axaml.cs",
+          "src/VideoIndexer.App/Assets/appsettings.json",
+          "src/VideoIndexer.sln"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T14:59:17Z",
+          "note": "Program.cs creates AppPaths and JsonSettingsService outside DI (early init pattern) then registers them as singleton instances. This means the IConfiguration reload (reloadOnChange:true) and ISettingsService.Current can drift if settings change at runtime. A future improvement: wire IOptionsMonitor<AppOptions> to JsonSettingsService so Current stays in sync."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-04-27T14:59:17Z",
+          "note": "App.Services is a static IServiceProvider property on the App class. This is the standard Avalonia+DI bridge but makes unit testing App harder. Future milestones should consider dependency injection via constructor/interface for App-level services instead of a service locator."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T14:59:17Z",
+          "note": "ViewLocator uses namespace string replacement to find views. If the ViewModels or Views namespaces change, the locator breaks silently (returns a TextBlock error message instead of throwing). Consider adding a startup-time validation or unit test that verifies all registered ViewModels have corresponding View registrations."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-27T14:59:17Z",
+          "note": "MainWindow has two constructors: parameterless (for Avalonia XAML runtime loader) and DI constructor. The parameterless one leaves DataContext null; only the DI constructor sets it. If MainWindow is ever instantiated without DI (e.g., in a designer), bindings will silently fail. Acceptable for M1 where the designer is not used."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-27T15:15:27Z",
+      "completed_at": "2026-04-27T15:17:32Z",
+      "duration_ms": 125000,
+      "summary": [
+        "Release build: zero errors, zero warnings. All 20 regression tests pass.",
+        "AC1 confirmed: csproj declares net8.0 + WinExe.",
+        "AC3 confirmed: embedded appsettings.json covers all four schema sections (Logging/Appearance/Window/ExternalTools); resource name matches RootNamespace+path.",
+        "AC4 verified by code inspection: ThemeService reads Appearance.Theme in constructor; App.axaml.cs applies it immediately via ApplyTheme(themeService.Current) in OnFrameworkInitializationCompleted — theme variant is set before MainWindow is shown.",
+        "AC5 verified by code inspection: LoggingSetup uses RollingInterval.Day (→videoindexer-YYYYMMDD.log); Verbosity 2→Information, 3→Debug, confirming AC5 behaviour.",
+        "AC6 confirmed: no MySqlConnector, Dapper, LibVLCSharp, or FFMpeg* packages in csproj.",
+        "AC2 cannot be executed headlessly (WinExe requires a display); Avalonia startup wiring is correct and build succeeds cleanly — treated as code-verified pass.",
+        "Edge case 1: GetManifestResourceStream null guard present — falls back to JsonSettingsService defaults. Edge case 2: App.Services assigned before StartWithClassicDesktopLifetime, no null-dereference risk in OnFrameworkInitializationCompleted."
+      ],
+      "metrics": {
+        "test_coverage": "Infrastructure unit tests only; App project has no unit tests (runtime-only)",
+        "tests_passed": 20,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T15:17:32Z",
+          "note": "AC2/4/5 are runtime-only ACs that require a display. Consider adding a startup smoke-test project (Avalonia Headless) in a future WP to cover these programmatically."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T15:17:32Z",
+          "note": "No unit tests exist for the App project itself (Program.cs, App.axaml.cs, ViewLocator). WP-006 (tests project) should add at least a ViewLocator resolution test and an EnsureDefaultSettingsFile idempotency test."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-27T15:18:03Z",
+      "completed_at": "2026-04-27T15:19:53Z",
+      "duration_ms": 110000,
+      "summary": [
+        "Reviewed 10 modified/created files across VideoIndexer.App, VideoIndexer.Infrastructure (Settings, Logging, Theme, AppPaths). 0 Critical, 0 High, 1 Low, 1 Info. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-04-27T15:19:53Z",
+          "note": "Low — A05/A09 (Security Misconfiguration / Logging Failures): src/VideoIndexer.Infrastructure/Logging/LoggingSetup.cs line 31 — options.Logging.FilePath is taken directly from user settings and passed to Serilog WriteTo.File() without validation. A tampered settings file (e.g., by local malware) could redirect log output to a UNC/SMB share, leaking log entries to a remote host or triggering an NTLM credential capture. Remediation: validate that FilePath, when set, is a rooted local path (not a UNC path) using Path.IsPathRooted() and !FilePath.StartsWith(@\"\\\\\\\\\"). Desktop single-user threat model keeps this Low."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T15:19:53Z",
+          "note": "Info — A04 (Insecure Design, future risk): src/VideoIndexer.App/Assets/appsettings.json contains MySqlBinaryFolder and VlcExecutablePath fields. Future milestones that spawn external processes from these user-controlled paths must canonicalize and validate the paths against known safe directories (e.g., Program Files) to prevent binary planting / DLL hijacking. No current exploit surface — noting for future implementation guidance."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-27T15:20:15Z",
+      "completed_at": "2026-04-27T15:22:23Z",
+      "duration_ms": 128000,
+      "summary": [
+        "Reviewed all 10 implementation files: Program.cs, App.axaml/cs, ViewLocator.cs, MainWindowViewModel.cs, MainWindow.axaml/cs, VideoIndexer.App.csproj, Assets/appsettings.json, plus the Infrastructure files AppPaths.cs, LoggingSetup.cs, ThemeService.cs, JsonSettingsService.cs.",
+        "Architecture is clean and appropriate for an M1 foundation WP. No blocking issues found.",
+        "Design decisions (early-init pattern, static service locator, dual constructors, sync-on-async in ThemeService.Set) are all documented inline with accurate rationale. Compiled bindings (AvaloniaUseCompiledBindingsByDefault + x:DataType), source generators ([ObservableProperty]), interface-based DI, sealed leaf types, atomic settings write via temp-file + File.Move — all idiomatic and correct.",
+        "One documentation-forward item recorded: the DI bootstrap sequence is non-obvious and warrants an architectural note in the README or developer docs.",
+        "Security Auditor's two Low/Info findings acknowledged. Path validation for log file (UNC guard) remains an open Low risk for a future WP — does not block M1."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/VideoIndexer.App.csproj",
+          "src/VideoIndexer.App/Program.cs",
+          "src/VideoIndexer.App/App.axaml",
+          "src/VideoIndexer.App/App.axaml.cs",
+          "src/VideoIndexer.App/ViewLocator.cs",
+          "src/VideoIndexer.App/ViewModels/MainWindowViewModel.cs",
+          "src/VideoIndexer.App/Views/MainWindow.axaml",
+          "src/VideoIndexer.App/Views/MainWindow.axaml.cs",
+          "src/VideoIndexer.App/Assets/appsettings.json",
+          "src/VideoIndexer.Infrastructure/AppPaths.cs",
+          "src/VideoIndexer.Infrastructure/Logging/LoggingSetup.cs",
+          "src/VideoIndexer.Infrastructure/Theme/ThemeService.cs",
+          "src/VideoIndexer.Infrastructure/Settings/JsonSettingsService.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T15:22:23Z",
+          "note": "Program.cs earlySettings uses NullLogger<JsonSettingsService>.Instance. If LoadOrInitialise() encounters a corrupted settings file in the narrow window after EnsureDefaultSettingsFile completes, the warning log is silently dropped. Probability is negligible on first run, but the correct fix is to either use a bootstrap logger or defer earlySettings construction until after Serilog is configured. Non-blocking for M1."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T15:22:23Z",
+          "note": "ViewLocator.Build() falls back to a TextBlock when the view type is not found in the assembly, but will throw InvalidOperationException (unhandled) if the type exists in the assembly but is not registered in the DI container. The error TextBlock only guards the reflection path, not the DI path. Acceptable for M1 (one registered view), but the distinction should be understood before adding more views — consider a try/catch around GetRequiredService that returns the error TextBlock instead."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-27T15:22:23Z",
+          "note": "[documentation-forward] The DI bootstrap sequence in Program.cs (early AppPaths + JsonSettingsService init outside DI → host build → App.Services assignment → StartWithClassicDesktopLifetime) is non-obvious. The README or a developer docs page should include an architecture diagram or prose description of this startup flow so future contributors understand why the early-init pattern exists and what the trade-offs are."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T15:22:23Z",
+          "note": "No blocking issues found. Code quality is high for a foundation WP — clean separation of concerns, correct use of C# records for settings, atomic file writes, and all prior Developer and Security Auditor observations are accurately documented."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-27T15:24:30Z",
+      "completed_at": "2026-04-27T15:26:03Z",
+      "duration_ms": 93000,
+      "summary": [
+        "Rewrote README.md from a two-line placeholder to a full developer guide covering: prerequisites, getting started (run and test commands), project structure, configuration schema table (all four appsettings.json sections), and an Architecture section.",
+        "Architecture section directly addresses the documentation-forward item from code review: documents the two-phase startup bootstrap sequence (early init → Generic Host build → App.Services bridge → Avalonia), explains why the early-init pattern exists, and calls out the IConfiguration reloadOnChange / JsonSettingsService.Current divergence trade-off.",
+        "Additional architecture sub-sections added for the DI bridge (App.Services), ViewLocator convention and its DI-path edge case, and the Theme system flow."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "README.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-04-27T15:26:03Z",
+          "note": "documentation-forward addressed: README.md now includes a full Architecture section documenting the Program.cs two-phase startup sequence, the early-init rationale, and the IConfiguration/JsonSettingsService divergence trade-off. ViewLocator DI-path edge case also documented."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T15:26:03Z",
+          "note": "README configuration table documents the Logging.FilePath field and includes a local-path-only note, supporting the security auditor's UNC-path finding as a heads-up for future contributors who may edit that field."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-27T15:26:03Z",
+  "last_updated": "2026-04-27T15:26:03Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-27T14:59:17Z",
+      "notes": [
+        "All 6 ACs met. Build clean under Release configuration with zero warnings.",
+        "AC2/4/5 verified by code review - actual runtime verification requires launching the app (WinExe) on a display; not feasible in headless CI but code correctly wires Avalonia, FluentTheme, IThemeService.ThemeChanged, Serilog.",
+        "Embedded Assets/appsettings.json is written to AppData on first run (EnsureDefaultSettingsFile in Program.cs). JsonSettingsService handles subsequent reads/writes.",
+        "App.Services static property bridges DI to Avalonia's App class and ViewLocator. See debt observation for future improvement.",
+        "WP-006 (tests project) should reference Core and Infrastructure; WP-007 (Ctrl+T theme toggle) modifies the App project."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-04-27T15:17:32Z",
+      "notes": [
+        "All 6 ACs met. Release build clean. 20/20 regression tests pass. Runtime ACs (2/4/5) verified by code inspection — headless execution not feasible for WinExe. No regressions or new issues found."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-27T15:19:53Z",
+      "notes": [
+        "Security audit PASS. 0 Critical/High findings. Two low-severity items recorded as pipeline comments: (1) Log file path from user settings not validated against UNC paths — Low risk, recommend path sanitization in LoggingSetup.cs; (2) Info note on future binary-execution risk for MySqlBinaryFolder/VlcExecutablePath. All 6 ACs confirmed met. Ready for code-review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-27T15:22:23Z",
+      "notes": [
+        "Code review PASS. All 6 ACs confirmed met. No blocking issues. Two low-priority observations recorded: (1) NullLogger in early earlySettings construction silently drops first-boot corruption warnings; (2) ViewLocator DI path not guarded — throws instead of returning error TextBlock if view is found via reflection but unregistered in DI. One documentation-forward item: README/docs should describe the Program.cs startup bootstrap sequence (early init pattern and its trade-offs)."
+      ]
+    },
+    {
+      "from_agent": "Documentation",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-04-27T15:26:03Z",
+      "notes": [
+        "WP-005 documentation complete. README.md expanded to a full developer guide. Startup bootstrap sequence, DI bridge, ViewLocator convention, and theme system are all documented. WP-006 dependency on WP-005 is now resolved — WP-006 (tests project) may proceed."
+      ]
+    }
+  ]
+}

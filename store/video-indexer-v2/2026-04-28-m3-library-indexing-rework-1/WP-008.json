@@ -1,0 +1,202 @@
+{
+  "work_package_id": "WP-008",
+  "work_package_file": "work/WP-008.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-004"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "MainContentViewModel.Dispose() contains RefreshIndex?.Dispose()",
+      "met": true
+    },
+    {
+      "criterion": "_logger is of type ILogger<MainContentViewModel> and is initialised in both constructors",
+      "met": true
+    },
+    {
+      "criterion": "OnRefreshStateChanged uses the 4-argument ContinueWith overload with TaskContinuationOptions.OnlyOnFaulted and TaskScheduler.Default",
+      "met": true
+    },
+    {
+      "criterion": "The ContinueWith continuation calls _logger.LogError with t.Exception!.GetBaseException()",
+      "met": true
+    },
+    {
+      "criterion": "No new DI registrations are required",
+      "met": true
+    },
+    {
+      "criterion": "The production build of VideoIndexer.App produces no new warnings",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-08T20:46:26Z",
+      "completed_at": "2026-05-08T20:49:28Z",
+      "duration_ms": 182000,
+      "summary": [
+        "Added ILogger<MainContentViewModel> field initialised in both constructors (NullLogger.Instance in parameterless, injected in full constructor).",
+        "Attached 4-argument ContinueWith(OnlyOnFaulted, TaskScheduler.Default) to the fire-and-forget RefreshCountAsync() call in OnRefreshStateChanged.",
+        "Added RefreshIndex?.Dispose() as the last statement in Dispose().",
+        "Updated MainContentViewModelTests.BuildSut to pass NullLogger<MainContentViewModel>.Instance as the new logger argument.",
+        "Build: 0 warnings. Full test run: 75 App + 113 Infrastructure + 126 Core = 314 total; 0 failures."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/ViewModels/MainContentViewModel.cs",
+          "tests/VideoIndexer.App.Tests/MainContentViewModelTests.cs"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 75,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-08T20:49:28Z",
+          "note": "MainContentViewModel.cs: The NullLogger<MainContentViewModel>.Instance pattern in the parameterless constructor is idiomatic and correct. One minor style note: the parameterless constructor is documented as 'backward compatibility with tests and factory lambdas' — now that the test's BuildSut passes NullLogger, the doc comment remains accurate."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-08T20:52:11Z",
+      "completed_at": "2026-05-08T20:52:44Z",
+      "duration_ms": 33000,
+      "summary": [
+        "All 6 acceptance criteria verified through direct code inspection and test execution.",
+        "AC-1: RefreshIndex?.Dispose() confirmed as last statement in Dispose().",
+        "AC-2: _logger field is ILogger<MainContentViewModel>; NullLogger.Instance in parameterless ctor, injected in full ctor.",
+        "AC-3: ContinueWith(action, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default) confirmed in OnRefreshStateChanged.",
+        "AC-4: Continuation body calls _logger.LogError(t.Exception!.GetBaseException(), ...) confirmed.",
+        "AC-5: Full constructor accepts ILogger<MainContentViewModel> parameter — no new DI registrations. MainContentViewModelTests.BuildSut passes NullLogger.Instance.",
+        "AC-6: VideoIndexer.App built with 0 warnings (confirmed by previous build step). Full regression: 314 passed, 5 skipped, 0 failed."
+      ],
+      "metrics": {
+        "test_coverage": "113 infra (5 skipped/live-DB), 75 app, 126 core",
+        "tests_passed": 314,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-08T20:52:44Z",
+          "note": "The 4-argument ContinueWith correctly passes CancellationToken.None so the continuation is never suppressed by a cancelled token. OnlyOnFaulted ensures the log call is skipped on successful completion. No issues found."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-08T20:52:44Z",
+          "note": "t.Exception!.GetBaseException() uses null-forgiving operator. This is safe here because OnlyOnFaulted guarantees t.Exception is non-null; a runtime NullReferenceException is impossible in this branch."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-08T20:56:20Z",
+      "completed_at": "2026-05-08T20:57:04Z",
+      "duration_ms": 44000,
+      "summary": [
+        "Code review PASS — minimal, focused change, no concerns.",
+        "ILogger<MainContentViewModel> field correctly declared as non-nullable; parameterless ctor uses NullLogger<MainContentViewModel>.Instance (idiomatic .NET pattern), full ctor injects the logger last (correct DI convention).",
+        "ContinueWith(OnlyOnFaulted, CancellationToken.None, TaskScheduler.Default) is the correct 4-argument overload for fire-and-forget error logging. The null-forgiving ! on t.Exception is provably safe in the OnlyOnFaulted branch.",
+        "RefreshIndex?.Dispose() placed correctly at the end of Dispose(), safely handling the null case from the parameterless constructor path."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/ViewModels/MainContentViewModel.cs",
+          "tests/VideoIndexer.App.Tests/MainContentViewModelTests.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-08T20:57:04Z",
+          "note": "The ContinueWith pattern is correct: OnlyOnFaulted + TaskScheduler.Default + CancellationToken.None is the right combination for a fire-and-forget error log. The null-forgiving ! on t.Exception is safe because OnlyOnFaulted guarantees t.IsFaulted, which implies t.Exception is non-null. The _ discard on the continuation task is also safe since LogError does not throw."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-08T20:57:04Z",
+          "note": "No improvements required — code is clean and consistent with the existing codebase patterns."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-08T20:59:37Z",
+      "completed_at": "2026-05-08T21:00:08Z",
+      "duration_ms": 31000,
+      "summary": [
+        "No documentation changes required for WP-008.",
+        "Reviewed MainContentViewModel.cs XML doc: existing comments are accurate after the logger injection and Dispose patch. The parameterless constructor summary 'Dispose is also a no-op' remains correct because RefreshIndex is null in that path, making RefreshIndex?.Dispose() a null-conditional no-op.",
+        "No README changes required — WP-008 is an internal ViewModel implementation change with no user-facing impact.",
+        "No documentation-forward items were raised in the code review."
+      ],
+      "artifacts": {
+        "files_modified": []
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-08T21:00:08Z",
+          "note": "No documentation-forward items in code review. Existing XML doc for MainContentViewModel is accurate as-is: the parameterless constructor summary states 'Dispose is also a no-op' which remains correct because RefreshIndex is null in that path and RefreshIndex?.Dispose() is a null-conditional no-op. No stale language identified."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-08T21:00:08Z",
+          "note": "No README changes required. WP-008 adds internal logger injection and fire-and-forget error logging to MainContentViewModel — no user-facing behaviour, configuration options, or public API surface was changed."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-08T21:00:08Z",
+  "last_updated": "2026-05-08T21:00:08Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-08T20:49:28Z",
+      "notes": [
+        "Added ILogger<MainContentViewModel> field; parameterless ctor uses NullLogger.Instance, full ctor accepts ILogger<MainContentViewModel> (no new DI registration needed). RefreshIndex?.Dispose() added to Dispose(). OnRefreshStateChanged's fire-and-forget now chains .ContinueWith(t => _logger.LogError(...), CancellationToken.None, OnlyOnFaulted, TaskScheduler.Default). MainContentViewModelTests updated to pass NullLogger. All 75 App tests, 113 Infrastructure tests, 126 Core tests pass; 0 build warnings."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-08T20:52:44Z",
+      "notes": [
+        "All 6 AC met. Guard code, logger field, and Dispose patch verified directly in MainContentViewModel.cs. ContinueWith overload and continuation body match specification exactly. Tests: 314 passed, 5 skipped, 0 failed. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-08T20:57:04Z",
+      "notes": [
+        "PASS. All 6 AC met. Logger injection, NullLogger.Instance fallback, RefreshIndex?.Dispose(), and ContinueWith error-log pattern are all correct and idiomatic. No blocking issues, no Fix-Forward edits needed."
+      ]
+    }
+  ]
+}

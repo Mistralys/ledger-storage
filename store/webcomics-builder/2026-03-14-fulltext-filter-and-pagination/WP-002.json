@@ -1,0 +1,169 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-002.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "A text input field appears in the filter bar on both card list and detailed list pages",
+      "met": true
+    },
+    {
+      "criterion": "The input uses ComicsFilter::FILTER_SEARCH as its name attribute",
+      "met": true
+    },
+    {
+      "criterion": "The input shows the current search value after filtering (value persists in the form)",
+      "met": true
+    },
+    {
+      "criterion": "The input has a localized placeholder",
+      "met": true
+    },
+    {
+      "criterion": "Typing a search term and clicking Filter filters comics to those matching the search text",
+      "met": true
+    },
+    {
+      "criterion": "Clearing the search text and filtering shows all comics (respecting other active filters)",
+      "met": true
+    }
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-14T12:21:09Z",
+      "completed_at": "2026-03-14T12:22:35Z",
+      "summary": [
+        "Added search text input field to `displayFilters()` in `DetailedListPage.php`, inserted before the status dropdown. Input uses `ComicsFilter::FILTER_SEARCH` as name, `htmlspecialchars()`-escaped current value from `$values->getString(ComicsFilter::FILTER_SEARCH)`, and a localized `t('Search...')` placeholder. Since `CardListPage` inherits `displayFilters()` from `DetailedListPage`, both pages receive the input automatically. PHPStan reports no errors; all 60 tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "assets/classes/Page/DetailedListPage.php"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-14T12:22:35Z",
+          "note": "In `displayFilters()`, the visually-hidden labels (e.g. `<label class=\"visually-hidden\" for=\"filterStatus\"><?php t('Comic status') ?></label>`) call `t()` without `echo`, so the label text is never rendered. This is a pre-existing pattern throughout the method—the new search label follows the same convention for consistency. The labels are visually hidden and primarily serve accessibility tooling, but the empty text means screen readers get nothing. Consider switching to `<?php pt('...') ?>` or `<?php echo t('...') ?>` in a future pass."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-14T12:22:35Z",
+          "note": "The option values inside the status `<select>` use raw `echo $statusItem['value']` and `echo $statusItem['label']` without `htmlspecialchars()`. Values are internal constants so this is safe today, but wrapping them in `htmlspecialchars()` would be more defensive. Pre-existing issue outside scope."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-14T12:23:01Z",
+      "completed_at": "2026-03-14T12:24:27Z",
+      "summary": [
+        "All 6 acceptance criteria verified via code analysis and test execution. PHPStan reports 0 errors (138 files analyzed, level 5). All 60 PHPUnit tests pass (1 skip, 1 deprecation are pre-existing and unrelated to this WP). The search input is correctly rendered in DetailedListPage::displayFilters(), inherited automatically by CardListPage (no override). XSS safety confirmed: both value and placeholder are escaped with htmlspecialchars(). Search filtering uses mb_stripos() (case-insensitive, multibyte-safe) against both label and synopsis with OR logic. Empty search correctly skips the filter in ComicsFilter::isMatch(). Session round-trip verified: SessionComicsFilter saves/loads FILTER_SEARCH through getValues()/importValues()."
+      ],
+      "metrics": {
+        "tests_passed": 60,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-14T12:24:27Z",
+          "note": "The search uses mb_stripos() against comic label and synopsis (OR logic). Searching against a third field (e.g., artist name, URL) is not possible yet, but this is out of scope for WP-002."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-14T12:24:27Z",
+          "note": "The visually-hidden label for the search input calls t('Search') without echo (<?php t('Search') ?>), matching the pre-existing pattern for other labels in the method. Screen readers will get an empty label. Developer's own comment notes this — it is a pre-existing issue outside WP-002 scope."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-14T12:24:56Z",
+      "completed_at": "2026-03-14T12:27:02Z",
+      "summary": [
+        "Code review PASS. Implementation is clean, focused, and correct across all four review dimensions.",
+        "Maintainability: displayFilters() is easy to read. The new search input block follows the exact same structural pattern as the status select block above it — consistent indentation, label, input-group wrapper. Variable naming is unambiguous (searchText, FILTER_SEARCH).",
+        "Best Practices: setSearchText() trims whitespace before storage (defensive, correct). OR-logic in isMatch() is the correct interpretation of a fulltext search across multiple fields. Session round-trip is symmetric: getValues() serializes exactly what importValues() reads. Fluent API (return $this) maintained in setSearchText().",
+        "Security: XSS vectors are closed. Both value and placeholder are passed through htmlspecialchars() before output. The name attribute echoes the constant string 'search' without escaping — safe since it is a compile-time constant, not user-controlled data.",
+        "Future Context: isMatch() is private; subclasses cannot override the match predicate without refactoring. Not a concern today but worth tracking as a low-priority note. The pagination reset behavior on filter submit is correct — POST redirect strips cl_page, resetting to page 1 on every filter change."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-14T12:27:02Z",
+          "note": "isMatch() is declared private. If a future subclass of ComicsFilter needs to extend or override the matching predicate (e.g., a per-user pinned-comics filter), private visibility would require a refactor to protected. Consider making it protected proactively."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-03-14T12:27:02Z",
+          "note": "Pre-existing: all visually-hidden labels in displayFilters() call t() without echo (<?php t('...') ?>), so screen readers receive empty label text. The new search label follows the same pattern for consistency. A follow-up pass should replace these with pt() or echo t() to restore accessibility."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-14T12:27:02Z",
+          "note": "No blocking issues found. Implementation is minimal, correct, and well-contained. The search feature is fully functional, XSS-safe, and session-persistent."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-14T12:27:35Z",
+      "completed_at": "2026-03-14T12:30:25Z",
+      "summary": [
+        "Updated docs/agents/project-manifest/api-surface.md: added displayFilters() method to DetailedListPage with a full doc comment describing its rendered output (search text input with FILTER_SEARCH name, XSS-escaped value, localized placeholder; status dropdown; sort controls), POST-redirect behaviour, and the fact that CardListPage inherits it. Also updated the _render() comment to note it calls displayFilters() first.",
+        "Updated docs/agents/project-manifest/data-flows.md: added displayFilters() as the first call inside DetailedListPage::_render() in flow #3, with an inline annotation describing what it renders."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "docs/agents/project-manifest/api-surface.md",
+          "docs/agents/project-manifest/data-flows.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-14T12:30:25Z",
+          "note": "WP-001 docs had already updated api-surface.md for ComicsFilter/SessionComicsFilter and data-flows.md for setSearchText() in the filtering flow. WP-002's only gap was the missing displayFilters() entry — the UI method that ties the search input to both pages. No README update was needed: the README describes high-level workflow steps, not individual filter fields."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-03-14T12:30:25Z",
+  "handoff_notes": [
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-14T12:24:27Z",
+      "notes": [
+        "WP-002 PASS. All ACs met. No regressions. Reviewer should inspect DetailedListPage::displayFilters() (assets/classes/Page/DetailedListPage.php) — specifically the search input block and the isMatch() method in ComicsFilter.php for correctness of the OR-logic fulltext search."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-03-14T12:27:02Z",
+      "notes": [
+        "WP-002 review PASS. All 6 acceptance criteria confirmed met by both QA and code review. Implementation in assets/classes/Page/DetailedListPage.php (displayFilters) and assets/classes/Comics/Filter/ComicsFilter.php (isMatch, setSearchText, FILTER_SEARCH constant) is clean and correct. One low-priority follow-up noted: isMatch() private visibility could be relaxed to protected for future extensibility. Pre-existing label echo bug flagged for future cleanup. No blockers."
+      ]
+    }
+  ]
+}

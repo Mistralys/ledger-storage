@@ -1,0 +1,267 @@
+{
+  "work_package_id": "WP-006",
+  "work_package_file": "work/WP-006.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001",
+    "WP-003",
+    "WP-004"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "Add assigns a new Guid Id and appends the connection to AppOptions.Database.Connections.",
+      "met": true
+    },
+    {
+      "criterion": "SetActive(id) updates AppOptions.Database.ActiveConnectionId and persists.",
+      "met": true
+    },
+    {
+      "criterion": "Remove(id) removes the entry and clears ActiveConnectionId when the removed id was active.",
+      "met": true
+    },
+    {
+      "criterion": "Every mutation invokes ISettingsService.SaveAsync exactly once.",
+      "met": true
+    },
+    {
+      "criterion": "The store treats the connections list immutably (no in-place list mutation that would alias the persisted snapshot).",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-27T20:50:15Z",
+      "completed_at": "2026-04-27T20:52:55Z",
+      "duration_ms": 160000,
+      "summary": [
+        "Created JsonDatabaseConnectionStore implementing IDatabaseConnectionStore with immutable AppOptions updates.",
+        "Created JsonDatabaseConnectionStoreTests with 11 tests covering all 5 ACs.",
+        "31/31 Infrastructure.Tests pass. Release build clean."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Settings/JsonDatabaseConnectionStore.cs",
+          "tests/VideoIndexer.Infrastructure.Tests/Settings/JsonDatabaseConnectionStoreTests.cs"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 31,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T20:52:55Z",
+          "note": "JsonDatabaseConnectionStore.SaveAsync mutates a local List<T> copy before creating a new AppOptions record. The ToList() call creates a new copy so the original IReadOnlyList is never aliased. The Ref<T> helper in tests is a small but effective workaround for lambda capture of mutable state in C# — acceptable for test code."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T20:52:55Z",
+          "note": "GetActiveAsync is a read-only operation returning Task.FromResult synchronously. Consider caching the connection lookup if the connections list grows large, but premature optimization — fine for expected single-digit connection counts."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-27T20:57:23Z",
+      "completed_at": "2026-04-27T20:58:38Z",
+      "duration_ms": 75000,
+      "summary": [
+        "All 5 acceptance criteria verified against implementation and test suite.",
+        "43/43 tests pass (Infrastructure.Tests). Release build clean: 0 warnings, 0 errors.",
+        "AC-1: SaveAsync assigns new Guid when Id==Empty, confirmed by SaveAsync_NewConnection_AssignsGuidAndAppends.",
+        "AC-2: SetActiveAsync updates ActiveConnectionId and persists, confirmed by SetActiveAsync_UpdatesActiveConnectionId + SaveAsync once mock.",
+        "AC-3: DeleteAsync removes entry and conditionally clears ActiveConnectionId, confirmed by DeleteAsync_ClearsActiveId_WhenRemovedWasActive + DeleteAsync_PreservesActiveId_WhenRemovedWasNotActive.",
+        "AC-4: All three mutations verified via Moq Times.Once assertions.",
+        "AC-5: ToList() copy + with-expression pattern confirmed immutable; SaveAsync_DoesNotMutateOriginalConnectionsList passes."
+      ],
+      "metrics": {
+        "test_coverage": "11 new tests for WP-006; all 5 ACs covered",
+        "tests_passed": 43,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-04-27T20:58:38Z",
+          "note": "No test for SetActiveAsync(null) — the documented interface path for clearing the active connection. The implementation handles it correctly (assigns null to ActiveConnectionId), but a test would improve coverage for this explicit contract."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-04-27T20:58:38Z",
+          "note": "No test for DeleteAsync with a non-existent Guid. The implementation is a no-op (Where filter returns all items unchanged), which is correct behavior, but the case is untested."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-04-27T20:58:38Z",
+          "note": "GetAllAsync has no dedicated test. It is a simple read-through with null-guard (returns Array.Empty when Connections is null). Low risk but worth adding for completeness."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-27T21:00:47Z",
+      "completed_at": "2026-04-27T21:02:25Z",
+      "duration_ms": 98000,
+      "summary": [
+        "Reviewed 6 files (JsonDatabaseConnectionStore.cs, JsonSettingsService.cs, DatabaseConnectionOptions.cs, DatabaseOptions.cs, IDatabaseConnectionStore.cs, ISettingsService.cs). All OWASP Top 10 categories evaluated. 0 Critical, 0 High, 1 Medium (plaintext password — by design), 1 Info (no mutation logging). Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-04-27T21:02:25Z",
+          "note": "MEDIUM | A02 — Cryptographic Failures | File: src/VideoIndexer.Core/Options/DatabaseConnectionOptions.cs, line 36 (Password property). DatabaseConnectionOptions.Password is persisted as cleartext in the JSON settings file on disk. The docstring acknowledges this ('stored at the user's discretion'), indicating intentional design. For a local single-user desktop tool this is a common trade-off, but it means database credentials are readable by any process with access to the settings file. Remediation (when warranted): integrate OS credential store (DPAPI on Windows via System.Security.Cryptography.ProtectedData, or Keychain on macOS) to encrypt the password at rest; or accept the design decision with clear user-facing documentation about the risk."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T21:02:25Z",
+          "note": "INFO | A09 — Security Logging & Monitoring | File: src/VideoIndexer.Infrastructure/Settings/JsonDatabaseConnectionStore.cs. No logging is present in JsonDatabaseConnectionStore — connection additions, deletions, and active-connection changes produce no audit trail. Low severity for a desktop app, but adding ILogger calls at Debug/Information level to SaveAsync, DeleteAsync, and SetActiveAsync would improve observability and troubleshooting. Does not block approval."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T21:02:25Z",
+          "note": "INFO | A04 — Insecure Design | File: src/VideoIndexer.Core/Options/DatabaseConnectionOptions.cs. Port property accepts any integer value (no range constraint 0–65535). Validation should occur at connection-use time, not in the settings record, so this is by design. Flagged for awareness — a guard at the ViewModel/UI layer when a user enters a port value is the appropriate enforcement point."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-27T21:05:10Z",
+      "completed_at": "2026-04-27T21:07:39Z",
+      "duration_ms": 149000,
+      "summary": [
+        "PASS with Fix-Forward. JsonDatabaseConnectionStore is clean, well-structured, and correctly implements all 5 ACs.",
+        "Fix-Forward applied: in SaveAsync, DeleteAsync, and SetActiveAsync, _settings.Current was accessed 2+ times per method. A SettingsChanged subscriber or re-entrant caller could change Current between the first read (captured into `db`) and the second read used as the with-expression base, producing a snapshot built from two different generations of state. Captured `var current = _settings.Current` once at the top of each mutation method. Non-behavioral in the current single-threaded desktop context; defensive against future concurrency.",
+        "No blocking issues found. Architecture, maintainability, best practices, and performance all meet standards."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Settings/JsonDatabaseConnectionStore.cs"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 21,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "medium",
+          "timestamp": "2026-04-27T21:07:39Z",
+          "note": "Fix-Forward: SaveAsync, DeleteAsync, SetActiveAsync each accessed _settings.Current more than once. Added `var current = _settings.Current` as the first statement in each mutation method and replaced all subsequent _settings.Current reads with `current`. Eliminates TOCTOU exposure where a SettingsChanged event handler that calls back into the store (re-entrant) or a concurrent SaveAsync could change Current between the two reads, causing the with-expression to merge two different snapshot generations. Non-behavioral under current single-threaded UI dispatch, but defensive against re-entrant SettingsChanged subscribers and any future background refresh of ISettingsService."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-27T21:07:39Z",
+          "note": "[documentation-forward] IDatabaseConnectionStore.SaveAsync interface summary says 'Adds or replaces a connection entry identified by Id' but does not document the auto-Guid assignment behaviour: when Id == Guid.Empty the implementation assigns a new Guid before persisting. DatabaseConnectionOptions.Id defaults to Guid.NewGuid() so callers constructing a record normally will never trigger this path unintentionally, but callers who explicitly want an insert-with-server-assigned-id should know to pass Id = Guid.Empty. Add a <remarks> block to the interface method doc describing this contract."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T21:07:39Z",
+          "note": "GetAllAsync and GetActiveAsync use Task.FromResult for synchronous value returns. This is intentional and appropriate for the expected single-digit connection-list size, consistent with the Developer's own observation. No action required — flagged for awareness only."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-27T21:11:28Z",
+      "completed_at": "2026-04-27T21:12:36Z",
+      "duration_ms": 68000,
+      "summary": [
+        "Added <remarks> block to IDatabaseConnectionStore.SaveAsync documenting the auto-Guid assignment contract (Id == Guid.Empty triggers server-assigned Id) — addresses the documentation-forward from code review.",
+        "Updated README.md: added JsonDatabaseConnectionStore to unit-test coverage sentence; clarified that VideoIndexer.Infrastructure.Tests contains both unit and integration tests.",
+        "No other README sections required updates — the Database.Connections configuration table (including Id auto-generation note) and the plaintext-password security notice were already accurate and complete."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Core/Abstractions/IDatabaseConnectionStore.cs",
+          "README.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T21:12:36Z",
+          "note": "The documentation-forward was fully addressed. The README Database.Connections table already accurately described the auto-generated Id field with '(auto)' — no duplication needed there. The remarks block on the interface method is the appropriate location for the contract detail."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T21:12:36Z",
+          "note": "Security audit raised the plaintext-password concern as documentation-worthy; the README already contained a clear security notice for this before this pipeline ran — no change needed on that front."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-06T09:28:49Z",
+  "last_updated": "2026-05-06T09:28:49Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-27T20:52:55Z",
+      "notes": [
+        "JsonDatabaseConnectionStore: full IDatabaseConnectionStore implementation, immutable AppOptions updates via with-expressions.",
+        "11 new tests in VideoIndexer.Infrastructure.Tests/Settings/JsonDatabaseConnectionStoreTests.cs; 31/31 total pass.",
+        "No DI registration yet (deferred to WP-016).",
+        "Tests use Moq to mock ISettingsService and verify SaveAsync call counts."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-04-27T20:58:38Z",
+      "notes": [
+        "WP-006 QA PASS. All 5 ACs verified, 43/43 tests pass, release build clean.",
+        "Three low-priority coverage gaps noted (SetActiveAsync(null), DeleteAsync non-existent id, GetAllAsync) — none are AC failures; flagged for awareness.",
+        "JsonDatabaseConnectionStore is ready for security audit review."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-27T21:02:25Z",
+      "notes": [
+        "WP-006 security-audit PASS. 0 Critical, 0 High blocking issues. 1 Medium noted (plaintext password — by design/acknowledged in docstring; remediation via DPAPI when warranted). 1 Info noted (no mutation logging). All 5 ACs confirmed met. Ready for code-review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-27T21:07:39Z",
+      "notes": [
+        "WP-006 code-review PASS. Fix-Forward applied: _settings.Current snapshot capture (SaveAsync, DeleteAsync, SetActiveAsync) — non-behavioral, defensive against re-entrant SettingsChanged. One documentation-forward logged for IDatabaseConnectionStore.SaveAsync: document the auto-Guid contract when Id == Guid.Empty. All 5 ACs met. Ready for documentation."
+      ]
+    }
+  ]
+}

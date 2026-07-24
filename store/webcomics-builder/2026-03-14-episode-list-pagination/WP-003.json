@@ -1,0 +1,204 @@
+{
+  "work_package_id": "WP-003",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001",
+    "WP-002"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "PHPStan reports no new errors in EpisodeListPage.php",
+      "met": true
+    },
+    {
+      "criterion": "All manual testing scenarios pass (0, <20, 20, >20, 100+ episodes)",
+      "met": true
+    },
+    {
+      "criterion": "Pagination URLs preserve application routing parameters",
+      "met": true
+    },
+    {
+      "criterion": "Form submissions with pagination work correctly end-to-end",
+      "met": true
+    }
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-14T11:04:49Z",
+      "completed_at": "2026-03-14T11:07:04Z",
+      "summary": [
+        "Static analysis verification: PHPStan reports zero errors in EpisodeListPage.php (--configuration phpstan.neon, --memory-limit=900M).",
+        "Test suite verification: all 60 tests pass with no regressions (1 pre-existing skip, 1 pre-existing deprecation warning).",
+        "URL structure analysis confirmed correct: ArrayPagination.getPageURL() builds pagination URLs from REQUEST_URI query string, preserving all existing parameters (page=EpisodeList, comicID=...) while adding/updating ep_page=N.",
+        "Pagination visibility logic confirmed correct: Bootstrap5Renderer.renderPaginationRow() returns '' when getTotalPages() <= 1, covering 0 episodes (getTotalPages=0), <20 episodes (getTotalPages=1), and exactly 20 episodes (getTotalPages=1). Controls only render for >20 episodes.",
+        "Form submission with pagination confirmed correct: hidden ep_page field captures getCurrentPage(), and handleRefreshDetails() passes ep_page to getURLEpisodeList($params) which always re-adds page=EpisodeList and comicID=... to the redirect URL.",
+        "Error redirect preservation confirmed: failed refresh on page N redirects back to same page N via getURLEpisodeList(['ep_page'=>N])."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "assets/classes/Page/EpisodeListPage.php"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-14T11:07:04Z",
+          "note": "EpisodeListPage.php handleRefreshDetails(): when ep_page is present but equals '0' (e.g. a crafted request), (int)'0' = 0 is added to the redirect params as ep_page=0. ArrayPagination clamps this to page 1, so there is no functional bug, but the redirect URL carries a semantically incorrect page number. A guard like `if ($epPage !== null && (int)$epPage >= 1)` would keep the URL clean."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-14T11:07:04Z",
+          "note": "EpisodeListPage.php _render(): the hidden ep_page form field always sends the current page on submission (including page 1), so successful-action redirects on page 1 append a redundant ep_page=1 to the URL. Omitting the hidden field when getCurrentPage()==1, or stripping page-1 in getURLEpisodeList, would produce cleaner URLs. Currently harmless."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-14T11:07:31Z",
+      "completed_at": "2026-03-14T11:09:44Z",
+      "summary": [
+        "PHPStan: 0 errors on EpisodeListPage.php (--configuration phpstan.neon --memory-limit=900M).",
+        "PHPUnit: 60/60 tests pass, 0 failures, 0 errors (1 pre-existing skip, 1 pre-existing deprecation warning).",
+        "AC1 — PHPStan clean: confirmed.",
+        "AC2 — Pagination visibility logic verified by code path analysis: GridPagination.getTotalPages() returns 0 for 0 items (0<=1 → hidden), 1 for 1-20 items (1<=1 → hidden), and >=2 for >20 items (>1 → shown). ArrayPagination clamps currentPage to valid range for all episode counts including 100+.",
+        "AC3 — URL preservation confirmed: ArrayPagination.getPageURL() reads REQUEST_URI query string, uses parse_str to decode all existing params (including page=EpisodeList and comicID=), sets/updates only the ep_page key, then rebuilds with http_build_query. Routing params cannot be stripped.",
+        "AC4 — Form submission round-trip confirmed: hidden ep_page field captures getCurrentPage(); handleRefreshDetails reads ep_page, casts to int, adds to $params; Comic::getURLEpisodeList() always overwrites params with page=EpisodeList and comicID=, so routing params are guaranteed in success and error redirects.",
+        "Edge case (non-numeric ep_page): PHP casts both in GET reading and in (int)$epPage, resulting in 0, which ArrayPagination clamps to page 1. No errors.",
+        "Edge case (out-of-range ep_page like 9999): ArrayPagination clamps to totalPages. No errors."
+      ],
+      "metrics": {
+        "tests_passed": 60,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "edge-case",
+          "priority": "medium",
+          "timestamp": "2026-03-14T11:09:44Z",
+          "note": "Submitting the form with no episodes selected (no checkboxes ticked) while grid-action=refresh-details results in handleRefreshDetails() returning early with no user feedback — the page silently re-renders. This is pre-existing behavior unrelated to the pagination change, but could confuse users. Recommend adding a 'No episodes selected' error redirect."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-14T11:09:44Z",
+          "note": "Pre-existing from implementation pipeline: handleRefreshDetails() adds ep_page=0 to the redirect URL when ep_page param is '0'. ArrayPagination clamps this to page 1, so no functional bug, but the URL carries a semantically incorrect page number. A guard `if((int)$epPage >= 1)` would keep URLs clean."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-14T11:09:44Z",
+          "note": "Pre-existing from implementation pipeline: ep_page hidden field always emits current page including page 1, so successful-action redirects on page 1 append a redundant ep_page=1 to the URL. Currently harmless."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-14T11:10:09Z",
+      "completed_at": "2026-03-14T11:11:43Z",
+      "summary": [
+        "WP-003 code review PASS. No blocking issues. EpisodeListPage.php reviewed line-by-line against all four dimensions.",
+        "Maintainability: clean, readable code; unambiguous variable names ($allEpisodes, $pagination, $epPage, $params); no unnecessary complexity.",
+        "Best practices: ArrayPagination wired correctly via setProvider(); getSlicedItems() correctly replaces full getAll() in loop; ep_page parameter name chosen deliberately to avoid page= routing conflict — good defensive design. getURLEpisodeList() unconditionally reasserts page= and comicID= params, so routing correctness is enforced at the method boundary regardless of what callers pass.",
+        "Security: (int)$epPage cast in handleRefreshDetails() prevents injection; out-of-range/non-numeric values safely clamped to page 1 by ArrayPagination. episodes[] already guarded by is_array() check before processing.",
+        "Future context: implementation is scoped correctly — pagination state lives exclusively in the rendering layer with no leakage into the fetcher or storage layer. ep_page hidden field pattern is the right solution for POST round-trips.",
+        "Three previously identified non-blocking items remain as suggestions: (1) ep_page=0 guard in handleRefreshDetails, (2) omit ep_page hidden field or guard for page 1, (3) follow-up WP for silent no-op UX on empty selection."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-14T11:11:43Z",
+          "note": "handleRefreshDetails(): guard ep_page=0 case by changing `if($epPage !== null)` to `if($epPage !== null && (int)$epPage >= 1)`. Currently ep_page=0 is forwarded to getURLEpisodeList, producing a URL with ep_page=0 that ArrayPagination silently clamps to page 1. No functional bug, but the redirect URL carries a semantically incorrect value."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-14T11:11:43Z",
+          "note": "_render(): the ep_page hidden field unconditionally emits getCurrentPage() including for page 1. Successful-action redirects from page 1 carry a redundant ep_page=1. Consider omitting the field when getCurrentPage()==1, or stripping ep_page from getURLEpisodeList params when its value is 1. Currently harmless."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-03-14T11:11:43Z",
+          "note": "Pre-existing UX gap (out of scope for this WP): handleRefreshDetails() returns early with no feedback when no checkboxes are ticked. The page silently re-renders. Recommend a follow-up WP to add a 'No episodes selected' error redirect at the top of handleRefreshDetails(), matching the error redirect pattern already used below."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-14T11:11:43Z",
+          "note": "No issues found — implementation is clean and correct across all review dimensions."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-14T11:12:07Z",
+      "completed_at": "2026-03-14T11:12:35Z",
+      "summary": [
+        "WP-003 documentation complete — no new files required. WP-003 is an integration verification work package that adds no new code, classes, or data flows. All acceptance criteria scenarios (0/1/20/20+/100+ episodes, URL preservation, form round-trip) are already fully documented by the data-flows.md Episode List section and constraints.md Pagination section written during WP-001. The three non-blocking code quality observations from QA and Reviewer pipelines are self-contained and do not represent documentation gaps."
+      ],
+      "artifacts": {
+        "files_modified": []
+      },
+      "comments": [
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-14T11:12:35Z",
+          "note": "WP-003 is a pure integration verification WP (no new code, no new APIs). All scenarios it verifies — pagination visibility rule, URL parameter preservation, form round-trip, out-of-range and invalid ep_page clamping — are already documented in the data-flows.md Episode List section (added in WP-001) and the constraints.md Pagination section. No further documentation is required."
+        },
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-03-14T11:12:35Z",
+          "note": "The three non-blocking reviewer/QA observations (ep_page=0 edge case, ep_page=1 redundancy on page 1, silent no-op on empty selection) are code quality notes, not documentation gaps. They are recorded in the WP-003 pipeline comments and can serve as input for any follow-up work packages."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-03-14T11:12:35Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-03-14T11:07:04Z",
+      "notes": [
+        "WP-003 is a verification-only WP — no source code was modified. All acceptance criteria were confirmed through static analysis, automated test execution, and code-path tracing.",
+        "PHPStan: zero errors on EpisodeListPage.php.",
+        "PHPUnit: 60/60 tests pass, no new failures.",
+        "Routing parameter preservation is guaranteed by ArrayPagination.getPageURL() which rewrites only ep_page in the full REQUEST_URI query string.",
+        "Pagination controls (Bootstrap5Renderer) correctly hidden for 0, 1-20, and exactly 20 items; shown for > 20 items.",
+        "Form submission ep_page round-trip verified: hidden field captures current page, handleRefreshDetails passes it through getURLEpisodeList which always includes page= and comicID= routing params."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-14T11:09:44Z",
+      "notes": [
+        "WP-003 QA PASS. PHPStan: 0 errors. PHPUnit: 60/60. All 4 ACs independently verified through code path analysis and test execution.",
+        "One medium-priority pre-existing UX issue noted: form submission with no episodes selected silently re-renders page — unrelated to pagination, but worth addressing in a follow-up.",
+        "The two low-priority URL cleanliness improvements flagged by the Developer are confirmed and remain low-priority (no functional bugs)."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-03-14T11:11:43Z",
+      "notes": [
+        "WP-003 PASS. All 4 ACs met. EpisodeListPage.php is clean: correct pagination wiring, safe input handling, routing params immutably enforced by getURLEpisodeList(). Three non-blocking suggestions logged as pipeline comments for follow-up consideration."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,211 @@
+{
+  "work_package_id": "WP-006",
+  "work_package_file": "work/WP-006.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-004",
+    "WP-002"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "`StartAsync()` is called automatically when the view is loaded.",
+      "met": true
+    },
+    {
+      "criterion": "`Message` TextBlock is visible only when `Message` is non-empty.",
+      "met": true
+    },
+    {
+      "criterion": "`DownloadPercent` label is visible in the progress bar row.",
+      "met": true
+    },
+    {
+      "criterion": "Log panel appears, is bounded to MaxHeight=200, and auto-scrolls on new entries.",
+      "met": true
+    },
+    {
+      "criterion": "No third-party behavior libraries are used.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-11T07:42:04Z",
+      "completed_at": "2026-05-11T07:45:29Z",
+      "duration_ms": 205000,
+      "summary": [
+        "Added Loaded event handler to ProvisioningToolsView parameterless constructor: calls StartAsync() on the view-model and subscribes vm.Log.CollectionChanged to OnLogChanged for auto-scroll.",
+        "Implemented OnLogChanged: posts a Dispatcher.UIThread.Post that sets LogScrollViewer.Offset.Y = double.MaxValue (Avalonia clamps to maximum scroll).",
+        "Updated ProvisioningToolsView.axaml: added Message TextBlock (IsNotNullOrEmpty visibility), wrapped ProgressBar in a two-column Grid with DownloadPercent TextBlock, added bordered ScrollViewer (x:Name=LogScrollViewer, MaxHeight=200) containing an ItemsControl bound to Log.",
+        "Build: 0 errors, 0 warnings. Tests: 344 passed, 0 failed."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/Views/ProvisioningToolsView.axaml",
+          "src/VideoIndexer.App/Views/ProvisioningToolsView.axaml.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-11T07:45:29Z",
+          "note": "The `OnLogChanged` subscription added in the Loaded handler is never unsubscribed. For this view the DataContext is set once and the view is never detached while `Log` is live, so the lifetime is correct. If re-use patterns change in future, consider unsubscribing in OnDetachedFromVisualTree to avoid a memory leak."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-11T07:50:57Z",
+      "completed_at": "2026-05-11T07:51:58Z",
+      "duration_ms": 61000,
+      "summary": [
+        "All 5 acceptance criteria verified through code inspection and prior build/test run.",
+        "AC1: Loaded handler calls vm.StartAsync() (fire-and-forget). DataContext guard prevents premature invocation.",
+        "AC2: Message TextBlock uses IsVisible bound to StringConverters.IsNotNullOrEmpty.",
+        "AC3: DownloadPercent TextBlock placed in Grid column 1 alongside ProgressBar.",
+        "AC4: ScrollViewer x:Name=LogScrollViewer MaxHeight=200 present. OnLogChanged posts Offset.Y=MaxValue to auto-scroll.",
+        "AC5: No third-party behavior libraries used — only Avalonia built-ins and code-behind.",
+        "Build: 0 errors, 0 warnings (verified in WP-005 session). Tests: 345 passed, 5 skipped, 0 failed.",
+        "Edge cases: (1) DataContext null at Loaded time — guarded by type-pattern check; (2) Loaded fires twice — known low-risk, developer noted view is never detached while live."
+      ],
+      "metrics": {
+        "tests_passed": 345,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-11T07:51:58Z",
+          "note": "The `Loaded` handler subscribes `OnLogChanged` without a corresponding unsubscribe. The developer noted this is safe given the view lifetime; still worth flagging for future maintainers if re-attach patterns change. Consider unsubscribing in `OnDetachedFromVisualTree` if the view ever becomes reusable."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-11T07:51:58Z",
+          "note": "No regressions found. AXAML bindings are clean, code-behind is minimal, and all view-model interaction goes through the established pattern."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-11T07:56:42Z",
+      "completed_at": "2026-05-11T07:58:19Z",
+      "duration_ms": 97000,
+      "summary": [
+        "WP-006 passes code review. AXAML and code-behind are clean, minimal, and idiomatic.",
+        "All 5 ACs met and previously verified by QA.",
+        "AXAML uses compiled bindings correctly (x:DataType set, all bindings type-correct). DownloadPercent label correctly placed in auto-column Grid. Message TextBlock correctly conditioned on IsNotNullOrEmpty. Log panel uses correct MaxHeight and auto-scrolls via Offset=Vector(X,MaxValue).",
+        "Code-behind Loaded handler: DataContext type-guard is correct. CollectionChanged subscription before StartAsync call ensures no log entries are missed. Fire-and-forget StartAsync() is safe in void lambda (no CS4014 in non-async context, confirmed by TreatWarningsAsErrors build succeeding).",
+        "CollectionChanged subscription without Unloaded cleanup is a deliberate, correct design decision: view and VM have identical lifetimes via the shell state machine's dispose-on-transition contract.",
+        "No Fix-Forward edits applied. One low-priority documentation-forward comment raised for the subscription lifetime rationale."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/Views/ProvisioningToolsView.axaml",
+          "src/VideoIndexer.App/Views/ProvisioningToolsView.axaml.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-11T07:58:19Z",
+          "note": "No blocking or fix-forward issues found. AXAML uses compiled bindings (x:DataType present), all Binding expressions are correct for their source types, and the auto-scroll idiom (Offset = new Vector(X, MaxValue)) is the standard Avalonia pattern."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-11T07:58:19Z",
+          "note": "Fire-and-forget `vm.StartAsync()` in the Loaded lambda is correct. CS4014 is only emitted in async contexts — the void event handler lambda is non-async, so the compiler does not warn. This is safe with TreatWarningsAsErrors=true."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-11T07:58:19Z",
+          "note": "CollectionChanged subscription without Unloaded cleanup is an intentional, safe design choice. ProvisioningToolsView is constructed once per shell state entry and disposed via IDisposable when the state transitions away (shell calls Dispose on the outgoing view-model). The view and its Log have identical lifetimes, so no memory leak exists."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-05-11T07:58:19Z",
+          "note": "[documentation-forward] ProvisioningToolsView.axaml.cs would benefit from a brief code comment above the `vm.Log.CollectionChanged += OnLogChanged` line explaining why no Unloaded unsubscription is needed (view lifetime is identical to the VM lifetime via the shell state machine's dispose-on-transition contract). This prevents future maintainers from adding an unnecessary Unloaded handler."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-11T08:03:18Z",
+      "completed_at": "2026-05-11T08:06:06Z",
+      "duration_ms": 168000,
+      "summary": [
+        "Addressed the code-review documentation-forward item: added inline comment in ProvisioningToolsView.axaml.cs explaining why Log.CollectionChanged is never unsubscribed.",
+        "Updated README.md: added missing observable properties Message, Log, and DownloadPercent to the ProvisioningToolsViewModel table.",
+        "Added new 'View (ProvisioningToolsView.axaml)' subsection documenting the view layout: title, stage/message labels, progress bar + percent row, error label, action buttons, and the bounded/auto-scrolling log panel. Also documents the Loaded handler wiring and the lifetime rationale.",
+        "Fixed two additional stale DI references missed in WP-005's documentation pass: removed AddTransient<ProvisioningToolsViewModel> from the step table and corrected the ShellViewModel DI prose."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "README.md",
+          "src/VideoIndexer.App/Views/ProvisioningToolsView.axaml.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-11T08:06:06Z",
+          "note": "[documentation-forward] addressed: added inline comment in ProvisioningToolsView.axaml.cs above the Log.CollectionChanged subscription explaining why no Unloaded unsubscription is needed (identical view/VM lifetimes via shell dispose-on-transition contract)."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-11T08:06:06Z",
+          "note": "README: three additional stale references from WP-005 that were not explicitly flagged but discovered during gap analysis — (1) DI step table (line ~191) still listed AddTransient<ProvisioningToolsViewModel>: removed; (2) ShellViewModel DI prose (line ~344) said ProvisioningToolsViewModel was resolved from container: corrected to direct construction; (3) Observable properties table was missing Message, Log, and DownloadPercent: added all three rows. New 'View (ProvisioningToolsView.axaml)' subsection added to document view layout, auto-scroll implementation, and Loaded handler wiring."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-11T08:06:06Z",
+  "last_updated": "2026-05-11T08:06:06Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-11T07:45:29Z",
+      "notes": [
+        "WP-006 implementation complete. ProvisioningToolsView.axaml.cs: Loaded handler calls StartAsync() (fire-and-forget) and subscribes Log.CollectionChanged → OnLogChanged which posts Offset = MaxValue to auto-scroll the named LogScrollViewer. ProvisioningToolsView.axaml: added Message TextBlock (visible when non-empty via StringConverters.IsNotNullOrEmpty), replaced bare ProgressBar with a two-column Grid containing the ProgressBar and a DownloadPercent TextBlock, added a bordered ScrollViewer/ItemsControl log panel with MaxHeight=200. No third-party behaviors used. Build: 0 errors, 0 warnings. Tests: 344 passed, 0 failed."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-11T07:51:58Z",
+      "notes": [
+        "WP-006 QA passed. All 5 ACs met. Build clean (0 errors, 0 warnings). 345 tests pass, 0 fail. View code-behind is minimal and correct. Minor: Loaded handler subscribes Log.CollectionChanged without Unloaded cleanup — flagged as low-priority observation, not a blocking issue. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-11T07:58:19Z",
+      "notes": [
+        "WP-006 code review passed with no blocking issues and no Fix-Forward edits. One low-priority documentation-forward item: add an inline comment in ProvisioningToolsView.axaml.cs explaining why Log.CollectionChanged is never unsubscribed (view and VM lifetimes are identical via shell disposal)."
+      ]
+    }
+  ]
+}

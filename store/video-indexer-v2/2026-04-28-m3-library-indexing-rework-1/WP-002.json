@@ -1,0 +1,333 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-002.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "RemoveAsync collects deletedHashes via SELECT DISTINCT hash before the movies_filenames DELETE",
+      "met": true
+    },
+    {
+      "criterion": "The movies DELETE is DELETE FROM movies WHERE hash IN @Hashes (not a WHERE NOT EXISTS subquery)",
+      "met": true
+    },
+    {
+      "criterion": "If deletedHashes.Count == 0, the movies DELETE statement is not executed",
+      "met": true
+    },
+    {
+      "criterion": "The single connection and transaction wrapping RemoveAsync is structurally identical to before this change",
+      "met": true
+    },
+    {
+      "criterion": "The production build of VideoIndexer.Infrastructure produces no new warnings",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-08T19:53:31Z",
+      "completed_at": "2026-05-08T19:55:01Z",
+      "duration_ms": 90000,
+      "summary": [
+        "Replaced the global WHERE NOT EXISTS orphan DELETE in RemoveAsync with a two-phase approach: (1) collect hashes via SELECT DISTINCT before the movies_filenames DELETE, (2) issue a targeted DELETE FROM movies WHERE hash IN @Hashes only when deletedHashes.Count > 0. The connection and transaction structure is unchanged. Build produces 0 warnings."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Library/SpdbConfigLibraryFolderRepository.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "high",
+          "timestamp": "2026-05-08T19:55:01Z",
+          "note": "The `deletedHashes` SELECT uses the same WHERE clause as the subsequent `movies_filenames` DELETE, so both queries scan the same index (filename). This is intentional and correct — the hash collection SELECT can return stale hashes if the same hash is referenced from another folder that was NOT removed. However, the `DELETE FROM movies WHERE hash IN @Hashes` is safe against that: a movie row will only be deleted if it truly exists with one of those hashes; if another `movies_filenames` row for a different folder still references the hash, the movie row is still alive. The new query does not guard against this — it will incorrectly delete the movie row even if another folder still references that hash. This is a semantic gap to note: the old `WHERE NOT EXISTS` approach was correct but racy; the new scoped approach is not racy but may over-delete if two folders share a hash. This should be documented or tested."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "FAIL",
+      "started_at": "2026-05-08T20:00:06Z",
+      "completed_at": "2026-05-08T20:03:21Z",
+      "duration_ms": 195000,
+      "summary": [
+        "FAIL — data-integrity regression in the movies DELETE. All 5 ACs are structurally met (build clean, 0 warnings, 7 regression tests pass). However the content-based hasher means two folders can share the same hash. `DELETE FROM movies WHERE hash IN @Hashes` then over-deletes: the movie is removed even though another folder's movies_filenames row still references it, producing an orphaned row and a missing catalog entry. Fix: scope the DELETE with AND NOT EXISTS (SELECT 1 FROM movies_filenames WHERE hash = movies.hash). Add a new test for the shared-hash scenario."
+      ],
+      "metrics": {
+        "tests_passed": 7,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "bug",
+          "priority": "high",
+          "timestamp": "2026-05-08T20:03:21Z",
+          "note": "OVER-DELETE BUG — cross-folder shared-hash scenario.\n\nHash algorithm confirmed content-based (MD5 of 41 ffprobe keys). If the same movie file exists in two library folders it will have the SAME hash. Removing folder A collects that hash into @Hashes, then `DELETE FROM movies WHERE hash IN @Hashes` fires — deleting the movies row even though folder B's movies_filenames row still references it. Folder B ends up with an orphaned movies_filenames row and the movie disappears from the catalog.\n\nRequired fix (step 5):\n  DELETE FROM movies\n  WHERE hash IN @Hashes\n    AND NOT EXISTS (SELECT 1 FROM movies_filenames WHERE hash = movies.hash)\n\nThis scoped NOT EXISTS is far more targeted than the original global scan (bounded by @Hashes — typically a small set). It satisfies the spirit of AC #2 (avoid the global scan) while restoring correct cross-folder semantics.\n\nExisting test `RemoveAsync_MovieInDifferentFolder_IsNotDeleted` uses two DIFFERENT hashes and does not expose this regression. A new test covering the shared-hash scenario is required."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "high",
+          "timestamp": "2026-05-08T20:03:21Z",
+          "note": "No test covers the cross-folder same-hash scenario: two folders each with a movies_filenames row pointing to the same hash. When folder A is removed, the movie must NOT be deleted because folder B's row still references it. A new [SkippableFact] test `RemoveAsync_SharedHashAcrossFolders_MovieIsNotDeleted` should be added to SpdbConfigLibraryFolderRepositoryTests.cs."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-08T20:03:21Z",
+          "note": "All 4 structural ACs are met. Build produces 0 warnings. The 7 existing SpdbConfigLibraryFolderRepository tests (including 3 live-DB Remove tests) all PASS. The over-delete issue is a logic error in the DELETE predicate, not a structural or build problem."
+        }
+      ]
+    },
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-08T20:04:01Z",
+      "completed_at": "2026-05-08T20:09:33Z",
+      "duration_ms": 332000,
+      "summary": [
+        "Rework: reverted the NOT EXISTS addition and removed the new test after investigating the schema. The QA-identified shared-hash bug is physically impossible given the schema constraint.",
+        "SCHEMA FINDING: `movies_filenames` has `ADD UNIQUE KEY hash_2 (hash)` — only one filename row can exist per hash in the live schema. This is confirmed in structure.sql (lines 294-296) and in README.md: 'Silently no-ops on duplicate — required because `movies_filenames.hash` has a UNIQUE constraint in the live schema.' When attempting to add the new test, the second INSERT IGNORE for movieFileB (same hash as movieFileA) was silently rejected by MySQL, proving the shared-hash scenario is impossible.",
+        "CONSEQUENCE: The original WP-002 implementation `DELETE FROM movies WHERE hash IN @Hashes` is correct. Once the single movies_filenames row for a given hash is deleted in step 4, no other row can reference that hash (UNIQUE KEY enforces this). The NOT EXISTS guard is unnecessary and was reverted.",
+        "NEW TEST NOT ADDED: RemoveAsync_SharedHashAcrossFolders_MovieIsNotDeleted cannot be meaningfully implemented — INSERT IGNORE silently discards the second filename row (same hash), making the scenario untestable without schema modification.",
+        "7 existing tests PASS, build 0 warnings. Implementation is semantically identical to the WP-002 first-pass output."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Library/SpdbConfigLibraryFolderRepository.cs"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 7,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "high",
+          "timestamp": "2026-05-08T20:09:33Z",
+          "note": "SCHEMA CONSTRAINT DISCOVERED: movies_filenames.hash has a UNIQUE KEY (hash_2) in the live spdb_tests schema, meaning a movie hash can only map to exactly one filename path. QA's shared-hash cross-folder scenario (two folders sharing the same content-hash) is physically impossible under this constraint — the second INSERT IGNORE for a duplicate hash is silently rejected by MySQL. This constraint has significant implications: (1) the NOT EXISTS guard QA requested would be correct but unnecessary overhead; (2) the same physical file cannot be indexed from two different folders simultaneously. The constraint is documented in README.md but the full implications for multi-folder behavior should be explicitly documented in the architecture notes."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-08T20:10:23Z",
+      "completed_at": "2026-05-08T20:12:32Z",
+      "duration_ms": 129000,
+      "summary": [
+        "PASS — all 5 ACs verified, 7/7 targeted tests pass, full 316-test suite passes (311 pass, 5 skipped for env-dependent tool tests).",
+        "Previous bounce (OVER-DELETE BUG) reviewed and resolved: Developer's schema analysis is correct. The UNIQUE KEY hash_2 on movies_filenames.hash (structure.sql line 298, confirmed in README.md) ensures each hash appears at most once in the table. The cross-folder shared-hash scenario is therefore physically impossible — INSERT IGNORE silently rejects any duplicate hash insertion. DELETE FROM movies WHERE hash IN @Hashes is safe.",
+        "The coverage-gap request (RemoveAsync_SharedHashAcrossFolders_MovieIsNotDeleted) is correctly not added: the test scenario is untestable under the UNIQUE constraint because the second INSERT IGNORE for the same hash is silently rejected, making the premise of the test invalid.",
+        "Implementation is structurally and semantically identical to the first-pass WP-002 output."
+      ],
+      "metrics": {
+        "test_coverage": "7/7 SpdbConfigLibraryFolderRepository tests; 311/316 full suite (5 env-skipped)",
+        "tests_passed": 7,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-08T20:12:32Z",
+          "note": "AC 2 schema safety confirmed: UNIQUE KEY hash_2 on movies_filenames.hash (structure.sql line 298) enforces one-hash-per-row globally. This makes DELETE FROM movies WHERE hash IN @Hashes semantically safe without a NOT EXISTS guard. The constraint is documented in README.md and operationally confirmed by the INSERT IGNORE behavior during Developer rework testing."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-08T20:12:32Z",
+          "note": "Previous bounce item resolved: The cross-folder shared-hash test (RemoveAsync_SharedHashAcrossFolders_MovieIsNotDeleted) is correctly absent. Under the UNIQUE constraint, the second INSERT IGNORE for a duplicate hash is silently rejected by MySQL, making the shared-hash scenario untestable and physically impossible. If the schema ever changes to allow multiple filenames per hash, a new WP should address both the query predicate and the test."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-05-08T20:17:28Z",
+      "completed_at": "2026-05-08T20:19:34Z",
+      "duration_ms": 126000,
+      "summary": [
+        "Reviewed 1 modified file (SpdbConfigLibraryFolderRepository.cs). 0 Critical, 0 High, 0 Medium (WP-002 scope), 2 pre-existing Low/Info findings recorded (not introduced by this WP). Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-08T20:19:34Z",
+          "note": "A01 Broken Access Control — PASS. RemoveAsync(long id) accepts a long id, but the value originates from the application's own persisted folder list (spdb_config), not from an untrusted network boundary. No privilege escalation or IDOR vector exists in this desktop-local context."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-08T20:19:34Z",
+          "note": "A03 Injection — PASS. All SQL in RemoveAsync uses Dapper parameterized queries exclusively (@ExactPath, @LikePrefix, @Hashes). The LIKE prefix is built by BuildLikePrefix which escapes \\, %, _ before passing as a parameter — no string interpolation into SQL. Dapper's IN @Hashes list expansion generates individual bind parameters, preventing injection even for large hash sets."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-08T20:19:34Z",
+          "note": "A03 LIKE Pattern Escape Audit — PASS. BuildLikePrefix escapes backslash first (preventing double-escaping), then % and _. The ESCAPE '\\\\' clause in the SQL (C# literal compiles to ESCAPE '\\\\', MySQL receives ESCAPE '\\') is consistent with the escaping applied in the pattern. Path characters such as underscores in Windows directory names cannot over-match sibling folders."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-08T20:19:34Z",
+          "note": "A04 Insecure Design — PASS. The two-phase collect-then-delete runs inside a single IDbTransaction. The hash collection SELECT and the subsequent movies_filenames DELETE use the same WHERE predicate within the same transaction isolation context, so the collected hashes are guaranteed to match the rows being deleted. The empty-list guard (deletedHashes.Count > 0) prevents an invalid empty IN () clause in MySQL."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-08T20:19:34Z",
+          "note": "A06 Vulnerable & Outdated Components — PASS (version review). Dapper 2.1.72, MySqlConnector 2.5.0, Microsoft.Extensions.* 10.0.7, Avalonia 11.3.14, Serilog 4.3.0, SharpCompress 0.47.4 — all at current stable releases with no known published CVEs based on version review. A periodic automated CVE scan (e.g., dotnet-ossindex or GitHub Dependabot) is recommended as an ongoing practice."
+        },
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-05-08T20:19:34Z",
+          "note": "A02 Cryptographic Failures — PRE-EXISTING, not introduced by WP-002. DatabaseConnectionOptions.Password (DatabaseConnectionOptions.cs) stores the DB password as plaintext in the settings JSON (doc comment: 'stored at the user's discretion'). For a local single-user desktop app this is a known and accepted trade-off, but the Password property should be noted in any future threat-model review if the application acquires a network-exposed configuration surface."
+        },
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-05-08T20:19:34Z",
+          "note": "A02 Cryptographic Failures — PRE-EXISTING, not introduced by WP-002. Sha256FixedSaltPasswordHasher uses SHA-256 with a compile-time fixed salt ('spdb_42') rather than a dedicated KDF (Argon2id, bcrypt, PBKDF2). The fixed salt is extractable from the binary. The class documentation explicitly acknowledges this and notes the IPasswordHasher interface provides a clean upgrade path. Risk is low given the local desktop threat model with no network-facing auth endpoint."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-08T20:21:20Z",
+      "completed_at": "2026-05-08T20:22:59Z",
+      "duration_ms": 99000,
+      "summary": [
+        "Code review passed with one Fix-Forward applied. Implementation is correct: two-phase collect (SELECT DISTINCT hash) then delete (DELETE FROM movies WHERE hash IN @Hashes), guarded by deletedHashes.Count > 0, transactionally scoped. Dapper parameterization is thorough throughout. LIKE escape order (backslash first, then %, _) is correct. The QA rework cycle was appropriately resolved by discovering the UNIQUE KEY (hash_2) on movies_filenames.hash which makes the shared-hash scenario physically impossible. BuildLikePrefix is correct for both Windows (backslash separator) and Unix paths. No blocking issues found. Fix-Forward: clarified the step 5 comment to explicitly attribute the safety guarantee to the schema's UNIQUE KEY, preventing future maintainer confusion.\""
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Library/SpdbConfigLibraryFolderRepository.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-08T20:22:59Z",
+          "note": "Fix-Forward applied: Updated the step 5 comment in RemoveAsync from 'provided no other movies_filenames row still references those hashes' to explicitly state that the safety guarantee comes from the UNIQUE KEY (hash_2) on movies_filenames.hash. The original wording implied a runtime check that does not exist in code; the new wording makes the invariant's source explicit and guides future maintainers who might otherwise add an unnecessary NOT EXISTS guard or incorrectly remove the existing one. No behavioral change."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-08T20:22:59Z",
+          "note": "[documentation-forward] The correctness of `DELETE FROM movies WHERE hash IN @Hashes` in RemoveAsync relies on the UNIQUE KEY (hash_2) on movies_filenames.hash being present in the schema. This architectural dependency is not visible at the code layer — a developer modifying the schema to allow multiple filenames per hash would silently break movie deletion. The Documentation agent should record this coupling (the invariant and its implications) in the architecture notes or a decision record so future contributors are warned before relaxing the constraint."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-08T20:28:51Z",
+      "completed_at": "2026-05-08T20:31:14Z",
+      "duration_ms": 143000,
+      "summary": [
+        "Updated README.md: (1) rewrote the RemoveAsync section from 'four-step cascade' to 'five-step cascade' to reflect the two-phase collect-then-delete implementation; (2) added an architectural invariant note documenting the movies_filenames.hash UNIQUE KEY constraint and its implications for future schema changes; (3) removed stale note about year/season/episode columns not being in structure.sql (corrected after WP-001).",
+        "Updated CHANGELOG.md: added a 'SpdbConfigLibraryFolderRepository.RemoveAsync — two-phase hash-scoped delete' entry under Unreleased > Changed, with a cross-reference to the README architectural invariant note.",
+        "No changes needed to the modified source file (SpdbConfigLibraryFolderRepository.cs) — the Reviewer had already applied a Fix-Forward clarifying the step 5 comment inline."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "video-indexer-v2/README.md",
+          "video-indexer-v2/CHANGELOG.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-08T20:31:14Z",
+          "note": "Reviewer documentation-forward (medium priority) fully addressed: the movies_filenames.hash UNIQUE KEY architectural invariant is now documented in README.md under SpdbConfigLibraryFolderRepository, with an explicit warning that relaxing the constraint requires re-evaluating the RemoveAsync step 5 predicate."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-08T20:31:14Z",
+          "note": "DapperMovieCatalogRepository note about year/season/episode columns was stale after WP-001 updated structure.sql. Updated to reflect that the columns are now present in the reference file (synced in M3, WP-001)."
+        }
+      ]
+    }
+  ],
+  "rework_counts": {
+    "implementation": 1,
+    "qa": 1
+  },
+  "status_changed_at": "2026-05-08T20:31:14Z",
+  "last_updated": "2026-05-08T20:31:14Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-08T19:55:01Z",
+      "notes": [
+        "QA note — semantic edge case: the new `DELETE FROM movies WHERE hash IN @Hashes` will delete a movie even if another `movies_filenames` row from a *different* folder still references the same hash. The hash-collection SELECT only looks at the folder being removed. If two folders can share a hash (same physical file linked from two folder paths), the new query over-deletes. The original `WHERE NOT EXISTS` was correct on this edge case (but racy under concurrency). QA should test the cross-folder shared-hash scenario and decide whether a narrowed DELETE (e.g., `WHERE hash IN @Hashes AND NOT EXISTS (SELECT 1 FROM movies_filenames WHERE hash = movies.hash)`) is needed."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Developer",
+      "timestamp": "2026-05-08T20:03:21Z",
+      "notes": [
+        "QA FAIL — one data-integrity bug. The `DELETE FROM movies WHERE hash IN @Hashes` over-deletes when two folders share a content-identical file (same hash). Fix: add `AND NOT EXISTS (SELECT 1 FROM movies_filenames WHERE hash = movies.hash)` to the movies DELETE. Also add a new test `RemoveAsync_SharedHashAcrossFolders_MovieIsNotDeleted` to cover this scenario. All other ACs verified PASS."
+      ]
+    },
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-08T20:09:33Z",
+      "notes": [
+        "SCHEMA CONSTRAINT INVALIDATES QA BUG REPORT — please review before re-testing.\n\nThe movies_filenames table has ADD UNIQUE KEY hash_2 (hash) (see structure.sql lines 294-296 and README.md: 'Silently no-ops on duplicate — required because movies_filenames.hash has a UNIQUE constraint in the live schema'). This means each hash can appear in movies_filenames at most ONCE.\n\nTherefore:\n1. Two folders CANNOT share the same hash in movies_filenames — the second INSERT IGNORE is rejected by MySQL.\n2. The shared-hash scenario QA described is physically impossible with this schema.\n3. DELETE FROM movies WHERE hash IN @Hashes is always safe: once the single movies_filenames row for a given hash is deleted in step 4, no other row can reference that hash.\n4. The NOT EXISTS guard QA requested was attempted but proved unnecessary — when the new test was run, INSERT IGNORE for movieFileB (same hash) silently failed, leaving only movieFileA's row, which was correctly deleted.\n\nThe implementation is IDENTICAL to the first-pass WP-002 output. All 5 ACs are met. 7 tests PASS. Build: 0 warnings.\n\nRequested action: QA should accept the original DELETE FROM movies WHERE hash IN @Hashes as correct given the schema UNIQUE constraint, or raise a schema-change WP if the intent is to allow multiple filenames per hash."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-05-08T20:12:32Z",
+      "notes": [
+        "WP-002 QA PASS. All 5 ACs met. Implementation is the two-phase collect-then-delete approach: SELECT DISTINCT hash (step 3) → DELETE movies_filenames (step 4) → DELETE movies WHERE hash IN @Hashes (step 5, guarded). Schema UNIQUE KEY on movies_filenames.hash ensures correctness without NOT EXISTS. 7 live-DB tests pass, no regressions in full 316-test suite. Ready for security-audit."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-08T20:19:34Z",
+      "notes": [
+        "WP-002 security-audit PASS. 0 Critical, 0 High findings. The two-phase collect-then-delete implementation in SpdbConfigLibraryFolderRepository.RemoveAsync is free from injection vulnerabilities (all Dapper parameterized), uses correct LIKE escape handling, and maintains transactional integrity. Two pre-existing Low findings (plaintext DB password in settings, fixed-salt SHA-256 password hasher) noted for awareness — neither introduced by WP-002 and neither blocking. Ready for code-review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-08T20:22:59Z",
+      "notes": [
+        "Code review passed (PASS with one Fix-Forward applied). The two-phase collect-then-delete in RemoveAsync is correct, well-parameterized, and properly scoped. The QA rework cycle (shared-hash bug → schema UNIQUE KEY resolution) was correctly handled. One non-behavioral comment improvement was applied directly (step 5 safety guarantee clarification). One documentation-forward tagged: the movies_filenames.hash UNIQUE KEY is a critical architectural assumption that should be captured in developer documentation. All 5 ACs confirmed met.\""
+      ]
+    }
+  ]
+}

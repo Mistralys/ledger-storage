@@ -1,0 +1,191 @@
+{
+  "work_package_id": "WP-012",
+  "work_package_file": "work/WP-012.md",
+  "status": "COMPLETE",
+  "assigned_to": "Reviewer",
+  "dependencies": [
+    "WP-002",
+    "WP-004"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "Round-trip add/list/remove via in-memory ISpdbConfigRepository returns correct values.",
+      "met": true
+    },
+    {
+      "criterion": "Counter is monotonically increasing across multiple adds.",
+      "met": true
+    },
+    {
+      "criterion": "Remove-then-add yields a fresh id greater than the removed id.",
+      "met": true
+    },
+    {
+      "criterion": "A folder path containing _ is stored and retrieved byte-exact without matching sibling folder paths (LIKE-escape unit test).",
+      "met": true
+    },
+    {
+      "criterion": "All new tests pass under dotnet test.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-07T21:29:50Z",
+      "completed_at": "2026-05-07T21:35:51Z",
+      "duration_ms": 361000,
+      "summary": [
+        "Added internal ISpdbConfigRepository constructor to SpdbConfigLibraryFolderRepository as a test seam (no change to production IDbConnectionFactory path).",
+        "Added AddViaConfigRepositoryAsync and RemoveViaConfigRepositoryAsync private helpers that use ISpdbConfigRepository for KV operations (cascade delete skipped in KV-only mode).",
+        "Updated GetAllAsync and AddAsync/RemoveAsync to branch on _configRepository being set.",
+        "Updated SpdbConfigLibraryFolderRepositoryUnitTests.cs with 11 tests: AC-1 round-trip (add/list/remove), AC-2 monotonic counter, AC-3 remove-then-add id order, AC-4 LIKE-escape (5 tests).",
+        "All 232 tests pass (92 VideoIndexer.Tests, 92 Infrastructure.Tests, 48 App.Tests). 4 live infrastructure tests remain skipped (no DB/ffprobe)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Library/SpdbConfigLibraryFolderRepository.cs",
+          "tests/VideoIndexer.Tests/SpdbConfigLibraryFolderRepositoryUnitTests.cs"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 232,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "refactor",
+          "priority": "low",
+          "timestamp": "2026-05-07T21:35:51Z",
+          "note": "SpdbConfigLibraryFolderRepository.cs: Added an internal ISpdbConfigRepository constructor as a test seam. The seam uses private helpers (AddViaConfigRepositoryAsync, RemoveViaConfigRepositoryAsync) and explicitly skips the DB-level cascade delete. The two private helpers duplicate some counter/list logic from the Dapper path — a future refactor could extract a shared state machine, but this is low priority given the two paths serve different purposes (unit tests vs production)."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T21:35:51Z",
+          "note": "SpdbConfigLibraryFolderRepositoryUnitTests.cs: 11 tests cover AC-1/2/3/4. The pattern of branching on _configRepository != null is consistent with a test seam and does not affect the production Dapper path."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-07T21:49:20Z",
+      "completed_at": "2026-05-07T21:51:11Z",
+      "duration_ms": 111000,
+      "summary": [
+        "Full QA pass on WP-012. Build verified (0 warnings, 0 errors). All 5 acceptance criteria confirmed.",
+        "AC-1 (round-trip): add/list/remove correctly persists and retrieves folders via InMemorySpdbConfigRepository seam. No-op remove for unknown id verified.",
+        "AC-2 (monotonic counter): three sequential adds yield strictly increasing ids; first id starts at 1.",
+        "AC-3 (remove-then-add id ordering): counter never regresses after remove; new id > all previously issued ids.",
+        "AC-4 (LIKE underscore escaping): BuildLikePrefix correctly escapes \\ (backslash), % (percent), _ (underscore) in correct order. Functional simulation on Windows confirms C:\\\\Users\\\\test\\_folder\\\\% for path C:\\Users\\test_folder.",
+        "AC-5 (all tests pass): 11/11 new tests pass; full regression: 232 passed, 4 pre-existing skipped, 0 failed."
+      ],
+      "metrics": {
+        "test_coverage": "11 new unit tests: 3 round-trip (AC-1), 2 counter monotonicity (AC-2), 1 remove-then-add (AC-3), 5 BuildLikePrefix escaping (AC-4)",
+        "tests_passed": 232,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T21:51:11Z",
+          "note": "BuildLikePrefix escape order verified: backslash escaped first (\\ \\\\), then % (\\%), then _ (\\_). This is the correct order — reversing would double-escape the escape character itself. Functional simulation on Windows confirms output C:\\\\Users\\\\test\\_folder\\\\% for input C:\\Users\\test_folder."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T21:51:11Z",
+          "note": "SpdbConfigLibraryFolderRepository: the internal ISpdbConfigRepository seam correctly skips the DB-level cascade delete (movies_filenames and movies orphan cleanup) since that logic requires a live Dapper/MySQL connection. Unit tests cover the folder list management logic only; cascade semantics remain covered by VideoIndexer.Infrastructure.Tests integration tests."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-07T21:51:11Z",
+          "note": "RemoveAsync on a folder path with a trailing directory separator (e.g., C:\\Movies\\) would produce a double-separator in the LIKE pattern (C:\\\\Movies\\\\\\\\%). Not exercised by current tests and unlikely in practice, but worth noting for completeness."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-07T22:00:30Z",
+      "completed_at": "2026-05-07T22:01:38Z",
+      "duration_ms": 68000,
+      "summary": [
+        "Code review PASS. WP-012 reviewed: SpdbConfigLibraryFolderRepository.cs (modified) and SpdbConfigLibraryFolderRepositoryUnitTests.cs (new).",
+        "The internal test seam constructor is pragmatically appropriate given the documented constraint that the production path requires a shared IDbTransaction which ISpdbConfigRepository cannot provide. The seam is clearly marked internal, well-documented, and does not alter production behavior.",
+        "BuildLikePrefix escape order (backslash first, then %, then _) is correct. The method is correctly marked internal static for testability.",
+        "One medium-priority maintainability note: the nullable _connectionFactory? / _configRepository? fields plus null-forgiving operators rely on constructor-invariant correctness rather than the type system. Not a blocking issue but noted for future awareness.",
+        "One Documentation-Forward item: add a class-level remark documenting the two-field null invariant to aid future maintainers.",
+        "0 Blocking findings. 0 Fix-Forward changes. All 5 acceptance criteria met."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Library/SpdbConfigLibraryFolderRepository.cs",
+          "tests/VideoIndexer.Tests/SpdbConfigLibraryFolderRepositoryUnitTests.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T22:01:38Z",
+          "note": "SpdbConfigLibraryFolderRepository.cs: The internal test seam constructor is a reasonable pragmatic choice given the documented constraint — IDbConnectionFactory is used directly in production because ISpdbConfigRepository creates a new connection per call and cannot share a transaction. The XML doc on the internal constructor clearly states this and documents the cascade-delete skip. No Blocking issue."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-07T22:01:38Z",
+          "note": "SpdbConfigLibraryFolderRepository.cs: The two nullable fields _connectionFactory? and _configRepository? combined with the null-forgiving operator (_connectionFactory!) in the production path is a design smell. Correctness relies on a constructor-enforced invariant rather than the type system. A future developer could add a third constructor that sets neither field and not receive any compile-time warning before hitting a NullReferenceException at runtime. This is a medium-priority maintainability concern but not a logic bug in the current code."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-05-07T22:01:38Z",
+          "note": "SpdbConfigLibraryFolderRepository.cs: AddViaConfigRepositoryAsync and RemoveViaConfigRepositoryAsync duplicate the counter-read-increment-write and list-read-modify-write logic from the Dapper path. The Developer acknowledged this debt. If the ID allocation semantics ever change, both paths must be updated in sync. Consider extracting a shared FolderStateManager value object in a future refactor to eliminate the duplication."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T22:01:38Z",
+          "note": "BuildLikePrefix: The backslash-first escape order is correct and the logic is clean. On Windows, the directory separator is \\ which is also the LIKE escape character — the method correctly escapes it as \\\\\\\\ (four chars: two for C# string literal, two for the actual LIKE pattern). The QA escape-order verification confirms this is functionally correct."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-07T22:01:38Z",
+          "note": "[documentation-forward] SpdbConfigLibraryFolderRepository.cs: Consider adding a brief class-level remark noting the two-field null invariant — that exactly one of _connectionFactory and _configRepository is non-null at runtime, determined by which constructor was used. This would help future developers understand the nullable field declarations and the null-forgiving operators without needing to read the implementation pipeline history."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-07T22:01:38Z",
+  "last_updated": "2026-05-07T22:01:38Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-07T21:35:51Z",
+      "notes": [
+        "WP-012 added round-trip unit tests for SpdbConfigLibraryFolderRepository via an internal ISpdbConfigRepository constructor seam. The production IDbConnectionFactory/Dapper path is unchanged. Tests cover: add/list/remove round-trip, monotonically increasing counter, remove-then-add yields higher id, LIKE underscore escaping. All 92 tests in VideoIndexer.Tests pass; 92 in Infrastructure.Tests pass (1 MySQL integration test remains skipped due to missing DB).\""
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-07T21:51:11Z",
+      "notes": [
+        "WP-012 QA PASS. 11 unit tests cover all 5 ACs. Internal test seam (ISpdbConfigRepository constructor) is clean and does not affect the production code path. BuildLikePrefix escape order is correct and verified. No issues for code reviewer."
+      ]
+    }
+  ]
+}

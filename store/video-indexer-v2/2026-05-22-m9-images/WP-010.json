@@ -1,0 +1,229 @@
+{
+  "work_package_id": "WP-010",
+  "work_package_file": "work/WP-011.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-003",
+    "WP-005"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "GetByIdAsync returns a Movie with CurrentFilePath populated when a movies_filenames row exists.",
+      "met": true
+    },
+    {
+      "criterion": "GetByIdAsync returns CurrentFilePath = null when no movies_filenames row exists for the movie.",
+      "met": true
+    },
+    {
+      "criterion": "GetBatchFilePathsAsync returns a dictionary keyed by all supplied IDs; value is null for IDs with no filename row.",
+      "met": true
+    },
+    {
+      "criterion": "The new query does not break any existing MovieRepository unit tests.",
+      "met": true
+    },
+    {
+      "criterion": "dotnet build -c Release reports zero warnings.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-22T19:19:09Z",
+      "completed_at": "2026-05-22T19:22:36Z",
+      "duration_ms": 207000,
+      "summary": [
+        "Updated DapperMovieRepository.GetByIdAsync: aliased all columns to m. prefix; added scalar subquery (SELECT filename FROM movies_filenames WHERE hash = m.hash ORDER BY created_at DESC LIMIT 1) AS CurrentFilePath.",
+        "Added CurrentFilePath property to private MovieRow class.",
+        "Updated MapRow to populate Movie.CurrentFilePath from row.CurrentFilePath.",
+        "Implemented GetCurrentFilePathsAsync: replaces NotImplementedException stub; uses correlated subquery batch query; handles empty-list short-circuit; fills nulls for any IDs absent from the movies table via TryAdd.",
+        "Added private MovieFilePathRow class for Dapper materialisation in GetCurrentFilePathsAsync.",
+        "dotnet build -c Release: 0 warnings, 0 errors. All 282 unit + 361 app tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Library/DapperMovieRepository.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-22T19:22:36Z",
+          "note": "The correlated scalar subquery in GetByIdAsync and GetCurrentFilePathsAsync is correct and readable. Window function variant is documented in comments for future upgrade if minimum MariaDB version is confirmed to be ≥ 10.2."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-22T19:22:36Z",
+          "note": "DapperMovieRepository.GetCurrentFilePathsAsync uses TryAdd to fill null entries for IDs absent from the movies table, ensuring the returned dictionary always contains every requested ID as specified."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-22T20:02:45Z",
+      "completed_at": "2026-05-22T20:03:42Z",
+      "duration_ms": 57000,
+      "summary": [
+        "All five ACs verified. DapperMovieRepository.GetByIdAsync populates CurrentFilePath via correlated subquery; GetCurrentFilePathsAsync replaces NotImplementedException stub with correct batch query and null-fill for missing IDs. Zero build warnings, 643 tests passing."
+      ],
+      "metrics": {
+        "test_coverage": "282 unit + 361 app tests all green",
+        "tests_passed": 643,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-22T20:03:42Z",
+          "note": "No issues found. GetByIdAsync and GetCurrentFilePathsAsync implementations are clean, parameterized, and consistent with existing Dapper patterns in the codebase."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-22T20:03:42Z",
+          "note": "Empty-list short-circuit in GetCurrentFilePathsAsync correctly returns an empty Dictionary<long, string?> without opening a DB connection — avoids unnecessary work."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-22T20:03:42Z",
+          "note": "TryAdd loop ensures every requested movie ID is present in the result dictionary, even for IDs absent from the movies table. Null-for-missing-ID contract is correctly honoured."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-22T20:03:42Z",
+          "note": "The correlated scalar subquery returns NULL when no movies_filenames row exists, which Dapper correctly materialises into MovieRow.CurrentFilePath = null and propagates to Movie.CurrentFilePath — AC2 satisfied by SQL semantics."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-05-23T09:08:16Z",
+      "completed_at": "2026-05-23T09:09:03Z",
+      "duration_ms": 47000,
+      "summary": [
+        "Reviewed 1 file (src/VideoIndexer.Infrastructure/Library/DapperMovieRepository.cs). 0 Critical, 0 High, 0 Medium, 0 Low findings. All OWASP Top 10 categories checked. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-23T09:09:03Z",
+          "note": "No security findings — all OWASP Top 10 categories reviewed; no Critical or High issues identified. GetByIdAsync and GetCurrentFilePathsAsync use exclusively parameterized Dapper queries (no string concatenation). The IN @MovieIds expansion is safe. No hardcoded credentials, no SSRF vectors, no crypto failures, no deserialization of untrusted data."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-23T09:13:20Z",
+      "completed_at": "2026-05-23T09:15:23Z",
+      "duration_ms": 123000,
+      "summary": [
+        "Reviewed DapperMovieRepository.cs against all four Review Dimensions. Implementation is clean, well-structured, and follows all established patterns in the codebase.",
+        "GetByIdAsync: correlated scalar subquery is correct for single-row PK lookup. MovieRow private sealed class follows MovieObfuscationRow pattern; comment explaining why a plain class (not a record) is used is excellent for maintainability.",
+        "GetCurrentFilePathsAsync: correctly replaces the NotImplementedException stub. Empty-list short-circuit avoids unnecessary DB work. Two-pass result construction (fill from rows, then TryAdd for missing IDs) correctly handles all three cases: movie exists with path, movie exists without path, movie absent from movies table. Window function alternative documented in comments for future MariaDB ≥ 10.2 upgrade.",
+        "MovieFilePathRow follows the same private sealed class pattern as MovieRow and MovieObfuscationRow — consistent throughout the file.",
+        "IMovieRepository.GetCurrentFilePathsAsync is documented with the null-for-missing-ID contract. api-surface.md already has the method signature listed. No Blocking or Fix-Forward issues found."
+      ],
+      "artifacts": {},
+      "metrics": {
+        "blocking_issues": 0,
+        "documentation_forward": 1,
+        "files_reviewed": 1,
+        "fix_forward_applied": 0
+      },
+      "comments": [
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-23T09:15:23Z",
+          "note": "[documentation-forward] api-surface.md currently has '// DapperMovieRepository implementation deferred to WP-011.' The Documentation agent should replace this stub with the full DapperMovieRepository API surface entry — constructor signature, private row classes, and all public method signatures including GetCurrentFilePathsAsync."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-23T09:26:12Z",
+      "completed_at": "2026-05-23T09:28:15Z",
+      "duration_ms": 123000,
+      "summary": [
+        "Addressed the documentation-forward item from code review: replaced the '// DapperMovieRepository implementation deferred to WP-011.' stub in api-surface.md with the full DapperMovieRepository Infrastructure entry.",
+        "Added ### DapperMovieRepository : IMovieRepository *(M9 — WP-011)* section documenting: constructor signature, all three private Dapper materialisation row classes (MovieRow, MovieObfuscationRow, MovieFilePathRow), GetByIdAsync correlated subquery behaviour, GetCurrentFilePathsAsync empty-list short-circuit and two-pass result construction guaranteeing every input ID is present, GetAllMoviesForObfuscationAsync INNER JOIN semantics, and the internal TokeniseActorNames helper.",
+        "Updated the IMovieRepository interface entry for GetCurrentFilePathsAsync: replaced deferred note with accurate contract description (empty-list short-circuit, most-recent-filename semantics, null-for-missing-ID guarantee) and a cross-reference to the Infrastructure section.",
+        "No other documentation files required updating — README.md, constraints.md, file-tree.md, and data-flows.md were already accurate for this WP."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-23T09:28:15Z",
+          "note": "[documentation-forward resolved] Added the full DapperMovieRepository Infrastructure entry replacing the '// DapperMovieRepository implementation deferred to WP-011.' stub in the IMovieRepository section of api-surface.md. Entry documents constructor, three private row classes, and key implementation notes for GetByIdAsync, GetCurrentFilePathsAsync, GetAllMoviesForObfuscationAsync, and TokeniseActorNames."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-23T09:28:15Z",
+          "note": "IMovieRepository.GetCurrentFilePathsAsync contract note updated to accurately reflect the now-complete implementation: empty-list short-circuit, most-recently-added filename semantics, and the null-for-missing-ID guarantee enforced by TryAdd. Cross-reference to the Infrastructure section added."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-23T09:28:15Z",
+  "last_updated": "2026-05-23T09:28:15Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-22T19:22:36Z",
+      "notes": [
+        "DapperMovieRepository.GetByIdAsync now populates Movie.CurrentFilePath via a correlated scalar subquery on movies_filenames (most-recently-added row, ORDER BY created_at DESC LIMIT 1).",
+        "GetCurrentFilePathsAsync is fully implemented: batch correlated subquery; empty-list short-circuit returns empty dictionary; TryAdd loop guarantees all input IDs are present in the result.",
+        "The NotImplementedException stub has been replaced. All 282 unit tests and 361 app tests remain green."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-05-22T20:03:42Z",
+      "notes": [
+        "All five ACs met. DapperMovieRepository.GetByIdAsync and GetCurrentFilePathsAsync are correctly implemented: parameterized queries, proper null handling, empty-list guard. Build: 0 warnings/errors. Tests: 282 unit + 361 app all passing. Safe to proceed to Security Audit and Code Review."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-23T09:09:03Z",
+      "notes": [
+        "All OWASP Top 10 categories reviewed against DapperMovieRepository.cs. 0 Critical/High findings. All queries are fully parameterized; no injection vectors; no secrets or crypto failures. Safe to proceed to Code Review."
+      ]
+    }
+  ]
+}

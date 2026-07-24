@@ -1,0 +1,234 @@
+{
+  "work_package_id": "WP-004",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-002"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "NavigateToRoot clears the entire stack and pushes the new root; CanGoBack is false immediately after.",
+      "met": true
+    },
+    {
+      "criterion": "GoBack when stack depth is 1 (at root) is a no-op — Current is unchanged and CanGoBack remains false.",
+      "met": true
+    },
+    {
+      "criterion": "GoBackTo(0) at root is a no-op; GoBackTo(n) where n >= stack depth - 1 is a no-op.",
+      "met": true
+    },
+    {
+      "criterion": "GoBack on a stack of depth 2 pops to the root; the root VM instance is the same object reference that was pushed originally.",
+      "met": true
+    },
+    {
+      "criterion": "NavigationChanged is fired exactly once per mutation call.",
+      "met": true
+    },
+    {
+      "criterion": "dotnet build produces zero errors and zero warnings.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-15T12:08:53Z",
+      "completed_at": "2026-05-15T12:12:00Z",
+      "duration_ms": 187000,
+      "summary": [
+        "Implemented NavigationService.cs as a sealed class with a List<NavigationEntry> acting as a stack (index 0 = root, last index = current).",
+        "NavigateToRoot clears the list and pushes the new root, setting CanGoBack=false.",
+        "NavigateTo pushes an entry to the list.",
+        "GoBack is a no-op when Count <= 1 (at root); otherwise pops the last item.",
+        "GoBackTo is a no-op when stackIndex < 0 or >= Count-1; otherwise trims the list to the target index.",
+        "UpdateBreadcrumbs() rebuilds BreadcrumbItems as a BreadcrumbItem[] after every mutation, preserving StackIndex == list index.",
+        "NavigationChanged event fired exactly once at the end of each mutating method (NavigateToRoot, NavigateTo, GoBack, GoBackTo).",
+        "dotnet build --no-incremental produced zero errors and zero warnings across all 6 projects.",
+        "Updated docs/agents/project-manifest/file-tree.md and api-surface.md to reflect the new NavigationService class."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/Services/Navigation/NavigationService.cs",
+          "docs/agents/project-manifest/file-tree.md",
+          "docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-15T12:12:00Z",
+          "note": "NavigationService.cs: The _breadcrumbItems field is initialised to Array.Empty<BreadcrumbItem>() and always replaced with a new BreadcrumbItem[] after each mutation. If BreadcrumbItems is accessed from a UI binding while mutations are frequent, a single immutable ImmutableArray<BreadcrumbItem> could avoid repeated re-allocation, but at the current scope this is a negligible concern."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-15T12:12:00Z",
+          "note": "NavigationService.cs: GoBackTo with a negative stackIndex is treated as a no-op via the `stackIndex < 0` guard. No AC covers this case but the guard prevents potential ArgumentOutOfRangeException from List.RemoveRange, which is the correct defensive behaviour."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-15T12:22:54Z",
+      "completed_at": "2026-05-15T12:25:22Z",
+      "duration_ms": 148000,
+      "summary": [
+        "Verified build is clean: dotnet build --no-incremental exits 0, zero errors, zero warnings.",
+        "Read NavigationService.cs — implementation matches all six AC exactly (stack-based navigation, CanGoBack, GoBack no-op at depth 1, GoBackTo no-op guards, event fired once per mutation, BreadcrumbItems rebuilt after every mutation).",
+        "Authored NavigationServiceTests.cs with 22 targeted tests covering: NavigateToRoot (empty + non-empty stack), NavigateTo push, GoBack at root (no-op), GoBack at empty stack (no throw), GoBack from depth 2 (same root reference), GoBackTo(0) at root, GoBackTo(depth-1) no-op, GoBackTo beyond stack, GoBackTo negative index, GoBackTo valid trim, NavigationChanged fired exactly once for each of the four mutations, NavigationChanged not fired for no-op GoBack/GoBackTo, BreadcrumbItems initial empty, BreadcrumbItems correct titles and StackIndex values after navigation, BreadcrumbItems updated after GoBack.",
+        "Ran full test suite: 257 tests, 257 passed, 0 failed. No regressions."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "tests/VideoIndexer.App.Tests/NavigationServiceTests.cs"
+        ]
+      },
+      "metrics": {
+        "test_coverage": "22 new NavigationService tests covering all 6 AC and all developer-recommended scenarios",
+        "tests_passed": 257,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-15T12:25:22Z",
+          "note": "NavigationServiceTests.cs: GoBack_EmptyStack_IsNoOpAndDoesNotThrow covers the empty-stack edge case not mentioned in AC but guarded by `_stack.Count <= 1` in the implementation — zero-depth is handled safely."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-15T12:25:22Z",
+          "note": "NavigationServiceTests.cs: GoBackTo_IndexBeyondStack_IsNoOp tests stackIndex = 5 on a depth-2 stack, confirming the `stackIndex >= _stack.Count - 1` guard handles out-of-range indices without exception."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-15T12:25:22Z",
+          "note": "No observations on NavigationService.cs itself — code is clean, guards are correct, and event routing is consistent across all four mutation methods."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-15T12:32:48Z",
+      "completed_at": "2026-05-15T12:35:20Z",
+      "duration_ms": 152000,
+      "summary": [
+        "Reviewed NavigationService.cs (implementation), NavigationServiceTests.cs (22 unit tests), and manifest updates to file-tree.md and api-surface.md.",
+        "All six acceptance criteria are met: NavigateToRoot clears and pushes correctly, GoBack is a no-op at depth≤1, GoBackTo guards are correct (negative index, index≥depth-1), root reference is preserved on pop, NavigationChanged fires exactly once per mutation, and build is clean.",
+        "Implementation is sealed, minimal, and uses List<NavigationEntry> as a stack (index 0=root, last=current) consistently with the updated api-surface.md documentation.",
+        "Test suite uses FluentAssertions, is fully isolated, covers all AC paths plus defensive edge cases (empty-stack GoBack, out-of-range GoBackTo), and verifies both event-fires-once and event-does-not-fire-on-no-op.",
+        "Manifest documents (file-tree.md, api-surface.md) are correctly updated per AGENTS.md rules.",
+        "No Blocking issues found. No Fix-Forward changes required. One Documentation-Forward item tagged."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/Services/Navigation/NavigationService.cs",
+          "tests/VideoIndexer.App.Tests/NavigationServiceTests.cs",
+          "docs/agents/project-manifest/file-tree.md",
+          "docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-15T12:35:20Z",
+          "note": "NavigationService.cs: GoBackTo with an empty stack (Count=0) and stackIndex=0 correctly returns early because 0 >= Count-1 == -1 evaluates to true. This is safe but relies on the signed arithmetic of List.Count-1. No action needed — just worth noting as a non-obvious guard path."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-15T12:35:20Z",
+          "note": "[documentation-forward] INavigationService.cs: The interface has no XML doc comments. The GoBackTo(int stackIndex) signature is particularly non-obvious: stackIndex is inclusive (the entry at that index is kept; everything above it is removed). A summary comment on the interface method — and on GoBack, NavigateToRoot, and NavigateTo for completeness — would aid future contributors."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-05-15T12:35:20Z",
+          "note": "[documentation-forward] NavigationEntry.cs and BreadcrumbItem.cs: Both sealed records lack XML doc comments. BreadcrumbItem.StackIndex in particular (the list index used by GoBackTo) benefits from a one-line description to make the PageHeaderView wiring self-explanatory."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-15T12:38:56Z",
+      "completed_at": "2026-05-15T12:40:19Z",
+      "duration_ms": 83000,
+      "summary": [
+        "Added XML doc comments to INavigationService.cs: summary on the interface itself, plus /// <summary> on all five properties/events and all four methods. The GoBackTo(int stackIndex) method received a detailed comment explaining its inclusive-index semantics and the no-op guard conditions, as flagged by the Reviewer documentation-forward.",
+        "Added XML doc comments to NavigationEntry.cs: summary on the sealed record and <param> tags for ViewModel, Title, and Parameter.",
+        "Added XML doc comments to BreadcrumbItem.cs: summary on the sealed record and <param> tags for Title and StackIndex. The StackIndex param comment explicitly directs callers to pass it to INavigationService.GoBackTo, making the PageHeaderView wiring self-explanatory.",
+        "Both documentation-forward items from the code-review pipeline have been addressed.",
+        "dotnet build --no-incremental exits 0. One MSBuild MSB3061 file-lock warning unrelated to the documentation changes (pre-existing locked DLL from another process)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/Services/Navigation/INavigationService.cs",
+          "src/VideoIndexer.App/Services/Navigation/NavigationEntry.cs",
+          "src/VideoIndexer.App/Services/Navigation/BreadcrumbItem.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-15T12:40:19Z",
+          "note": "INavigationService.cs: GoBackTo param doc uses a cross-reference to BreadcrumbItem.StackIndex via <see cref=\"BreadcrumbItem.StackIndex\" />, so IDE tooling links the two types together for future contributors."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-15T12:40:19Z",
+          "note": "Both documentation-forward items from the code-review pipeline were addressed. No gaps remain in the XML doc coverage for the Navigation layer."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-15T12:40:19Z",
+  "last_updated": "2026-05-15T12:40:19Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-15T12:12:00Z",
+      "notes": [
+        "NavigationService is registered as INavigationService in DI (Program.cs will need updating in a future WP).",
+        "All six AC met; build is clean.",
+        "No NavigationService unit tests exist yet — QA should add coverage for: NavigateToRoot, NavigateTo push, GoBack at root (no-op), GoBack from depth 2, GoBackTo no-op cases, GoBackTo trim, event-fired-once, BreadcrumbItems content and StackIndex values."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-15T12:25:22Z",
+      "notes": [
+        "NavigationService implementation and 22 unit tests all pass (257/257 total). Build is clean. All 6 AC verified by automated tests. The new test file is tests/VideoIndexer.App.Tests/NavigationServiceTests.cs. No issues found for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-15T12:35:20Z",
+      "notes": [
+        "WP-004 PASS. NavigationService implementation is clean and correct. Two documentation-forward items tagged: (1) INavigationService interface methods need XML doc comments, especially GoBackTo(int stackIndex) which has non-obvious inclusive-index semantics; (2) NavigationEntry and BreadcrumbItem records need brief XML docs, especially BreadcrumbItem.StackIndex. No code changes required — documentation only."
+      ]
+    }
+  ]
+}

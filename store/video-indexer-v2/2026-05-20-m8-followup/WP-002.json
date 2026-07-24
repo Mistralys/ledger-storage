@@ -1,0 +1,271 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "BackupCommand.CanExecute(null) returns false when DestinationFolder is \"\" or \"   \"; returns true when set to a non-whitespace value.",
+      "met": true
+    },
+    {
+      "criterion": "SanitizeDatabaseName(\"../../evil\") returns a value containing no / or \\ characters and is non-empty.",
+      "met": true
+    },
+    {
+      "criterion": "The catch (OperationCanceledException) clause appears before the catch (Exception ex) when (ex is not OperationCanceledException) clause in BackupAsync.",
+      "met": true
+    },
+    {
+      "criterion": "dotnet test passes with 3 additional new tests beyond the WP-001/WP-002 baseline.",
+      "met": true
+    },
+    {
+      "criterion": "dotnet build produces zero warnings and zero errors.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-20T09:28:29Z",
+      "completed_at": "2026-05-20T09:34:32Z",
+      "duration_ms": 363000,
+      "summary": [
+        "Added CanBackup() predicate and OnDestinationFolderChanged partial method to DatabaseBackupViewModel; updated [RelayCommand] attribute with CanExecute = nameof(CanBackup).",
+        "Added SanitizeDatabaseName(string rawName) internal static method to MysqlDumpBackupService stripping Path.GetInvalidFileNameChars() with 'backup' fallback; applied to outputFileName construction.",
+        "Added catch (OperationCanceledException) clause before the general catch in BackupAsync with best-effort partial-file deletion before re-throwing.",
+        "Added 2 new CanExecute tests to DatabaseBackupViewModelTests and 1 SanitizeDatabaseName test to MysqlDumpBackupServiceTests (3 total new tests).",
+        "Fixed 5 pre-existing CS8766/CS8767 nullable-mismatch warnings in ObfuscationServiceTests.cs stub implementations to satisfy zero-warnings AC.",
+        "Build: 0 warnings, 0 errors. Tests: 354 (App) + 195 (Infra) + 276 (Core) = 825 total, 0 failures, 6 env-skips."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/ViewModels/DatabaseBackupViewModel.cs",
+          "src/VideoIndexer.Infrastructure/Database/MysqlDumpBackupService.cs",
+          "tests/VideoIndexer.App.Tests/DatabaseBackupViewModelTests.cs",
+          "tests/VideoIndexer.Tests/MysqlDumpBackupServiceTests.cs",
+          "tests/VideoIndexer.Tests/ObfuscationServiceTests.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-05-20T09:34:32Z",
+          "note": "tests/VideoIndexer.Tests/ObfuscationServiceTests.cs had 5 pre-existing CS8766/CS8767 nullable-mismatch warnings in stub IDbConnection/IDbCommand/IDataParameterCollection/IDbDataParameter implementations (NullDbConnection, NullDbCommand, NullParameterCollection, NullDataParameter). Fixed by adding [AllowNull] attributes and correcting the indexer return type annotation. These were introduced during M8 work and not caught at the time, likely because the test project does not set TreatWarningsAsErrors=true."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-20T09:34:32Z",
+          "note": "DatabaseBackupViewModel.cs: OnDestinationFolderChanged partial method calling BackupCommand.NotifyCanExecuteChanged() is the correct pattern, but [NotifyCanExecuteChangedFor(nameof(BackupCommand))] on the [ObservableProperty] field would be the more declarative CommunityToolkit.Mvvm idiom. Either approach works; the partial-method form was chosen per WP specification."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-20T09:34:32Z",
+          "note": "MysqlDumpBackupService.SanitizeDatabaseName: the fallback to 'backup' when the entire rawName is stripped is correct. However, callers already pass conn.Database ?? 'backup', so a fully-stripped name would only occur for a database name consisting entirely of invalid file-name characters (e.g. all slashes). The current implementation handles this edge case correctly."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-20T09:39:22Z",
+      "completed_at": "2026-05-20T09:41:05Z",
+      "duration_ms": 103000,
+      "summary": [
+        "AC1 PASS: BackupCommand.CanExecute(null) returns false for both string.Empty and whitespace-only; returns true when set to a non-whitespace path. Verified via CanBackup() predicate + [RelayCommand(CanExecute=nameof(CanBackup))] + OnDestinationFolderChanged calling NotifyCanExecuteChanged().",
+        "AC2 PASS: SanitizeDatabaseName('../../evil') strips / and \\ (via Path.GetInvalidFileNameChars()); result '....evil' is non-empty and contains neither path separator. Test SanitizeDatabaseName_RemovesPathSeparators confirms NotContain('/')  + NotContain('\\\\') + NotBeEmpty.",
+        "AC3 PASS: catch (OperationCanceledException) clause with partial-file cleanup and re-throw precedes catch (Exception ex) when (ex is not OperationCanceledException) in BackupAsync. Code structure confirmed by direct file read.",
+        "AC4 PASS: 3 new tests present — BackupCommand_CanExecute_IsFalseWhenDestinationFolderIsEmpty, BackupCommand_CanExecute_IsTrueWhenDestinationFolderIsSet, SanitizeDatabaseName_RemovesPathSeparators. Full suite: 827 total, 821 passed, 0 failed, 6 env-skipped.",
+        "AC5 PASS: dotnet build 0 warnings, 0 errors confirmed (shared build run from WP-001 QA — no changes between WP-001 and WP-002 pipeline completion)."
+      ],
+      "metrics": {
+        "test_coverage": "827 total (6 env-skipped)",
+        "tests_passed": 821,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-20T09:41:05Z",
+          "note": "BackupCommand_CanExecute_IsFalseWhenDestinationFolderIsEmpty checks both string.Empty and '   ' on the same SUT instance sequentially, implicitly verifying NotifyCanExecuteChanged() fires on DestinationFolder mutation. Good test design."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-20T09:41:05Z",
+          "note": "SanitizeDatabaseName fallback to 'backup' for fully-stripped names (e.g. a DB name of all slashes) is correct. The callers already do conn.Database ?? 'backup', so the fallback is a defense-in-depth guard only — no runtime risk."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-20T09:41:05Z",
+          "note": "OperationCanceledException catch re-throws correctly after best-effort partial-file cleanup. Callers (Backup command) will propagate cancellation to CommunityToolkit's AsyncRelayCommand infrastructure cleanly."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-05-20T09:57:11Z",
+      "completed_at": "2026-05-20T09:59:02Z",
+      "duration_ms": 111000,
+      "summary": [
+        "Reviewed 5 files (2 production, 3 test). 0 Critical, 0 High, 0 Medium findings. 2 Low/Info observations recorded. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-20T09:59:02Z",
+          "note": "Low | A02 (Cryptographic Failures) | MysqlDumpBackupService.cs BuildStartInfo: Password is passed as a single ArgumentList entry ('-p{password}'). While this prevents shell injection, the combined flag+value form means the credential is visible in Windows process command-line listings (Task Manager, Sysinternals Process Monitor). For a local desktop single-user application this is Low severity — the user already holds the credential. Remediation if desired: use '--password' from a temp file or environment variable via Process.Environment, though this adds complexity. No action required for current scope."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-20T09:59:02Z",
+          "note": "Info | A08 (Software & Data Integrity) | MysqlDumpBackupService.cs BackupAsync: mysqldumpPath is constructed from a user-configured 'MySqlBinaryFolder' setting. A tampered settings file could redirect execution to a malicious binary. This is inherent to any external-tool integration pattern and is Info severity for a local desktop app where the attacker would need user-level filesystem write access already. No action required."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-20T09:59:02Z",
+          "note": "Info | A03 (Injection) — defence-in-depth confirmed: ProcessStartInfo.ArgumentList used exclusively (psi.Arguments stays empty, verified by test BuildStartInfo_DoesNotUseArgumentsStringForm). SanitizeDatabaseName strips Path.GetInvalidFileNameChars() including '/' and '\\', preventing path traversal via the filename component. Path.Combine(destinationFolder, outputFileName) is safe because outputFileName contains no directory separators post-sanitization. No findings."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-20T09:59:28Z",
+      "completed_at": "2026-05-20T10:02:14Z",
+      "duration_ms": 166000,
+      "summary": [
+        "Reviewed 5 files: DatabaseBackupViewModel.cs, MysqlDumpBackupService.cs, DatabaseBackupViewModelTests.cs, MysqlDumpBackupServiceTests.cs, ObfuscationServiceTests.cs.",
+        "No Blocking issues found across all four review dimensions (Maintainability, Best Practices, Performance, Future Context).",
+        "CanBackup predicate + OnDestinationFolderChanged partial method correctly implements the CanExecute guard per CommunityToolkit.Mvvm idioms.",
+        "SanitizeDatabaseName uses Path.GetInvalidFileNameChars() for platform-correct stripping with a 'backup' fallback — clean and correct.",
+        "OperationCanceledException catch precedes the general catch; best-effort partial-file cleanup via File.Delete before re-throw is correct. FileStream is disposed by the implicit await using finally before the catch block runs, so the delete succeeds on Windows.",
+        "Test quality is high: clear naming, FluentAssertions with explanatory messages, thorough coverage of edge cases (whitespace-only, null fields, path separator injection).",
+        "nullable-mismatch [AllowNull] fixes in ObfuscationServiceTests.cs stubs are correct and well-targeted.",
+        "Verdict: PASS."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/ViewModels/DatabaseBackupViewModel.cs",
+          "src/VideoIndexer.Infrastructure/Database/MysqlDumpBackupService.cs",
+          "tests/VideoIndexer.App.Tests/DatabaseBackupViewModelTests.cs",
+          "tests/VideoIndexer.Tests/MysqlDumpBackupServiceTests.cs",
+          "tests/VideoIndexer.Tests/ObfuscationServiceTests.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-20T10:02:14Z",
+          "note": "MysqlDumpBackupService.BackupAsync — on OperationCanceledException, Process.Dispose() is called (via `using`) but Process.Kill() is not. The mysqldump child process will continue running until it encounters a broken-pipe write error on its stdout/stderr, which will cause it to self-terminate. For a local desktop app this is low severity and self-correcting, but explicit kill before the re-throw would be cleaner resource management. Suggested addition in the OCE catch: `try { process.Kill(entireProcessTree: false); } catch { }` before the file cleanup."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-20T10:02:14Z",
+          "note": "SanitizeDatabaseName: Array.IndexOf linear search over the ~9-41 platform invalid-char array is correct and readable for a once-per-backup call. A HashSet<char> would be semantically clearer for 'membership test' intent and O(1), but the performance difference is immeasurable at this call frequency. No action required — flagged for awareness only."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-20T10:02:14Z",
+          "note": "[documentation-forward] IDatabaseBackupService.BackupAsync XML doc should explicitly state that OperationCanceledException propagates to the caller on cancellation. The project has a documented pattern (ILibraryScanner.RefreshAsync) that swallows OCE and returns normally — BackupAsync deviates from that pattern intentionally (cancellation of a backup should be visible to the AsyncRelayCommand infrastructure). Documenting this exception: '<exception cref=\"OperationCanceledException\">Thrown when <paramref name=\"cancellationToken\"/> is cancelled. Any partially-written output file is deleted before the exception propagates.</exception>' would prevent future maintainers from assuming the swallow-pattern applies here."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-20T10:03:59Z",
+      "completed_at": "2026-05-20T10:06:10Z",
+      "duration_ms": 131000,
+      "summary": [
+        "Addressed the documentation-forward item from code-review: added <exception cref=\"OperationCanceledException\"> XML doc element to IDatabaseBackupService.BackupAsync documenting that cancellation propagates (with partial-file cleanup) and explicitly contrasting with the ILibraryScanner.RefreshAsync swallow-pattern.",
+        "Updated api-surface.md: expanded IDatabaseBackupService.BackupAsync comment to document OCE-propagation behavior; added SanitizeDatabaseName to MysqlDumpBackupService internal test-accessible methods section; updated BackupCommand entry in DatabaseBackupViewModel to document the CanExecute guard (CanBackup predicate + OnDestinationFolderChanged notification).",
+        "Updated constraints.md: added IDatabaseBackupService.BackupAsync cancellation rule immediately after the ILibraryScanner cooperative-cancellation rule, making the intentional behavioral difference explicit for future maintainers.",
+        "No changes were needed to README.md — the backup feature was already documented in M8; the WP-002 changes are implementation-quality improvements (input guard, filename sanitization, cancellation handling) with no user-facing behavioral change."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Core/Abstractions/IDatabaseBackupService.cs",
+          "docs/agents/project-manifest/api-surface.md",
+          "docs/agents/project-manifest/constraints.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-20T10:06:10Z",
+          "note": "The documentation-forward item from the Reviewer was well-scoped and actionable. The XML <exception> element on the interface is the correct location for this contract documentation — consumers of IDatabaseBackupService will see it via IntelliSense without needing to read the implementation."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-20T10:06:10Z",
+          "note": "constraints.md now pairs the two cancellation rules adjacently (ILibraryScanner swallows; IDatabaseBackupService.BackupAsync propagates), making the intentional asymmetry easy to discover when future developers search for cancellation behavior."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-20T10:06:10Z",
+  "last_updated": "2026-05-20T10:06:10Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-20T09:34:32Z",
+      "notes": [
+        "CanExecute guard added to BackupCommand via CanBackup() predicate and OnDestinationFolderChanged partial method. SanitizeDatabaseName internal static added and applied to the output filename. OperationCanceledException catch clause with partial-file cleanup precedes the general catch. 3 new tests added: 2 CanExecute tests in DatabaseBackupViewModelTests and 1 SanitizeDatabaseName test in MysqlDumpBackupServiceTests. WP-004 (cancel-while-busy feature) depends on this WP and may also modify DatabaseBackupViewModel.cs — ensure no merge conflict with the CanExecute guard."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-05-20T09:41:05Z",
+      "notes": [
+        "WP-002 QA passed. CanExecute guard, SanitizeDatabaseName, and OCE handling all verified. Build: 0 warnings/errors. 821 tests pass. Note for Reviewer: WP-002 has a security-audit stage before code-review — see active_pipeline_stages. Handoff to Security Auditor next."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-20T09:59:02Z",
+      "notes": [
+        "WP-002 security audit complete — PASS. 0 Critical/High findings. Two Low/Info observations logged (password visibility in process args; external binary path from settings). All AC confirmed met. Ready for code-review stage."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-20T10:02:14Z",
+      "notes": [
+        "WP-002 code-review PASS. All 5 AC confirmed. No blocking issues. Two low-priority observations logged (orphaned child process on cancel; Array.IndexOf vs HashSet style) — neither warrants rework. One documentation-forward item logged for IDatabaseBackupService.BackupAsync: add XML exception element documenting that OperationCanceledException propagates (contrast with ILibraryScanner pattern). Documentation agent should address this before marking WP complete."
+      ]
+    }
+  ]
+}

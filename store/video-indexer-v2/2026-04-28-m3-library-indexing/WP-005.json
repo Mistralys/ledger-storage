@@ -1,0 +1,293 @@
+{
+  "work_package_id": "WP-005",
+  "work_package_file": "work/WP-005.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-002"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "All methods compile and produce valid SQL against the movies / movies_filenames schema (no DDL statements).",
+      "met": true
+    },
+    {
+      "criterion": "InsertAsync populates all columns with the correct empty-metadata defaults (studio='', name='', label='', description='', rating=0, watch_count=0, open_count=0, last_watched=NULL, review='no', review_message=NULL, cache='').",
+      "met": true
+    },
+    {
+      "criterion": "GetByHashAsync returns null for a hash not present in the table.",
+      "met": true
+    },
+    {
+      "criterion": "CountAsync returns a non-negative value.",
+      "met": true
+    },
+    {
+      "criterion": "No new PackageReference entries required.",
+      "met": true
+    },
+    {
+      "criterion": "All existing tests continue to pass.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-07T20:48:48Z",
+      "completed_at": "2026-05-07T20:52:59Z",
+      "duration_ms": 251000,
+      "summary": [
+        "Implemented DapperMovieCatalogRepository with all five IMovieCatalogRepository methods: GetCountAsync (SELECT COUNT(*) FROM movies), MovieExistsAsync (SELECT COUNT(*) WHERE hash), InsertMovieAsync (INSERT IGNORE with all NOT-NULL columns and empty-metadata defaults), FilenameExistsAsync (SELECT COUNT(*) WHERE filename), AddFilenameAsync (INSERT IGNORE).",
+        "InsertMovieAsync populates all columns with correct defaults: studio='', name='', label='', description='', rating=0, watch_count=0, open_count=0, last_watched=NULL, review='no', review_message=NULL, cache=''. Uses INSERT IGNORE to handle race-condition duplicate hashes gracefully (per IMovieCatalogRepository contract).",
+        "AddFilenameAsync uses INSERT IGNORE — required because movies_filenames.hash has a UNIQUE constraint in the live schema (one filename per hash). Two concurrent callers cannot both succeed for the same hash.",
+        "Added DapperMovieCatalogRepositoryTests.cs (VideoIndexer.Infrastructure.Tests/Library) — 9 live-DB SkippableFacts covering: insert with metadata defaults, duplicate insert no-throw, MovieExistsAsync false/true, GetCountAsync non-negative + increases on insert, FilenameExistsAsync false, AddFilenameAsync persists + duplicate no-throw. Uses VI_TEST_MCR_ prefix for cleanup isolation.",
+        "Build: 0 warnings, 0 errors. Test run: 86/86 unit, 79/83 infrastructure (4 expected SkippableFact skips), 48/48 app = 213 total, 0 failures."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Library/DapperMovieCatalogRepository.cs",
+          "tests/VideoIndexer.Infrastructure.Tests/Library/DapperMovieCatalogRepositoryTests.cs"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 213,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-07T20:52:59Z",
+          "note": "The live movies table has year, season, episode columns (nullable, DEFAULT NULL) that are not documented in structure.sql. InsertMovieAsync omits them (they default to NULL) but the interface IMovieCatalogRepository has no provision for these fields. If they are eventually needed for indexing, the InsertMovieAsync signature will need updating and the interface versioned."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-05-07T20:52:59Z",
+          "note": "DapperMovieCatalogRepositoryTests defines a private LiveConnectionFactory class that is identical to the one in SpdbConfigLibraryFolderRepositoryTests. This is duplicated test infrastructure. A shared TestFixtures class in VideoIndexer.Infrastructure.Tests would eliminate the duplication."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T20:52:59Z",
+          "note": "No observations — DapperMovieCatalogRepository is concise and consistent with the existing Dapper patterns in the codebase."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-07T21:00:47Z",
+      "completed_at": "2026-05-07T21:01:55Z",
+      "duration_ms": 68000,
+      "summary": [
+        "Build: 0 errors, 0 warnings.",
+        "AC-1 (SQL validity): All 5 methods build cleanly with 0 errors. No DDL statements. SQL uses parameterized queries throughout — no SQL injection risk.",
+        "AC-2 (default metadata): InsertMovieAsync SQL verified: studio='', name='', label='', description='', rating=0, watch_count=0, open_count=0, last_watched=NULL, review='no', review_message=NULL, cache='' — confirmed by code inspection and InsertMovieAsync_InsertsRowWithEmptyMetadataDefaults (PASS).",
+        "AC-3 (unknown hash returns false): MovieExistsAsync_ForUnknownHash_ReturnsFalse PASS.",
+        "AC-4 (CountAsync non-negative): GetCountAsync_ReturnsNonNegativeValue PASS.",
+        "AC-5 (no new packages): DapperMovieCatalogRepository uses only Dapper (pre-existing) and System.Data. No new PackageReference entries.",
+        "AC-6 (no regressions): VideoIndexer.Tests 86/86 PASS, VideoIndexer.App.Tests 48/48 PASS, DapperMovieCatalogRepositoryTests 9/9 PASS in isolation."
+      ],
+      "metrics": {
+        "tests_passed": 143,
+        "tests_failed": 0,
+        "tests_skipped": 0
+      },
+      "comments": [
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-05-07T21:01:55Z",
+          "note": "AC-3 note: The IMovieCatalogRepository interface exposes MovieExistsAsync (returns bool), not GetByHashAsync. The AC was written with an earlier planned method name. Semantics are fully met — MovieExistsAsync_ForUnknownHash_ReturnsFalse PASS."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-07T21:01:55Z",
+          "note": "DapperMovieCatalogRepository does not validate null inputs (hash, filename). Passing null to any method would propagate to Dapper/MySQL. Since the interface contract implies non-null strings and this is an internal service, this is acceptable — callers at system boundaries should validate before calling."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T21:01:55Z",
+          "note": "No observations — DapperMovieCatalogRepository is concise, correct, and consistent with existing Dapper patterns in the codebase."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-05-07T21:05:45Z",
+      "completed_at": "2026-05-07T21:06:29Z",
+      "duration_ms": 44000,
+      "summary": [
+        "Reviewed 2 files (1 implementation, 1 test). 0 Critical, 0 High, 0 Medium, 2 Low, 1 Info. Security sign-off: PASS. Key positive: all SQL queries parameterized via Dapper; INSERT IGNORE correctly applied for deduplication. Low findings: absence of ILogger (no repo-layer audit trail) and no null guards on public parameters. Cleanest implementation in the WP set."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-05-07T21:06:29Z",
+          "note": "Low — A09 (Security Logging & Monitoring) | DapperMovieCatalogRepository.cs: No ILogger dependency — InsertMovieAsync (movie creation) and AddFilenameAsync (filename association) produce no audit trail at the repository layer. Callers are expected to log these events. Remediation: inject ILogger<DapperMovieCatalogRepository> and emit LogDebug entries for insert operations, or document that caller logging is the expected pattern."
+        },
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-05-07T21:06:29Z",
+          "note": "Low — A04 (Insecure Design) | DapperMovieCatalogRepository.cs: No null validation on hash or filename parameters. Null hash passed to MovieExistsAsync or InsertMovieAsync propagates to Dapper/MySQL (NULL != NULL in SQL, so a null-hash movie would never be found). Null filename in FilenameExistsAsync or AddFilenameAsync similarly produces silent incorrect behavior. Remediation: add ArgumentException.ThrowIfNullOrWhiteSpace guards on all public method parameters. Low risk given this is an internal service boundary."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T21:06:29Z",
+          "note": "Info — A03 (Injection) | DapperMovieCatalogRepository.cs: All 5 SQL queries confirmed parameterized via Dapper (@Hash, @Filename). No string concatenation of user input. No SQL injection risk. INSERT IGNORE pattern is correct and intentional for race-condition deduplication per IMovieCatalogRepository contract."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-07T21:12:25Z",
+      "completed_at": "2026-05-07T21:13:38Z",
+      "duration_ms": 73000,
+      "summary": [
+        "Reviewed DapperMovieCatalogRepository.cs, IMovieCatalogRepository.cs, and DapperMovieCatalogRepositoryTests.cs.",
+        "No blocking issues. Cleanest implementation in the WP set — five single-responsibility methods, consistent connection-then-query pattern, all SQL parameterized.",
+        "INSERT IGNORE on both InsertMovieAsync and AddFilenameAsync correctly fulfills the interface's documented concurrent-safe contract.",
+        "Two documentation-forward items tagged: no-ILogger design intent (Low) and AC-3 GetByHashAsync → MovieExistsAsync wording fix.",
+        "Test code duplication (LiveConnectionFactory) noted as pre-flagged technical debt."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Library/DapperMovieCatalogRepository.cs",
+          "src/VideoIndexer.Core/Abstractions/IMovieCatalogRepository.cs",
+          "tests/VideoIndexer.Infrastructure.Tests/Library/DapperMovieCatalogRepositoryTests.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T21:13:38Z",
+          "note": "DapperMovieCatalogRepository is the leanest implementation in this WP set. Five methods, each with a single responsibility and a consistent open-connection-then-query pattern. INSERT IGNORE on both InsertMovieAsync and AddFilenameAsync correctly implements the interface's documented concurrent-safe semantics. No blocking issues found."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-05-07T21:13:38Z",
+          "note": "Test infrastructure debt: LiveConnectionFactory (private sealed class) inside DapperMovieCatalogRepositoryTests is byte-for-byte identical to the one in SpdbConfigLibraryFolderRepositoryTests. This is low-priority technical debt already flagged by the Developer. A shared TestFixtures class in VideoIndexer.Infrastructure.Tests would eliminate the duplication. Not blocking."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-05-07T21:13:38Z",
+          "note": "[documentation-forward] DapperMovieCatalogRepository has no ILogger. The Security Auditor flagged this as Low (A09 — no audit trail at repo layer). Document in IMovieCatalogRepository or DapperMovieCatalogRepository XML remarks that no logging is performed at the repository layer and callers are expected to emit log entries around write operations. This clarifies the intentional design choice."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-05-07T21:13:38Z",
+          "note": "[documentation-forward] AC-3 text in WP-005 references 'GetByHashAsync' but the interface method is MovieExistsAsync. Minor wording fix required in the WP document and/or plan for traceability accuracy."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-07T21:19:56Z",
+      "completed_at": "2026-05-07T21:22:30Z",
+      "duration_ms": 154000,
+      "summary": [
+        "Added <remarks> block to DapperMovieCatalogRepository class XML doc documenting the intentional no-ILogger design: callers (the scanner) are responsible for emitting per-file log entries; repository-layer logging is omitted to avoid duplicate events.",
+        "Corrected WP-005.md AC-3 from 'GetByHashAsync returns null' to 'MovieExistsAsync returns false' to match the actual IMovieCatalogRepository interface method name and return type.",
+        "Added DapperMovieCatalogRepository section to README.md: 5-method table with SQL and notes, default-metadata column table (all 12 populated columns), INSERT IGNORE deduplication rationale, no-ILogger design note, and undocumented schema columns caveat (year/season/episode present in live schema but absent from structure.sql).",
+        "Updated 'Unit tests cover' paragraph in README.md to include ExtensionObfuscationMap (19 tests, WP-003) and SpdbConfigLibraryFolderRepository.BuildLikePrefix (5 unit tests, WP-004)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Library/DapperMovieCatalogRepository.cs",
+          "docs/agents/plans/2026-04-28-m3-library-indexing/work/WP-005.md",
+          "README.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T21:22:30Z",
+          "note": "DapperMovieCatalogRepository XML class doc updated with <remarks> documenting the intentional no-ILogger design: logging is the caller's responsibility to avoid duplicate events when the scanner records per-file outcomes."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T21:22:30Z",
+          "note": "WP-005.md AC-3 corrected from 'GetByHashAsync returns null' to 'MovieExistsAsync returns false' to match the actual interface method name and semantics."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T21:22:30Z",
+          "note": "README.md DapperMovieCatalogRepository section added covering 5-method table with SQL, default-metadata column table, INSERT IGNORE deduplication rationale, no-ILogger design note, and nullable undocumented columns (year/season/episode) warning."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T21:22:30Z",
+          "note": "README.md 'Unit tests cover' paragraph updated to include ExtensionObfuscationMap (19 tests, WP-003) and SpdbConfigLibraryFolderRepository.BuildLikePrefix (5 unit tests, WP-004)."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-07T21:22:30Z",
+  "last_updated": "2026-05-07T21:22:30Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-07T20:52:59Z",
+      "notes": [
+        "DapperMovieCatalogRepository is ready. All 5 interface methods implemented. INSERT IGNORE used on both movies (logical safety) and movies_filenames (UNIQUE hash constraint in live schema).",
+        "The live movies table has additional nullable columns (year, season, episode) not in structure.sql. InsertMovieAsync leaves them NULL. Downstream WPs that need to populate these columns will need to modify InsertMovieAsync."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-05-07T21:01:55Z",
+      "notes": [
+        "All 6 ACs verified PASS. DapperMovieCatalogRepository is clean with 9/9 live-DB tests passing in isolation. No regressions found in unit or app test suites (86+48). Note: DapperMovieCatalogRepositoryTests is one of the two live-DB test classes whose parallel execution causes the ER_CHECKREAD issue flagged in WP-004 QA \\u2014 the [Collection(\\\"LiveDB\\\")] recommendation from that WP applies here too."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-07T21:06:29Z",
+      "notes": [
+        "Security audit PASS. 0 Critical/High findings. Implementation is minimal and correct — Dapper parameterization used throughout, INSERT IGNORE correctly applied for deduplication. Low findings: no ILogger (no audit trail at repo layer) and no null guards on public parameters. Both are low-risk given internal service context. All 6 ACs verified."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-07T21:13:38Z",
+      "notes": [
+        "Code review PASS. No blocking issues. Two low-priority documentation-forward items: (1) document the intentional no-ILogger design in DapperMovieCatalogRepository, and (2) fix AC-3 wording to reference MovieExistsAsync instead of GetByHashAsync. LiveConnectionFactory duplication in tests is tracked technical debt for a future shared-fixture refactor."
+      ]
+    }
+  ]
+}

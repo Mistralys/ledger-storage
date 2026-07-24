@@ -1,0 +1,269 @@
+{
+  "work_package_id": "WP-005",
+  "work_package_file": "work/WP-005.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001",
+    "WP-004"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "dotnet build -c Release produces zero warnings and zero errors (including in DapperMovieCatalogRepository).",
+      "met": true
+    },
+    {
+      "criterion": "Every await inside GetMovieListAsync uses .ConfigureAwait(false).",
+      "met": true
+    },
+    {
+      "criterion": "The SQL query uses a single SELECT with LEFT JOINs — no additional queries inside the method body.",
+      "met": true
+    },
+    {
+      "criterion": "HasCoverImage is hardcoded 0 (always false) in the SQL for M4.",
+      "met": true
+    },
+    {
+      "criterion": "ViewCount maps to movies.watch_count (not open_count).",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-12T06:08:53Z",
+      "completed_at": "2026-05-12T06:12:28Z",
+      "duration_ms": 215000,
+      "summary": [
+        "Implemented DapperMovieCatalogRepository.GetMovieListAsync with a single SQL SELECT using LEFT JOINs on tags_movies, tags, movies_thumbnails, and a movies_bookmarks subquery. HasCoverImage hardcoded to 0. ViewCount maps to movies.watch_count. All awaits use .ConfigureAwait(false).",
+        "Added using VideoIndexer.Core.Models to DapperMovieCatalogRepository.cs and declared a private const MovieListSql raw string literal for the query.",
+        "Also implemented GetMovieListAsync stubs in InMemoryMovieCatalogRepository (returns empty list) and FakeMovieCatalogRepository (with SetMovies, SetException, GetMovieListCallCount) as required to satisfy AC1 (clean build) since WP-006 was unassigned and blocking the build.",
+        "dotnet build -c Release: 0 warnings, 0 errors. dotnet test: 352 passed, 5 skipped (pre-existing), 0 failed."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Library/DapperMovieCatalogRepository.cs",
+          "tests/VideoIndexer.Tests/Fixtures/InMemoryMovieCatalogRepository.cs",
+          "tests/VideoIndexer.App.Tests/TestHelpers/FakeMovieCatalogRepository.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T06:12:28Z",
+          "note": "DapperMovieCatalogRepository.GetMovieListAsync uses results.AsList() (Dapper extension) to avoid double-enumeration. This is correct, but if the result set is very large, callers may want a streaming approach in a future milestone."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-05-12T06:12:28Z",
+          "note": "The MovieListSql constant uses a raw string literal (C# 11). The GROUP BY clause groups only on m.movie_id; in strict SQL mode (ONLY_FULL_GROUP_BY), this is valid only if all non-aggregated SELECT columns are functionally dependent on movie_id. This holds for the current schema (PK), but reviewers should be aware if the query is ever extended with columns from joined tables."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-05-12T06:12:28Z",
+          "note": "InMemoryMovieCatalogRepository (tests/VideoIndexer.Tests/Fixtures/) and FakeMovieCatalogRepository (tests/VideoIndexer.App.Tests/TestHelpers/) serve similar purposes but are in different locations with different class names. A future cleanup could consolidate them, though this is out of scope for M4."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-12T06:16:05Z",
+      "completed_at": "2026-05-12T06:17:53Z",
+      "duration_ms": 108000,
+      "summary": [
+        "All 5 acceptance criteria verified. Build: 0 warnings, 0 errors (Release). 352 tests pass, 5 pre-existing skipped, 0 failed — no regressions.",
+        "AC2 (ConfigureAwait): Both awaits in GetMovieListAsync carry .ConfigureAwait(false): CreateOpenConnectionAsync and QueryAsync<MovieListItem>.",
+        "AC3 (single query): MovieListSql is a private const; GetMovieListAsync body has exactly one QueryAsync call — no secondary queries.",
+        "AC4 (HasCoverImage): Hardcoded '0 AS HasCoverImage' in the SQL constant.",
+        "AC5 (ViewCount): 'm.watch_count AS ViewCount' — open_count is absent from the query.",
+        "FakeMovieCatalogRepository: SetMovies, SetException, GetMovieListCallCount all present and wired correctly. InMemoryMovieCatalogRepository returns Task.FromResult(Array.Empty<MovieListItem>()) — correct stub."
+      ],
+      "metrics": {
+        "tests_passed": 352,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-12T06:17:53Z",
+          "note": "FakeMovieCatalogRepository.GetMovieListAsync throws _exception synchronously (not via Task.FromException). This means the exception fires before a Task is returned rather than as a faulted Task. For the LoadAsync_SetsIsLoadingFalse_InFinallyBlock unit test this is fine — the synchronous throw propagates through the awaiter into the try/finally. No functional defect, but differs from production async behavior where a network-level failure would arrive as a faulted Task."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-05-12T06:17:53Z",
+          "note": "Integration tests for GetMovieListAsync (ReturnsAllInsertedMovies, AggregatesTagWeightCorrectly, ReviewYes_SetsNeedsReviewTrue, EmptyDatabase_ReturnsEmptyList) specified in plan.md Step 20 are not yet written. These are not AC for WP-005 but are explicitly flagged by the Developer and should be tracked for delivery within M4 (likely WP-007 or WP-008 scope)."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-05-12T06:20:59Z",
+      "completed_at": "2026-05-12T06:22:17Z",
+      "duration_ms": 78000,
+      "summary": [
+        "Reviewed 5 files (DapperMovieCatalogRepository.cs, InMemoryMovieCatalogRepository.cs, FakeMovieCatalogRepository.cs, MovieListQuery.cs, MovieListItem.cs). All OWASP Top 10 categories evaluated. 0 Critical, 0 High, 0 Medium findings. 1 Low (future-risk advisory) and 1 Info observation recorded. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T06:22:17Z",
+          "note": "No security findings — all OWASP Top 10 categories reviewed; no Critical or High issues identified. All parameterized queries use Dapper @Parameter syntax correctly; MovieListSql is a compile-time const with zero runtime interpolation; no hardcoded secrets; no injection surfaces; no auth/access-control gaps (single-user WinExe context)."
+        },
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-05-12T06:22:17Z",
+          "note": "A03 (Injection) — Future-milestone advisory: MovieListQuery (src/VideoIndexer.Core/Models/MovieListQuery.cs) is currently an empty record by M4 design. When M5 adds filter/search predicates, all new fields MUST be incorporated into the SQL exclusively via Dapper parameterized variables (@Param syntax). Any inline string concatenation or interpolation into MovieListSql would introduce a SQL injection vector. No action required for M4."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T06:22:17Z",
+          "note": "A09 (Logging) — Info: GetMovieListAsync in DapperMovieCatalogRepository.cs (line ~148) carries no exception logging per the repository's stated architectural policy (callers are responsible). Acceptable for M4. Future consideration: if the caller (library scanner or VM) does not surface database errors to the UI or log them, failures could be silently swallowed. No blocking issue."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-12T06:22:49Z",
+      "completed_at": "2026-05-12T06:24:54Z",
+      "duration_ms": 125000,
+      "summary": [
+        "PASS with Fix-Forward. All five acceptance criteria confirmed met. Implementation is clean, correct, and consistent with existing repository patterns.",
+        "SQL query reviewed: single SELECT with LEFT JOINs on tags_movies, tags, movies_thumbnails, and a correlated bookmark subquery. GROUP BY m.movie_id is valid under ONLY_FULL_GROUP_BY (PK dependency). HasCoverImage hardcoded to 0. ViewCount maps to watch_count. Both awaits carry .ConfigureAwait(false).",
+        "Fix-Forward applied to FakeMovieCatalogRepository.GetMovieListAsync: changed synchronous throw to Task.FromException<IReadOnlyList<MovieListItem>>(_exception) for production-parity async semantics. Non-behavioral for all current await-based tests. Build verified: 0 warnings, 0 errors after fix.",
+        "InMemoryMovieCatalogRepository stub is correct — returns Task.FromResult with Array.Empty<MovieListItem>() (zero-allocation static array).",
+        "No blocking issues found."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Library/DapperMovieCatalogRepository.cs",
+          "tests/VideoIndexer.Tests/Fixtures/InMemoryMovieCatalogRepository.cs",
+          "tests/VideoIndexer.App.Tests/TestHelpers/FakeMovieCatalogRepository.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-12T06:24:54Z",
+          "note": "FakeMovieCatalogRepository.GetMovieListAsync (tests/VideoIndexer.App.Tests/TestHelpers/FakeMovieCatalogRepository.cs): changed `throw _exception` to `return Task.FromException<IReadOnlyList<MovieListItem>>(_exception)`. The synchronous throw was functionally correct for all current await-based tests, but returning a faulted Task is the production-accurate async pattern. Non-behavioral for existing tests; prevents surprises if future tests inspect .IsFaulted or use .ContinueWith instead of await."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T06:24:54Z",
+          "note": "DapperMovieCatalogRepository.GetMovieListAsync: the `query` parameter is intentionally unused in M4 (MovieListQuery is an empty record by design). No compiler warning is emitted. When M5 adds filter predicates to MovieListQuery, null-guarding the parameter (ArgumentNullException.ThrowIfNull) should be added for consistency with the other repository methods."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-12T06:24:54Z",
+          "note": "[documentation-forward] IMovieCatalogRepository.GetMovieListAsync and DapperMovieCatalogRepository.GetMovieListAsync do not document the intended null behavior for the `query` parameter. Add a <remarks> or <exception cref=\"ArgumentNullException\"> XML comment noting that a null query is invalid, so M5 contributors know to add the guard when they populate MovieListQuery with filter fields."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T06:24:54Z",
+          "note": "No additional architectural concerns. The CancellationToken is passed only to CreateOpenConnectionAsync (not to QueryAsync), which is the consistent pattern used by all five existing repository methods. This is an acknowledged pre-existing convention, not a WP-005 regression."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-12T06:28:21Z",
+      "completed_at": "2026-05-12T06:30:22Z",
+      "duration_ms": 121000,
+      "summary": [
+        "Addressed the code-review documentation-forward: IMovieCatalogRepository.GetMovieListAsync now carries a full <param name=\"query\"> XML doc block noting that null is contract-invalid and that M5 implementors must add ArgumentNullException.ThrowIfNull when filter predicates are added to MovieListQuery.",
+        "Updated api-surface.md: added a comment line under the GetMovieListAsync signature explaining the M4/M5 null-guard expectation for contributors.",
+        "Updated docs/projects/rebuild/milestones/m4-movies-list.md: status changed from 'Not started' to 'In progress — infrastructure layer complete (WP-005)'.",
+        "Build verified: dotnet build -c Release — 0 warnings, 0 errors after all documentation changes."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Core/Abstractions/IMovieCatalogRepository.cs",
+          "docs/agents/project-manifest/api-surface.md",
+          "docs/projects/rebuild/milestones/m4-movies-list.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-12T06:30:22Z",
+          "note": "[documentation-forward resolved] IMovieCatalogRepository.GetMovieListAsync: added <param name=\"query\"> XML doc block explicitly stating null is contract-invalid and directing M5 contributors to add ArgumentNullException.ThrowIfNull when MovieListQuery gains filter fields. Reviewed by code-review pipeline; addressed here as instructed."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T06:30:22Z",
+          "note": "DapperMovieCatalogRepository.GetMovieListAsync uses /// <inheritdoc /> — no separate XML doc is needed on the implementation; the interface docs are inherited and surfaced by IDEs."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-12T06:30:22Z",
+  "last_updated": "2026-05-12T06:30:22Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-12T06:12:28Z",
+      "notes": [
+        "GetMovieListAsync is fully implemented in DapperMovieCatalogRepository. SQL query uses GROUP BY m.movie_id and ORDER BY m.label. Dapper maps column aliases (AS MovieId, AS Hash, etc.) directly to MovieListItem property names.",
+        "InMemoryMovieCatalogRepository and FakeMovieCatalogRepository both implement GetMovieListAsync. FakeMovieCatalogRepository has SetMovies, SetException, and GetMovieListCallCount — ready for MoviesListViewModel unit tests in WP-007/WP-008.",
+        "WP-006 scope was effectively absorbed here to unblock the build; the ledger should be updated to reflect WP-006 as complete or scope-merged.",
+        "Integration tests for GetMovieListAsync (GetMovieListAsync_ReturnsAllRows, GetMovieListAsync_AggregatesTagWeightCorrectly, etc.) are not yet written — QA should add these per the plan.md test specifications."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-05-12T06:17:53Z",
+      "notes": [
+        "WP-005 PASS: DapperMovieCatalogRepository.GetMovieListAsync is clean — single SELECT with LEFT JOINs, correct column mappings, proper ConfigureAwait usage, zero build warnings. Both test fakes are correctly stubbed with the configurable helpers the VM tests require.",
+        "Note for Security Auditor: The SQL query in MovieListSql is a static constant with no dynamic interpolation — no injection surface. The only external input (MovieListQuery) has no fields in M4."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-12T06:22:17Z",
+      "notes": [
+        "WP-005 security-audit PASS. No Critical or High findings across all OWASP Top 10 categories. All SQL uses Dapper parameterized queries with zero dynamic interpolation. MovieListSql is a compile-time const — injection-proof. 1 Low advisory logged: when M5 adds filter fields to MovieListQuery, they must remain parameterized. Code is clean and safe to proceed to code-review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-12T06:24:54Z",
+      "notes": [
+        "WP-005 code-review PASS. All 5 AC met and confirmed. Fix-Forward applied: FakeMovieCatalogRepository.GetMovieListAsync now returns Task.FromException instead of throwing synchronously — non-behavioral for existing tests, better async semantics. One documentation-forward logged: IMovieCatalogRepository.GetMovieListAsync needs null-query documentation for M5 contributors. No blocking issues. Safe to proceed to documentation stage."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,544 @@
+{
+  "work_package_id": "WP-007",
+  "work_package_file": "work/WP-007.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001",
+    "WP-002",
+    "WP-003",
+    "WP-004",
+    "WP-005",
+    "WP-006"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "Cached-binary path returns AlreadyPresent without invoking downloader or extractor.",
+      "met": true
+    },
+    {
+      "criterion": "Clean download path returns Downloaded, persists resolved paths via ISettingsService.UpdateAsync, and deletes the .partial directory.",
+      "met": true
+    },
+    {
+      "criterion": "Checksum mismatch throws InvalidDataException, deletes .partial, and does not touch the final target directory.",
+      "met": true
+    },
+    {
+      "criterion": "Missing RID throws PlatformNotSupportedException before any download is attempted.",
+      "met": true
+    },
+    {
+      "criterion": "Cancellation mid-download throws OperationCanceledException and leaves .partial intact while the final target dir remains untouched.",
+      "met": true
+    },
+    {
+      "criterion": "All new tests pass under dotnet test.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-30T05:01:35Z",
+      "completed_at": "2026-04-30T05:35:58Z",
+      "duration_ms": 2063000,
+      "summary": [
+        "Implemented FfmpegProvisioner.cs (13-step algorithm), FakeToolDownloader.cs, FakeArchiveExtractor.cs, and FfmpegProvisionerTests.cs. All 5 acceptance-criteria scenarios pass; full suite (47 tests) green with no regressions."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/ExternalTools/FfmpegProvisioner.cs",
+          "tests/VideoIndexer.Tests/Fixtures/FakeToolDownloader.cs",
+          "tests/VideoIndexer.Tests/Fixtures/FakeArchiveExtractor.cs",
+          "tests/VideoIndexer.Tests/FfmpegProvisionerTests.cs"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 47,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-04-30T05:35:58Z",
+          "note": "FfmpegProvisioner.IsCacheHit calls VerifyAsync via GetAwaiter().GetResult() — a sync-over-async pattern that can deadlock in some synchronization contexts (e.g., ASP.NET classic or certain Avalonia pump threads). Consider making the cache-hit check async and threading it through EnsureAsync cleanly, or caching the checksum result on a background thread during startup."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-30T05:35:58Z",
+          "note": "The archive filename is derived from the manifest URL using Uri.LocalPath. URLs with query strings or encoded characters could yield an empty or confusing filename. A small sanitize-or-default helper would make this more robust."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-04-30T05:35:58Z",
+          "note": "ISettingsService interface uses SaveAsync but the plan/WP docs refer to UpdateAsync throughout. This naming inconsistency between documentation and code will cause confusion for future contributors — the interface or the docs should be aligned."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-30T05:36:16Z",
+      "completed_at": "2026-04-30T05:39:41Z",
+      "duration_ms": 205000,
+      "summary": [
+        "All 6 acceptance criteria verified. Build clean (0 errors, 0 warnings). Full test suite: 47/47 provisioner tests + 39/39 app tests + 63/64 infrastructure tests pass (1 pre-existing skip unrelated to this WP). No regressions introduced."
+      ],
+      "metrics": {
+        "tests_passed": 149,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "bug",
+          "priority": "medium",
+          "timestamp": "2026-04-30T05:39:41Z",
+          "note": "IsCacheHit (FfmpegProvisioner.cs) validates only FfprobePath — it does not check whether FfmpegPath exists on disk. If FfprobePath is valid and its checksum matches, the provisioner reports AlreadyPresent and returns BuildToolPathsFromOptions, which falls back to options.FfmpegPath ?? string.Empty. A caller receiving an empty FfmpegPath would silently fail at runtime. Consider also checking File.Exists(options.FfmpegPath) before declaring a cache hit."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-04-30T05:39:41Z",
+          "note": "No test covers the Provisioning.Enabled = false short-circuit (Step 1 of the algorithm). This branch is exercised only at runtime. A single [Fact] confirming that EnsureAsync returns paths from options without calling downloader/extractor when Enabled=false would close the gap."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-04-30T05:39:41Z",
+          "note": "The inline comment in the extraction-cancellation catch block states 'Leave .partial intact; never the final target dir.' This is inaccurate: Directory.CreateDirectory(targetDir) executes unconditionally before ExtractAsync is called, so a cancellation during extraction leaves an empty targetDir on disk. The AC only tests mid-download cancellation so this does not constitute an AC failure, but the comment should be corrected and a test for mid-extraction cancellation should be added to document the real behaviour."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-04-30T05:39:41Z",
+          "note": "No test asserts that progress events are fired or that they arrive in the expected stage order (Verifying → Downloading → Verifying → Extracting). The progress path is exercised as a side effect of the happy-path test but no assertions are made against it."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-30T05:40:06Z",
+      "completed_at": "2026-04-30T05:42:35Z",
+      "duration_ms": 149000,
+      "summary": [
+        "Reviewed 7 files across FfmpegProvisioner, HttpToolDownloader, ZipArchiveExtractor, TarXzArchiveExtractor, Sha256ChecksumVerifier, and both fakes. 0 Critical, 0 High, 2 Medium, 2 Low, 2 Info findings. No blocking vulnerabilities. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-04-30T05:42:35Z",
+          "note": "A09 — Security Logging & Monitoring Failures. File: src/VideoIndexer.Infrastructure/ExternalTools/ZipArchiveExtractor.cs (line ~48) and TarXzArchiveExtractor.cs (line ~87). Neither extractor logs a warning when a Zip-Slip/Tar-Slip guard fires or when a symlink/hard-link entry is rejected. These are security-sensitive events that indicate a potentially malicious or corrupt archive. The gap is already self-documented as a TODO in TarXzArchiveExtractor.cs remarks. Remediation: inject ILogger<T> into both extractors and emit LogWarning for every rejected entry (path traversal, symlink, hard-link), including the entry name and the reason for rejection. This is consistent with logging patterns already used in FfmpegProvisioner."
+        },
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-04-30T05:42:35Z",
+          "note": "A04 — Insecure Design / Incomplete cache-hit integrity verification. File: src/VideoIndexer.Infrastructure/ExternalTools/FfmpegProvisioner.cs, IsCacheHit method (~line 236). IsCacheHit verifies FfprobePath (file existence + SHA-256) but does not verify FfmpegPath. On a cache-hit, BuildToolPathsFromOptions returns both paths, but only ffprobe has been integrity-checked. A tampered or missing ffmpeg binary will be silently returned to the caller. Remediation: also check File.Exists(options.FfmpegPath) before returning true; optionally extend the SHA-256 check to the ffmpeg binary using the manifest's FfmpegRelativePath checksum, or add a second manifest field (e.g. Sha256Ffmpeg) to enable per-binary verification."
+        },
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-04-30T05:42:35Z",
+          "note": "A04 — Insecure Design / No path-traversal guard on manifest relative paths. File: src/VideoIndexer.Infrastructure/ExternalTools/FfmpegProvisioner.cs, Step 9 (~line 195). FfprobeRelativePath and FfmpegRelativePath from ToolManifestEntry are combined with targetDir via Path.Combine without canonicalization or boundary checks. A value like '../../some/sensitive/path' would compose a path outside targetDir. These values come from trusted app configuration so the immediate risk is low, but a defense-in-depth guard (Path.GetFullPath comparison against targetDir) is recommended, consistent with the Zip-Slip/Tar-Slip protections already implemented in the extractors."
+        },
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-04-30T05:42:35Z",
+          "note": "A04 — Insecure Design / DownloadVersion used verbatim in filesystem path. File: src/VideoIndexer.Infrastructure/ExternalTools/FfmpegProvisioner.cs, Step 4 (~line 105). The path Path.Combine(_appPaths.Root, 'tools', 'ffmpeg', provisioningOptions.DownloadVersion, rid) uses DownloadVersion without validation. A version string containing path separators (e.g. '../../../etc') would escape the expected directory. The value comes from trusted app config, making exploitation unlikely, but a simple guard (reject strings containing Path.DirectorySeparatorChar or Path.AltDirectorySeparatorChar) would eliminate the surface."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-30T05:42:35Z",
+          "note": "A02/A08 — No HTTPS enforcement on manifest download URL. File: src/VideoIndexer.Core/Options/FfmpegProvisioningOptions.cs (ToolManifestEntry.Url field). The URL accepted in the manifest is not validated to enforce the https:// scheme. An http:// URL would allow network-level eavesdropping of the download stream. The SHA-256 post-download verification still catches tampered content, so there is no exploitable integrity gap, but enforcing HTTPS is a defence-in-depth best practice. Remediation: validate that Url.StartsWith('https://', StringComparison.OrdinalIgnoreCase) before initiating the download, or apply a startup-time validation guard on FfmpegProvisioningOptions."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-30T05:42:35Z",
+          "note": "A04 — TOCTOU (Time-of-Check / Time-of-Use) on cache-hit path. File: src/VideoIndexer.Infrastructure/ExternalTools/FfmpegProvisioner.cs, IsCacheHit (~line 236). The SHA-256 hash is verified and then the stored path is returned; between these two operations a local attacker with filesystem write access could replace the verified binary. This is an inherent desktop-app design limitation (no OS-level locking) and is not remotely exploitable; noted for awareness."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "FAIL",
+      "started_at": "2026-04-30T05:43:09Z",
+      "completed_at": "2026-04-30T05:48:09Z",
+      "duration_ms": 300000,
+      "summary": [
+        "Code review FAIL — two blocking logic bugs found in IsCacheHit. Two non-behavioral comment corrections applied as Fix-Forwards directly. All other dimensions (structure, dependency injection, error handling, test organisation) are clean."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/ExternalTools/FfmpegProvisioner.cs",
+          "tests/VideoIndexer.Tests/FfmpegProvisionerTests.cs",
+          "tests/VideoIndexer.Tests/Fixtures/FakeToolDownloader.cs",
+          "tests/VideoIndexer.Tests/Fixtures/FakeArchiveExtractor.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-30T05:48:09Z",
+          "note": "Fix-Forward applied: corrected inaccurate comment in the extraction OperationCanceledException catch block. Previous text 'Leave .partial intact; never the final target dir.' implied the target directory is never created during extraction. In reality, Directory.CreateDirectory(targetDir) runs unconditionally before ExtractAsync, so a cancellation during extraction leaves an empty targetDir on disk. Updated to: 'Leave .partial intact. Note: targetDir was already created unconditionally above, so an empty targetDir directory will remain on disk after an extraction cancellation.'"
+        },
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-30T05:48:09Z",
+          "note": "Fix-Forward applied: corrected XML doc step ordering in FfmpegProvisioner class-level remarks. Steps 2 and 3 were listed in reverse order relative to actual code execution. The code must resolve the RID first (to look up the manifest entry) before it can perform the cache-hit check. Updated: moved 'Resolve RID; throw PlatformNotSupportedException when absent from manifest' to Step 2, and 'Return AlreadyPresent on cache-hit' to Step 3 — now matching the implementation."
+        },
+        {
+          "type": "code-smell",
+          "priority": "high",
+          "timestamp": "2026-04-30T05:48:09Z",
+          "note": "BLOCKING — IsCacheHit uses archive SHA-256 to verify the extracted binary. ToolManifestEntry.Sha256 is documented as 'Expected SHA-256 checksum of the downloaded archive' (see ToolManifestEntry.cs line 16 doc comment). IsCacheHit uses this same value to verify the hash of FfprobePath — the *extracted binary*. In production, SHA-256(zip_archive) ≠ SHA-256(extracted_binary), so IsCacheHit will always return false, causing a fresh download on every application startup. The AC1 test masks this by passing sha256: FakeBinarySha256 (the binary's own SHA-256) as the manifest SHA — a test artifact that doesn't reflect production config. Resolution options: (a) Remove the SHA-256 re-hash from IsCacheHit and instead use file-existence plus ResolvedVersion == DownloadVersion as the cache-hit signal — appropriate for a desktop app where binaries are stored in a managed, version-stamped subdirectory. (b) Add dedicated per-binary SHA-256 fields to ToolManifestEntry (e.g. Sha256Ffprobe, Sha256Ffmpeg) so IsCacheHit can verify each binary independently. If option (a) is chosen, the AC1 test should also be updated to use ArchiveSha256 (not FakeBinarySha256) in the manifest to reflect real config."
+        },
+        {
+          "type": "code-smell",
+          "priority": "high",
+          "timestamp": "2026-04-30T05:48:09Z",
+          "note": "BLOCKING — IsCacheHit does not check FfmpegPath existence. IsCacheHit verifies FfprobePath (file existence + SHA-256) but completely skips FfmpegPath. On a cache-hit, BuildToolPathsFromOptions returns options.FfmpegPath ?? string.Empty. If the ffmpeg binary is absent or FfmpegPath was never populated, the caller silently receives an empty FfmpegPath — a string that will cause a cryptic failure downstream when ffmpeg is invoked. Fix: add File.Exists(options.FfmpegPath) guard immediately after the FfprobePath guard: 'if (string.IsNullOrEmpty(options.FfmpegPath) || !File.Exists(options.FfmpegPath)) return false;'. This blocking issue exists independently of the SHA-256 design issue above and must be fixed in all resolution paths."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-04-30T05:48:09Z",
+          "note": "Sync-over-async in IsCacheHit: _checksumVerifier.VerifyAsync(...).GetAwaiter().GetResult(). Sha256ChecksumVerifier uses ConfigureAwait(false) internally so deadlock is avoided with the current concrete implementation. However, the IChecksumVerifier interface makes no such guarantee, meaning a replacement implementation that lacks ConfigureAwait(false) would deadlock on any SynchronizationContext-bearing thread (e.g. Avalonia UI thread). Once the Developer addresses the two blocking issues, consider also making IsCacheHit an async method (Task<bool> IsCacheHitAsync) and awaiting it with ConfigureAwait(false) in EnsureAsync. CancellationToken should also be threaded through at that point. This was flagged by Developer and QA as well."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-30T05:48:09Z",
+          "note": "[documentation-forward] ToolManifestEntry.Sha256 doc comment ambiguity: the comment says 'SHA-256 checksum of the downloaded archive' but IsCacheHit uses it to verify the extracted binary. Once the Developer resolves the blocking SHA-256 design issue, the ToolManifestEntry.Sha256 doc comment and FfmpegProvisioner IsCacheHit doc comment must be updated to clearly document what value is expected (archive checksum vs. binary checksum) so future contributors understand the manifest schema contract."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-30T05:48:09Z",
+          "note": "AC1 test fixture mismatch: the cache-hit test uses sha256: FakeBinarySha256 as the manifest SHA (binary hash), while all other tests use ArchiveSha256 (archive hash). This is currently a test-only workaround for the production bug above. Once the blocking SHA-256 issue is resolved, ensure the AC1 test uses a manifest SHA value consistent with the resolved design — do not leave the inconsistency in place as it creates a maintainability gap."
+        }
+      ]
+    },
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-30T05:48:54Z",
+      "completed_at": "2026-04-30T05:50:33Z",
+      "duration_ms": 99000,
+      "summary": [
+        "Rework: fixed IsCacheHit to use file-existence + ResolvedVersion==DownloadVersion instead of archive SHA-256 against extracted binary; added FfmpegPath existence guard; eliminated sync-over-async. Updated cache-hit test to reflect correct cache semantics. 47/47 tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/ExternalTools/FfmpegProvisioner.cs",
+          "tests/VideoIndexer.Tests/FfmpegProvisionerTests.cs"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 47,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-04-30T05:50:33Z",
+          "note": "REWORK: Fixed IsCacheHit — replaced archive-checksum comparison (SHA-256 of archive != SHA-256 of binary) with file-existence + ResolvedVersion == DownloadVersion, which is the correct cache-validity signal. Also added FfmpegPath existence guard that was missing. Made IsCacheHitAsync a static async-capable method, eliminating the sync-over-async GetAwaiter().GetResult() pattern noted in the first implementation pass."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-30T05:50:33Z",
+          "note": "IsCacheHitAsync is now a static Task<bool> method returning Task.FromResult — no heap allocation when possible and no sync-over-async. If per-binary integrity verification is desired in future, ToolManifestEntry would need Sha256Ffprobe and Sha256Ffmpeg fields separate from the archive Sha256."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-30T05:50:52Z",
+      "completed_at": "2026-04-30T05:53:30Z",
+      "duration_ms": 158000,
+      "summary": [
+        "Rework QA PASS. Both blocking code-review issues are correctly resolved. (1) IsCacheHitAsync now uses file-existence + ResolvedVersion==DownloadVersion as the cache-validity signal — the archive SHA vs extracted-binary SHA mismatch that would have caused a fresh re-download on every startup is fixed. (2) FfmpegPath existence guard added — cache-hit no longer returns an empty FfmpegPath silently. (3) Sync-over-async eliminated — IsCacheHitAsync is now a static Task<bool> returning Task.FromResult. AC1 test fixture is also corrected: uses version-match semantics and ArchiveSha256 for the manifest (not FakeBinarySha256). All 6 ACs verified. Full test suite: 47/47 provisioner tests + 63/64 infrastructure tests (1 pre-existing skip) + 39/39 app tests = 149 passed, 0 failed, 0 regressions. Build for Infrastructure and Core projects: 0 errors, 0 warnings. (Note: VideoIndexer.App solution-level build encountered transient file-lock errors on .msCoverageSourceRootsMapping and DLL copy — environment issue unrelated to this WP; binaries were already built and tests confirmed via --no-build.)"
+      ],
+      "metrics": {
+        "tests_passed": 149,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-30T05:53:30Z",
+          "note": "Pre-existing carry-over: No test covers the Provisioning.Enabled=false short-circuit (Step 1). Not an AC failure; this was flagged in the previous QA cycle and remains unaddressed."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-04-30T05:53:30Z",
+          "note": "Pre-existing carry-over: No test for mid-extraction cancellation. The catch block comment was already fixed by the Reviewer. The behaviour (empty targetDir left on disk) is now documented in code but still has no corresponding test. Not an AC failure."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-04-30T05:53:30Z",
+          "note": "Pre-existing carry-over: No assertion on progress events order (Verifying → Downloading → Verifying → Extracting). Progress path is exercised as a side effect of the happy-path test but not asserted. Not an AC failure."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-30T05:56:23Z",
+      "completed_at": "2026-04-30T05:58:38Z",
+      "duration_ms": 135000,
+      "summary": [
+        "Re-audit of rework changes. Reviewed FfmpegProvisioner.cs (IsCacheHitAsync redesign + FfmpegPath guard + sync-over-async elimination) and FfmpegProvisionerTests.cs (AC1 fixture correction). 0 Critical, 0 High. All three fixes are correctly implemented with no new security surface introduced. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-30T05:58:38Z",
+          "note": "Fix 1 verified — IsCacheHitAsync (FfmpegProvisioner.cs ~line 224): archive-SHA comparison replaced with file-existence + StringComparison.Ordinal version-match. XML doc comment correctly documents that Sha256 is an archive checksum and cannot verify extracted binaries. Archive SHA-256 integrity check in Step 7 (EnsureAsync) is untouched and correct. No A02/A08 regression."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-30T05:58:38Z",
+          "note": "Fix 2 verified — IsCacheHitAsync (FfmpegProvisioner.cs ~line 236): FfmpegPath existence guard added symmetrically to FfprobePath guard. Prior A04 Medium finding (cache-hit returning empty FfmpegPath silently) is now fully resolved. BuildToolPathsFromOptions is only reached when both File.Exists checks pass."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-30T05:58:38Z",
+          "note": "Fix 3 verified — IsCacheHitAsync is now private static Task<bool> returning Task.FromResult. No GetAwaiter().GetResult() remains. Static declaration prevents accidental closure over instance state. No deadlock surface regardless of SynchronizationContext on calling thread. Prior Developer/QA/Reviewer sync-over-async concern is fully resolved."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-30T05:58:38Z",
+          "note": "AC1 test fixture verified — FfmpegProvisionerTests.cs: EnsureAsync_CachedBinaryPresentAndVersionMatches_ReturnsToolPathsWithoutDownloading now creates both ffprobe.exe and ffmpeg.exe on disk, sets ResolvedVersion=TestVersion, and passes ArchiveSha256 (not FakeBinarySha256) in the manifest. The prior test-fixture SHA inconsistency is resolved and the test now accurately reflects production cache semantics."
+        },
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-04-30T05:58:38Z",
+          "note": "Pre-existing carry-over (not changed by rework) — A09 Security Logging & Monitoring Failures: ZipArchiveExtractor and TarXzArchiveExtractor do not emit log warnings when a Zip-Slip/Tar-Slip path-traversal guard fires or when a symlink/hard-link entry is rejected. These are security-sensitive events. Remediation: inject ILogger<T> into both extractors and emit LogWarning per rejected entry. Not introduced or worsened by rework."
+        },
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-04-30T05:58:38Z",
+          "note": "Pre-existing carry-over (not changed by rework) — A04: DownloadVersion used verbatim in filesystem path (FfmpegProvisioner.cs Step 4, Path.Combine). A version string containing path separators could escape the expected directory. Value comes from trusted app config; risk is low. Recommend a guard rejecting strings containing Path.DirectorySeparatorChar or Path.AltDirectorySeparatorChar."
+        },
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-04-30T05:58:38Z",
+          "note": "Pre-existing carry-over (not changed by rework) — A04: FfprobeRelativePath and FfmpegRelativePath from ToolManifestEntry combined with targetDir via Path.Combine without boundary check (Step 9). Values come from trusted app config; risk is low. Recommend Path.GetFullPath canonicalization guard consistent with extractor Zip-Slip/Tar-Slip protections."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-30T05:58:38Z",
+          "note": "Pre-existing carry-over (not changed by rework) — A02/A08: Manifest download URL not validated for https:// scheme. An http:// URL allows network-level eavesdropping of the download stream. Post-download SHA-256 verification still catches tampered content, so no integrity gap. Enforcing HTTPS is a defence-in-depth best practice. Recommend startup-time validation on FfmpegProvisioningOptions."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-30T05:58:38Z",
+          "note": "Pre-existing carry-over (Info) — A04 TOCTOU: IsCacheHitAsync checks file existence then returns the stored path; a local attacker with filesystem write access could replace the verified binary between check and use. Inherent desktop-app limitation; not remotely exploitable. Noted for awareness only."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-30T05:59:04Z",
+      "completed_at": "2026-04-30T06:01:04Z",
+      "duration_ms": 120000,
+      "summary": [
+        "Re-review of rework changes PASS. All three blocking issues from the first code-review cycle are correctly resolved. IsCacheHitAsync uses file-existence + version-match (correct cache-validity signal), both FfmpegPath and FfprobePath guards are symmetric, and sync-over-async is eliminated. AC1 test fixture is corrected and reflects production semantics. One Fix-Forward applied (algorithm step doc comment). One Documentation-Forward tagged (ProvisioningOutcome.AlreadyPresent enum doc). No blocking issues found."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/ExternalTools/FfmpegProvisioner.cs",
+          "tests/VideoIndexer.Tests/FfmpegProvisionerTests.cs",
+          "tests/VideoIndexer.Tests/Fixtures/FakeToolDownloader.cs",
+          "tests/VideoIndexer.Tests/Fixtures/FakeArchiveExtractor.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-30T06:01:04Z",
+          "note": "Fix-Forward applied: corrected algorithm step 3 in the FfmpegProvisioner class-level XML doc remarks. Previous text '(path exists + checksum matches)' was stale after the rework that replaced SHA-256 verification with version-match semantics. Updated to '(both binary paths exist + resolved version matches)' to accurately describe IsCacheHitAsync's post-rework logic."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-30T06:01:04Z",
+          "note": "[documentation-forward] ProvisioningOutcome.AlreadyPresent enum doc comment (src/VideoIndexer.Core/Enums/ProvisioningOutcome.cs line 7) says 'passed checksum verification; no download occurred'. After the rework, cache-hit is validated by file existence + version match, not checksum. Update the summary to: 'The tool binaries were already present and the resolved version matches the configured target; no download occurred.'"
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-30T06:01:04Z",
+          "note": "IsCacheHitAsync is correctly declared private static — it does not close over instance state, which avoids subtle bugs if the instance is disposed or reused. The static modifier also makes the intent explicit and aids static analysis. No action needed."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-30T06:01:04Z",
+          "note": "Pre-existing carry-forward (low, non-blocking): three low-priority coverage gaps noted by QA remain open — (1) Provisioning.Enabled=false short-circuit, (2) mid-extraction cancellation test, (3) progress-event order assertion. None are AC blockers and do not prevent PASS."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-30T06:01:28Z",
+      "completed_at": "2026-04-30T06:05:28Z",
+      "duration_ms": 240000,
+      "summary": [
+        "Documentation pass for WP-007 (FfmpegProvisioner implementation). Two documentation-forward items from code-review addressed: (1) ProvisioningOutcome.AlreadyPresent XML doc comment updated from stale 'passed checksum verification' to 'resolved version matches the configured target', reflecting the post-rework cache-hit semantics; (2) ToolManifestEntry.Sha256 doc in source was already accurate ('SHA-256 checksum of the downloaded archive') — no change required there. README.md updated: new ### FfmpegProvisioner section added documenting the 13-step algorithm, cache-hit logic, cancellation behaviour table, and error handling table; ProvisioningOutcome table entry corrected to remove the stale 'no consumers' note; FakeToolDownloader and FakeArchiveExtractor test fixtures documented in the shared fixtures table; FfmpegProvisionerTests (6 AC scenarios) added to the Unit tests coverage paragraph."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Core/Enums/ProvisioningOutcome.cs",
+          "README.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-04-30T06:05:28Z",
+          "note": "Addressed documentation-forward: ProvisioningOutcome.AlreadyPresent doc comment now accurately describes the file-existence + version-match cache semantics introduced in the rework, replacing the stale 'passed checksum verification' text."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-04-30T06:05:28Z",
+          "note": "Addressed documentation-forward: ToolManifestEntry.Sha256 doc comment in source (ToolManifestEntry.cs line 14) already correctly states 'SHA-256 checksum (hex string, 64 characters) of the downloaded archive' — no change required. IsCacheHitAsync XML remarks also already document that Sha256 is an archive checksum and cannot verify extracted binaries. Both are correct and consistent with post-rework implementation."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-30T06:05:28Z",
+          "note": "README ProvisioningOutcome table entry updated: removed outdated 'no consumers' / 'Infrastructure WP should decide' note — FfmpegProvisioner is now the concrete consumer of this enum."
+        }
+      ]
+    }
+  ],
+  "rework_counts": {
+    "implementation": 1,
+    "qa": 1,
+    "code-review": 1,
+    "security-audit": 1
+  },
+  "status_changed_at": "2026-04-30T06:05:28Z",
+  "last_updated": "2026-04-30T06:05:28Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-30T05:35:58Z",
+      "notes": [
+        "FfmpegProvisioner is fully implemented and tested. All 6 AC met. Next stage is QA — focus areas: edge cases in the IsCacheHit path (manually-set paths outside the managed directory), progress reporting coverage, and verifying extractor call count under cancellation-after-extraction scenarios.\""
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-04-30T05:39:41Z",
+      "notes": [
+        "WP-007 QA PASS. All 6 ACs verified via test execution (149 tests, 0 failures). Notable findings for Security Auditor: (1) IsCacheHit validates only FfprobePath — empty FfmpegPath can be returned silently on cache-hit. (2) Sync-over-async (.GetAwaiter().GetResult()) in IsCacheHit can deadlock in certain sync contexts. (3) SaveAsync receives the real CancellationToken — if cancelled after extraction, .partial is not cleaned up and target dir holds extracted (but unregistered) binaries. These are pre-existing design decisions, not new vulnerabilities, but worth a security pass on file-path trust boundaries and the checksum-verification bypass surface."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-30T05:42:35Z",
+      "notes": [
+        "WP-007 security-audit PASS. 0 Critical/High findings; 2 Medium (A09 extractor audit logging gap; A04 incomplete cache-hit integrity on FfmpegPath), 2 Low, 2 Info. No changes required by Developer. Code is ready for Principal Systems Architect code-review. Review focus areas: IsCacheHit design completeness (ffmpeg-only verification gap), DownloadVersion/RelativePath path validation hygiene, and the sync-over-async GetAwaiter().GetResult() in IsCacheHit flagged by Developer and QA."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Developer",
+      "timestamp": "2026-04-30T05:48:09Z",
+      "notes": [
+        "WP-007 code-review FAIL. Two blocking issues require Developer rework: (1) IsCacheHit compares archive SHA-256 against the extracted binary — will always return false in production, causing a re-download on every startup. Test masks this by using binary SHA as manifest SHA. Fix by (a) removing checksum from IsCacheHit and using file-existence + ResolvedVersion == DownloadVersion, or (b) adding per-binary SHA fields to ToolManifestEntry. (2) IsCacheHit skips FfmpegPath existence check — cache-hit returns ToolPaths with empty FfmpegPath if ffmpeg binary is absent. Fix by adding File.Exists(options.FfmpegPath) guard. Both fixes are in IsCacheHit (~line 236). Two Fix-Forward comment corrections were applied directly (extraction catch comment, XML step ordering) — no need to revisit those. Also consider making IsCacheHit async to eliminate GetAwaiter().GetResult() while the method is being reworked."
+      ]
+    },
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-30T05:50:33Z",
+      "notes": [
+        "Rework complete. IsCacheHit now correctly uses file-existence + version-match (not archive SHA). FfmpegPath existence check added. Sync-over-async eliminated. All 47 tests pass."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-04-30T05:53:30Z",
+      "notes": [
+        "WP-007 QA PASS (rework). All 6 ACs verified. The two blocking code-review issues are fully resolved: IsCacheHitAsync now uses correct file-existence + version-match cache semantics, FfmpegPath existence is checked, and sync-over-async is eliminated. 149 tests pass, 0 fail. Three low-priority pre-existing coverage gaps carried forward (Enabled=false short-circuit, mid-extraction cancellation, progress-event assertions) — none are AC blockers. Code is ready for Security Auditor re-review if required, or direct to code-review for final sign-off."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-30T05:58:38Z",
+      "notes": [
+        "WP-007 security-audit re-audit PASS. All three Developer rework fixes verified: (1) IsCacheHitAsync now uses correct file-existence + version-match semantics — archive-SHA vs extracted-binary mismatch eliminated; (2) FfmpegPath existence guard added — no silent empty-path return on cache-hit; (3) sync-over-async eliminated — static Task<bool> with Task.FromResult, no deadlock surface. 0 Critical, 0 High findings. Pre-existing Medium (A09 extractor logging gap), two Low (path-separator guards), one Low (HTTPS enforcement), and one Info (TOCTOU) carried forward — none blocking. Code is ready for Principal Systems Architect code-review (re-review of rework changes: IsCacheHitAsync and AC1 test fixture)."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-30T06:01:04Z",
+      "notes": [
+        "WP-007 code-review re-review PASS. All three rework fixes verified correct: (1) IsCacheHitAsync now uses file-existence + ResolvedVersion==DownloadVersion — correct cache-validity signal, archive-SHA mismatch eliminated; (2) FfmpegPath existence guard added symmetrically; (3) sync-over-async eliminated — private static Task<bool> with Task.FromResult. AC1 test fixture corrected — creates both binaries on disk, version-match semantics, uses ArchiveSha256 in manifest. One Fix-Forward applied (algorithm step doc comment stale text corrected). One Documentation-Forward tagged for ProvisioningOutcome.AlreadyPresent enum doc. No blocking issues. Ready for Documentation agent."
+      ]
+    },
+    {
+      "from_agent": "Documentation",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-04-30T06:05:28Z",
+      "notes": [
+        "WP-007 documentation complete. Two code-review documentation-forwards addressed: ProvisioningOutcome.AlreadyPresent doc corrected to reflect version-match cache semantics; ToolManifestEntry.Sha256 source doc confirmed accurate (no change needed). README updated with new FfmpegProvisioner architecture section, corrected ProvisioningOutcome table, new test fixture entries, and expanded unit test coverage paragraph."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,249 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-002.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "Verifier returns true when the computed hash matches the expected hex string regardless of case.",
+      "met": true
+    },
+    {
+      "criterion": "Verifier returns false (or throws a documented exception) when the file content does not match.",
+      "met": true
+    },
+    {
+      "criterion": "Tests follow Subject_Scenario_ExpectedBehavior naming and use IDisposable temp-directory fixtures.",
+      "met": true
+    },
+    {
+      "criterion": "All new tests pass under dotnet test.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-28T18:33:07Z",
+      "completed_at": "2026-04-28T20:08:24Z",
+      "duration_ms": 5717000,
+      "summary": [
+        "Implemented Sha256ChecksumVerifier and full unit-test suite. All 34 tests pass (7 new). FileNotFoundException message includes the file path. Case-insensitive comparison confirmed via uppercase hash test."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/ExternalTools/Sha256ChecksumVerifier.cs",
+          "tests/VideoIndexer.Tests/Sha256ChecksumVerifierTests.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-28T20:08:24Z",
+          "note": "SHA256.HashDataAsync is available on .NET 8+ and used correctly here. The buffer size (81920) matches StreamReader defaults, which is idiomatic. No issues observed in touched files."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-04-28T20:08:24Z",
+          "note": "FileNotFoundException.Message and FileNotFoundException.FileName are separate properties. FluentAssertions WithMessage only matches the Message string, not FileName. The implementation includes the path in the message string to make it testable, which is slightly non-standard but pragmatic given the constraint."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-28T20:36:52Z",
+      "completed_at": "2026-04-28T20:38:22Z",
+      "duration_ms": 90000,
+      "summary": [
+        "Build: 0 errors, 0 warnings. All 7 Sha256ChecksumVerifierTests pass. Full regression clean: 42/42 in VideoIndexer.Tests, 55/55 in VideoIndexer.Infrastructure.Tests. All 4 acceptance criteria verified."
+      ],
+      "metrics": {
+        "test_coverage": "7 new tests covering: match, case-insensitive match, mismatch, empty-file match, empty-file mismatch, missing file, cancellation",
+        "tests_passed": 7,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-04-28T20:38:22Z",
+          "note": "Null filePath is not guarded — File.Exists(null) returns false, causing FileNotFoundException instead of ArgumentNullException. Low risk: callers are expected to supply a valid path. No AC failure."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-04-28T20:38:22Z",
+          "note": "IChecksumVerifier interface doc states 'lower-case hex string' but implementation accepts case-insensitively (OrdinalIgnoreCase). The broader acceptance is beneficial. Minor doc/contract inconsistency, no AC failure."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-04-28T20:38:22Z",
+          "note": "Malformed expectedSha256 (e.g., non-hex characters or wrong length) is not validated — returns false rather than throwing. Correct per interface contract (false = no match), but could mask caller bugs silently."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-29T19:04:46Z",
+      "completed_at": "2026-04-29T19:06:11Z",
+      "duration_ms": 85000,
+      "summary": [
+        "Reviewed 2 files (Sha256ChecksumVerifier.cs, Sha256ChecksumVerifierTests.cs). 0 Critical, 0 High, 0 Medium, 2 Low, 1 Info. All OWASP Top 10 categories checked. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-04-29T19:06:11Z",
+          "note": "[Low] A02 — Cryptographic Failures: string.Equals(OrdinalIgnoreCase) is not constant-time. File: Sha256ChecksumVerifier.cs, line 33. For file-integrity use (expected hash is public/known), this is not a practical timing-attack vector. Remediation: no immediate action needed; document that this method must not be repurposed for HMAC or secret-value comparison without switching to CryptographicOperations.FixedTimeEquals()."
+        },
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-04-29T19:06:11Z",
+          "note": "[Low] A03/A04 — Injection / Insecure Design: filePath is passed to File.Exists() and FileStream without path canonicalization (e.g., Path.GetFullPath). File: Sha256ChecksumVerifier.cs, lines 21–28. In the provisioning context all paths are application-constructed, mitigating this in practice. Remediation: callers should canonicalize and validate paths before passing to VerifyAsync if ever sourced from untrusted input."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-29T19:06:11Z",
+          "note": "[Info] A04 — Insecure Design: null filePath is not guarded; File.Exists(null) returns false, causing FileNotFoundException instead of ArgumentNullException. File: Sha256ChecksumVerifier.cs, line 21. Remediation: add ArgumentNullException.ThrowIfNull(filePath) as first statement (defence-in-depth)."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-29T19:06:11Z",
+          "note": "CancellationToken: correctly forwarded to SHA256.HashDataAsync — not swallowed. Test VerifyAsync_CancellationRequested_ThrowsOperationCanceledException confirms propagation. No issues."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-29T19:06:11Z",
+          "note": "Temp-file fixture (TempDirectory): uses Guid.NewGuid().ToString('N') for unpredictable directory names and deletes on Dispose. No world-readable predictable path issues. No issues."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-29T19:12:28Z",
+      "completed_at": "2026-04-29T19:13:23Z",
+      "duration_ms": 55000,
+      "summary": [
+        "Code review passed. Sha256ChecksumVerifier is minimal and correct: SHA256.HashDataAsync, FileShare.Read, await using, OrdinalIgnoreCase, diagnostic exception message. Tests cover 7 scenarios including cancellation and empty-file edge cases with clean TempDirectory fixtures. One Fix-Forward applied to IChecksumVerifier doc comment. No blocking issues."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/ExternalTools/Sha256ChecksumVerifier.cs",
+          "tests/VideoIndexer.Tests/Sha256ChecksumVerifierTests.cs",
+          "src/VideoIndexer.Core/Abstractions/IChecksumVerifier.cs"
+        ]
+      },
+      "metrics": {
+        "blocking_issues": 0,
+        "documentation_forward_items": 0,
+        "files_reviewed": 2,
+        "fix_forward_applied": 1
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-29T19:13:23Z",
+          "note": "Fix-Forward applied: IChecksumVerifier.VerifyAsync param doc said 'lower-case hex string' but the implementation performs OrdinalIgnoreCase comparison. Updated the expectedSha256 param doc in IChecksumVerifier.cs to read 'hex string (64 characters); comparison is case-insensitive.' This is a documentation-only fix — no behavioral change."
+        },
+        {
+          "type": "reviewer-observation",
+          "priority": "low",
+          "timestamp": "2026-04-29T19:13:23Z",
+          "note": "Minor: the cancellation test writes a 4096-byte file and pre-cancels the token before calling VerifyAsync. At that size, SHA256.HashDataAsync may complete before the cancellation is observed on fast hardware, making the test potentially non-deterministic. Low risk — the test was passing and the API does check the token. Not blocking."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-29T19:17:38Z",
+      "completed_at": "2026-04-29T19:20:12Z",
+      "duration_ms": 154000,
+      "summary": [
+        "Added `### Sha256ChecksumVerifier` architecture subsection to README.md documenting the concrete implementation, error conditions, CancellationToken behaviour, non-constant-time comparison caveat, and pending DI registration. Updated the Running Tests unit-coverage sentence to include all 7 Sha256ChecksumVerifier test scenarios. Code-review Fix-Forward (IChecksumVerifier param doc update) had no documentation impact — the interface XML doc was already corrected in source. No documentation-forward items from the code-review pipeline."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "README.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-29T19:20:12Z",
+          "note": "The non-constant-time comparison (OrdinalIgnoreCase) flagged by the security audit is addressed in the new architecture subsection under a dedicated 'Non-constant-time comparison' note, consistent with the existing Sha256FixedSaltPasswordHasher security documentation pattern."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-29T19:20:12Z",
+          "note": "IChecksumVerifier XML doc updated by the Reviewer's Fix-Forward (lower-case hex string → case-insensitive) is already accurate in source; no README change required for that item as the interface table entry in 'External Tool Provisioning Contracts' only describes purpose, not parameter casing."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-29T19:20:12Z",
+  "last_updated": "2026-04-29T19:20:12Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-28T20:08:24Z",
+      "notes": [
+        "Sha256ChecksumVerifier is in VideoIndexer.Infrastructure.ExternalTools. IChecksumVerifier is the interface from WP-001. 7 test scenarios cover: match, case-insensitive match, mismatch, empty-file match, empty-file mismatch, missing file (FileNotFoundException), and cancellation. No integration or live-network tests in scope for this WP."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-04-28T20:38:22Z",
+      "notes": [
+        "Sha256ChecksumVerifier.cs and Sha256ChecksumVerifierTests.cs are clean. Build: 0 warnings. 7/7 new tests pass, 97/97 total tests pass. No regressions. Ready for Security Audit."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-29T19:06:11Z",
+      "notes": [
+        "Security sign-off granted. 0 Critical/High findings. Two Low-severity observations recorded: (1) non-constant-time hash comparison — acceptable for file-integrity use, not for secret comparison; (2) no path canonicalization — acceptable given application-controlled paths in provisioning context. Suggest ArgumentNullException.ThrowIfNull guard as optional defence-in-depth. Ready for code-review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-29T19:13:23Z",
+      "notes": [
+        "Sha256ChecksumVerifier.cs and Sha256ChecksumVerifierTests.cs reviewed line-by-line. One Fix-Forward applied: corrected IChecksumVerifier param doc 'lower-case hex string' -> 'hex string (case-insensitive)'. No other changes. All 4 acceptance criteria confirmed met."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,279 @@
+{
+  "work_package_id": "WP-004",
+  "work_package_file": "work/WP-004.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001",
+    "WP-002"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "DapperFilterSlotRepository.SaveAsync for a new slot (SlotId == 0) returns a FilterSlot with SlotId > 0 matching the database-assigned auto-increment value.",
+      "met": true
+    },
+    {
+      "criterion": "DapperFilterSlotRepository.SaveAsync for an existing slot (SlotId > 0) updates name and expression in the DB and returns the input entity unchanged.",
+      "met": true
+    },
+    {
+      "criterion": "DapperFilterSlotRepository.DeleteAsync removes the row; a subsequent GetAllAsync does not include the deleted slot.",
+      "met": true
+    },
+    {
+      "criterion": "SpdbConfigActiveFilterSlotRepository.GetActiveSlotIdAsync returns null when the key is absent or empty.",
+      "met": true
+    },
+    {
+      "criterion": "SpdbConfigActiveFilterSlotRepository.SetActiveSlotIdAsync(5) followed by GetActiveSlotIdAsync returns 5; SetActiveSlotIdAsync(null) followed by GetActiveSlotIdAsync returns null.",
+      "met": true
+    },
+    {
+      "criterion": "All SQL uses @Param parameterisation — no string interpolation or concatenation in queries.",
+      "met": true
+    },
+    {
+      "criterion": "All await calls carry ConfigureAwait(false).",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-12T16:17:41Z",
+      "completed_at": "2026-05-12T16:23:39Z",
+      "duration_ms": 358000,
+      "summary": [
+        "Implemented DapperFilterSlotRepository: GetAllAsync (SELECT with SlotId/Name/Expression column aliases), SaveAsync (INSERT + LAST_INSERT_ID() for new slots; UPDATE for existing), DeleteAsync (DELETE by slot_id). All SQL uses @Param parameterisation.",
+        "Implemented SpdbConfigActiveFilterSlotRepository: GetActiveSlotIdAsync reads 'active_filter_slot_id' key from spdb_config (returns null when absent or empty), SetActiveSlotIdAsync writes the int as string or empty string for null. Injects ISpdbConfigRepository directly (no transaction needed).",
+        "Extended IFilterSlotRepository with GetAllAsync and DeleteAsync — required by the WP acceptance criteria but absent from the WP-002 minimal spec.",
+        "Extended IActiveFilterSlotRepository with SetActiveSlotIdAsync — required by acceptance criteria, absent from WP-002 minimal spec.",
+        "Updated api-surface.md and file-tree.md in the project manifest.",
+        "Build: 0 errors, 0 warnings. Tests: 128+111+128 passed, 6 skipped (same pre-existing DB-credential skips)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Core/Abstractions/IFilterSlotRepository.cs",
+          "src/VideoIndexer.Core/Abstractions/IActiveFilterSlotRepository.cs",
+          "src/VideoIndexer.Infrastructure/Library/DapperFilterSlotRepository.cs",
+          "src/VideoIndexer.Infrastructure/Library/SpdbConfigActiveFilterSlotRepository.cs",
+          "docs/agents/project-manifest/api-surface.md",
+          "docs/agents/project-manifest/file-tree.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T16:23:39Z",
+          "note": "IFilterSlotRepository and IActiveFilterSlotRepository were delivered by WP-002 with only their minimum viable signatures (SaveAsync / GetActiveSlotIdAsync). WP-004 acceptance criteria required GetAllAsync, DeleteAsync, and SetActiveSlotIdAsync which were absent. These were added during WP-004 implementation. For future milestones, consider aligning the WP-002 Core interface spec with the downstream WP-004 implementation spec to avoid interface drift."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T16:23:39Z",
+          "note": "DapperFilterSlotRepository.SaveAsync uses two sequential round-trips for insert (INSERT then SELECT LAST_INSERT_ID()) because AllowMultipleStatements is not enabled on the MySqlConnectionStringBuilder in MySqlConnectionFactory. This is correct and safe (LAST_INSERT_ID() is session-scoped), but a single-statement approach (e.g. enabling multi-statement or using OUTPUT semantics) would be marginally more efficient if this becomes a hot path."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-05-12T16:23:39Z",
+          "note": "SpdbConfigActiveFilterSlotRepository injects ISpdbConfigRepository directly (unlike SpdbConfigLibraryFolderRepository which injects IDbConnectionFactory as primary with an ISpdbConfigRepository test seam). The simpler injection is appropriate here (no transaction coordination needed), but the inconsistency is worth noting when onboarding new contributors to the infrastructure layer."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-12T16:27:26Z",
+      "completed_at": "2026-05-12T16:33:11Z",
+      "duration_ms": 345000,
+      "summary": [
+        "Build: 0 errors, 0 warnings. Solution compiles cleanly against net10.0 with TreatWarningsAsErrors.",
+        "Wrote 17 new tests in 2 files: DapperFilterSlotRepositoryTests.cs (6 live-DB integration tests) and SpdbConfigActiveFilterSlotRepositoryTests.cs (11 pure unit tests using an in-memory ISpdbConfigRepository stub).",
+        "Discovered that migration m037 had not been applied to the spdb_tests schema — filter_slots table was absent. Fixed by adding a self-contained EnsureFilterSlotsTableExists() step in the test constructor (CREATE TABLE IF NOT EXISTS) so tests are runnable against a baseline spdb_tests schema.",
+        "All 7 acceptance criteria verified: AC-1 (new slot insert returns positive auto-increment id), AC-2 (existing slot update persists and returns input), AC-3 (delete removes row from GetAllAsync), AC-4 (null/empty key returns null), AC-5 (round-trip set/get works; null clears the slot), AC-6 (@Param parameterisation throughout — confirmed by code review), AC-7 (ConfigureAwait(false) on all awaits — confirmed by code review).",
+        "Regression: 145 Infrastructure.Tests passed (was 128 pre-WP), 111 App.Tests passed, 128 VideoIndexer.Tests passed. 6 pre-existing skips unchanged. 0 failures."
+      ],
+      "metrics": {
+        "test_coverage": "17 new tests covering all 7 ACs",
+        "tests_passed": 145,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-12T16:33:11Z",
+          "note": "Migration m037 (filter_slots table) had not been applied to the spdb_tests schema. Integration tests self-healed via CREATE TABLE IF NOT EXISTS in the constructor. The test DB should have m037 applied via the normal migration path so the self-create is just a safety net, not the primary mechanism."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T16:33:11Z",
+          "note": "DapperFilterSlotRepository.GetAllAsync uses Dapper ValueTuple projection (QueryAsync<(int SlotId, string Name, string Expression)>) and then manually maps to FilterSlot. This works correctly but is less idiomatic than using Dapper's direct POCO mapping (QueryAsync<FilterSlot>). The tuple approach was likely chosen to avoid column-name ambiguity — no action required, just worth noting for future maintainers."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T16:33:11Z",
+          "note": "No constructor null-guard test was written for DapperFilterSlotRepository because the null check throws ArgumentNullException synchronously and the constructor is straightforward. If the pattern is desired for consistency with SpdbConfigActiveFilterSlotRepositoryTests, a single [Fact] can be added in a follow-up."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-05-12T16:36:28Z",
+      "completed_at": "2026-05-12T16:37:31Z",
+      "duration_ms": 63000,
+      "summary": [
+        "Reviewed 4 source files (DapperFilterSlotRepository, SpdbConfigActiveFilterSlotRepository, IFilterSlotRepository, IActiveFilterSlotRepository). 0 Critical, 0 High, 0 Medium, 1 Low finding. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T16:37:31Z",
+          "note": "A03 (Injection) — CONFIRMED SAFE. All SQL in DapperFilterSlotRepository uses Dapper @Param parameterisation exclusively: INSERT uses @Name/@Expression, UPDATE uses @Name/@Expression/@SlotId, DELETE uses @SlotId, SELECT LAST_INSERT_ID() has no user input. SpdbConfigActiveFilterSlotRepository stores int.ToString() or string.Empty only — no injection path exists."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T16:37:31Z",
+          "note": "Low — A04 (Insecure Design) — DapperFilterSlotRepository.SaveAsync guards against a null FilterSlot record (ArgumentNullException.ThrowIfNull) but does not validate that slot.Name or slot.Expression are non-null before executing SQL. If either property is null and the DB column is NOT NULL, a MySqlConnector exception propagates instead of a clean ArgumentException at the method boundary. Not exploitable; recommend adding null/empty guards on Name and Expression for defensive robustness. File: src/VideoIndexer.Infrastructure/Library/DapperFilterSlotRepository.cs, SaveAsync method."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T16:37:31Z",
+          "note": "No security findings across OWASP A01–A10 at Critical or High severity. All OWASP Top 10 categories reviewed. Input validation at the DB boundary is clean. No secrets, no dynamic SQL construction, no HTTP/SSRF surface, no auth/session concerns in scope. Security sign-off granted."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-12T16:38:01Z",
+      "completed_at": "2026-05-12T16:40:16Z",
+      "duration_ms": 135000,
+      "summary": [
+        "Code review PASS. Reviewed 4 source files and 2 test files. No blocking issues found. All acceptance criteria independently confirmed against the implementation.",
+        "DapperFilterSlotRepository: Clean, sealed, null-guarded. ValueTuple projection in GetAllAsync is correct and justified — FilterSlot's required init properties prevent direct Dapper POCO mapping. Upsert logic (SlotId==0 → INSERT+LAST_INSERT_ID; else UPDATE) is correct. All SQL fully parameterised. ConfigureAwait(false) consistent throughout.",
+        "SpdbConfigActiveFilterSlotRepository: Clean delegation pattern. null/empty and non-numeric handling via string.IsNullOrEmpty + int.TryParse is robust and graceful.",
+        "Interface contracts (IFilterSlotRepository, IActiveFilterSlotRepository) are accurate with well-written XML documentation.",
+        "Test quality is high: 17 tests across two files, comprehensive AC coverage, clean InMemoryConfigRepository stub, proper Dispose cleanup, graceful DB-skip via SkippableFact."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Core/Abstractions/IFilterSlotRepository.cs",
+          "src/VideoIndexer.Core/Abstractions/IActiveFilterSlotRepository.cs",
+          "src/VideoIndexer.Infrastructure/Library/DapperFilterSlotRepository.cs",
+          "src/VideoIndexer.Infrastructure/Library/SpdbConfigActiveFilterSlotRepository.cs",
+          "tests/VideoIndexer.Infrastructure.Tests/Library/DapperFilterSlotRepositoryTests.cs",
+          "tests/VideoIndexer.Infrastructure.Tests/Library/SpdbConfigActiveFilterSlotRepositoryTests.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T16:40:16Z",
+          "note": "DapperFilterSlotRepository.GetAllAsync uses ValueTuple projection (QueryAsync<(int SlotId, string Name, string Expression)>) with manual mapping to FilterSlot. This is correct and justified — FilterSlot uses required init-only properties, which standard Dapper POCO mapping cannot satisfy via reflection. The workaround is well-reasoned and should be preserved. Future maintainers should be aware of this constraint when modifying the FilterSlot model."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T16:40:16Z",
+          "note": "Security Auditor's Low finding re-noted: DapperFilterSlotRepository.SaveAsync guards against a null slot record but does not validate that slot.Name or slot.Expression are non-null before executing the INSERT or UPDATE. A defensive ArgumentException on null/empty Name or Expression would provide a cleaner contract boundary, but this is non-blocking."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-12T16:40:16Z",
+          "note": "[documentation-forward] IFilterSlotRepository.SaveAsync XML doc states 'For updates the input entity is returned unchanged' but does not document the behaviour when SlotId > 0 and no matching row exists. The current implementation executes an UPDATE that silently affects 0 rows and returns the input entity — this edge-case contract (silent no-op) should be explicitly stated in the interface docstring so callers are not surprised."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-12T16:42:11Z",
+      "completed_at": "2026-05-12T16:43:48Z",
+      "duration_ms": 97000,
+      "summary": [
+        "Addressed the [documentation-forward] from code review: expanded IFilterSlotRepository.SaveAsync XML docstring with a <remarks> block documenting (1) the silent no-op edge case when SlotId > 0 but no matching row exists, and (2) the known defensive gap where null Name/Expression properties bypass method-boundary validation and produce a DB-level exception instead of a clean ArgumentException.",
+        "Updated docs/agents/project-manifest/api-surface.md to annotate the IFilterSlotRepository.SaveAsync entry with the same contract notes (silent no-op and null-property caveat), matching the manifest's inline-comment annotation style.",
+        "No README.md changes required — the README contains no filter-slot-specific API documentation that would be affected.",
+        "Build verified: 0 errors, 0 warnings after changes."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Core/Abstractions/IFilterSlotRepository.cs",
+          "docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T16:43:48Z",
+          "note": "The documentation-forward item (silent no-op on missing row) was straightforward to address from the implementation. The null Name/Expression gap noted by Security Auditor and Reviewer has been documented at the interface level as a known defensive caveat rather than fixed — fixing it is an implementation concern, not a documentation one."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-12T16:43:48Z",
+  "last_updated": "2026-05-12T16:43:48Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-12T16:23:39Z",
+      "notes": [
+        "WP-004 delivers DapperFilterSlotRepository (GetAllAsync/SaveAsync/DeleteAsync against filter_slots table) and SpdbConfigActiveFilterSlotRepository (GetActiveSlotIdAsync/SetActiveSlotIdAsync using active_filter_slot_id key in spdb_config).",
+        "IFilterSlotRepository and IActiveFilterSlotRepository were extended beyond their WP-002 definitions to include the methods required by the acceptance criteria.",
+        "Integration tests for these repositories are not yet written (QA scope). The 6 pre-existing infrastructure skips are for tests requiring live DB credentials and are unrelated to this WP.",
+        "Both classes use @Param parameterisation throughout with ConfigureAwait(false) on all awaits."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-05-12T16:33:11Z",
+      "notes": [
+        "WP-004 QA PASS. 17 new tests added (DapperFilterSlotRepositoryTests + SpdbConfigActiveFilterSlotRepositoryTests), all 7 ACs verified green. One observation for Security Auditor: all SQL is parameterised (@Param style), no dynamic query construction. ConfigureAwait(false) is consistent. The filter_slots table uses auto-increment INT primary key with no user-controlled schema elements."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-12T16:37:31Z",
+      "notes": [
+        "WP-004 security-audit PASS. 0 Critical/High findings. One Low: SaveAsync does not validate null Name/Expression fields in the FilterSlot record before executing SQL — minor defensive gap, not a blocker. All SQL is parameterised; no injection vectors. Ready for code-review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-12T16:40:16Z",
+      "notes": [
+        "WP-004 code-review PASS. Implementation is clean, well-structured, and follows established project conventions.",
+        "One [documentation-forward] item for the Documentation agent: IFilterSlotRepository.SaveAsync should document the silent-no-op behaviour when SlotId > 0 but the row does not exist.",
+        "Security Auditor Low finding (null Name/Expression guards in SaveAsync) is noted as a non-blocking improvement — Documentation agent may wish to note it as a known defensive gap in code comments if addressing the doc forward."
+      ]
+    }
+  ]
+}

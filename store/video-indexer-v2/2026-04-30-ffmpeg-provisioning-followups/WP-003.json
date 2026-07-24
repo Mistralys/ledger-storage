@@ -1,0 +1,251 @@
+{
+  "work_package_id": "WP-003",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "HttpToolDownloader constructor takes ILogger<HttpToolDownloader> as parameter.",
+      "met": true
+    },
+    {
+      "criterion": "LogInformation emitted on download start and success.",
+      "met": true
+    },
+    {
+      "criterion": "LogError emitted in catch block before re-throw.",
+      "met": true
+    },
+    {
+      "criterion": "HttpToolDownloaderTests pass with NullLogger injected.",
+      "met": true
+    },
+    {
+      "criterion": "dotnet test tests/VideoIndexer.Infrastructure.Tests green.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-06T18:18:32Z",
+      "completed_at": "2026-05-06T18:20:37Z",
+      "duration_ms": 125000,
+      "summary": [
+        "Added ILogger<HttpToolDownloader> constructor parameter with ArgumentNullException guard.",
+        "Added Stopwatch for elapsed timing.",
+        "Emitted LogInformation at download start (URL, destination, content-length) and at success (URL, bytes received, elapsed ms).",
+        "Emitted LogError in catch block with exception before re-throw (URL, exception type, bytes received).",
+        "Updated HttpToolDownloaderTests.cs BuildSut to pass NullLogger<HttpToolDownloader>.Instance.",
+        "Updated FfmpegProvisionerLiveTests.cs BuildProvisioner to pass NullLogger<HttpToolDownloader>.Instance (same constructor change).",
+        "All 63 Infrastructure tests pass (0 failed, 2 skipped). Solution builds with 0 warnings/errors."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/ExternalTools/HttpToolDownloader.cs",
+          "tests/VideoIndexer.Infrastructure.Tests/ExternalTools/HttpToolDownloaderTests.cs",
+          "tests/VideoIndexer.Infrastructure.Tests/ExternalTools/FfmpegProvisionerLiveTests.cs"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 63,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-06T18:20:37Z",
+          "note": "FfmpegProvisionerLiveTests.cs (BuildProvisioner) was a collateral callsite that also needed updating — no test discovery would have caught this until compile time. The pattern of direct `new HttpToolDownloader(...)` in test helpers is fine for integration tests, but worth noting as a maintenance touch-point whenever the constructor changes again."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-05-06T18:20:37Z",
+          "note": "HttpToolDownloader.cs: the catch block was previously `catch` (bare), which swallows type information for logging. Changed to `catch (Exception ex)` to capture the exception for LogError. This is idiomatic and consistent with the rest of the codebase."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-06T18:34:11Z",
+      "completed_at": "2026-05-06T18:35:01Z",
+      "duration_ms": 50000,
+      "summary": [
+        "All 5 acceptance criteria verified. ILogger<HttpToolDownloader> constructor parameter present with ArgumentNullException guard. LogInformation emitted at download start (URL, destination, content-length) and success (URL, bytes, elapsed ms). LogError emitted in catch block before re-throw with exception, URL, type, bytes. HttpToolDownloaderTests updated to pass NullLogger<HttpToolDownloader>.Instance. Full Infrastructure test run: 63 passed, 2 skipped (live network), 0 failed."
+      ],
+      "metrics": {
+        "tests_passed": 63,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-06T18:35:01Z",
+          "note": "LogInformation at download start is placed after EnsureSuccessStatusCode() but before the Stopwatch and file I/O, which is correct — the log fires only on a successful 2xx response. Edge case: a null progress callback is handled gracefully throughout."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-06T18:35:01Z",
+          "note": "No observations — implementation is clean and consistent with existing conventions."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-05-06T18:36:50Z",
+      "completed_at": "2026-05-06T18:38:07Z",
+      "duration_ms": 77000,
+      "summary": [
+        "Reviewed 3 files: HttpToolDownloader.cs, HttpToolDownloaderTests.cs, FfmpegProvisionerLiveTests.cs. 0 Critical, 0 High, 0 Medium. 2 Low/Info observations recorded. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-06T18:38:07Z",
+          "note": "A03/A09 — URL logged as structured parameter: HttpToolDownloader.cs lines 51-54 log `url` and `destinationPath` via `_logger.LogInformation(...)`. Structured logging (Serilog) serializes these as separate fields, preventing log injection. No current risk — all URLs are manifest entries from appsettings.json with no embedded credentials. Defence-in-depth: if URLs ever gain query-string auth tokens (e.g., SAS tokens, signed URLs), they would appear in log sinks. Recommendation: if that pattern is adopted in future, redact or hash the URL query string before logging."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-06T18:38:07Z",
+          "note": "A10 — No URL scheme/domain allowlist in DownloadAsync (HttpToolDownloader.cs line 38): `url` is passed directly to `HttpClient.GetAsync` without validation of scheme or host. Currently fully mitigated — all callers supply manifest URLs from application-controlled appsettings.json. No SSRF exposure exists in the current call graph. Defence-in-depth recommendation: consider a guard that rejects non-HTTPS schemes or URLs not matching expected CDN domains (e.g., `github.com`, `johnvansickle.com`) to harden against a future path where `url` originates from less-trusted input."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-06T18:38:07Z",
+          "note": "No additional security findings. All OWASP Top 10 categories reviewed. A01 (access control): destination path is application-controlled, no user-supplied path input. A02 (crypto): SHA-256 verification handled by Sha256ChecksumVerifier (out of scope). A04 (insecure design): temp-then-atomic-move pattern is sound; cancellation correctly removes the partial temp file. A05 (misconfiguration): no hardcoded credentials, no verbose error disclosure to callers (exceptions re-thrown as-is). A06 (outdated components): no new dependencies introduced. A07/A08: not applicable to this download utility."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-06T18:38:38Z",
+      "completed_at": "2026-05-06T18:40:44Z",
+      "duration_ms": 126000,
+      "summary": [
+        "Reviewed 3 files: HttpToolDownloader.cs, HttpToolDownloaderTests.cs, FfmpegProvisionerLiveTests.cs. No blocking issues found. One Fix-Forward applied: OperationCanceledException in the catch block was logged at LogError, which would pollute error dashboards with user-initiated cancellations; changed to LogInformation (non-behavioral — tests do not validate log levels). Build and 63 Infrastructure tests re-verified green post-fix. All 5 acceptance criteria confirmed met."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/ExternalTools/HttpToolDownloader.cs",
+          "tests/VideoIndexer.Infrastructure.Tests/ExternalTools/HttpToolDownloaderTests.cs",
+          "tests/VideoIndexer.Infrastructure.Tests/ExternalTools/FfmpegProvisionerLiveTests.cs"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 63,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "medium",
+          "timestamp": "2026-05-06T18:40:44Z",
+          "note": "HttpToolDownloader.cs catch block: OperationCanceledException was logged at LogError, which would cause user/timeout-initiated cancellations to appear in error monitoring dashboards (false positives). Applied Fix-Forward: added an if/else branch — OperationCanceledException now logs at LogInformation with a 'Download cancelled' message; all other exceptions retain LogError. Non-behavioral change: program control flow, temp file cleanup, and re-throw are unchanged. 63 tests green post-fix."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-06T18:40:44Z",
+          "note": "HttpToolDownloader.cs: the Stopwatch is started AFTER EnsureSuccessStatusCode() and the 'Download starting' log. ElapsedMs in the success log therefore measures only the streaming/file-write phase, not the full HTTP round-trip including response-header retrieval. This is acceptable for its intended purpose (I/O timing) but is worth understanding if the metric is ever surfaced in a dashboard — the label 'Download succeeded ... ElapsedMs' could be misread as end-to-end latency."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-06T18:40:44Z",
+          "note": "HttpToolDownloader.cs: File.Move(tempPath, destinationPath, overwrite: true) is called outside the try/catch block. If File.Move throws (e.g., cross-device rename not supported, or insufficient permissions at destination), the .tmp file is orphaned on disk. Current risk is low — same-volume moves are atomic on Windows/Linux — but consider wrapping File.Move in a try/finally that cleans up tempPath if promotion fails."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-06T18:40:44Z",
+          "note": "[documentation-forward] HttpToolDownloader.DownloadAsync: the XML doc on the method should mention that ElapsedMs in the success log measures the streaming/file-write phase only (not the full HTTP round-trip). Additionally, the class-level summary could note the ILogger<HttpToolDownloader> constructor parameter and what log events it emits (start, success, failure, cancellation) so consumers know what to expect in their log sinks."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-06T18:44:00Z",
+      "completed_at": "2026-05-06T18:45:43Z",
+      "duration_ms": 103000,
+      "summary": [
+        "Updated HttpToolDownloader class-level XML summary to document the ILogger<HttpToolDownloader> constructor parameter and all four structured log events (Download starting, Download succeeded, Download cancelled, Download failed) including their log levels.",
+        "Added <remarks> to DownloadAsync XML doc clarifying that ElapsedMs in the success log measures the streaming/file-write phase only — not HTTP connection time, DNS resolution, or response-header retrieval.",
+        "Added a Logging subsection to the HttpToolDownloader section in README.md with a structured table of all four log events (fields, levels, timing) and two callout notes clarifying ElapsedMs scope and why OperationCanceledException logs at Information rather than Error.",
+        "Addressed all items from the code-review documentation-forward tag. No other README sections required updates — the rest of the codebase changes (constructor injection, catch-block fix-forward) are internal implementation details already reflected in the existing error conditions and DI registration notes."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/ExternalTools/HttpToolDownloader.cs",
+          "README.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-06T18:45:43Z",
+          "note": "The README's HttpToolDownloader section now has a Logging subsection consistent in structure with TarXzArchiveExtractor's open security items note — the pattern of calling out non-obvious log-level decisions in a dedicated subsection (rather than inline in Error conditions) improves scanability for operators configuring log sinks."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-06T18:45:43Z",
+  "last_updated": "2026-05-06T18:45:43Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-06T18:20:37Z",
+      "notes": [
+        "All 5 acceptance criteria met. Constructor now requires ILogger<HttpToolDownloader> — DI resolution is automatic via the existing AddLogging()/Serilog wiring in Program.cs. No new packages added. Tests: 63 passed, 0 failed."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-05-06T18:35:01Z",
+      "notes": [
+        "WP-003 PASS. All 5 AC met. ILogger<HttpToolDownloader> injected, structured log events on start/success/failure. 63 tests green. Ready for security-audit."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-06T18:38:07Z",
+      "notes": [
+        "WP-003 security audit PASS. 0 Critical, 0 High, 0 Medium findings. 2 Low/Info observations logged (URL logging of credentials if ever added; no URL scheme allowlist). All 5 acceptance criteria verified met. Ready for code-review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-06T18:40:44Z",
+      "notes": [
+        "WP-003 code-review PASS. One Fix-Forward applied: OperationCanceledException now logs at LogInformation instead of LogError in HttpToolDownloader.cs catch block — prevents cancellation noise in error dashboards. Build and 63 Infrastructure tests green. Two low-priority observations logged (Stopwatch scope, orphaned .tmp on File.Move failure). One documentation-forward tagged for the Documentation agent (DownloadAsync XML doc gaps). All 5 AC confirmed met. Ready for documentation."
+      ]
+    }
+  ]
+}

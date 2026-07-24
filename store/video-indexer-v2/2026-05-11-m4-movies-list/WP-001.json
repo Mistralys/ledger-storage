@@ -1,0 +1,248 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "DESCRIBE movies; is executed against the configured revision-35 MariaDB instance and the result is inspected.",
+      "met": true
+    },
+    {
+      "criterion": "If the column is absent: src/VideoIndexer.Infrastructure/Database/migrations/m036_add_file_created.sql exists and contains a valid ALTER TABLE movies ADD COLUMN file_created DATETIME NULL statement.",
+      "met": true
+    },
+    {
+      "criterion": "If the column is absent: DatabaseBootstrapper.ExpectedRevision is 36.",
+      "met": true
+    },
+    {
+      "criterion": "If the column is absent: InsertMovieAsync includes file_created = NULL in its INSERT, and dotnet build -c Release produces no new warnings or errors.",
+      "met": true
+    },
+    {
+      "criterion": "If the column already exists: the column name is recorded in the WP observation notes for use in WP-05 and WP-12.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-11T17:34:29Z",
+      "completed_at": "2026-05-12T05:40:44Z",
+      "duration_ms": 43575000,
+      "summary": [
+        "Ran DESCRIBE movies; against spdb_tests MariaDB instance — file_created column was absent from revision-35 schema.",
+        "Created src/VideoIndexer.Infrastructure/Database/migrations/m036_add_file_created.sql with ALTER TABLE movies ADD COLUMN file_created DATETIME NULL and UPDATE spdb_config SET config_value = '36' WHERE config_name = 'db_revision' (fixed column names from spdb_config schema: config_name / config_value).",
+        "Updated DatabaseBootstrapper.ExpectedRevision from 35 to 36.",
+        "Updated DapperMovieCatalogRepository.InsertMovieAsync to include file_created = NULL in the INSERT IGNORE column/value lists.",
+        "Updated DatabaseBootstrapperTests: renamed ExpectedRevision_IsThirtyFive to ExpectedRevision_IsThirtySix, bumped revision in CheckAsync_RevisionMatchesExpected_ReturnsOk to '36', bumped revision in CheckAsync_RevisionTooHigh_ReturnsRevisionTooNew_WithActualRevision to '37'.",
+        "Applied migration to spdb_tests; verified column present with DESCRIBE movies.",
+        "dotnet build -c Release: 0 warnings, 0 errors. dotnet test: 354 passed, 5 skipped (pre-existing ffprobe/ffmpeg integration tests), 0 failed.",
+        "Updated project manifests (AGENTS.md, constraints.md, file-tree.md) to reflect schema revision 36 and the new migrations/ directory."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Database/DatabaseBootstrapper.cs",
+          "src/VideoIndexer.Infrastructure/Database/migrations/m036_add_file_created.sql",
+          "src/VideoIndexer.Infrastructure/Library/DapperMovieCatalogRepository.cs",
+          "tests/VideoIndexer.Infrastructure.Tests/Database/DatabaseBootstrapperTests.cs",
+          "docs/agents/project-manifest/constraints.md",
+          "docs/agents/project-manifest/file-tree.md",
+          "AGENTS.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T05:40:44Z",
+          "note": "The migration SQL file uses raw UPDATE spdb_config to bump db_revision. There is no transaction wrapping the ALTER TABLE + UPDATE pair, meaning a partial failure could leave the schema at revision 36 structurally but still reporting 35 (or vice versa). For a future migration runner, consider wrapping DDL + config update in a single transaction where the MariaDB engine permits it, or at minimum document the rollback procedure."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-05-12T05:40:44Z",
+          "note": "DatabaseBootstrapper does not apply pending migrations automatically; the migration SQL must be run manually by an operator. The WP-001 spec acknowledges this is intentional for now, but if the project grows, a lightweight migration runner (e.g. FluentMigrator or a home-grown table of applied scripts) would prevent operator error at deployment time."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-05-12T05:40:44Z",
+          "note": "spdb_config table uses config_name / config_value column names, which differs from what might be assumed from the SpdbConfigRepository API (Get/Set by 'key'). This mismatch between the public API terminology ('key') and the actual column name ('config_name') is a minor readability gotcha for anyone writing raw SQL against the table."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-12T05:45:13Z",
+      "completed_at": "2026-05-12T05:46:57Z",
+      "duration_ms": 104000,
+      "summary": [
+        "Build verified: 0 errors, 0 warnings (Release mode).",
+        "All 5 ACs verified by code inspection and test execution.",
+        "Test run: 352 passed, 5 skipped (pre-existing ffprobe/ffmpeg integration tests), 0 failed across all three test assemblies (VideoIndexer.Tests, VideoIndexer.App.Tests, VideoIndexer.Infrastructure.Tests).",
+        "Migration SQL confirmed: ALTER TABLE movies ADD COLUMN file_created DATETIME NULL with db_revision UPDATE to 36.",
+        "DatabaseBootstrapper.ExpectedRevision = 36 confirmed in source and by ExpectedRevision_IsThirtySix test.",
+        "InsertMovieAsync confirmed to include file_created in column list with NULL value.",
+        "Minor test count delta vs developer's report (352 vs 354 passed) — no failures in either run; non-blocking."
+      ],
+      "metrics": {
+        "tests_passed": 352,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-12T05:46:57Z",
+          "note": "Migration m036_add_file_created.sql is NOT idempotent: ALTER TABLE ... ADD COLUMN does not use IF NOT EXISTS, so re-running the file against an already-migrated schema will throw a MariaDB duplicate-column error. This was already flagged in the implementation pipeline as a low-priority improvement. Not a blocker — migrations are run manually once."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-12T05:46:57Z",
+          "note": "The UPDATE in the migration (SET config_value = '36' WHERE config_name = 'db_revision') would silently succeed with 0 rows affected if the 'db_revision' row is missing from spdb_config. DatabaseBootstrapper would then return ConfigTableMissing rather than Ok. Not a practical concern given the controlled deployment environment, but worth noting for any future migration runner."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-05-12T05:46:57Z",
+          "note": "No integration test exercises the full migration round-trip (apply m036, verify DESCRIBE movies includes file_created, verify DatabaseBootstrapper.CheckAsync returns Ok). All existing tests use fakes. This was intentional per the WP-001 spec; flagged as a coverage gap for future hardening."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-12T05:48:35Z",
+      "completed_at": "2026-05-12T05:50:30Z",
+      "duration_ms": 115000,
+      "summary": [
+        "PASS with Fix-Forward. All four Review Dimensions clear. One manifest drift issue corrected directly: tech-stack.md still listed schema revision 35 despite the AGENTS.md maintenance rules requiring it alongside constraints.md — updated to 36. Core implementation (DatabaseBootstrapper.ExpectedRevision=36, migration SQL, InsertMovieAsync column addition, test renames) is clean and correct. No architectural, maintainability, or performance blockers found."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Database/DatabaseBootstrapper.cs",
+          "src/VideoIndexer.Infrastructure/Database/migrations/m036_add_file_created.sql",
+          "src/VideoIndexer.Infrastructure/Library/DapperMovieCatalogRepository.cs",
+          "tests/VideoIndexer.Infrastructure.Tests/Database/DatabaseBootstrapperTests.cs",
+          "docs/agents/project-manifest/constraints.md",
+          "docs/agents/project-manifest/file-tree.md",
+          "docs/agents/project-manifest/tech-stack.md",
+          "AGENTS.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "medium",
+          "timestamp": "2026-05-12T05:50:30Z",
+          "note": "tech-stack.md: Updated 'Expected revision 35' to 'Expected revision 36'. AGENTS.md maintenance rules explicitly require both constraints.md AND tech-stack.md to be updated on a schema revision bump. constraints.md was correctly updated by the Developer; tech-stack.md was missed. Fixed directly as a non-behavioral manifest correction."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T05:50:30Z",
+          "note": "migration SQL (m036_add_file_created.sql): Lacks IF NOT EXISTS guard on ADD COLUMN. Already flagged in both implementation and QA pipelines as known, acceptable debt for a manually-executed one-shot migration. No action required — the existing documentation is sufficient."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-05-12T05:50:30Z",
+          "note": "[documentation-forward] m036_add_file_created.sql has no transaction wrapping the ALTER TABLE + UPDATE pair. The constraints.md documents the revision bump but does not describe a rollback procedure in case of partial failure. Consider adding a brief rollback note (e.g., 'to rollback: ALTER TABLE movies DROP COLUMN file_created; UPDATE spdb_config SET config_value = 35 WHERE config_name = db_revision') to the migration file header or the constraints.md operations section."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T05:50:30Z",
+          "note": "No blocking issues. DatabaseBootstrapper.cs is well-structured with clear step comments, ConfigureAwait(false) throughout, and appropriate exception boundary handling. InsertMovieAsync column/values alignment is correct and readable. Test fakes are minimal and well-isolated."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-12T05:53:03Z",
+      "completed_at": "2026-05-12T05:55:18Z",
+      "duration_ms": 135000,
+      "summary": [
+        "Fixed manifest drift in api-surface.md: DatabaseBootstrapper.ExpectedRevision updated from 35 to 36 — missed by all prior pipeline agents.",
+        "Addressed documentation-forward from code review: added rollback procedure bullet to constraints.md Database section, covering both the DROP COLUMN and config_value revert steps, with a note about MariaDB DDL auto-commit behaviour.",
+        "Addressed documentation-forward from code review: added rollback procedure comment block to m036_add_file_created.sql header, with explanation of the missing transaction wrapping and step-by-step rollback SQL.",
+        "Verified: tech-stack.md already updated to revision 36 (Reviewer fix-forward), file-tree.md already includes migrations/ directory entry (Developer), constraints.md Expected revision already at 36 (Developer), AGENTS.md already updated (Developer). No other documentation gaps found for WP-001 scope."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "docs/agents/project-manifest/api-surface.md",
+          "docs/agents/project-manifest/constraints.md",
+          "src/VideoIndexer.Infrastructure/Database/migrations/m036_add_file_created.sql"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-12T05:55:18Z",
+          "note": "api-surface.md had stale ExpectedRevision = 35 in the DatabaseBootstrapper section despite constraints.md and tech-stack.md both being updated by Developer and Reviewer respectively. The AGENTS.md maintenance rules list api-surface.md as a document to update on schema revision bump — this was an oversight in the prior agents' checklists."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T05:55:18Z",
+          "note": "Rollback procedure added to both constraints.md and the migration SQL header as requested by the code-review documentation-forward. The note explicitly calls out MariaDB DDL auto-commit behaviour to prevent operator confusion when attempting transactional rollback."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T05:55:18Z",
+          "note": "No gaps found in README.md, file-tree.md, or tech-stack.md for WP-001 scope. All other manifest sections accurately reflect the implemented changes."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-12T05:55:18Z",
+  "last_updated": "2026-05-12T05:55:18Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-12T05:40:44Z",
+      "notes": [
+        "Column verified absent in revision-35 schema; file_created DATETIME NULL column added via m036_add_file_created.sql.",
+        "DatabaseBootstrapper.ExpectedRevision = 36. InsertMovieAsync now includes file_created = NULL.",
+        "Migration applied to spdb_tests; db_revision updated to 36. All 354 unit tests pass.",
+        "QA should verify: (1) DatabaseBootstrapper returns Ok against a revision-36 DB; (2) LibraryScanner can insert a new movie row without error after migration; (3) the migration SQL is idempotent-safe (re-running it against an already-migrated schema should fail gracefully or be guarded with IF NOT EXISTS in production)."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-12T05:46:57Z",
+      "notes": [
+        "WP-001 QA PASS. Build clean (0 warnings, 0 errors). 352 tests pass, 0 failures.",
+        "m036_add_file_created.sql verified: valid ALTER TABLE + db_revision UPDATE.",
+        "DatabaseBootstrapper.ExpectedRevision=36 confirmed. InsertMovieAsync includes file_created=NULL.",
+        "Low-priority note for Reviewer: migration SQL lacks IF NOT EXISTS guard — already flagged in implementation comments as known debt."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-12T05:50:30Z",
+      "notes": [
+        "WP-001 code-review PASS. One Fix-Forward applied: tech-stack.md updated from revision 35 to 36 (manifest drift). All 5 ACs confirmed met by source and test inspection. Low-priority documentation-forward: consider adding rollback procedure to migration file header or constraints.md. Implementation is clean — no rework needed from Developer or QA."
+      ]
+    }
+  ]
+}

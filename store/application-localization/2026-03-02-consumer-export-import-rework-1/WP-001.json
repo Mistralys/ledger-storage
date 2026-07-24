@@ -1,0 +1,136 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "TranslationExporterTest::testUntranslatedStringHasEmptyTranslation passes regardless of whether composer import-translations has been run beforehand.",
+      "met": true
+    },
+    {
+      "criterion": "All other tests in TranslationExporterTest (testExportedJsonHasRequiredTopLevelKeys, testStringEntryHasRequiredFields, testNativeLocaleIsExcluded, testTranslatedStringHasCorrectTranslation, testFilePathsAreRelative) continue to pass.",
+      "met": true
+    },
+    {
+      "criterion": "composer test-file -- tests/testsuites/Tools/TranslationExporterTest.php reports all tests green.",
+      "met": true
+    },
+    {
+      "criterion": "composer analyze reports 0 errors at level 8.",
+      "met": true
+    }
+  ],
+  "revision": 1,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-02T09:52:36Z",
+      "completed_at": "2026-03-02T09:59:01Z",
+      "summary": [
+        "Reworked TranslationExporterTest setUp() to use a backup/restore pattern instead of the real localization/ directory. Before running the export, the de_DE server INI is read, one entry stripped, and written back; tearDown restores the original. This guarantees at least one untranslated hash in the export regardless of whether composer import-translations was run.",
+        "Added tearDown() that restores the backed-up INI file.",
+        "Note: spec described a temp-dir redirect approach that cannot work because the source storageFolder is hardcoded in Localization::init() and never redirected. Backup/restore is the established pattern in this codebase (used by TranslationImporterTest) and achieves the same isolation goal.",
+        "All 6 TranslationExporterTest tests green. Full suite (110 tests, 945 assertions) green. PHPStan level 8: 0 errors."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "tests/testsuites/Tools/TranslationExporterTest.php"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-03-02T09:55:00Z",
+          "note": "spec prescribed a temp-dir approach but Localization::init() hard-codes the source storageFolder to the real localization/ dir, making IO redirection impossible without production code changes. Backup/restore on the real file is the correct pattern for this codebase (consistent with TranslationImporterTest). The spec should be updated to reflect this."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-02T09:59:58Z",
+      "completed_at": "2026-03-02T10:02:00Z",
+      "summary": [
+        "Executed composer test-file -- tests/testsuites/Tools/TranslationExporterTest.php: 6/6 tests green (214 assertions).",
+        "Executed composer test (full suite): 110/110 tests green (942 assertions), no regressions.",
+        "Executed composer analyze: 0 PHPStan errors at level 8.",
+        "Reviewed setUp/tearDown implementation: backup/restore pattern is correct and consistent with the codebase pattern used by TranslationImporterTest.",
+        "testUntranslatedStringHasEmptyTranslation logic verified: setUp strips the last non-empty INI entry before running the export; the test reads the same stripped INI and asserts the corresponding JSON entry has an empty translation; tearDown restores the original.",
+        "No data-loss risk: even if the INI write in setUp omits comments, tearDown unconditionally restores from the full backup."
+      ],
+      "metrics": {
+        "test_coverage": "6/6 target tests; 110/110 full suite",
+        "tests_passed": 110,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-03-02T10:01:00Z",
+          "note": "If parse_ini_file() fails in setUp (e.g. file unreadable), the stripping step is silently skipped. testUntranslatedStringHasEmptyTranslation could then fail if all strings happen to be fully translated. This is a low-risk infrastructure edge case only; no code change required."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-03-02T10:01:00Z",
+          "note": "The stripped INI written back in setUp uses simple key=\"value\" lines, dropping any INI comments that may have existed in the original. This is harmless since tearDown restores from the full backup, but worth noting for maintainers."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-02T10:02:53Z",
+      "completed_at": "2026-03-02T10:04:09Z",
+      "summary": [
+        "Reviewed tests/testsuites/Tools/TranslationExporterTest.php against the WP-001 spec.",
+        "The spec required a temp-dir isolation approach. The implementation instead uses a backup/restore pattern on the live localization/ directory. The deviation is justified: storage.json embeds source storageFolder paths pointing to the live directory; passing a temp-dir path to configure() does not redirect INI file I/O, so temp-dir isolation is genuinely impossible without production code changes.",
+        "The backup/restore pattern is the established codebase convention (used by TranslationImporterTest) and achieves the same isolation goal.",
+        "Correctness verified: setUp() captures the full INI backup before any modification, strips the last non-empty key, writes the stripped INI, configures Localization, and runs the export. The stripped INI remains on disk during test execution, so testUntranslatedStringHasEmptyTranslation correctly reads it to find the removed hash and verifies the JSON entry has an empty translation. tearDown() unconditionally restores the original.",
+        "No data-loss risk: deServerIniBackup is populated before the file is modified; tearDown restores even if the test itself throws.",
+        "All acceptance criteria confirmed met: all 6 TranslationExporterTest tests green, full suite green, PHPStan level 8 0 errors."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "tests/testsuites/Tools/TranslationExporterTest.php"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-02T10:04:00Z",
+          "note": "Spec deviation (backup/restore vs temp-dir) is pragmatically correct and well-motivated. The work package spec should be updated to document that Localization::configure() cannot redirect INI storage to a temp dir, so backup/restore on the live files is the required pattern for exporter tests."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-02T10:04:40Z",
+      "completed_at": "2026-03-02T10:05:41Z",
+      "summary": [
+        "WP-001 change is test-only: tests/testsuites/Tools/TranslationExporterTest.php modified.",
+        "No manifest documentation update required. The AGENTS.md manifest maintenance table has no entry for test file changes.",
+        "Class structure, public API surface, data flows, file tree, and all other manifest-tracked entities are unchanged.",
+        "No documentation files modified."
+      ],
+      "artifacts": {
+        "files_modified": []
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-02T10:05:00Z",
+          "note": "No manifest documentation changes needed for WP-001. The change is test-only (TranslationExporterTest.php). AGENTS.md manifest maintenance rules do not require manifest updates for test file modifications. Class structure, public API, file tree, and data flows are all unchanged."
+        }
+      ]
+    }
+  ]
+}

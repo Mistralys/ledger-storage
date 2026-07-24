@@ -1,0 +1,259 @@
+{
+  "work_package_id": "WP-004",
+  "work_package_file": "work/WP-004.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "dotnet build produces 0 errors, 0 warnings immediately after this WP.",
+      "met": true
+    },
+    {
+      "criterion": "No residual TagWeight or TagCount property references remain on MovieListItem instances.",
+      "met": true
+    },
+    {
+      "criterion": "New fields have non-required init with safe defaults so existing initialisers compile without change.",
+      "met": true
+    },
+    {
+      "criterion": "DapperMovieRepository.GetByIdAsync populates StoredTagIds via a parameterised second query.",
+      "met": true
+    },
+    {
+      "criterion": "FilterExpressionEvaluator.s_functions entry for HasTags maps to i.StoredTagCount > 0.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-17T20:15:12Z",
+      "completed_at": "2026-05-17T20:23:03Z",
+      "duration_ms": 471000,
+      "summary": [
+        "Renamed MovieListItem.TagWeight→StoredTagWeight and TagCount→StoredTagCount; added StoredTagIds, StoredTagParentIds, EffectiveTagIds, EffectiveTagWeight, EffectiveTagCount (all non-required with safe defaults).",
+        "Added Movie.StoredTagIds (IReadOnlyList<long>, non-required, default []); DapperMovieRepository.GetByIdAsync now runs a second SELECT to populate it.",
+        "Updated DapperMovieCatalogRepository SQL aliases, FilterExpressionEvaluator identifier map, MoviesListView.axaml bindings.",
+        "Updated all 5 caller files atomically (2 source + 5 test files).",
+        "Full solution: 0 errors, 0 warnings. All 76 tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Core/Models/MovieListItem.cs",
+          "src/VideoIndexer.Core/Models/Movie.cs",
+          "src/VideoIndexer.Infrastructure/Library/DapperMovieRepository.cs",
+          "src/VideoIndexer.Infrastructure/Library/DapperMovieCatalogRepository.cs",
+          "src/VideoIndexer.Core/Filtering/FilterExpressionEvaluator.cs",
+          "src/VideoIndexer.App/Views/MoviesListView.axaml",
+          "tests/VideoIndexer.Tests/Filtering/FilterExpressionEvaluatorTests.cs",
+          "tests/VideoIndexer.App.Tests/MoviesListViewModelTests.cs",
+          "tests/VideoIndexer.App.Tests/MoviesListViewModelSearchFilterTests.cs",
+          "tests/VideoIndexer.App.Tests/MainContentViewModelTests.cs",
+          "tests/VideoIndexer.Infrastructure.Tests/Library/DapperMovieCatalogRepositoryTests.cs",
+          "docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-17T20:23:03Z",
+          "note": "DapperMovieRepository.GetByIdAsync now issues two sequential queries over the same open connection (main movie SELECT + StoredTagIds SELECT). Consider using a multi-result set or a single LEFT JOIN query in the future to halve the round-trip count, especially if the Movie Editor is opened frequently."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-17T20:23:03Z",
+          "note": "FilterExpressionEvaluatorTests.Evaluate_AllNumericIdentifiers_ResolveFromItem now sets EffectiveTagWeight/EffectiveTagCount to verify the TagsWeight/AmountTags DSL identifiers. The test correctly reflects the M7 semantic upgrade; document in a comment that this is intentional (effective-set, not stored-only)."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-17T20:34:47Z",
+      "completed_at": "2026-05-17T20:35:49Z",
+      "duration_ms": 62000,
+      "summary": [
+        "Verified all 5 AC for WP-004 from source: StoredTagWeight/StoredTagCount renamed correctly on MovieListItem; 5 new non-required fields with safe defaults added; DapperMovieRepository.GetByIdAsync issues parameterised second SELECT for StoredTagIds; FilterExpressionEvaluator s_functions['HasTags'] = i.StoredTagCount > 0.",
+        "Zero residual bare TagWeight/TagCount property accesses on MovieListItem — only ColumnKeys string constants (backward-compat) and an unrelated CategoryEditorViewModel local field remain.",
+        "Build: 0 errors, 0 warnings. Tests: 682 passed, 0 failed, 6 env-conditional skips. No regressions."
+      ],
+      "metrics": {
+        "test_coverage": "682 unit+App tests pass; DapperMovieCatalogRepositoryTests cover the SQL alias rename",
+        "tests_passed": 682,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-05-17T20:35:49Z",
+          "note": "MovieListItem.StoredTagIds and StoredTagParentIds default to empty lists per spec comment ('after effective-set enrichment pass lands in a later WP'). DapperMovieCatalogRepository.GetMovieListAsync does not populate them yet. Downstream consumers relying on these fields in filter expressions (HasTag DSL, TagHasSubTags DSL) will silently get empty results until the enrichment WP ships. This is by design but should be verified in that WP's QA pass."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-17T20:35:49Z",
+          "note": "MovieListItem.EffectiveTagIds default is 'new HashSet<long>()', creating a fresh mutable instance per record. Consider a shared static readonly empty set (e.g. ImmutableHashSet<long>.Empty or a static readonly HashSet) to avoid heap allocation on every row that hasn't been enriched yet."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-17T20:35:49Z",
+          "note": "DapperMovieRepository.GetByIdAsync issues two sequential queries on the same open connection (main SELECT then StoredTagIds SELECT). If the connection is closed between calls or the cancellation token fires between them, the second query will fail mid-operation. Current implementation looks safe since the connection is held open in a using block, but the cancellation token is not threaded to the second QueryAsync call — it uses the Dapper default (none). Recommend passing cancellationToken to the second QueryAsync call for consistency."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-17T20:40:51Z",
+      "completed_at": "2026-05-17T20:45:24Z",
+      "duration_ms": 273000,
+      "summary": [
+        "Code review PASS — all 5 AC met, no blocking issues found.",
+        "Applied Fix-Forward: MovieListItem.EffectiveTagIds now uses ImmutableHashSet<long>.Empty instead of new HashSet<long>() to eliminate per-record allocation across the movies list grid.",
+        "Field renaming (TagWeight→StoredTagWeight, TagCount→StoredTagCount) is clean and complete across all 12 modified files. SQL aliases, AXAML bindings, filter evaluator, and tests are all consistent.",
+        "FilterExpressionEvaluator s_numericIdentifiers and s_functions dictionaries correctly model the M7 semantic upgrade: TagsWeight/AmountTags → effective set, HasTags → stored count.",
+        "One design observation: EffectiveTagWeight binding in AXAML will show 0 until the enrichment WP ships; this is a known acceptable interim state. StoredTagCount binding correctly shows real data immediately."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Core/Models/MovieListItem.cs",
+          "src/VideoIndexer.Core/Models/Movie.cs",
+          "src/VideoIndexer.Infrastructure/Library/DapperMovieRepository.cs",
+          "src/VideoIndexer.Infrastructure/Library/DapperMovieCatalogRepository.cs",
+          "src/VideoIndexer.Core/Filtering/FilterExpressionEvaluator.cs",
+          "src/VideoIndexer.App/Views/MoviesListView.axaml",
+          "tests/VideoIndexer.Tests/Filtering/FilterExpressionEvaluatorTests.cs",
+          "tests/VideoIndexer.App.Tests/MoviesListViewModelTests.cs",
+          "tests/VideoIndexer.App.Tests/MoviesListViewModelSearchFilterTests.cs",
+          "tests/VideoIndexer.App.Tests/MainContentViewModelTests.cs",
+          "tests/VideoIndexer.Infrastructure.Tests/Library/DapperMovieCatalogRepositoryTests.cs",
+          "docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-17T20:45:24Z",
+          "note": "Fix-Forward applied: changed MovieListItem.EffectiveTagIds default from 'new HashSet<long>()' to 'ImmutableHashSet<long>.Empty'. Every unenriched row in the movies list was allocating a fresh empty HashSet; the ImmutableHashSet<long>.Empty singleton eliminates the hot-path allocation at no behavioral cost. Added 'using System.Collections.Immutable;' to MovieListItem.cs. Build and 682 tests verified clean."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-17T20:45:24Z",
+          "note": "MoviesListView.axaml Tag Weight column binds to EffectiveTagWeight (will show 0 for all rows until the enrichment WP ships) while the Tag Count column binds to StoredTagCount (populated from SQL immediately). This intentional asymmetry is documented in the Developer handoff but has no in-code comment. Until enrichment lands, users will see 0 in the Tag Weight column. Consider adding an AXAML comment or a TODO noting the placeholder state to prevent confusion during ongoing M7 development."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-17T20:45:24Z",
+          "note": "DapperMovieRepository.GetByIdAsync and all other Dapper query calls across the codebase omit CancellationToken from the SQL execution itself (token is only used at connection-open time). This is a consistent but imperfect pattern: queries cannot be cancelled mid-flight. Recommend a codebase-wide sweep to use CommandDefinition(sql, param, cancellationToken: ct) across all repositories in a dedicated debt-reduction WP."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-17T20:45:24Z",
+          "note": "[documentation-forward] FilterExpressionEvaluator XML remarks list HasTags() as 'StoredTagCount > 0'. After the enrichment WP ships, HasTags() semantics should be reviewed — the natural expectation post-M7 is 'does this movie have any effective tags?' (EffectiveTagCount > 0). Add a TODO comment in FilterExpressionEvaluator noting this pending semantic revision so the Documentation agent can capture it in the M7 release notes."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-05-17T20:45:24Z",
+          "note": "[documentation-forward] MoviesListView.axaml Tag Weight column binds to EffectiveTagWeight and Tag Count column binds to StoredTagCount. This asymmetric design choice (effective weight vs stored count) should be documented in the AXAML via a comment and in the project-manifest data-flows.md or constraints.md so future contributors understand the intent."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-17T20:51:00Z",
+      "completed_at": "2026-05-17T20:52:46Z",
+      "duration_ms": 106000,
+      "summary": [
+        "FilterExpressionEvaluator.cs: added TODO comment on HasTags() entry noting that post-M7 enrichment semantics should be reviewed (StoredTagCount > 0 is interim; expected post-enrichment: EffectiveTagCount > 0).",
+        "MoviesListView.axaml: added AXAML comment on Tag Weight column explaining the asymmetric binding design: EffectiveTagWeight (will show 0 until enrichment WP ships) vs StoredTagCount (SQL-populated immediately).",
+        "constraints.md: added new 'Tag Subsystem (M7)' section documenting (a) the intentional asymmetric AXAML binding choice and (b) the unenriched placeholder state of MovieListItem effective-set fields until the enrichment WP ships.",
+        "api-surface.md: corrected EffectiveTagIds default value from bare 'HashSet' to 'ImmutableHashSet<long>.Empty' to match the Reviewer's Fix-Forward. constraints.md property reference updated from TagWeight to StoredTagWeight.",
+        "No README changes required — WP-004 changes are internal to the model enrichment pipeline."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Core/Filtering/FilterExpressionEvaluator.cs",
+          "src/VideoIndexer.App/Views/MoviesListView.axaml",
+          "docs/agents/project-manifest/constraints.md",
+          "docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "note",
+          "priority": "low",
+          "timestamp": "2026-05-17T20:52:46Z",
+          "note": "All documentation-forward items addressed: (1) TODO comment added to FilterExpressionEvaluator HasTags() entry noting pending semantic revision post-enrichment; (2) AXAML comment added to MoviesListView.axaml Tag Weight column explaining EffectiveTagWeight vs StoredTagCount asymmetric binding and interim-zero state; (3) New 'Tag Subsystem (M7)' section added to constraints.md documenting both the binding asymmetry and the unenriched placeholder state of effective-set fields."
+        },
+        {
+          "type": "note",
+          "priority": "low",
+          "timestamp": "2026-05-17T20:52:46Z",
+          "note": "api-surface.md EffectiveTagIds default corrected from 'HashSet' to 'ImmutableHashSet<long>.Empty' to reflect the Reviewer's Fix-Forward. constraints.md TagWeight property reference updated to StoredTagWeight."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-17T20:52:46Z",
+  "last_updated": "2026-05-17T20:52:46Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-17T20:23:03Z",
+      "notes": [
+        "MovieListItem.TagWeight and TagCount renamed to StoredTagWeight and StoredTagCount (required); five new non-required fields added: StoredTagIds, StoredTagParentIds, EffectiveTagIds, EffectiveTagWeight, EffectiveTagCount.",
+        "Movie.StoredTagIds added (non-required, default []); DapperMovieRepository.GetByIdAsync populates it via a second parameterised SELECT from tags_movies.",
+        "DapperMovieCatalogRepository SQL aliases updated (TagWeight→StoredTagWeight, TagCount→StoredTagCount).",
+        "FilterExpressionEvaluator updated: TagsWeight→EffectiveTagWeight, AmountTags→EffectiveTagCount, HasTags()→StoredTagCount>0.",
+        "MoviesListView.axaml bindings updated: {Binding TagWeight}→EffectiveTagWeight, {Binding TagCount}→StoredTagCount.",
+        "ColumnKeys.TagWeight and ColumnKeys.TagCount string constants remain 'TagWeight'/'TagCount' for settings backward-compatibility — only the ViewModel binding target changed.",
+        "76 tests pass (23 unit + 53 App); zero build warnings."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-17T20:35:49Z",
+      "notes": [
+        "All 5 AC verified from source and confirmed by zero-warning build + 682 passing tests.",
+        "AXAML bindings correctly reference EffectiveTagWeight and StoredTagCount; ColumnKeys string constants remain 'TagWeight'/'TagCount' for settings backward-compat.",
+        "Minor: second QueryAsync in GetByIdAsync does not forward the CancellationToken — suggest passing it for correctness.",
+        "StoredTagIds/StoredTagParentIds on MovieListItem are intentionally empty until the enrichment WP lands; reviewer should note this placeholder pattern."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-17T20:45:24Z",
+      "notes": [
+        "Code review PASS with one Fix-Forward applied: MovieListItem.EffectiveTagIds default changed from new HashSet<long>() to ImmutableHashSet<long>.Empty — eliminates per-record hot-path allocation. Build 0 errors/warnings, 682 tests pass.",
+        "AXAML asymmetry: Tag Weight column shows EffectiveTagWeight (will be 0 until enrichment WP ships), Tag Count column shows StoredTagCount (SQL-populated). Intentional per developer design, but needs in-code documentation.",
+        "Codebase-wide Dapper CancellationToken gap (queries don't forward CT) is consistent across all repositories — not a WP-specific issue, flagged as improvement debt.",
+        "Documentation agent: please add TODO comment in FilterExpressionEvaluator regarding HasTags() pending semantic revision post-enrichment, and document the EffectiveTagWeight vs StoredTagCount AXAML binding choice in constraints.md or data-flows.md."
+      ]
+    }
+  ]
+}

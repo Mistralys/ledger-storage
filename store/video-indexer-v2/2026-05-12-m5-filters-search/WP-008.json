@@ -1,0 +1,290 @@
+{
+  "work_package_id": "WP-008",
+  "work_package_file": "work/WP-008.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-003",
+    "WP-004",
+    "WP-005",
+    "WP-006"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "Setting SearchText = \"smith\" narrows Movies to items whose label, actor names, studio, or description contains \"smith\" (case-insensitive); clearing restores the full loaded collection.",
+      "met": true
+    },
+    {
+      "criterion": "Setting SearchText = \"smith action\" requires both terms to match (AND logic).",
+      "met": true
+    },
+    {
+      "criterion": "A search term of one character is silently skipped; a two-character term is applied.",
+      "met": true
+    },
+    {
+      "criterion": "Setting ActiveFilterSlot to a slot with expression \"Rating >= 4\" narrows Movies to items with Rating >= 4.",
+      "met": true
+    },
+    {
+      "criterion": "Setting ActiveFilterSlot = null removes the DSL filter and restores the text-search-only view.",
+      "met": true
+    },
+    {
+      "criterion": "IsFilterActive is true when ActiveFilterSlot != null and false otherwise.",
+      "met": true
+    },
+    {
+      "criterion": "When GetMovieListAsync throws, HasLoadError == true and LoadErrorMessage contains a non-empty message; Movies is empty.",
+      "met": true
+    },
+    {
+      "criterion": "LoadFilterSlotsAsync called with a stored slot ID not present in the returned slot list calls SetActiveSlotIdAsync(null) and leaves ActiveFilterSlot == null.",
+      "met": true
+    },
+    {
+      "criterion": "The parameterless constructor still compiles and all existing MoviesListViewModelTests pass without modification.",
+      "met": true
+    },
+    {
+      "criterion": "Zero new warnings.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-12T16:45:52Z",
+      "completed_at": "2026-05-12T16:54:35Z",
+      "duration_ms": 523000,
+      "summary": [
+        "Extended MoviesListViewModel with _allMovies backing cache, in-memory ApplyFilter(), text search (SearchText), filter slot (FilterSlots / ActiveFilterSlot), error state (HasLoadError / LoadErrorMessage), and LoadFilterSlotsAsync with self-healing stale-ID logic.",
+        "Updated main constructor with optional IFilterSlotRepository? and IActiveFilterSlotRepository? parameters — existing 3-arg test call signature unchanged.",
+        "Implemented partial callbacks OnSearchTextChanged and OnActiveFilterSlotChanged: the latter parses and caches the DSL AST via FilterExpressionParser and calls ApplyFilter().",
+        "Text search: space-tokenised, terms < 2 chars silently skipped, remaining terms ANDed, case-insensitive match across Label/ActorNames/Studio/Description.",
+        "DSL filter: FilterExpressionEvaluator.Evaluate applied per item; parse/eval exceptions logged and treated as non-matching.",
+        "Created FakeFilterSlotRepository and FakeActiveFilterSlotRepository test helpers.",
+        "Added MoviesListViewModelSearchFilterTests.cs with 22 tests covering all 10 acceptance criteria.",
+        "All 130 tests pass (22 new + 108 pre-existing). Zero new warnings.",
+        "Updated api-surface.md and file-tree.md in the project manifest."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/ViewModels/MoviesListViewModel.cs",
+          "tests/VideoIndexer.App.Tests/TestHelpers/FakeFilterSlotRepository.cs",
+          "tests/VideoIndexer.App.Tests/TestHelpers/FakeActiveFilterSlotRepository.cs",
+          "tests/VideoIndexer.App.Tests/MoviesListViewModelSearchFilterTests.cs",
+          "docs/agents/project-manifest/api-surface.md",
+          "docs/agents/project-manifest/file-tree.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T16:54:35Z",
+          "note": "MoviesListViewModel.cs: ApplyFilter() iterates _allMovies and rebuilds Movies via ObservableCollection.Clear() + Add() on every keystroke. For very large catalogs this could cause visible UI churn (many PropertyChanged/CollectionChanged notifications). A future optimisation could batch updates or use a diff-and-patch approach, but this is appropriate for the current dataset size."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-05-12T16:54:35Z",
+          "note": "The partial method pattern (OnSearchTextChanged / OnActiveFilterSlotChanged) is idiomatic for CommunityToolkit.Mvvm in this codebase. No inconsistency observed."
+        },
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-05-12T16:54:35Z",
+          "note": "MoviesListView.axaml.cs currently calls vm.LoadAsync() on the Loaded event. It does not yet call vm.LoadFilterSlotsAsync(). This will need to be wired in a subsequent WP or the M5 view-binding work package, otherwise FilterSlots and ActiveFilterSlot will always be empty/null at startup."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T16:54:35Z",
+          "note": "FakeMovieCatalogRepository does not validate the MovieListQuery parameter (added in M5 with ArgumentNullException.ThrowIfNull). The fake silently ignores it, which is fine for unit tests but means tests cannot verify that the ViewModel always passes a non-null query."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-12T17:01:30Z",
+      "completed_at": "2026-05-12T17:04:16Z",
+      "duration_ms": 166000,
+      "summary": [
+        "Build: clean, zero warnings. All 476 tests pass (146 App.Tests, 185 VideoIndexer.Tests, 145+6-skipped Infrastructure.Tests). All 10 ACs verified against implementation and test coverage.",
+        "AC1–AC3: SearchText filtering logic (case-insensitive, AND multi-term, ≥2-char gate) confirmed in ApplyFilter(). AC4–AC5: DSL slot activation/deactivation via _cachedAst correctly wired through OnActiveFilterSlotChanged partial callback. AC6: IsFilterActive toggled correctly. AC7: Exception handler in LoadAsync sets HasLoadError/LoadErrorMessage and clears Movies. AC8: Self-healing stale slot ID logic in LoadFilterSlotsAsync confirmed. AC9: Parameterless constructor present and all pre-existing tests pass. AC10: Zero compiler warnings.",
+        "Edge-case analysis: (a) DSL evaluation exceptions are caught (FilterExpressionException) per-item — item excluded, LogWarning emitted, loop continues — no exception propagation to caller. (b) Combined search+filter (stacked AND) works correctly — ApplyFilter() applies text gate first then DSL gate in sequence. (c) Null safety: all four search fields are non-nullable (required string or = string.Empty default)."
+      ],
+      "metrics": {
+        "test_coverage": "22 new tests cover all 10 ACs; 476 total pass",
+        "tests_passed": 476,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T17:04:16Z",
+          "note": "No explicit combined (stacked) search+filter test exists. The AND logic in ApplyFilter() is correct and implicitly covered, but a dedicated test (e.g., SearchText='smith' + ActiveFilterSlot 'Rating >= 4') would make the interaction contract explicit for future maintainers."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T17:04:16Z",
+          "note": "ApplyFilter() catch block only catches FilterExpressionException. The evaluator documents that it can also throw ArgumentNullException for null node/item, but those paths are unreachable in practice since _cachedAst is null-guarded and _allMovies contains only non-null items. No code change required."
+        },
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-05-12T17:04:16Z",
+          "note": "LoadFilterSlotsAsync is not called from MoviesListView.axaml.cs — filter slots will always be empty/null at runtime until this is wired. Inherited from Developer's implementation note; must be addressed in a subsequent WP (view-binding work)."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-12T17:16:59Z",
+      "completed_at": "2026-05-12T17:19:30Z",
+      "duration_ms": 151000,
+      "summary": [
+        "Reviewed MoviesListViewModel.cs, FakeFilterSlotRepository.cs, FakeActiveFilterSlotRepository.cs, and MoviesListViewModelSearchFilterTests.cs against all four Review Dimensions.",
+        "No blocking issues found. Implementation is clean, idiomatic, and well-documented.",
+        "Maintainability: all new public members carry full XML doc comments; ApplyFilter() has clear inline separation of text-search and DSL gates; _allMovies backing cache design is self-explaining.",
+        "Best Practices: CommunityToolkit.Mvvm partial callback pattern used correctly; ObservableCollection<T> never replaced by reference; AST parse-and-cache (_cachedAst) avoids per-keystroke reparsing; constructor backward-compatibility preserved via optional parameters.",
+        "Performance: The ApplyFilter() Clear()+Add() churn on every keystroke is pre-acknowledged by the Developer and is appropriate for current dataset scale. No regressions introduced.",
+        "Future Context: optional-parameter extension strategy is correct incremental design; LoadFilterSlotsAsync tech debt is clearly logged and scoped to a later WP."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/ViewModels/MoviesListViewModel.cs",
+          "tests/VideoIndexer.App.Tests/TestHelpers/FakeFilterSlotRepository.cs",
+          "tests/VideoIndexer.App.Tests/TestHelpers/FakeActiveFilterSlotRepository.cs",
+          "tests/VideoIndexer.App.Tests/MoviesListViewModelSearchFilterTests.cs",
+          "docs/agents/project-manifest/api-surface.md",
+          "docs/agents/project-manifest/file-tree.md"
+        ]
+      },
+      "metrics": {
+        "test_coverage": "22 new tests; 476 total pass",
+        "tests_passed": 476,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T17:19:30Z",
+          "note": "MoviesListViewModel.cs: SearchText tokenizer splits on literal space char only (Split(' ', RemoveEmptyEntries)). Tabs or other whitespace from clipboard paste would not be treated as separators. The docstring correctly says 'Space-separated terms', so this is by spec — no change needed, but worth documenting as a known limitation."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T17:19:30Z",
+          "note": "MoviesListViewModel.cs: ApplyFilter() is called from LoadAsync after ConfigureAwait(false), meaning Movies.Clear() and Movies.Add() run on a thread-pool thread. This threading pattern was pre-existing in the codebase (original LoadAsync also modified Movies post-await) so WP-008 did not introduce the risk, but it is worth noting for a future threading audit pass."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T17:19:30Z",
+          "note": "No explicit stacked (search+filter AND) test exists. The ApplyFilter() logic is correct and implicitly exercised. A dedicated test (e.g., SearchText='smith' + ActiveFilterSlot 'Rating >= 4') would make the stacking contract explicit — echoing QA's observation."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-12T17:19:30Z",
+          "note": "[documentation-forward] LoadFilterSlotsAsync is not yet wired in MoviesListView.axaml.cs — the README and any user-facing docs for M5 should note that filter slot initialisation requires this method to be called in the view's Loaded handler (or coordinator). This is currently only documented as in-code tech debt."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-12T17:23:23Z",
+      "completed_at": "2026-05-12T17:25:31Z",
+      "duration_ms": 128000,
+      "summary": [
+        "Reviewed all WP-008 pipeline artifacts (implementation, QA, code-review) and assessed documentation impact.",
+        "Confirmed the Developer already updated api-surface.md (MoviesListViewModel full signature with SearchText, ActiveFilterSlot, IsFilterActive, HasLoadError, LoadErrorMessage, FilterSlots, LoadFilterSlotsAsync) and file-tree.md (new test files) during implementation.",
+        "Addressed the documentation-forward item from the Reviewer: updated MoviesListView section in api-surface.md to add an explicit 'Pending wiring (M5 tech debt)' callout explaining that LoadFilterSlotsAsync is not yet called from the Loaded handler, what effect this has at runtime, and how to resolve it in a future WP.",
+        "Added a corresponding open item to the 'Open Items / Known Gotchas' section of constraints.md so future developers are warned about the wiring gap before modifying MoviesListView or relying on filter-slot state at startup.",
+        "README.md requires no changes — WP-008 is a ViewModel-level change with no end-to-end UI wiring yet; it does not constitute a user-facing feature addition appropriate for the README features list.",
+        "All 10 acceptance criteria were already marked met by the Reviewer pipeline; no new criteria gaps found."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "docs/agents/project-manifest/api-surface.md",
+          "docs/agents/project-manifest/constraints.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-12T17:25:31Z",
+          "note": "api-surface.md MoviesListView section: Added 'Pending wiring (M5 tech debt)' callout addressing the documentation-forward from the Reviewer. Documents that LoadFilterSlotsAsync is not yet called from the Loaded handler and gives the exact fix needed in the future WP."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T17:25:31Z",
+          "note": "constraints.md Open Items: Added bullet for LoadFilterSlotsAsync wiring gap so it is visible to any developer reading conventions before touching MoviesListView or filter-slot startup behaviour."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T17:25:31Z",
+          "note": "README.md: No update required. WP-008 delivers ViewModel search/filter logic only; the feature is not end-to-end wired in the UI (LoadFilterSlotsAsync pending, no SearchText UI binding yet). Adding a user-facing feature bullet before the view layer is complete would be premature."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-12T17:25:31Z",
+  "last_updated": "2026-05-12T17:25:31Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-12T16:54:35Z",
+      "notes": [
+        "MoviesListViewModel now fully implements search + filter integration per WP-008 spec.",
+        "All 130 tests pass. 22 new tests in MoviesListViewModelSearchFilterTests.cs cover all 10 ACs.",
+        "New properties: SearchText, ActiveFilterSlot, IsFilterActive, HasLoadError, LoadErrorMessage, FilterSlots.",
+        "New method: LoadFilterSlotsAsync — must be called from MoviesListView.axaml.cs (or a coordinator) to initialise filter state on startup.",
+        "Constructor signature: existing 3-arg call still works; new IFilterSlotRepository? and IActiveFilterSlotRepository? parameters are optional.",
+        "QA: verify that DSL evaluation exceptions for individual items are handled gracefully (item excluded, warning logged).",
+        "QA: verify that SearchText + ActiveFilterSlot combined (stacked) filtering works correctly (covered implicitly by AC4/AC5 tests but explicit combination test may be desired)."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-12T17:04:16Z",
+      "notes": [
+        "WP-008 QA PASS. All 10 ACs verified. 476 tests pass, zero warnings.",
+        "Minor: no explicit stacked search+filter test; code logic is correct.",
+        "Pending: LoadFilterSlotsAsync must be wired in MoviesListView.axaml.cs (tech debt logged by Developer, confirmed by QA)."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-12T17:19:30Z",
+      "notes": [
+        "WP-008 code-review PASS. All 10 ACs confirmed. Implementation is clean with no blocking issues.",
+        "Documentation-forward: LoadFilterSlotsAsync wiring in MoviesListView.axaml.cs should be documented — see pipeline comments.",
+        "Minor open items logged as low-priority improvements (tokenizer whitespace limitation, threading pattern, stacked filter test gap). None block release.",
+        "project_path: c:\\Webserver\\tools\\video-indexer-v2\\docs\\agents\\plans\\2026-05-12-m5-filters-search"
+      ]
+    }
+  ]
+}

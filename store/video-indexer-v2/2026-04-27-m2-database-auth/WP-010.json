@@ -1,0 +1,455 @@
+{
+  "work_package_id": "WP-010",
+  "work_package_file": "work/WP-010.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-003",
+    "WP-004",
+    "WP-007",
+    "WP-008"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "State transitions match the plan's diagram exactly; no transition violates the diagram (covered by tests).",
+      "met": true
+    },
+    {
+      "criterion": "LastError is non-null whenever Current == ShellState.Error and is cleared on the next successful transition.",
+      "met": true
+    },
+    {
+      "criterion": "Every async orchestration method returns a non-faulted task even when the underlying service throws (the exception is captured into LastError).",
+      "met": true
+    },
+    {
+      "criterion": "ShellViewModelTests contains at least one test per labelled transition in the plan.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-27T21:15:49Z",
+      "completed_at": "2026-04-27T21:20:29Z",
+      "duration_ms": 280000,
+      "summary": [
+        "Created ShellViewModel with 7-transition state machine, ObservableObject properties, non-faulting async methods.",
+        "Added VideoIndexer.App ProjectReference to VideoIndexer.Tests for test access.",
+        "18 new ShellViewModelTests covering all labeled transitions and all 4 ACs.",
+        "44/44 VideoIndexer.Tests pass, release build clean."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/ViewModels/ShellViewModel.cs",
+          "tests/VideoIndexer.Tests/ShellViewModelTests.cs",
+          "tests/VideoIndexer.Tests/VideoIndexer.Tests.csproj"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 44,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "convention",
+          "priority": "medium",
+          "timestamp": "2026-04-27T21:20:29Z",
+          "note": "Added ProjectReference from VideoIndexer.Tests to VideoIndexer.App so ShellViewModel (App layer) can be tested in VideoIndexer.Tests. The M1 convention says 'Tests → Core + Infrastructure' but the plan explicitly places ShellViewModelTests in VideoIndexer.Tests. The App reference is narrow: only ShellViewModel is imported; no Avalonia UI code is exercised. Reviewer should confirm this is acceptable or flag if tests should move to a new VideoIndexer.App.Tests project."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T21:20:29Z",
+          "note": "ShellViewModel.ConnectAsync does not reset to Connecting before attempting the bootstrap (it expects to already be in Connecting). If ConnectAsync is ever called from a non-Connecting state, the before-state is not captured. A guard or state assertion at the top of ConnectAsync/LogOnAsync/SetPasswordAsync would make the contract explicit."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T21:20:29Z",
+          "note": "Func<ShellState, object?> viewModelFactory is injected as constructor arg, following the WP-010 note about delegate-based wiring. App wiring deferred to WP-015."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-27T21:22:42Z",
+      "completed_at": "2026-04-27T21:24:11Z",
+      "duration_ms": 89000,
+      "summary": [
+        "All 4 acceptance criteria verified against ShellViewModel implementation and 18 ShellViewModelTests.",
+        "AC1: All 7 plan diagram transitions verified by tests — Connecting→Error (×2 causes), Connecting→SettingPassword, Connecting→LoggingOn, LoggingOn→Ready, SettingPassword→Ready, Any→Connecting (×3 source states).",
+        "AC2: LastError set non-null on Error transitions; cleared by Transition(newState) with no error parameter (including DisconnectAsync).",
+        "AC3: try/catch(Exception) in ConnectAsync, LogOnAsync, SetPasswordAsync — synchronous and asynchronous throw patterns both caught correctly.",
+        "AC4: 18 tests, all 7 labeled transitions covered. 44/44 VideoIndexer.Tests pass."
+      ],
+      "metrics": {
+        "tests_passed": 44,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T21:24:11Z",
+          "note": "ThrowingBootstrapper throws synchronously (expression-body `=> throw ...`) rather than returning Task.FromException. The outer try/catch in ConnectAsync correctly catches synchronous throws before the await executes. Behavior is correct but an async-throw variant (Task.FromException) would be a more realistic production simulation. Non-blocking."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T21:24:11Z",
+          "note": "StateChanged event is not asserted in any test. The event is fired by the Transition() helper. A future test could verify the previous/new state values carried by ShellStateChangedEventArgs. Not an AC requirement but improves regression coverage."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-27T21:26:43Z",
+      "completed_at": "2026-04-27T21:27:48Z",
+      "duration_ms": 65000,
+      "summary": [
+        "Reviewed 3 artifacts (ShellViewModel.cs, ShellViewModelTests.cs, VideoIndexer.Tests.csproj). Full OWASP Top 10 review completed. 0 Critical, 0 High, 0 Medium, 3 Low findings. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-04-27T21:27:48Z",
+          "note": "A07 — Identification & Authentication Failures | LOW | File: src/VideoIndexer.App/ViewModels/ShellViewModel.cs, LogOnAsync method. LogOnAsync can be called repeatedly from the LoggingOn state with incorrect passwords — there is no failed-attempt counter, lockout, or delay after N consecutive failures. For a local desktop application this is low risk (attacker requires physical access), but a bounded retry counter at the ShellViewModel or IPasswordService level would improve defence in depth. Remediation: Implement a configurable MaxAttempts counter; after N failures, transition to Error state and require a DisconnectAsync/reconnect to reset."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T21:27:48Z",
+          "note": "A09 — Security Logging & Monitoring Failures | LOW | File: src/VideoIndexer.App/ViewModels/ShellViewModel.cs, Transition() and orchestration methods. No ILogger is injected; authentication failures in LogOnAsync (wrong password, verified == false) and all catch-block exceptions are captured silently into LastError with no log output. Failed authentication events are security-significant and should be logged (at Warning level, without logging the supplied password). Remediation: Inject ILogger<ShellViewModel> and log failed VerifyAsync outcomes and caught exceptions at Warning or Error level."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T21:27:48Z",
+          "note": "A02 / Data Handling | LOW | File: src/VideoIndexer.App/ViewModels/ShellViewModel.cs, LogOnAsync(string password) and SetPasswordAsync(string password). Password is accepted as a plain .NET string, which is an immutable heap object that cannot be zeroed after use. GC finalization timing means the plaintext password may linger in managed heap memory. For a local desktop app this is a very low practical risk, but accepting ReadOnlySpan<char> or using a char[] that is explicitly cleared would improve security hygiene. Remediation: Change signature to accept ReadOnlySpan<char> or a char[] that callers zero after the call; propagate the pattern to IPasswordService."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "FAIL",
+      "started_at": "2026-04-27T21:30:44Z",
+      "completed_at": "2026-04-27T21:33:20Z",
+      "duration_ms": 156000,
+      "summary": [
+        "FAIL — one Blocking architectural issue: VideoIndexer.Tests.csproj adds a ProjectReference to VideoIndexer.App, violating the M2 plan's MUST-preserve layering convention (Tests → Core + Infrastructure). This stems from an internal contradiction in the M2 plan spec (the file-list places ShellViewModelTests.cs in VideoIndexer.Tests/ but ShellViewModel lives in App). Fix: create VideoIndexer.App.Tests project analogous to VideoIndexer.Infrastructure.Tests, move ShellViewModelTests.cs there, remove App reference from VideoIndexer.Tests.csproj.",
+        "ShellViewModel.cs itself is high quality: sealed, non-faulting async pattern, correct ConfigureAwait(false) usage, clean Transition() helper, thorough 18-test suite covering all 7 diagram transitions. All 4 ACs are substantively met — the issue is test project placement, not correctness."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/ViewModels/ShellViewModel.cs",
+          "tests/VideoIndexer.Tests/ShellViewModelTests.cs",
+          "tests/VideoIndexer.Tests/VideoIndexer.Tests.csproj"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 44,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T21:33:20Z",
+          "note": "ShellViewModel.cs is well-structured: sealed, constructor-injected, ConfigureAwait(false) on all awaits, non-faulting pattern applied consistently across all three orchestration methods. State machine transitions are clean and the Transition() helper keeps mutation to one place. The 18 tests are thorough, covering all 7 diagram transitions plus AC edge cases. No code-quality issues with the ViewModel implementation itself."
+        },
+        {
+          "type": "improvement",
+          "priority": "high",
+          "timestamp": "2026-04-27T21:33:20Z",
+          "note": "BLOCKING: Test project layering violation. The M2 plan's 'Conventions inherited from M1 (MUST be preserved)' section explicitly states the dependency rule: 'Tests → Core + Infrastructure'. By adding a ProjectReference to VideoIndexer.App in VideoIndexer.Tests.csproj, this rule is broken. The violation results from an internal contradiction in the M2 plan: the plan's file list places ShellViewModelTests.cs in VideoIndexer.Tests/ but ShellViewModel lives in VideoIndexer.App. The Developer faithfully implemented the file-placement spec; the fault is in the plan. However, the MUST constraint must be enforced. Fix: (1) Create tests/VideoIndexer.App.Tests/VideoIndexer.App.Tests.csproj (net8.0, xUnit + FluentAssertions, referencing VideoIndexer.App only — analogous to VideoIndexer.Infrastructure.Tests). (2) Move tests/VideoIndexer.Tests/ShellViewModelTests.cs to tests/VideoIndexer.App.Tests/ShellViewModelTests.cs. (3) Remove the VideoIndexer.App ProjectReference from tests/VideoIndexer.Tests/VideoIndexer.Tests.csproj. All existing fakes (FakeBootstrapper, FakePasswordService) and test logic remain identical — only the host project changes."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-27T21:33:20Z",
+          "note": "[documentation-forward] ShellViewModel XML doc is clear on state transitions and the non-faulting contract. The documentation agent should add a section on the Func<ShellState, object?> viewModelFactory parameter: explain its purpose (maps state to content view-model), when it is called (once at construction for the initial Connecting state, then on each Transition()), and that App-layer wiring is deferred to WP-015."
+        }
+      ]
+    },
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-27T21:34:03Z",
+      "completed_at": "2026-04-28T07:17:57Z",
+      "duration_ms": 35034000,
+      "summary": [
+        "Rework: created VideoIndexer.App.Tests project, moved ShellViewModelTests there, removed App reference from VideoIndexer.Tests.",
+        "Layering constraint (Tests → Core + Infrastructure) restored.",
+        "87/87 total tests pass across all three test projects. Release build clean."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "tests/VideoIndexer.App.Tests/VideoIndexer.App.Tests.csproj",
+          "tests/VideoIndexer.App.Tests/ShellViewModelTests.cs",
+          "tests/VideoIndexer.Tests/VideoIndexer.Tests.csproj",
+          "src/VideoIndexer.sln"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 87,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-28T07:17:57Z",
+          "note": "Rework: moved ShellViewModelTests to new VideoIndexer.App.Tests project (net8.0 + RollForward:LatestMajor, references VideoIndexer.App only). Removed VideoIndexer.App reference from VideoIndexer.Tests, restoring M2 layering constraint. No logic changes to ShellViewModel or test bodies."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-28T07:18:25Z",
+      "completed_at": "2026-04-28T07:20:41Z",
+      "duration_ms": 136000,
+      "summary": [
+        "Rework verification PASS. Reviewed Developer fix for Reviewer-blocking layering violation.",
+        "Layering fix confirmed: VideoIndexer.Tests.csproj references only Core + Infrastructure — VideoIndexer.App reference removed.",
+        "New VideoIndexer.App.Tests project verified: net8.0 + RollForward:LatestMajor, references VideoIndexer.App only, FluentAssertions 6.12.2, xunit 2.9.3.",
+        "ShellViewModelTests.cs confirmed absent from VideoIndexer.Tests/; present at tests/VideoIndexer.App.Tests/ShellViewModelTests.cs.",
+        "87/87 total tests pass: 17/17 App.Tests, 27/27 VideoIndexer.Tests, 43/43 Infrastructure.Tests. 0 regressions.",
+        "Release build: 0 errors, 0 warnings.",
+        "All 4 ACs re-verified: 17 tests cover all 7 labeled diagram transitions, LastError semantics, non-faulting async pattern, and per-transition coverage."
+      ],
+      "metrics": {
+        "tests_passed": 87,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-28T07:20:41Z",
+          "note": "Rework verification focused: confirmed all previously-failed AC (layering constraint) is now resolved. VideoIndexer.Tests.csproj no longer references VideoIndexer.App. The 17 existing ShellViewModelTests are unchanged in logic; only host project changed. No new issues identified."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-28T07:24:19Z",
+      "completed_at": "2026-04-28T07:25:36Z",
+      "duration_ms": 77000,
+      "summary": [
+        "Reviewed 4 rework artifacts (VideoIndexer.App.Tests.csproj, ShellViewModelTests.cs [moved], VideoIndexer.Tests.csproj [App ref removed], VideoIndexer.sln). Full OWASP Top 10 review completed. Rework is purely structural — no security-sensitive code changed. 0 Critical, 0 High, 0 Medium, 0 new Low findings. Three pre-existing Low findings from the prior cycle remain on record and are unchanged. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-28T07:25:36Z",
+          "note": "Rework scope confirmed: no security-sensitive code was modified. Changes are limited to (1) new VideoIndexer.App.Tests.csproj test project, (2) ShellViewModelTests.cs moved verbatim, (3) VideoIndexer.App ProjectReference removed from VideoIndexer.Tests.csproj, (4) solution file updated. ShellViewModel.cs and all production code are unchanged. Full OWASP Top 10 review performed against all 4 artifacts — no new issues identified."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-28T07:25:36Z",
+          "note": "A06 — Vulnerable & Outdated Components | INFO | New VideoIndexer.App.Tests.csproj uses the same package versions already audited (FluentAssertions 6.12.2, xunit 2.9.3, xunit.runner.visualstudio 2.8.2, Microsoft.NET.Test.Sdk 17.12.0). No new or upgraded dependencies introduced. No CVE concerns."
+        },
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-04-28T07:25:36Z",
+          "note": "CARRIED FORWARD (prior cycle) — A07 | LOW | ShellViewModel.cs LogOnAsync: no failed-attempt counter or lockout after N consecutive incorrect passwords. Low risk for a local desktop app. Remediation: configurable MaxAttempts counter; after N failures, transition to Error and require DisconnectAsync to reset."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-28T07:25:36Z",
+          "note": "CARRIED FORWARD (prior cycle) — A09 | LOW | ShellViewModel.cs: authentication failures and caught exceptions are captured silently into LastError with no log output. Remediation: inject ILogger<ShellViewModel> and log failed VerifyAsync outcomes and exceptions at Warning level (without logging the password)."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-28T07:25:36Z",
+          "note": "CARRIED FORWARD (prior cycle) — A02/Data Handling | LOW | ShellViewModel.cs LogOnAsync and SetPasswordAsync accept password as a plain .NET string (immutable heap object, cannot be zeroed). Very low practical risk for a local desktop app. Remediation: accept ReadOnlySpan<char> or char[] that callers zero after use; propagate to IPasswordService."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-28T07:26:15Z",
+      "completed_at": "2026-04-28T07:29:13Z",
+      "duration_ms": 178000,
+      "summary": [
+        "PASS with Fix-Forward. Rework fully resolves the prior-cycle Blocking layering violation: VideoIndexer.App.Tests created, ShellViewModelTests moved, VideoIndexer.App reference removed from VideoIndexer.Tests.csproj. Layering constraint (Tests → Core + Infrastructure) is restored and confirmed.",
+        "ShellViewModel.cs is high quality: sealed, constructor-injected, consistent ConfigureAwait(false), non-faulting async pattern across all 3 orchestration methods, single-responsibility Transition() helper. 17 tests cover all 7 diagram transitions and all 4 ACs.",
+        "Fix-Forward applied: added default: branch to ConnectAsync switch statement — a future DatabaseBootstrapStatus enum extension would previously silently no-op (stay in Connecting forever); now transitions to Error with NotSupportedException. Non-behavioral for current enum. Build clean, 87/87 tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/ViewModels/ShellViewModel.cs",
+          "tests/VideoIndexer.App.Tests/ShellViewModelTests.cs",
+          "tests/VideoIndexer.App.Tests/VideoIndexer.App.Tests.csproj",
+          "tests/VideoIndexer.Tests/VideoIndexer.Tests.csproj",
+          "src/VideoIndexer.sln"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 87,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-28T07:29:13Z",
+          "note": "ShellViewModel.cs is well-structured and consistent: sealed class, constructor-injected dependencies, ConfigureAwait(false) on every await, non-faulting pattern uniformly applied. Transition() helper correctly serialises all state mutation into one place. The 17 tests in VideoIndexer.App.Tests are thorough, readable, and correctly pre-condition state via orchestration methods rather than reflection."
+        },
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-28T07:29:13Z",
+          "note": "Added default: branch to ConnectAsync switch on result.Status. Previously, any DatabaseBootstrapStatus value not explicitly covered by the four cases would silently no-op — the state machine would remain in Connecting indefinitely with no transition. The default now calls Transition(ShellState.Error, new NotSupportedException(...)) to make the failure explicit. Non-behavioral for the current four enum members. Build clean, 87/87 tests pass."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-28T07:29:13Z",
+          "note": "[documentation-forward] ShellViewModel XML doc covers transitions and the non-faulting contract well. The Documentation agent should add documentation for the Func<ShellState, object?> viewModelFactory constructor parameter: explain its purpose (maps ShellState to the appropriate content view-model), when it is called (once at construction for the initial Connecting state, then on every Transition() call), and that App-layer wiring is deferred to WP-015."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-28T07:29:13Z",
+          "note": "VideoIndexer.App.Tests.csproj correctly sets TreatWarningsAsErrors to false with an inline comment explaining the rationale. Package versions (FluentAssertions 6.12.2, xunit 2.9.3) are consistent with the other test projects — no version drift introduced by the rework."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-28T07:32:34Z",
+      "completed_at": "2026-04-28T07:35:24Z",
+      "duration_ms": 170000,
+      "summary": [
+        "Updated README.md and ShellViewModel.cs for WP-010 (ShellViewModel state machine). Changes: (1) Enhanced viewModelFactory constructor XML doc in ShellViewModel.cs — added when the delegate is invoked (at construction with Connecting state, then on every Transition() call); (2) Updated Project Structure code block to list all three test projects (VideoIndexer.Tests, VideoIndexer.App.Tests, VideoIndexer.Infrastructure.Tests) with correct scopes; (3) Updated unit-only dotnet test command to include VideoIndexer.App.Tests; (4) Added ShellViewModel to test coverage list; (5) Added ShellViewModel (State Machine) architecture subsection documenting all 7 transitions, non-faulting contract, viewModelFactory lifecycle, test project placement rationale, and DI deferral."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "README.md",
+          "src/VideoIndexer.App/ViewModels/ShellViewModel.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-28T07:35:24Z",
+          "note": "Both reviewer-forwarded documentation items addressed: (1) viewModelFactory constructor XML doc updated to document when it is invoked (at construction and on every Transition() call); (2) README Architecture section includes a full ShellViewModel state machine subsection covering states/transitions, non-faulting contract, viewModelFactory delegate lifecycle, test project placement rationale, and DI deferral. No documentation gaps remain."
+        }
+      ]
+    }
+  ],
+  "rework_counts": {
+    "implementation": 1,
+    "qa": 1,
+    "code-review": 1,
+    "security-audit": 1
+  },
+  "status_changed_at": "2026-05-06T09:28:49Z",
+  "last_updated": "2026-05-06T09:28:49Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-27T21:20:29Z",
+      "notes": [
+        "ShellViewModel: 4 public async methods (ConnectAsync, LogOnAsync, SetPasswordAsync, DisconnectAsync), 3 observable properties (Current, CurrentViewModel, LastError), StateChanged event.",
+        "Func<ShellState, object?> viewModelFactory injected via constructor; App-layer wiring deferred to WP-015.",
+        "18 new tests in VideoIndexer.Tests/ShellViewModelTests.cs; 44/44 total VideoIndexer.Tests pass.",
+        "VideoIndexer.Tests.csproj now references VideoIndexer.App (needed for ShellViewModel access).",
+        "Release build: 0 errors, 0 warnings."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-04-27T21:24:11Z",
+      "notes": [
+        "WP-010 QA PASS. All 4 ACs met. 18 ShellViewModelTests cover all 7 labeled transitions from the plan diagram. 44/44 VideoIndexer.Tests pass, 0 regressions. Implementation is clean. Note the ProjectReference from VideoIndexer.Tests to VideoIndexer.App for test access — Reviewer should confirm this is acceptable per M1 layering conventions."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-27T21:27:48Z",
+      "notes": [
+        "WP-010 security-audit PASS. 0 Critical/High findings — no rework required. 3 Low findings recorded (no lockout on failed auth; no auth failure logging; plain string password parameter). All ACs met. Ready for code-review pipeline. Reviewer note: confirm acceptability of VideoIndexer.Tests → VideoIndexer.App ProjectReference per M1 layering conventions (flagged by Developer and QA)."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Developer",
+      "timestamp": "2026-04-27T21:33:20Z",
+      "notes": [
+        "WP-010 code-review FAIL — one Blocking issue: VideoIndexer.Tests.csproj now references VideoIndexer.App, violating the M2 plan's MUST-preserve layering rule (Tests → Core + Infrastructure). The ShellViewModel.cs implementation and all 18 tests are otherwise excellent and meet all 4 ACs. Fix required: create VideoIndexer.App.Tests project, move ShellViewModelTests.cs there, remove App reference from VideoIndexer.Tests.csproj. After fix, re-run full test suite to confirm no regressions."
+      ]
+    },
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-28T07:17:57Z",
+      "notes": [
+        "Rework complete: ShellViewModelTests moved to tests/VideoIndexer.App.Tests/; VideoIndexer.Tests no longer references VideoIndexer.App.",
+        "VideoIndexer.App.Tests.csproj: net8.0+RollForward:LatestMajor, references VideoIndexer.App, FluentAssertions 6.12.2, xunit 2.9.3.",
+        "17/17 App.Tests pass; 27/27 VideoIndexer.Tests pass; 43/43 Infrastructure.Tests pass (87 total).",
+        "Release build: 0 errors, 0 warnings."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-04-28T07:20:41Z",
+      "notes": [
+        "WP-010 QA PASS (rework). Layering violation fixed: VideoIndexer.App.Tests project created, ShellViewModelTests moved there, VideoIndexer.Tests no longer references VideoIndexer.App. 87/87 tests pass, release build clean. All 4 ACs met. Ready for code-review pipeline.",
+        "Security audit already PASSED in prior cycle — no new security-relevant changes in rework (only test project restructuring).",
+        "Reviewer should confirm the code-review can proceed directly given the fix is purely structural (test project migration, no ShellViewModel or test logic changes)."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-28T07:25:36Z",
+      "notes": [
+        "WP-010 rework security-audit PASS. Rework was purely structural (test project migration — VideoIndexer.App.Tests created, ShellViewModelTests moved, App ref removed from VideoIndexer.Tests). No security-sensitive code changed; 0 new findings. 3 pre-existing Low findings remain on record (no lockout, no auth logging, plain string password). All 4 ACs met. Ready for code-review pipeline."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-28T07:29:13Z",
+      "notes": [
+        "WP-010 code-review PASS. ShellViewModel.cs and all 4 ACs confirmed. Layering constraint restored. Fix-Forward applied: default: branch added to ConnectAsync switch (non-behavioral for current enum). 87/87 tests pass, build clean.",
+        "Documentation-Forward item for the Documentation agent: add documentation for the viewModelFactory constructor parameter in ShellViewModel — its purpose, call timing, and deferred App-layer wiring (WP-015)."
+      ]
+    }
+  ]
+}

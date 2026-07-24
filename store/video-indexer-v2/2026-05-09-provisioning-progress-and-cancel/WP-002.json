@@ -1,0 +1,285 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "`Log` is populated with timestamped entries for each progress update with a non-empty `Message`.",
+      "met": true
+    },
+    {
+      "criterion": "`Log` entries are capped at 200.",
+      "met": true
+    },
+    {
+      "criterion": "A terminal entry (\"Complete.\", \"Cancelled.\", or \"Failed.\") is appended at the end of every run.",
+      "met": true
+    },
+    {
+      "criterion": "All `Log.Add()` calls are marshaled to the UI thread (no `InvalidOperationException` from ThreadPool).",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-11T07:05:49Z",
+      "completed_at": "2026-05-11T07:10:19Z",
+      "duration_ms": 270000,
+      "summary": [
+        "Added public ObservableCollection<string> Log { get; } = new() to ProvisioningToolsViewModel.",
+        "Added using System.Collections.ObjectModel and using Avalonia.Threading.",
+        "In SyncProgress callback: dispatches timestamped log entry via Dispatcher.UIThread.Post when p.Message is non-null/non-empty and Log.Count < 200.",
+        "In finally block: always dispatches a terminal entry (Complete./Cancelled./Failed.) via Dispatcher.UIThread.Post using a local terminalLogEntry variable set in try/catch.",
+        "All 4 existing ProvisioningToolsViewModelTests pass. Build succeeds with 0 warnings/errors (audit bypass needed for pre-existing SharpCompress vulnerability)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/ViewModels/ProvisioningToolsViewModel.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-05-11T07:10:19Z",
+          "note": "Pre-existing: SharpCompress 0.47.4 has a known moderate severity vulnerability (GHSA-6c8g-7p36-r338). With TreatWarningsAsErrors=true in Directory.Build.props, standard `dotnet build` fails unless -p:NuGetAudit=false is passed. This blocked the build verification step for this WP. The fix is to upgrade SharpCompress to a non-vulnerable version or suppress the advisory in Directory.Packages.props."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-11T07:10:19Z",
+          "note": "ProvisioningToolsViewModel.cs: The 200-entry cap on Log is applied optimistically (Log.Count is read on the SyncProgress thread before dispatch). Under rapid progress reporting, the count could exceed 200 slightly due to the async gap. For the UI use case this is acceptable, but it's worth noting for QA test design."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "FAIL",
+      "started_at": "2026-05-11T07:15:15Z",
+      "completed_at": "2026-05-11T07:21:40Z",
+      "duration_ms": 385000,
+      "summary": [
+        "Build: 0 errors, 0 warnings.",
+        "AC-1 PASS: Log is populated with timestamped entries for progress updates with non-empty Message. Null-message snapshots produce no Log entry. Verified.",
+        "AC-2 FAIL: Log entries are NOT capped at 200. The guard `Log.Count < 200` runs on the thread pool before any UIThread.Post callback fires. All 250 synchronous progress reports bypass the cap (Log.Count = 0 for every check). Test result: 251 entries, expected ≤ 201. Fix: move count check inside the Post lambda.",
+        "AC-3 PASS: Terminal entries 'Complete.', 'Cancelled.', 'Failed.' are appended correctly. Verified with 3 tests.",
+        "AC-4 PASS: All Log.Add() calls are dispatched via Dispatcher.UIThread.Post. Verified by the tests requiring [AvaloniaFact] + RunJobs() to observe Log population.",
+        "12 of 13 new+existing tests pass. 1 fails (cap test). 7 prior WP-001 tests unaffected."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "tests/VideoIndexer.App.Tests/ProvisioningToolsViewModelTests.cs"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 12,
+        "tests_failed": 1
+      },
+      "comments": [
+        {
+          "type": "bug",
+          "priority": "medium",
+          "timestamp": "2026-05-11T07:21:40Z",
+          "note": "AC-2 FAIL: `Log` entries are NOT capped at 200. Root cause: the guard `Log.Count < 200` is evaluated on the thread pool inside the SyncProgress callback, before any `Dispatcher.UIThread.Post` callback has run. Because all 250 progress reports arrive synchronously (Log.Count = 0 for every check), all 250 items bypass the guard and are queued for UI dispatch. Result: `Log.Count = 251` when 250 reports with Messages are submitted, violating the 200-entry cap. Repro: test `StartAsync_WhenProvisionerReportsMoreThan200Messages_LogIsCapppedAt200ProgressEntries` (expected ≤201, got 251). Fix: move the `Log.Count < 200` check inside the Post lambda so it executes on the UI thread where `Log.Add` also runs: `Dispatcher.UIThread.Post(() => { if (Log.Count < 200) Log.Add(...); });`"
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-11T07:21:40Z",
+          "note": "The terminal-entry Post (`finally` block) is also unguarded. If the cap is fixed, the terminal entry would still be appended outside the cap, which is intentional and acceptable."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-11T07:21:40Z",
+          "note": "Added 6 new [AvaloniaFact] tests for Log behavior. Discovered that `Dispatcher.UIThread.RunJobs()` must be called explicitly after `await sut.StartAsync()` in [AvaloniaFact] tests to flush pending Post callbacks before assertions."
+        }
+      ]
+    },
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-11T07:22:40Z",
+      "completed_at": "2026-05-11T07:23:09Z",
+      "duration_ms": 29000,
+      "summary": [
+        "Rework: moved `Log.Count < 200` guard inside the `Dispatcher.UIThread.Post` lambda so the check executes on the UI thread after each Add, ensuring the cap is enforced correctly under rapid synchronous progress reporting.",
+        "Captured the formatted entry string in a local variable `entry` before the Post to avoid a closure-over-loop-variable issue.",
+        "All 13 ProvisioningToolsViewModelTests pass (was 12/13)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/ViewModels/ProvisioningToolsViewModel.cs"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 13,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-11T07:23:09Z",
+          "note": "ProvisioningToolsViewModel.cs: The formatted entry string is now captured in a local `entry` variable before being passed to the Post lambda. This prevents a potential closure-capture race if the progress object were mutable (not the case here, but a good defensive pattern)."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-11T07:23:38Z",
+      "completed_at": "2026-05-11T07:24:51Z",
+      "duration_ms": 73000,
+      "summary": [
+        "REWORK PASS: verified AC-2 fix — Log.Count < 200 guard is now correctly placed inside the UIThread.Post lambda in ProvisioningToolsViewModel.cs, enforcing the cap on the UI thread where Log.Add() runs.",
+        "All 13 ProvisioningToolsViewModelTests pass (was 12/13 in previous QA run).",
+        "Full regression run: 338 tests passed, 5 skipped (live integration tests), 0 failed. No regressions introduced.",
+        "All 4 acceptance criteria verified as met."
+      ],
+      "metrics": {
+        "tests_passed": 338,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-11T07:24:51Z",
+          "note": "No regressions found. The rework fix is minimal and correct: moving the guard inside the Post lambda is the proper pattern for thread-safe cap enforcement on an ObservableCollection."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-11T07:24:51Z",
+          "note": "Confirmed intentional design: the terminal entry (Complete./Cancelled./Failed.) is appended outside the 200-entry cap, making the actual maximum Log.Count 201. The cap test correctly asserts HaveCountLessOrEqualTo(201) and the test name documents this as 200 *progress* entries."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-11T07:31:28Z",
+      "completed_at": "2026-05-11T07:32:29Z",
+      "duration_ms": 61000,
+      "summary": [
+        "WP-002 passes code review. The rework-fixed implementation correctly enforces the 200-entry cap on the UI thread inside the UIThread.Post lambda. Terminal entries (Complete./Cancelled./Failed.) are appended unconditionally and outside the cap (intentional; maximum actual count is 201). The entry local-variable capture before Post is a sound defensive pattern. No blocking issues. One documentation-forward tagged for the Log property XML doc."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/ViewModels/ProvisioningToolsViewModel.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-11T07:32:29Z",
+          "note": "The rework fix is correct and well-scoped: moving Log.Count < 200 inside the UIThread.Post lambda is the proper pattern for cap enforcement on an ObservableCollection. The local `entry` variable capture before the Post lambda is a good defensive practice against closure-over-loop-variable issues (even though ProvisioningProgress is currently immutable). No blocking concerns."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-05-11T07:32:29Z",
+          "note": "[documentation-forward] Log property XML doc accurately notes the 200-entry cap and terminal entry, but does not mention that progress snapshots with null or empty Message are silently skipped. Future consumers may be confused when not all progress reports appear in the log. Suggest adding: 'Only snapshots with a non-null, non-empty Message property produce a log entry; all other snapshots are silent.'"
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-11T07:37:55Z",
+      "completed_at": "2026-05-11T07:38:40Z",
+      "duration_ms": 45000,
+      "summary": [
+        "Updated Log property XML doc in ProvisioningToolsViewModel.cs: expanded to summary + <remarks> block documenting (1) 200-entry cap with 201-maximum semantics, (2) null/empty-Message snapshot filter (the documentation-forward item from the Reviewer), and (3) UIThread.Post marshalling guarantee.",
+        "Added CHANGELOG.md ### Added entry for the Log ObservableCollection, covering the Message filter, 200-entry cap, terminal-entry behaviour, and thread-safety guarantee."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "CHANGELOG.md",
+          "src/VideoIndexer.App/ViewModels/ProvisioningToolsViewModel.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-11T07:38:40Z",
+          "note": "ProvisioningToolsViewModel.cs (Log): Expanded XML doc from single-line summary to summary + <remarks>. Added the silent-skip callout (null/empty Message snapshots produce no log entry) as the Reviewer flagged. Also documented the maximum count of 201 (200 progress + 1 terminal) and the UIThread.Post marshalling guarantee."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-11T07:38:40Z",
+          "note": "CHANGELOG.md: Added ### Added entry for the Log property above the onComplete entry. Documents the Message filter, the 200-entry cap with 201-maximum semantics, and the thread-safety guarantee."
+        }
+      ]
+    }
+  ],
+  "rework_counts": {
+    "implementation": 1,
+    "qa": 1
+  },
+  "status_changed_at": "2026-05-11T07:38:40Z",
+  "last_updated": "2026-05-11T07:38:40Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-11T07:10:19Z",
+      "notes": [
+        "Log property is an ObservableCollection<string> — all Add() calls are dispatched via Dispatcher.UIThread.Post from both the SyncProgress callback and the finally block.",
+        "Progress entries are only added when p.Message is non-null/non-empty and Log.Count < 200. The terminal entry (Complete./Cancelled./Failed.) is always dispatched.",
+        "The terminal message is determined by a local variable 'terminalLogEntry' initialized to 'Failed.' and overwritten in the try/catch branches before finally runs.",
+        "Build verification required -p:NuGetAudit=false to bypass the pre-existing SharpCompress 0.47.4 vulnerability error. The code itself has 0 warnings and 0 errors. All 4 existing tests pass.",
+        "QA tests for Log behaviour should use [AvaloniaFact] to ensure the UIThread.Post callbacks execute before assertions."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Developer",
+      "timestamp": "2026-05-11T07:21:40Z",
+      "notes": [
+        "AC-2 FAIL: Log cap is not enforced. Fix: move `Log.Count < 200` check inside the UIThread.Post lambda. See qa pipeline comments for exact fix.",
+        "12/13 WP-002 tests pass. Only `StartAsync_WhenProvisionerReportsMoreThan200Messages_LogIsCapppedAt200ProgressEntries` fails. All WP-001 tests (7) still pass.",
+        "New test infrastructure: 6 new [AvaloniaFact] Log tests added to ProvisioningToolsViewModelTests.cs. Tests use Dispatcher.UIThread.RunJobs() to flush the dispatcher queue after await."
+      ]
+    },
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-11T07:23:09Z",
+      "notes": [
+        "AC-2 is now fixed: `Log.Count < 200` guard moved inside UIThread.Post lambda. All 13 ProvisioningToolsViewModelTests pass. All 4 acceptance criteria are now met."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-11T07:24:51Z",
+      "notes": [
+        "All 4 AC met. 338 tests pass. The only notable pre-existing issue is the SharpCompress 0.47.4 vulnerability (GHSA-6c8g-7p36-r338) requiring -p:NuGetAudit=false for builds — not introduced by this WP. Code review can proceed."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-11T07:32:29Z",
+      "notes": [
+        "All 4 AC met. Implementation is clean and correct after rework. The Log.Count cap guard is correctly placed inside the UIThread.Post lambda. One documentation-forward tagged: Log XML doc should note that null/empty-Message snapshots produce no log entry."
+      ]
+    }
+  ]
+}

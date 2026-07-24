@@ -1,0 +1,224 @@
+{
+  "work_package_id": "WP-006",
+  "work_package_file": "work/WP-023.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "ComputeCropCoordinates clamps x and y to [0, 1 - cropSize] for any pointer position.",
+      "met": true
+    },
+    {
+      "criterion": "ShowMask = false hides the four darkening rectangles; the crop boundary rectangle remains visible.",
+      "met": true
+    },
+    {
+      "criterion": "Source = null renders a blank control without throwing.",
+      "met": true
+    },
+    {
+      "criterion": "Drag interaction updates CropX and CropY observable properties on the control.",
+      "met": true
+    },
+    {
+      "criterion": "dotnet build -c Release reports zero warnings.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-22T17:43:29Z",
+      "completed_at": "2026-05-22T17:49:47Z",
+      "duration_ms": 378000,
+      "summary": [
+        "Implemented CoverImageCropperControl as a new Avalonia UserControl with Grid root containing Image and Canvas overlay.",
+        "Defined 5 styled properties: Source (Bitmap?), CropX (float), CropY (float), CropSize (float), ShowMask (bool).",
+        "Canvas overlay contains 4 semi-transparent dark mask rectangles (visible when ShowMask=true) and 1 white-bordered crop boundary rectangle (always visible when Source is loaded).",
+        "Pointer event handlers (PointerPressed/Moved/Released) implement drag interaction; SetCurrentValue used for CropX/CropY to preserve two-way bindings.",
+        "ComputeCropCoordinates internal static pure method clamps to [0, 1-cropSize] and accounts for Stretch.Uniform letter-boxing via ComputeImageBounds.",
+        "UpdateOverlay positions all 5 rectangles in pixel coordinates derived from image bounds and normalised crop coordinates.",
+        "Release build: 0 warnings, 0 errors. All 643 tests pass (282 unit + 361 app)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/Views/CoverImageCropperControl.axaml",
+          "src/VideoIndexer.App/Views/CoverImageCropperControl.axaml.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-22T17:49:46Z",
+          "note": "CoverImageCropperControl.axaml.cs: LayoutUpdated is a per-instance event in Avalonia 11 (fires after each layout pass for this control specifically), which is the right hook for repositioning overlay rects. If profiling reveals overhead, a future optimisation is to override ArrangeOverride and pass finalSize directly to UpdateOverlay to avoid reading Bounds.Size one frame late."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-22T17:49:46Z",
+          "note": "ComputeImageBounds accounts for Stretch.Uniform but does not handle Stretch.None or Stretch.Fill. This is intentional since the Image in the AXAML is hard-coded to Stretch.Uniform, but if the stretch mode ever becomes configurable the helper will need updating."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-22T17:49:46Z",
+          "note": "Drag uses pointer capture (e.Pointer.Capture(this)) to continue receiving PointerMoved events outside the control bounds. This is the correct approach. No issues found."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-22T18:26:55Z",
+      "completed_at": "2026-05-22T18:27:43Z",
+      "duration_ms": 48000,
+      "summary": [
+        "All 5 acceptance criteria verified by code inspection.",
+        "AC1 (clamping): ComputeCropCoordinates uses Math.Clamp(norm, 0f, Math.Max(0f, 1f - cropSize)) on both axes; clampMax guards against negative range when cropSize > 1.",
+        "AC2 (ShowMask): All four _mask* rects have IsVisible = showMask; _cropBorder.IsVisible is always set to true when a source is loaded, independent of ShowMask.",
+        "AC3 (null Source): UpdateOverlay early-returns hiding all 5 overlay elements when source is null; PointerPressed and PointerMoved handlers guard with 'if (Source is null) return'.",
+        "AC4 (drag): ApplyDrag calls SetCurrentValue(CropXProperty, x) and SetCurrentValue(CropYProperty, y) preserving two-way bindings; pointer capture ensures drag continues outside control bounds.",
+        "AC5 (build): dotnet build -c Release 0 warnings, 0 errors. 643/643 tests pass."
+      ],
+      "metrics": {
+        "test_coverage": "643 tests green (unit + app suites)",
+        "tests_passed": 643,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-22T18:27:43Z",
+          "note": "ComputeCropCoordinates correctly handles the edge case when cropSize > 1: clampMax is clamped to 0f (preventing negative clamp range), locking x and y to 0. This is a safe defensive behaviour."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-22T18:27:43Z",
+          "note": "ComputeImageBounds returns the full control Bounds rect when Source is null (instead of a zero-rect). This is used by UpdateOverlay which independently guards on source is null and returns early, so the two guards are complementary and safe."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-05-22T18:27:43Z",
+          "note": "The control is marked internal for unit testability (ComputeCropCoordinates and ComputeImageBounds are 'internal static'). No unit tests currently exist for these helpers. A future test asserting clamp behaviour for boundary inputs would improve regression safety."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-22T18:35:19Z",
+      "completed_at": "2026-05-22T18:36:32Z",
+      "duration_ms": 73000,
+      "summary": [
+        "Code review complete — PASS with no changes required.",
+        "AXAML: clean Grid+Canvas overlay structure; IsHitTestVisible=False on Canvas is correctly documented; ClipToBounds prevents overflow.",
+        "Styled property registration uses correct Avalonia 11 pattern for all 5 properties.",
+        "ComputeCropCoordinates: center-on-pointer math correct; degenerate cropSize>1 handled by clamping clampMax to 0; zero-imageBounds guard present.",
+        "ComputeImageBounds: Stretch.Uniform letterboxing math correct; all degenerate inputs (null, zero-size) handled.",
+        "UpdateOverlay mask math algebraically verified: no overflow possible when crop coordinates are within their clamped range.",
+        "SetCurrentValue for drag updates preserves two-way bindings correctly.",
+        "LayoutUpdated lambda lifecycle is correct (no memory leak)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/Views/CoverImageCropperControl.axaml",
+          "src/VideoIndexer.App/Views/CoverImageCropperControl.axaml.cs"
+        ]
+      },
+      "metrics": {
+        "test_coverage": "643/643 green (282 unit + 361 app)",
+        "tests_passed": 643,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-22T18:36:32Z",
+          "note": "Styled property registration follows correct Avalonia 11 patterns (AvaloniaProperty.Register<TOwner, TValue>) for all 5 properties. SetCurrentValue used for drag updates — correct two-way binding preservation. Pointer capture on PointerPressed, release on PointerReleased — correct."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-22T18:36:32Z",
+          "note": "UpdateOverlay mask math verified algebraically: since cy is clamped to [0, 1-cropSize], cropTop + cropHeight = img.Y + cy * img.Height + cSize * img.Height <= img.Y + img.Height = img.Bottom. So _maskRight.Height = cropHeight and _maskBottom.Height = img.Bottom - cropBottom are both non-negative within normal crop coordinate bounds. Math.Max(0, ...) guards are additionally defensive but the invariant holds."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-22T18:36:32Z",
+          "note": "ComputeImageBounds fallback on null source returns the full control rect (not a zero rect). This is safe: UpdateOverlay independently guards 'if source is null return' before calling ComputeImageBounds. The two guards are complementary and correct."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-22T18:36:32Z",
+          "note": "LayoutUpdated lambda (_, _) => UpdateOverlay() captures 'this'. Since the control is sealed and the subscription is on the instance's own event, the lambda lifecycle is correctly tied to the control's lifetime. No memory leak."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-22T18:36:32Z",
+          "note": "[documentation-forward] file-tree.md should be updated to list the two new files: src/VideoIndexer.App/Views/CoverImageCropperControl.axaml and CoverImageCropperControl.axaml.cs, with an annotation describing the control's purpose (interactive crop-region overlay). api-surface.md should also receive a CoverImageCropperControl entry listing the 5 styled properties and the 2 internal-static helpers (ComputeCropCoordinates, ComputeImageBounds)."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-22T19:10:43Z",
+      "completed_at": "2026-05-22T19:12:25Z",
+      "duration_ms": 102000,
+      "summary": [
+        "Updated two manifest documents for WP-006. (1) file-tree.md: added CoverImageCropperControl.axaml/.cs entry to the Views section with a detailed annotation covering the Grid+Canvas structure, 5 styled properties, internal static helpers, and DI registration status. (2) api-surface.md: added a CoverImageCropperControl section in the App Infrastructure block listing all 5 styled properties (Source, CropX, CropY, CropSize, ShowMask) and the 2 internal static helpers (ComputeCropCoordinates, ComputeImageBounds) with their contracts and clamping behaviour documented."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "docs/agents/project-manifest/file-tree.md",
+          "docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-22T19:12:25Z",
+          "note": "No README or end-user documentation changes needed. Reviewer documentation-forward fully addressed: file-tree.md now lists CoverImageCropperControl.axaml/.cs with annotation; api-surface.md has a new CoverImageCropperControl section listing all 5 styled properties and the 2 internal static helpers with their contracts."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-22T19:12:25Z",
+  "last_updated": "2026-05-22T19:12:25Z",
+  "handoff_notes": [
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-22T18:27:43Z",
+      "notes": [
+        "WP-006 QA passed. All 5 ACs verified by code inspection. CoverImageCropperControl implements all required behaviours: clamp in ComputeCropCoordinates, ShowMask controls mask visibility while crop border remains, null Source guard, SetCurrentValue for two-way drag propagation. Release build clean (0 warnings). 643/643 tests pass."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-22T18:36:32Z",
+      "notes": [
+        "WP-006 code-review PASS. No fix-forward applied. Implementation is well-structured with clean separation of pure geometry helpers (internal static, testable) from UI logic. All Avalonia 11 patterns are correct. Documentation-forward: file-tree.md and api-surface.md need entries for CoverImageCropperControl."
+      ]
+    }
+  ]
+}

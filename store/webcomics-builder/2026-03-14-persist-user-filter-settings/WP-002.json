@@ -1,0 +1,181 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-002.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "When a user is selected, structural filter settings are loaded from their filterSettings record on construction",
+      "met": true
+    },
+    {
+      "criterion": "When a user changes filters and submits the form, the structural filters are saved to the user's JSON record",
+      "met": true
+    },
+    {
+      "criterion": "Search text is NOT saved to the user record — only to the session",
+      "met": true
+    },
+    {
+      "criterion": "When no user is selected, filters fall back to defaults",
+      "met": true
+    },
+    {
+      "criterion": "When switching users, the new user's filter settings are loaded and overwrite the session cache",
+      "met": true
+    },
+    {
+      "criterion": "DetailedListPage and CardListPage continue to work without modification",
+      "met": true
+    }
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-14T15:16:24Z",
+      "completed_at": "2026-03-14T15:19:54Z",
+      "summary": [
+        "Modified SessionComicsFilter.php to load structural filter settings (status, orderBy, orderDir) from User::getFilterSettings() when a user is selected, falling back to session/defaults when no user or no saved filters. Search text continues to be loaded from the session only. save() now additionally calls User::setFilterSettings() with the structural fields (excluding searchText) when a user is selected, persisting filters to users.json via User::save(). Static analysis clean (0 errors), all 92 tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "assets/classes/Comics/Filter/SessionComicsFilter.php"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-14T15:19:54Z",
+          "note": "SessionComicsFilter tightly couples with Session (global state) and UserCollection (singleton), making it untestable in isolation without dependency injection. Consider introducing a constructor parameter for the user lookup callable or an injectable session adapter in a future refactor to enable unit testing."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-03-14T15:19:54Z",
+          "note": "UserCollection::create() uses a static singleton (private static ?UserCollection $instance) that is never reset between requests or test runs. This can cause stale state in long-running processes or test suites with processIsolation disabled."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-14T15:20:24Z",
+      "completed_at": "2026-03-14T15:22:51Z",
+      "summary": [
+        "All 6 acceptance criteria verified through code review and test execution.",
+        "92 tests pass (1 skipped pre-existing), 164 assertions — no regressions.",
+        "PHPStan level 5 reports 0 errors.",
+        "Verified: constructor loads structural filters from User::getFilterSettings() when user is selected and settings are non-empty; search text always loaded from session only.",
+        "Verified: save() writes only status/orderBy/orderDir to User via setFilterSettings(), which chains to User::save() persisting to users.json immediately.",
+        "Verified: null status protected by ?? '' in save(); selectStatus('') safely resolves back to null on reload.",
+        "Verified: DetailedListPage and CardListPage untouched — applyFilters() flow (construct → importValues($_REQUEST) → save() → redirect) works correctly with the new persistence layer.",
+        "Edge case: orderBy empty/invalid string handled by idExists() guard in importValues(); defaults apply cleanly."
+      ],
+      "metrics": {
+        "test_coverage": "92 tests, 164 assertions, 1 pre-existing skip",
+        "tests_passed": 92,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-14T15:22:51Z",
+          "note": "In save(), this.status ?? '' converts null to an empty string before persisting to the user record. On reload, selectStatus('') correctly maps '' back to null (since '' is not in STATUSES). Behavior is correct, but a dedicated sentinel constant (e.g. STATUS_NONE = '') could make the round-trip intent explicit."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-14T15:22:51Z",
+          "note": "No unit tests for SessionComicsFilter itself are present yet — WP-003 is scoped for that. The existing passing test suite covers the User persistence layer (FilterSettingsTests) and ComicsFilter predicate logic (ComicsFilterTest), but the constructor/save integration paths are not directly unit-tested in this WP."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-14T15:23:16Z",
+      "completed_at": "2026-03-14T15:25:01Z",
+      "summary": [
+        "WP-002 passes code review. The change is confined to a single 72-line file (SessionComicsFilter.php). The implementation correctly satisfies all 6 acceptance criteria: structural filters (status/orderBy/orderDir) are loaded from User::getFilterSettings() when a user is present and filters are non-empty; search text is always sourced from the session; save() persists only structural fields to the user record via setFilterSettings() (which chains to User::save()); and the no-user fallback path is preserved. Static analysis is clean and 92 tests pass.",
+        "No blocking issues found. Two pre-existing design debts are noted below that are out of scope for this WP and already flagged in upstream pipeline comments."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-14T15:25:01Z",
+          "note": "In importValues(), OrderByCollection::getInstance() is called twice in close succession (idExists() then getByID()). Extracting a local variable ($collection = OrderByCollection::getInstance()) would be a minor readability and micro-performance improvement, though cost is negligible given the singleton pattern."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-03-14T15:25:01Z",
+          "note": "ComicsFilter::reset() resets only status and searchText, not orderBy and orderDir. This means consecutive importValues() calls on the same instance could leave stale orderBy/orderDir values. Not a real-world concern in PHP's share-nothing model (SessionComicsFilter is constructed fresh per request), but the asymmetry between reset() and the full field set in importValues() is a latent footgun if the base class is ever reused differently."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-14T15:25:01Z",
+          "note": "No blocking issues. The null-to-empty-string round-trip for status (null → '' on save, '' → null on reload via selectStatus guard) is correct and verified. The session cache write inside the constructor (Session::set after importValues) is intentional and consistent with the caching design."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-14T15:25:44Z",
+      "completed_at": "2026-03-14T15:30:17Z",
+      "summary": [
+        "Updated two manifest documents to reflect WP-002's SessionComicsFilter user persistence changes. (1) api-surface.md: added doc comments to SessionComicsFilter.__construct() describing the dual load path (user record for structural filters, session for searchText, with fallback to session when no user or no saved settings), and to save() describing that structural filters are written to User::setFilterSettings()/User::save()/users.json while searchText is session-only. Updated importValues() comment to drop the misleading 'from session data' qualifier. (2) data-flows.md Section 3: updated the SessionComicsFilter step to describe the user-aware construction logic and added an explicit 'On filter form submission' entry covering what save() does (session + conditional user record write). storage.md and the User class API (getFilterSettings/setFilterSettings) were already correctly documented prior to this WP."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "docs/agents/project-manifest/api-surface.md",
+          "docs/agents/project-manifest/data-flows.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-14T15:30:17Z",
+          "note": "No documentation gaps found. storage.md already had filterSettings correct with the right fields and User::setFilterSettings() attribution. The User class API in api-surface.md already had getFilterSettings() and setFilterSettings() correctly documented. Only the SessionComicsFilter-specific doc comments and the data-flows.md flow description required updating."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-03-14T15:30:17Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-03-14T15:19:54Z",
+      "notes": [
+        "WP-002 implementation complete. SessionComicsFilter now loads structural filters from User::getFilterSettings() on construction (user path) and persists them via User::setFilterSettings() on save(). WP-003 and WP-004 depend on WP-002 and should now be unblocked once their own dependencies are reviewed."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-14T15:22:51Z",
+      "notes": [
+        "WP-002 QA PASS. All 6 ACs verified. 92 tests pass, PHPStan clean. WP-003 (integration tests for SessionComicsFilter) and WP-004 (manifest updates) are now unblocked."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-03-14T15:25:01Z",
+      "notes": [
+        "WP-002 REVIEW PASS. All 6 ACs met. No blocking issues. Docs agent may proceed on WP-004 (manifest updates) once unblocked — the only file modified is assets/classes/Comics/Filter/SessionComicsFilter.php. WP-003 (integration tests for SessionComicsFilter) is structurally independent and can also proceed."
+      ]
+    }
+  ]
+}

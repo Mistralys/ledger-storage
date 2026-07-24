@@ -1,0 +1,165 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-002.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "DapperTagsRepository.DeleteTagAsync deletes tags_bookmarks rows for the deleted tag (either via application-level step 1.5 or confirmed schema-level ON DELETE CASCADE).",
+      "met": true
+    },
+    {
+      "criterion": "constraints.md updated to document the resolution.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-18T20:28:54Z",
+      "completed_at": "2026-05-18T20:31:56Z",
+      "duration_ms": 182000,
+      "summary": [
+        "Confirmed tags_bookmarks.tag_id has ON DELETE CASCADE in the legacy DDL (spdb-indexer/SPDB Indexer/sql/structure.sql, tags_bookmarks_ibfk_2). Added explicit DELETE FROM tags_bookmarks WHERE tag_id = @TagId as step 1.5 inside DeleteTagAsync's transaction in DapperTagsRepository.cs, before step 2 (tags_movies deletion). This makes deletion order self-documenting and defensive against future FK changes.",
+        "Added new integration test DeleteTagAsync_Cascade_RemovesTagsBookmarksRows to DapperTagsRepositoryTests.cs: creates tag + movie + bookmark, connects them, deletes the tag, asserts tags_bookmarks row is removed.",
+        "Updated constraints.md Database section with a bullet documenting the ON DELETE CASCADE confirmation and the explicit step 1.5 pattern.",
+        "Both VideoIndexer.Infrastructure and VideoIndexer.Infrastructure.Tests built with 0 warnings, 0 errors."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Library/DapperTagsRepository.cs",
+          "tests/VideoIndexer.Infrastructure.Tests/Database/DapperTagsRepositoryTests.cs",
+          "docs/agents/project-manifest/constraints.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T20:31:56Z",
+          "note": "DapperTagsRepository.DeleteTagAsync: the step comments (Step 1, 2, 3, 4, 5) are useful for maintenance. Step 1.5 was added consistently with the existing comment style. No naming or structural issues in the touched code."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-05-18T20:47:35Z",
+      "completed_at": "2026-05-18T20:48:22Z",
+      "duration_ms": 47000,
+      "summary": [
+        "Reviewed 3 files (DapperTagsRepository.cs, DapperTagsRepositoryTests.cs, constraints.md). 0 Critical, 0 High, 0 Medium findings. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T20:48:22Z",
+          "note": "No security findings — all OWASP Top 10 categories reviewed; no Critical or High issues identified. A03 (Injection): Step 1.5 DELETE and all sibling DELETE/UPDATE statements in DeleteTagAsync use Dapper parameterized queries with a strongly-typed long tagId — no SQL injection surface. A01 (Access Control): repository access is correctly gated through TagsManager per architectural constraints. A09 (Logging): no audit logging at the repository layer — consistent with the existing pattern; this is informational only."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-18T20:50:07Z",
+      "completed_at": "2026-05-18T20:51:27Z",
+      "duration_ms": 80000,
+      "summary": [
+        "Reviewed 3 files: DapperTagsRepository.cs, DapperTagsRepositoryTests.cs, constraints.md. PASS — no blocking issues found.",
+        "Step 1.5 (DELETE FROM tags_bookmarks) is correctly placed before Step 2, uses the same ownedTx pattern as all sibling steps, and includes a clear comment explaining the defensive rationale alongside the existing ON DELETE CASCADE.",
+        "New integration test follows the SkippableFact + shared-connection rollback fixture pattern precisely. Pre-condition assertion is a best-practice addition. Post-condition query is scoped to tag_id only — correct and regression-proof.",
+        "constraints.md addition is accurate and actionable; documents both the schema-level cascade and the application-level step."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Library/DapperTagsRepository.cs",
+          "tests/VideoIndexer.Infrastructure.Tests/Database/DapperTagsRepositoryTests.cs",
+          "docs/agents/project-manifest/constraints.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T20:51:27Z",
+          "note": "No observations — code is clean and consistent."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-18T20:55:59Z",
+      "completed_at": "2026-05-18T20:57:48Z",
+      "duration_ms": 109000,
+      "summary": [
+        "Reviewed implementation artifacts for WP-002 (DapperTagsRepository.DeleteTagAsync step 1.5 — explicit tags_bookmarks deletion).",
+        "constraints.md was already updated by the implementation agent with the ON DELETE CASCADE confirmation and the step 1.5 pattern — no further changes needed there.",
+        "Found and fixed two stale entries in api-surface.md: (1) ITagsRepository.DeleteTagAsync comment now lists tags_bookmarks (step 1.5) in the cascade sequence alongside tags_movies, tags_grants, and child re-parent. (2) DapperTagsRepository class note corrected from the inaccurate 'No transaction wrapping' to accurately describe the ownedTx pattern (steps 1.5-5 transactional) and the updated 6-operation step sequence.",
+        "README.md contains no tag-deletion documentation — no update required."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T20:57:48Z",
+          "note": "api-surface.md line ~717: the DapperTagsRepository class note previously said 'No transaction wrapping on DeleteTagAsync cascade' which was already inaccurate before WP-002 (steps 2-5 were already wrapped in an ownedTx). WP-002 added step 1.5 inside the same transaction, making the stale comment more misleading. Corrected as part of this documentation pass."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T20:57:48Z",
+          "note": "No documentation-forward items were present in the code-review pipeline comments for WP-002 — reviewer noted 'No observations — code is clean and consistent.'"
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-18T20:57:48Z",
+  "last_updated": "2026-05-18T20:57:48Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-05-18T20:31:56Z",
+      "notes": [
+        "Step 1.5 DELETE FROM tags_bookmarks added inside DeleteTagAsync transaction. Schema confirmed to have ON DELETE CASCADE on tags_bookmarks.tag_id; the application-level step is defensive. New integration test DeleteTagAsync_Cascade_RemovesTagsBookmarksRows covers the cascade. Both builds are clean."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-18T20:48:22Z",
+      "notes": [
+        "No security issues found. Step 1.5 DELETE FROM tags_bookmarks uses a parameterized Dapper query; all SQL in DeleteTagAsync is injection-safe. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-18T20:51:27Z",
+      "notes": [
+        "All acceptance criteria met. Implementation and test are clean; constraints.md is accurately updated. No rework needed — ready for Documentation agent."
+      ]
+    }
+  ]
+}

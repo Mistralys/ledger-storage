@@ -1,0 +1,223 @@
+{
+  "work_package_id": "WP-011",
+  "work_package_file": "work/WP-012.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "GetAllWithDetailsAsync returns Movie objects with HasCoverImage = true for every row where the file AppPaths.CoverImagePath(hash) exists, and false otherwise.",
+      "met": true
+    },
+    {
+      "criterion": "The check uses only IAppPaths.CoverImagePath and System.IO.File.Exists — no raw string construction.",
+      "met": true
+    },
+    {
+      "criterion": "All existing MovieCatalogRepository unit tests continue to pass.",
+      "met": true
+    },
+    {
+      "criterion": "No integration test changes are required (File.Exists is abstracted behind a seam).",
+      "met": true
+    },
+    {
+      "criterion": "dotnet build -c Release reports zero warnings.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-22T19:22:45Z",
+      "completed_at": "2026-05-22T19:26:11Z",
+      "duration_ms": 206000,
+      "summary": [
+        "Added optional IAppPaths? appPaths = null constructor parameter to DapperMovieCatalogRepository with field storage.",
+        "GetMovieListAsync now performs a post-enrichment cover-image pass when _appPaths is non-null: uses File.Exists(_appPaths.CoverImagePath(item.Hash)) to set HasCoverImage on each MovieListItem.",
+        "Existing SQL literal 0 AS HasCoverImage retained as default when _appPaths is null — all existing unit tests continue to pass without modification.",
+        "Updated Program.cs DI registration to factory lambda that explicitly passes sp.GetRequiredService<IAppPaths>() as the third argument.",
+        "dotnet build -c Release: zero warnings, zero errors. test.ps1: 282 unit + 361 app tests all green."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Library/DapperMovieCatalogRepository.cs",
+          "src/VideoIndexer.App/Program.cs"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 643,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-22T19:26:11Z",
+          "note": "DapperMovieCatalogRepository.GetMovieListAsync: The cover-image enrichment is a sequential File.Exists loop over all rows. For large libraries this could be slow. A future improvement would be to parallelise the filesystem checks with Task.WhenAll or to cache the results per-hash for the lifetime of the query. Not addressed here as it is out of scope for WP-011."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-05-22T19:26:11Z",
+          "note": "DapperMovieCatalogRepository: A TODO comment at line ~251 references WP-J4 for ILogger injection. The logger is still absent, meaning any data inconsistency between the SQL aggregate count and the batch tag count is silently swallowed. This should be resolved when logging is wired up."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-22T20:03:52Z",
+      "completed_at": "2026-05-22T20:05:11Z",
+      "duration_ms": 79000,
+      "summary": [
+        "All five ACs verified. DapperMovieCatalogRepository.GetMovieListAsync now performs cover-image enrichment via File.Exists(IAppPaths.CoverImagePath(hash)) when IAppPaths is injected; falls back to SQL literal 0 when null. Zero build warnings, 643 tests passing."
+      ],
+      "metrics": {
+        "test_coverage": "282 unit + 361 app tests all green",
+        "tests_passed": 643,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-22T20:05:11Z",
+          "note": "No issues found. The optional IAppPaths? constructor parameter is a clean backwards-compatible seam. All four ACs pass by code inspection and test execution."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-22T20:05:11Z",
+          "note": "AC note: the WP AC calls the method 'GetAllWithDetailsAsync' but the actual interface method is GetMovieListAsync. This is a documentation-only discrepancy in the plan; the implementation correctly targets the right method."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-22T20:05:11Z",
+          "note": "Integration tests (DapperMovieCatalogRepositoryTests.CreateSut) construct the repo without appPaths, so _appPaths is null and the enrichment pass is skipped — no integration test changes are needed, AC4 confirmed."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-22T20:05:11Z",
+          "note": "Program.cs DI registration uses a factory lambda passing sp.GetRequiredService<IAppPaths>() explicitly, ensuring the live application always gets cover-image enrichment."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-22T20:08:54Z",
+      "completed_at": "2026-05-22T20:10:02Z",
+      "duration_ms": 68000,
+      "summary": [
+        "Reviewed DapperMovieCatalogRepository.cs and Program.cs for WP-011.",
+        "Optional IAppPaths? constructor parameter is correctly guarded (only required params throw ArgumentNullException; appPaths is stored as-is for null)",
+        "Step 6 enrichment: early return when _appPaths is null is clean; .Select(item => item with { HasCoverImage = File.Exists(...) }).ToList() is correct against a sealed record.",
+        "MovieListItem is a sealed record — with { } pattern works correctly and HasCoverImage = 0 from SQL maps to false before enrichment overwrites it.",
+        "Program.cs factory lambda correctly passes sp.GetRequiredService<IAppPaths>() as the third argument, ensuring live application always enriches cover-image state.",
+        "No Fix-Forward changes required. Build verified clean at 0 warnings."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Library/DapperMovieCatalogRepository.cs",
+          "src/VideoIndexer.App/Program.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-22T20:10:02Z",
+          "note": "No observations — code is clean and consistent. The optional IAppPaths? constructor parameter is idiomatic; the early-return null guard at step 6 is clean; the with { HasCoverImage = ... } projection on a sealed record is correct. DI wiring in Program.cs uses a factory lambda that explicitly resolves IAppPaths, which is the right pattern when the constructor parameter is optional."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-05-22T20:10:02Z",
+          "note": "[documentation-forward] Acceptance criterion 1 in the WP spec reads 'GetAllWithDetailsAsync returns Movie objects ...' but the actual repository method is GetMovieListAsync (on IMovieCatalogRepository). The implementation correctly targets the right method; the discrepancy is only in the plan document wording. The Documentation agent should correct the AC text in work/WP-012.md to reference GetMovieListAsync."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-23T07:23:40Z",
+      "completed_at": "2026-05-23T07:25:59Z",
+      "duration_ms": 139000,
+      "summary": [
+        "Updated project manifest documentation for WP-011 (DapperMovieCatalogRepository HasCoverImage enrichment).",
+        "api-surface.md: Constructor signature updated to include IAppPaths? appPaths = null; M9 cover-image enrichment behavior documented in method comment.",
+        "file-tree.md: DapperMovieCatalogRepository.cs annotation updated to mention IAppPaths? optional parameter and WP-011 cover-image enrichment pass.",
+        "data-flows.md: M9 cover-image enrichment step added to the library refresh sequence (File.Exists LINQ pass conditional on IAppPaths injection).",
+        "Documentation-forward (AC method name discrepancy) addressed: plan file already has correct ACs; note recorded that ledger AC-1 text references GetAllWithDetailsAsync but implementation correctly uses GetMovieListAsync."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "docs/agents/project-manifest/api-surface.md",
+          "docs/agents/project-manifest/file-tree.md",
+          "docs/agents/project-manifest/data-flows.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-23T07:25:59Z",
+          "note": "api-surface.md: Updated DapperMovieCatalogRepository constructor signature to include optional IAppPaths? appPaths = null parameter (updated milestone marker M7 → M9). Added M9 cover-image enrichment comment explaining the File.Exists post-query pass and the null-appPaths fallback."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-23T07:25:59Z",
+          "note": "file-tree.md: Updated DapperMovieCatalogRepository.cs annotation to reflect new optional IAppPaths? constructor parameter and the cover-image enrichment pass (WP-011)."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-23T07:25:59Z",
+          "note": "data-flows.md: Added M9 enrichment step to the library refresh flow documenting the HasCoverImage = File.Exists(IAppPaths.CoverImagePath(hash)) LINQ pass inside GetMovieListAsync."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-23T07:25:59Z",
+          "note": "[documentation-forward resolved] Reviewer noted 'GetAllWithDetailsAsync' in AC-1 text. The plan file work/WP-011.md already uses correct terminology (MovieListItem.HasCoverImage); the discrepancy existed only in the ledger's AC-1 text. The AC is marked met — implementation correctly targets GetMovieListAsync. Ledger AC text correction is a PM-level concern (update_acceptance_criteria is PM-only)."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-23T07:25:59Z",
+  "last_updated": "2026-05-23T07:25:59Z",
+  "handoff_notes": [
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-22T20:05:11Z",
+      "notes": [
+        "All five ACs met. GetMovieListAsync now enriches HasCoverImage via File.Exists + IAppPaths. Optional constructor parameter preserves backwards-compatibility with all tests. Build: 0 warnings/errors. Tests: 643 passing. Safe to proceed to Code Review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-22T20:10:02Z",
+      "notes": [
+        "Code review PASS with no changes applied. No Fix-Forward edits required.",
+        "The optional IAppPaths? constructor parameter + early-return null guard pattern is clean and correct.",
+        "Documentation-forward: AC1 wording in plan references GetAllWithDetailsAsync instead of GetMovieListAsync — flagged for the Documentation agent."
+      ]
+    }
+  ]
+}
