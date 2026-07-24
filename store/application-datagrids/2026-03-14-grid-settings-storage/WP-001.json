@@ -1,0 +1,340 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "GridStorageInterface exists with get() and set() method signatures",
+      "met": true
+    },
+    {
+      "criterion": "JsonFileStorage creates the storage directory on construction if missing",
+      "met": true
+    },
+    {
+      "criterion": "JsonFileStorage::set() writes a JSON file at {storagePath}/{gridID}.json",
+      "met": true
+    },
+    {
+      "criterion": "JsonFileStorage::get() reads back previously written values",
+      "met": true
+    },
+    {
+      "criterion": "JsonFileStorage::get() returns $default when no value exists",
+      "met": true
+    },
+    {
+      "criterion": "InMemoryStorage implements GridStorageInterface using an in-memory array",
+      "met": true
+    },
+    {
+      "criterion": "All files include declare(strict_types=1)",
+      "met": true
+    }
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-14T17:16:23Z",
+      "completed_at": "2026-03-14T17:19:17Z",
+      "summary": [
+        "Created GridStorageInterface at src/Grids/Storage/GridStorageInterface.php with get() and set() method signatures.",
+        "Created JsonFileStorage at src/Grids/Storage/Types/JsonFileStorage.php — creates storage dir on construction, writes {storagePath}/{gridID}.json per set(), caches decoded JSON in-memory per request.",
+        "Created InMemoryStorage test helper at tests/TestClasses/InMemoryStorage.php backed by an in-memory array.",
+        "Ran composer dump-autoload to register new src files; all 78 existing tests pass; PHPStan level 6 reports 0 errors."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/Grids/Storage/GridStorageInterface.php",
+          "src/Grids/Storage/Types/JsonFileStorage.php",
+          "tests/TestClasses/InMemoryStorage.php"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 78,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-14T17:19:17Z",
+          "note": "JsonFileStorage::readGridData() silently treats a corrupt JSON file (non-array decode result) the same as a missing file — returns an empty array and caches it. If a future maintenance concern arises, a log warning or exception could be added here to surface disk/encoding problems."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-14T17:19:17Z",
+          "note": "InMemoryStorage in tests/TestClasses/ will not be autoloaded until WP-008 adds tests to the Composer classmap or autoload-dev. Test WPs that use it must either rely on WP-008 running first or manually require the file."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-14T17:19:51Z",
+      "completed_at": "2026-03-14T17:25:28Z",
+      "summary": [
+        "All 7 acceptance criteria verified through code review and functional spot-check script.",
+        "78/78 existing tests pass — no regressions introduced.",
+        "PHPStan level 6 reports 0 errors across 46 files.",
+        "GridStorageInterface: correct get()/set() signatures, declare(strict_types=1), proper namespace.",
+        "JsonFileStorage: mkdir recursive on construction, correct file path pattern, LOCK_EX write, JSON_PRETTY_PRINT, per-instance request cache, graceful handling of missing file and false file_get_contents result.",
+        "InMemoryStorage: implements GridStorageInterface, correct namespace AppUtils\\Tests\\TestClasses, declare(strict_types=1), no file I/O.",
+        "No constructor property promotion used in any file (per project convention).",
+        "Identified 2 design-level edge cases — both spec-consistent, logged as low-priority observations."
+      ],
+      "metrics": {
+        "test_coverage": "existing suite only — no new storage-specific tests in this WP",
+        "tests_passed": 78,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-03-14T17:25:27Z",
+          "note": "Null-value storage: JsonFileStorage::get() uses the ?? operator (as specified in WP). Storing null via set() then calling get() with a $default will return $default, making null indistinguishable from 'key not set'. This is spec-consistent but callers should avoid storing null intentionally."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-03-14T17:25:27Z",
+          "note": "Non-serializable values: If a PHP resource or circular-reference object is passed to set(), json_encode() returns false, and file_put_contents writes an empty string, silently corrupting the .json file. The mixed type hint on the interface makes this theoretically possible. Callers should restrict stored values to JSON-serializable types."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-14T17:25:27Z",
+          "note": "InMemoryStorage is not yet registered under autoload-dev in composer.json (noted by developer; deferred to WP-008). Any tests requiring InMemoryStorage before WP-008 must manually require the file or add a temporary autoload-dev entry."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "FAIL",
+      "started_at": "2026-03-14T17:25:53Z",
+      "completed_at": "2026-03-14T17:27:55Z",
+      "summary": [
+        "One blocking security issue found in JsonFileStorage::getFilePath(): path traversal vulnerability. $gridID is concatenated into the filesystem path without sanitization, allowing callers to escape the storage directory via sequences like ../. All other dimensions (maintainability, best practices, structure) are excellent. Requires one-line fix before PASS can be issued."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "high",
+          "timestamp": "2026-03-14T17:27:55Z",
+          "note": "BLOCKING — Path traversal in JsonFileStorage::getFilePath(). The method returns: $this->storagePath . '/' . $gridID . '.json' — with no sanitization of $gridID. A caller passing $gridID='../../config' or any path containing ../ can cause set() to write a .json file outside the intended storage directory and get() to read from it. This is OWASP A01/A03 (path traversal / injection). Fix: either (a) use basename($gridID) as a minimum safeguard, or (b) validate $gridID against a safe character pattern before use, e.g. matching /^[a-zA-Z][a-zA-Z0-9\\-_]*$/i (consistent with the existing column-name convention in constraints.md). Recommended approach is (b) — throw a DataGridException with a meaningful error code if the ID is unsafe, so developers catch the problem immediately rather than silently writing to an unexpected path."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-14T17:27:55Z",
+          "note": "Non-blocking: json_encode() can return false for non-serializable values (resources, circular references). In that case file_put_contents() receives false which PHP casts to an empty string, silently corrupting the .json file. The in-memory cache is updated so the caller sees no error within the same request; the data is lost on the next request. Already noted by QA as a spec-consistent edge case. Suggested follow-up: add a guard — if (json_encode(...) === false) throw a DataGridException — to make the failure explicit."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-14T17:27:55Z",
+          "note": "Non-blocking: file_put_contents() return value is not checked in set(). If the write fails (permissions, disk full, readonly filesystem), the cache is updated but the disk is not. The caller has no way to know persistence failed. A simple check — if (file_put_contents(...) === false) throw DataGridException — would surface this class of error promptly."
+        }
+      ]
+    },
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-14T17:29:34Z",
+      "completed_at": "2026-03-14T17:31:25Z",
+      "summary": [
+        "Rework: addressed code-review FAIL — path traversal vulnerability in JsonFileStorage::getFilePath().",
+        "Added private validateGridID(string $gridID): void to JsonFileStorage — validates against /^[a-zA-Z][a-zA-Z0-9\\-_]*$/ and throws DataGridException(ERROR_INVALID_GRID_ID) on mismatch.",
+        "Added DataGridException::ERROR_INVALID_GRID_ID = 260300 constant following the YYMMNN convention.",
+        "Added 'use AppUtils\\Grids\\DataGridException' import to JsonFileStorage.",
+        "PHPStan level 6: 0 errors (46/46 files). Tests: 78/78 pass. 0 regressions."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/Grids/Storage/Types/JsonFileStorage.php",
+          "src/Grids/DataGridException.php"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 78,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-14T17:31:25Z",
+          "note": "No new observations — the rework was surgical (two files, one guard method). Previously logged low-priority notes (json_encode false-check in set(), file_put_contents return value) still apply as follow-up candidates but are outside this rework's scope."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-14T17:31:57Z",
+      "completed_at": "2026-03-14T17:34:07Z",
+      "summary": [
+        "Rework QA: all 7 acceptance criteria re-verified — all pass.",
+        "Path traversal fix confirmed: validateGridID() is called exclusively from getFilePath(), which is the single choke point for all path construction — both get() and set() are fully protected.",
+        "Regex /^[a-zA-Z][a-zA-Z0-9\\-_]*$/ correctly rejects path traversal sequences (../, /, null bytes, leading digits); valid IDs pass through.",
+        "DataGridException constructor call in validateGridID() is correct: (message, null, ERROR_INVALID_GRID_ID) matches BaseException signature (message, ?details, ?int code, ?Throwable previous).",
+        "ERROR_INVALID_GRID_ID = 260300 follows YYMMNN convention (2026-03, seq 00) per constraints.md.",
+        "78/78 tests pass — 0 regressions.",
+        "PHPStan level 6: 0 errors across 46 files.",
+        "Deferred non-blocking items (json_encode false-guard, file_put_contents return-value check) remain out of scope per Reviewer handoff — confirmed still absent and acceptable."
+      ],
+      "metrics": {
+        "test_coverage": "existing suite only — no new storage-specific tests in this WP",
+        "tests_passed": 78,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-14T17:34:07Z",
+          "note": "validateGridID() is called twice per set() call — once via readGridData()->getFilePath() and once directly for the file_put_contents() path. This is harmless redundancy and marginally simpler than caching the validation result, but worth noting for future maintainers."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-03-14T17:34:07Z",
+          "note": "Single-character gridID (e.g., 'a') is accepted by the regex [a-zA-Z][a-zA-Z0-9\\-_]* (the * allows zero trailing chars). This is correct per the pattern but may be surprising to callers who expect a minimum two-character ID. No AC requires a minimum length, so this is spec-consistent."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-14T17:34:07Z",
+          "note": "Deferred from code review: json_encode() false-guard and file_put_contents() return-value check in set() — intentionally out of scope for this rework per Reviewer and Developer handoff notes. These remain as low-priority follow-up candidates."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-14T17:34:36Z",
+      "completed_at": "2026-03-14T17:35:37Z",
+      "summary": [
+        "Rework review PASS. All four review dimensions clear — the path traversal blocking issue from the previous code-review cycle has been fully resolved.",
+        "Security: validateGridID() is hoisted into getFilePath(), the single choke point for all path construction, providing complete protection for both get() and set(). Regex /^[a-zA-Z][a-zA-Z0-9\\-_]*$/ is appropriately strict.",
+        "Maintainability: code is clean and readable throughout. Per-request in-memory cache is a sound performance optimization. readGridData() defensive branches (missing file, false read, non-array decode) are all logically correct.",
+        "Best practices: LOCK_EX on file_put_contents prevents concurrent write corruption. JSON_PRETTY_PRINT appropriate for a local/LAN tool. No constructor property promotion (convention respected).",
+        "DataGridException::ERROR_INVALID_GRID_ID = 260300 follows YYMMNN format correctly (2026-03, seq 00).",
+        "InMemoryStorage: correct namespace, declare(strict_types=1), consistent null-storage behaviour matches JsonFileStorage by design.",
+        "Three low-priority non-blocking items remain deferred and acceptable: (1) json_encode() false-return guard in set(); (2) file_put_contents() return value check in set(); (3) mkdir() return value check in constructor. All are future-WP candidates."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-14T17:35:37Z",
+          "note": "json_encode() can return false for non-JSON-serializable values (resources, circular references). In that case file_put_contents() receives false, which PHP casts to an empty string, silently corrupting the .json file. The in-memory cache masks the error within the same request. Suggested fix: add `if (($encoded = json_encode($data, JSON_PRETTY_PRINT)) === false) { throw new DataGridException('Cannot serialize grid data', null, DataGridException::ERROR_INVALID_GRID_ID); }` before the write."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-14T17:35:37Z",
+          "note": "file_put_contents() return value is not checked in set(). A disk-full or permissions failure silently returns false while the in-memory cache is updated, making the caller believe persistence succeeded. A simple `if (file_put_contents(...) === false) throw new DataGridException(...)` would surface this promptly."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-14T17:35:37Z",
+          "note": "mkdir() return value is not checked in the constructor. If directory creation fails silently, subsequent reads/writes will produce unexpected errors with no clear root cause. Adding a guard (check return or catch a potential error) would provide a cleaner diagnostic."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-14T17:36:14Z",
+      "completed_at": "2026-03-14T17:39:05Z",
+      "summary": [
+        "Updated api-surface.md: added ERROR_INVALID_GRID_ID = 260300 to DataGridException block; added new Storage section documenting GridStorageInterface and JsonFileStorage with path-traversal safety note.",
+        "Updated file-tree.md: added Storage/ directory under src/Grids/ with GridStorageInterface.php and Types/JsonFileStorage.php; added tests/TestClasses/ with InMemoryStorage.php and a note that it is not yet autoloaded.",
+        "Updated constraints.md: added rule 12 (Grid ID validation) to Coding Conventions; added DataGridException::ERROR_INVALID_GRID_ID runtime error entry; replaced 'no known technical debt' with InMemoryStorage autoload-dev deferred item."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "docs/agents/project-manifest/api-surface.md",
+          "docs/agents/project-manifest/file-tree.md",
+          "docs/agents/project-manifest/constraints.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-14T17:39:05Z",
+          "note": "data-flows.md does not require updates — Storage is an infrastructure subsystem with no new request/response lifecycle flow. No other manifest document was out of date for this WP."
+        }
+      ]
+    }
+  ],
+  "rework_counts": {
+    "implementation": 1,
+    "qa": 1,
+    "code-review": 1
+  },
+  "status_changed_at": "2026-03-14T17:39:05Z",
+  "handoff_notes": [
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-14T17:25:28Z",
+      "notes": [
+        "WP-001 implementation passes all 7 AC. Codebase is clean: 78 tests pass, PHPStan level 6 = 0 errors.",
+        "Two low-priority design edge cases noted: (1) null-value storage is indistinguishable from missing key due to ?? operator; (2) non-JSON-serializable values passed to set() silently corrupt the storage file. Both are spec-consistent for this WP but worth addressing in future API documentation or type-narrowing.",
+        "InMemoryStorage autoload registration is deferred to WP-008 as planned."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Developer",
+      "timestamp": "2026-03-14T17:27:55Z",
+      "notes": [
+        "CODE REVIEW FAILED — bounce to Developer for one blocking fix.",
+        "BLOCKING ISSUE: JsonFileStorage::getFilePath() concatenates $gridID into the filesystem path without sanitization — path traversal vulnerability. Fix: validate $gridID against /^[a-zA-Z][a-zA-Z0-9\\-_]*$/i (matching the column-name convention) and throw DataGridException if invalid; alternatively use basename($gridID) as a minimum guard.",
+        "Non-blocking (can be addressed in follow-up WPs): (1) add json_encode() === false guard in set(); (2) check file_put_contents() return value in set().",
+        "All 7 acceptance criteria are functionally met — the fix is surgical (one guard in getFilePath or a new private validateGridID() method)."
+      ]
+    },
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-03-14T17:31:25Z",
+      "notes": [
+        "Path traversal vulnerability in getFilePath() has been fixed. validateGridID() throws ERROR_INVALID_GRID_ID (260300) for any gridID that doesn't match /^[a-zA-Z][a-zA-Z0-9\\-_]*$/.",
+        "Reviewer non-blocking suggestions (json_encode false-guard, file_put_contents return-value check) were intentionally deferred per handoff notes — they remain as low-priority follow-up items."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-14T17:34:07Z",
+      "notes": [
+        "WP-001 rework PASS: path traversal vulnerability is fully resolved. All 7 ACs met. 78/78 tests pass, PHPStan level 6 = 0 errors.",
+        "Security fix is minimal and surgical — only two files changed (JsonFileStorage.php, DataGridException.php). No architectural changes.",
+        "Two low-priority deferred items remain (json_encode false-guard, file_put_contents return check in set()) — recommend addressing in a future WP if robustness is a priority.",
+        "InMemoryStorage autoload-dev registration still deferred to WP-008."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-03-14T17:35:37Z",
+      "notes": [
+        "WP-001 code-review PASS (rework cycle). All 7 ACs met. 78/78 tests pass. PHPStan level 6 = 0 errors. No blocking issues.",
+        "Path traversal fix confirmed as complete via getFilePath() single-choke-point pattern.",
+        "Three low-priority deferred items logged as non-blocking suggestions: json_encode false-guard, file_put_contents return check, mkdir return check. All candidates for a future robustness WP.",
+        "InMemoryStorage not yet registered under autoload-dev — deferred to WP-008 as planned."
+      ]
+    }
+  ]
+}
