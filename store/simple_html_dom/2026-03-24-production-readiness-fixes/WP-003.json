@@ -1,0 +1,210 @@
+{
+  "work_package_id": "WP-003",
+  "work_package_file": "work/WP-A.md",
+  "status": "COMPLETE",
+  "assigned_to": "Reviewer",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "The `*=` CSS selector correctly handles values containing regex metacharacters (e.g., `(`, `[`, `+`, `.`) without throwing errors or producing incorrect matches",
+      "met": true
+    },
+    {
+      "criterion": "`preg_quote()` is used in `SelectorParser.php` for the non-regex branch of the `*=` operator",
+      "met": true
+    },
+    {
+      "criterion": "A new test case in `tests/Selectors/SelectorTest.php` exercises a selector with regex metacharacters in the attribute value",
+      "met": true
+    },
+    {
+      "criterion": "`file_get_html()` in `src/simple_html_dom.php` stops following redirects after at most 5 hops",
+      "met": true
+    },
+    {
+      "criterion": "All existing selector tests continue to pass after the regex fix",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-24T11:02:19Z",
+      "completed_at": "2026-03-24T11:04:54Z",
+      "duration_ms": 155000,
+      "summary": [
+        "Fixed two security issues: (1) Applied preg_quote() to the non-regex branch of the *= operator in SelectorParser.php::match(), so user-supplied attribute values with regex metacharacters like (, [, +, . are treated as plain substrings instead of raw regex patterns. (2) Added a $redirectHops counter to file_get_html() in simple_html_dom.php that caps redirect following at 5 hops, preventing SSRF amplification via infinite redirect chains. Added testContainsSelectorWithRegexMetacharacters() to SelectorTest.php covering (, [, +, and . metacharacters, and updated the pre-existing testRegexAttrSelector() assertion that relied on the broken implicit-regex behaviour to reflect the correct plain-substring semantics. All 275 tests pass (56 selector tests, 275 total)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/SimpleHtmlDom/SelectorParser.php",
+          "src/simple_html_dom.php",
+          "tests/Selectors/SelectorTest.php"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 275,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-03-24T11:04:54Z",
+          "note": "The pre-existing testRegexAttrSelector() test at line 692 had an assertion `assertCount(1, $this->dom->find('div[id*=news-id-[0-9]+]'))` that documented the buggy implicit-regex behaviour of the non-regex *= branch. This was updated to assertCount(0, ...) to reflect the correct fixed behaviour. The explicit-regex form `div[id*=/news-id-[0-9]+/i]` on the next line continues to work as expected."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-24T11:04:54Z",
+          "note": "The redirect hop limit in file_get_html() uses a simple pre-increment counter (`++$redirectHops < 5`), allowing hops 1-4 (up to 4 actual redirects after the initial request, 5 total fetches). This matches common HTTP client conventions and is trivially adjustable."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-24T11:10:54Z",
+      "completed_at": "2026-03-24T11:11:31Z",
+      "duration_ms": 37000,
+      "summary": [
+        "Full test suite executed via `php vendor/bin/phpunit` (PHPUnit 12.5.14, PHP 8.5.4). All 275 tests pass with 1183 assertions in 0.069s, 18 MB memory. Zero failures or errors. Specifically verified: (1) The new `testContainsSelectorWithRegexMetacharacters()` test passes, confirming the `preg_quote()` fix in SelectorParser.php correctly handles `(`, `[`, `+`, and `.` metacharacters in the `*=` operator without throwing errors or producing false matches. (2) All 56 selector tests pass. (3) The updated `testRegexAttrSelector()` assertion (now `assertCount(0, ...)` for the non-regex metachar case) passes as expected. (4) No regressions introduced by the `file_get_html()` redirect-hop limit change."
+      ],
+      "metrics": {
+        "test_coverage": "275/275 (100% pass rate)",
+        "tests_passed": 275,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-03-24T11:11:31Z",
+          "note": "No integration/network test exists for the file_get_html() redirect-hop cap (acceptance criterion met by code review of the implementation, not by an automated test). This is expected — a live network test would be fragile — but it is worth noting for audit purposes."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-24T11:11:31Z",
+          "note": "No observations — code is clean and consistent. The preg_quote() fix is minimal and surgical; the redirect counter follows standard PHP patterns."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-03-24T11:12:31Z",
+      "completed_at": "2026-03-24T11:13:21Z",
+      "duration_ms": 50000,
+      "summary": [
+        "FINDING 1 — PASS: SelectorParser.php `*=` regex fix is correct and complete.",
+        "The non-regex branch of `match()` now wraps the user-supplied pattern in `preg_quote($pattern, '/')` before embedding it in a `preg_match()` call: `(bool) preg_match(\"/\" . preg_quote($pattern, '/') . \"/i\", $value)`. All PHP regex metacharacters (., +, *, ?, [, ], (, ), {, }, ^, $, |, \\) are safely escaped. The delimiter `/` is explicitly passed as the second argument to `preg_quote()`, which is the critical detail — without it, any pattern containing a literal `/` could break the surrounding delimiters and create an injection vector.",
+        "FINDING 2 — PASS: The regex-passthrough branch (explicit-regex form) is preserved and isolated.",
+        "The guard `$pattern[0] === '/'` correctly distinguishes user-supplied regex literals (e.g. `/news-id-[0-9]+/i`) from plain-text patterns. When the branch fires, `preg_match($pattern, $value)` is called directly. This is intentional by design: the feature exists so callers CAN pass arbitrary regex. The risk is inherent and documented by the existing `testRegexAttrSelector()` test. No new exposure was introduced by the fix; the branch is unchanged.",
+        "FINDING 3 — PASS: Redirect hop limit in `file_get_html()` correctly caps at 4 actual redirects (5 total fetches).",
+        "Logic: `$redirectHops` starts at 0. On the first redirect response, `++$redirectHops` yields 1, which is `< 5` → `$repeat = true`. After the 4th redirect, `++$redirectHops` yields 5, which is NOT `< 5` → `$repeat = false`. The loop exits. The URL variable is still updated before the guard check, but `$repeat` is left `false`, so the loop body does not execute again — there is no bypass. The post-loop 200-status check then catches the last non-200 response and returns `false` cleanly.",
+        "FINDING 4 — PASS: No new attack surface introduced.",
+        "The preg_quote() addition is one line and scoped to a single match arm. The redirect counter is three lines and introduces no new I/O or state beyond a local integer. No user-supplied data reaches `eval()`, `system()`, `exec()`, `include()`, `require()`, `unserialize()`, or any other high-risk sink. No new file-inclusion paths were opened."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/SimpleHtmlDom/SelectorParser.php",
+          "src/simple_html_dom.php"
+        ]
+      },
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-24T11:13:21Z",
+          "note": "SelectorParser.php match() — preg_quote() delimiter argument: the explicit second argument '/' passed to preg_quote() is the correct and essential form. Omitting it would leave a literal '/' unescaped inside a '/'-delimited pattern and could allow a crafted attribute value to inject regex flags or break the pattern. The implementation is correct."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-24T11:13:21Z",
+          "note": "SelectorParser.php match() — other operators (^=, $=): lines 204–205 already used preg_quote() with the '/' delimiter before this fix. Consistency is maintained across all regex-using operators — no operator was missed."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-03-24T11:13:21Z",
+          "note": "file_get_html() — redirect-target URL is caller-controlled: when a redirect Location header is received, the raw header value is used as the new URL with no allowlist or scheme check. A server could return 'Location: file:///etc/passwd' or 'Location: gopher://...' and the next fetch would honour it. This is a pre-existing concern not introduced by this fix and is out of scope for WP-003, but should be tracked as a future hardening item (consider restricting redirects to http/https schemes only)."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-24T11:13:21Z",
+          "note": "file_get_html() — preg_grep pattern contains an unanchored '.*' on the Location value group: the pattern '/^Location:\\s*(.*)$/i' is correct for extracting the URL. No injection concern here; the pattern is a fixed literal, not influenced by user input."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-24T11:13:21Z",
+          "note": "No new security issues were introduced by either fix. Both changes are minimal, surgical, and correctly scoped. Audit verdict: PASS."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-24T11:15:07Z",
+      "completed_at": "2026-03-24T11:16:33Z",
+      "duration_ms": 86000,
+      "summary": [
+        "Code review PASS for WP-003 (Security Fixes). Three files verified: (1) SelectorParser.php — `match()` method uses a clean `match` expression. The `*=` arm correctly dispatches on `$pattern[0] === '/'` to separate the regex passthrough path from the plain-substring path. The non-regex path uses `preg_match('/' . preg_quote($pattern, '/') . '/i', $value)` — the `preg_quote()` call includes the explicit delimiter argument `'/'`, which is the essential detail ensuring a literal `/` in a pattern value cannot break the surrounding delimiters or inject regex flags. All other operators (`^=`, `$=`) were already using `preg_quote()` with the same delimiter, so consistency is maintained across the entire method. (2) simple_html_dom.php — `file_get_html()` initialises `$redirectHops = 0` before the do-while loop. Inside the redirect branch, `++$redirectHops < 5` increments first then compares, allowing hops 1-4 (`$repeat = true`) and stopping at hop 5 (`$repeat = false`). This correctly caps total redirect chain at 4 actual redirects (5 total fetches). The post-loop 200-status check correctly catches the terminal non-200 response. No bypass path exists. (3) SelectorTest.php — `testContainsSelectorWithRegexMetacharacters()` (line 630) tests all four critical metacharacters: `(`, `[`, `+`, `.` using realistic data-value attributes, asserts exactly one match per selector, and includes a critical false-positive check (versionX1 must not match version.1) confirming dot is not treated as a regex wildcard. `testRegexAttrSelector()` updated assertion `assertCount(0, ...)` for the non-regex metachar case is correct and well-commented. All review criteria satisfied."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-24T11:16:33Z",
+          "note": "SelectorParser::match(): The use of a PHP 8 `match` expression (rather than a switch) makes fall-through impossible and keeps each operator's logic self-contained — this is idiomatic and readable. The `*=` dispatch on `$pattern[0] === '/'` is clean; no off-by-one risk since `$pattern` is typed as `mixed` but used as a string in the selector pipeline."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-24T11:16:33Z",
+          "note": "SelectorTest.php testContainsSelectorWithRegexMetacharacters(): The false-positive check (`versionX1` must not match `version.1`) is a valuable sanity assertion that specifically proves dot is not acting as a regex wildcard. This elevates the test beyond just confirming no error is thrown."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-03-24T11:16:33Z",
+          "note": "file_get_html() redirect Location URL: As flagged by the Security Auditor, redirect targets are followed without scheme restriction (file://, gopher:// etc. would be honoured). This is pre-existing and out of scope for WP-003, but should be tracked as a future hardening item. Recommend an explicit http/https scheme check before following any redirect URL."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-03-24T11:16:33Z",
+  "last_updated": "2026-03-24T11:16:33Z",
+  "handoff_notes": [
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-03-24T11:11:31Z",
+      "notes": [
+        "All 275 tests pass (1183 assertions). WP-003 security fixes are QA-verified. Ready for Security Audit pipeline."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-24T11:13:21Z",
+      "notes": [
+        "Security audit PASS. Both fixes verified: (1) preg_quote($pattern, '/') correctly neutralises all PHP regex metacharacters in the *= non-regex branch of SelectorParser::match(); the regex-passthrough branch is intact. (2) The redirect loop caps at 4 actual redirects (++$redirectHops < 5) with no bypass path; post-loop 200-check handles the terminal non-200 case cleanly. One pre-existing concern flagged for future work: redirect Location URLs are not scheme-restricted (file://, gopher:// etc. could be followed). This is out of scope for WP-003. Ready for code-review pipeline."
+      ]
+    }
+  ]
+}
