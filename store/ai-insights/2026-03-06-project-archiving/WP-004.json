@@ -1,0 +1,201 @@
+{
+  "work_package_id": "WP-004",
+  "work_package_file": "work/WP-004.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "ledger_list_projects excludes ARCHIVED projects by default",
+      "met": true
+    },
+    {
+      "criterion": "ledger_list_projects with include_archived: true includes ARCHIVED projects",
+      "met": true
+    },
+    {
+      "criterion": "detectProjectByCwd does not match archived projects",
+      "met": true
+    },
+    {
+      "criterion": "ledger_get_project_status with explicit project_path still works for archived projects",
+      "met": true
+    },
+    {
+      "criterion": "Help content for ledger_list_projects documents include_archived parameter",
+      "met": true
+    },
+    {
+      "criterion": "All unit tests pass",
+      "met": true
+    }
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-06T17:58:51Z",
+      "completed_at": "2026-03-06T18:02:06Z",
+      "summary": [
+        "Added include_archived: z.boolean().optional().default(false) to ListProjectsSchema in project-lifecycle.ts.",
+        "Updated listProjects() to filter out ARCHIVED by default unless include_archived: true or an explicit status: 'ARCHIVED' filter is set.",
+        "Exposed listProjects via _internal for testability, accepting optional _ledgerRoot override parameter (consistent with completeSynthesis and initializeProject patterns).",
+        "Updated tool registration description to mention ARCHIVED and include_archived.",
+        "Updated detectProjectByCwd in ledger-store.ts to skip matches where meta.status === 'ARCHIVED'.",
+        "Updated ledger_list_projects help content in help-content.ts to document include_archived parameter and ARCHIVED status.",
+        "Created tests/tools/list-projects.test.ts with 6 tests covering all include_archived scenarios.",
+        "Added 2 ARCHIVED-skip tests to tests/storage/ledger-store.test.ts detectProjectByCwd suite.",
+        "All 38 test files, 1153 tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/tools/project-lifecycle.ts",
+          "mcp-server/src/storage/ledger-store.ts",
+          "mcp-server/src/tools/help-content.ts",
+          "mcp-server/tests/tools/list-projects.test.ts",
+          "mcp-server/tests/storage/ledger-store.test.ts"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 1153,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-06T18:02:06Z",
+          "note": "listProjects in project-lifecycle.ts was not exported via _internal for testability. It is now added so unit tests can pass a custom _ledgerRoot. This pattern is already established by completeSynthesis and initializeProject."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-03-06T18:02:06Z",
+          "note": "The status filter in ListProjectsSchema still uses WorkPackageStatus (which now includes ARCHIVED through the ProjectStatus change), but the comment left by the original developer flagged this as a known tech-debt item. The new include_archived parameter is a cleaner additive addition that avoids exacerbating the debt."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-06T18:14:19Z",
+      "completed_at": "2026-03-06T18:15:01Z",
+      "summary": [
+        "All 6 acceptance criteria verified against source code and test suite.",
+        "AC-1: project-lifecycle.ts:543-545 — when !args.include_archived and no explicit status filter, filtered.filter((p) => p.status !== 'ARCHIVED') is applied. ARCHIVED projects are excluded by default.",
+        "AC-2: When include_archived: true the `else if (!args.include_archived)` branch is skipped, so ARCHIVED projects remain in results. Also: when status: 'ARCHIVED' is explicitly set, the first branch applies status filter directly (takes precedence) — correct per AC.",
+        "AC-3: ledger-store.ts:529-530 — `if (meta.status === 'ARCHIVED') continue;` in detectProjectByCwd. Comment reads: 'Skip archived projects — agents should not accidentally work on them'.",
+        "AC-4: ledger_get_project_status reads root index by explicit project_path via LedgerStore, not through detectProjectByCwd. No change needed; archived projects remain accessible when addressed directly.",
+        "AC-5: help-content.ts:628-653 — ledger_list_projects help entry updated with a callout Note block, include_archived param documented with type and default, two examples ({include_archived: true} and {status: 'ARCHIVED'}).",
+        "AC-6: 39 test files, 1167 tests — all pass. 6 new tests in list-projects.test.ts, 2 ARCHIVED-skip tests added to ledger-store.test.ts detectProjectByCwd suite."
+      ],
+      "metrics": {
+        "test_coverage": "39 test files",
+        "tests_passed": 1167,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-03-06T18:15:01Z",
+          "note": "Filter precedence is correctly implemented: explicit status filter takes precedence over include_archived. So status: 'ARCHIVED' alone returns only archived projects, overriding the default suppress. This edge case is documented in help-content and the tool description."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-03-06T18:15:01Z",
+          "note": "AC-4 (ledger_get_project_status works with explicit project_path for archived projects) is ensured by the fact that getProjectStatus reads by path directly — no changes were needed to that tool. The AC is implicitly covered by existing getProjectStatus tests and the detectProjectByCwd skip only applies to auto-detection. No dedicated test was added for this implicit guarantee. Low risk, but worth noting."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-06T18:18:43Z",
+      "completed_at": "2026-03-06T18:20:07Z",
+      "summary": [
+        "Code review PASS. WP-004 implementation is architecturally sound, well-tested, and correctly scoped.",
+        "ListProjectsSchema gets include_archived: z.boolean().optional().default(false) with a .describe(). Correct Zod pattern; the default(false) makes the parameter optional at the call site without needing explicit handling.",
+        "Filter precedence is correct: explicit status filter takes precedence (first branch), ARCHIVED exclusion is else-if (only applies when no explicit status filter is set). The comment on line 544 documents this clearly.",
+        "detectProjectByCwd skip at ledger-store.ts:529-530 is minimal and readable — a single `if (meta.status === 'ARCHIVED') continue;` with a clear comment. No behavioral side effects on any other method.",
+        "Tool description updated to mention ARCHIVED and include_archived; help content updated with example and callout note. Both are clear and accurate.",
+        "6 new tests in list-projects.test.ts + 2 ARCHIVED-skip tests in ledger-store.test.ts. All scenarios covered: default exclusion, include_archived: true, status: 'ARCHIVED' explicit filter, and detectProjectByCwd skip."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-06T18:20:07Z",
+          "note": "Filter logic correctly orders precedence: explicit `status:` filter branch runs first, `else if (!include_archived)` ARCHIVED exclusion runs only when no explicit status filter is set. The comment on line 544 documents this intent clearly. No issues."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-03-06T18:20:07Z",
+          "note": "detectProjectByCwd skip at ledger-store.ts:529-530 uses a readable `continue` with an inline comment — clear and idiomatic. The comment 'agents should not accidentally work on them' makes the intent unambiguous for future maintainers."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-06T18:20:07Z",
+          "note": "AC-4 (ledger_get_project_status works with explicit project_path for ARCHIVED) is guaranteed by architecture (getProjectStatus constructs LedgerStore directly without detectProjectByCwd). The implicit coverage is sound. A dedicated smoke test would make this guarantee explicit but is low priority given the clear architectural separation."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-06T18:23:31Z",
+      "completed_at": "2026-03-06T18:24:14Z",
+      "summary": [
+        "Updated mcp-server/docs/agents/project-manifest/api-surface.md for WP-004 MCP tool isolation changes.",
+        "1. ledger_list_projects tool signature: added include_archived?: boolean (default: false) parameter. Added description of ARCHIVED exclusion default behavior, explicit status filter precedence, and how to include archived projects.",
+        "2. detectProjectByCwd: added a note block after the DetectProjectResult union clarifying that ARCHIVED projects are silently skipped during the cwd scan, and that explicit project_path access remains unaffected."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-06T18:24:14Z",
+          "note": "AC-4 (explicit project_path works on archived projects) is guaranteed by architecture — documented in the detectProjectByCwd note added to api-surface.md. No dedicated test was added by the Developer; the architectural separation makes it implicitly safe."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-03-06T18:24:19Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-03-06T18:02:06Z",
+      "notes": [
+        "MCP tool isolation complete. list_projects excludes ARCHIVED by default; detectProjectByCwd skips ARCHIVED projects. WP-006 can now proceed with meta enrichment."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-06T18:15:01Z",
+      "notes": [
+        "WP-004 list-projects filtering and detectProjectByCwd ARCHIVED isolation fully verified. All AC met, 1167 tests pass. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-03-06T18:20:07Z",
+      "notes": [
+        "WP-004 code review PASS. Filter logic, detectProjectByCwd skip, and help updates are correct. WP-005 can proceed."
+      ]
+    }
+  ]
+}

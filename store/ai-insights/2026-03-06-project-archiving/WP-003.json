@@ -1,0 +1,182 @@
+{
+  "work_package_id": "WP-003",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001",
+    "WP-002"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "runAutoArchive archives COMPLETE projects with last_updated older than maxAgeDays",
+      "met": true
+    },
+    {
+      "criterion": "runAutoArchive with maxAgeDays=0 is a no-op returning empty array",
+      "met": true
+    },
+    {
+      "criterion": "Only COMPLETE projects are candidates — other statuses never auto-archived",
+      "met": true
+    },
+    {
+      "criterion": "Auto-archive runs once on GUI server startup and every 10 minutes thereafter",
+      "met": true
+    },
+    {
+      "criterion": "Each archive operation updates both .meta.json and project-ledger.json under lock",
+      "met": true
+    },
+    {
+      "criterion": "Failures on individual projects do not crash the scan",
+      "met": true
+    },
+    {
+      "criterion": "All activity logged to stderr",
+      "met": true
+    },
+    {
+      "criterion": "Unit tests pass for all described scenarios",
+      "met": true
+    }
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-06T18:26:38Z",
+      "completed_at": "2026-03-06T18:31:00Z",
+      "summary": [
+        "Created src/gui/auto-archive.ts with runAutoArchive, startAutoArchiveTimer, stopAutoArchiveTimer, and _resetTimerForTesting exports",
+        "runAutoArchive scans listAllProjects, filters COMPLETE projects with last_updated older than maxAgeDays, archives eligible projects under withLock, error-isolates per-project, logs to stderr",
+        "startAutoArchiveTimer reads auto_archive_days from getConfig() on each tick to respect runtime config changes; calls runAutoArchive immediately then every intervalMs (default 600 000 ms)",
+        "Integrated into gui/server.ts: startAutoArchiveTimer(ledgerRoot) called in main() after config initialization",
+        "14 tests in tests/gui/auto-archive.test.ts covering all ACs: old COMPLETE archived, fresh COMPLETE skipped, non-COMPLETE statuses skipped, maxAgeDays=0 no-op, empty ledger, error isolation, multi-project scan, timer idempotency, safe stop",
+        "All 1181/1181 tests pass; TypeScript compiles clean"
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/gui/auto-archive.ts",
+          "gui/server.ts",
+          "tests/gui/auto-archive.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-06T18:31:00Z",
+          "note": "The startAutoArchiveTimer reads getConfig() on each tick (via the tick closure). This is good for respecting runtime config changes — no extra watcher needed."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-06T18:31:00Z",
+          "note": "The _resetTimerForTesting export bypasses interval cleanup. Callers must call stopAutoArchiveTimer() first in test teardown to avoid leaking active intervals. This is documented but could be made safer with an explicit guard in _resetTimerForTesting."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-06T18:57:16Z",
+      "completed_at": "2026-03-06T19:00:30Z",
+      "summary": [
+        "All 8 ACs verified. runAutoArchive correctly filters COMPLETE projects older than the threshold, skips non-COMPLETE statuses, returns empty on maxAgeDays=0, isolates per-project failures, and logs all output to stderr.",
+        "startAutoArchiveTimer reads config on each tick (live config changes respected), runs immediately on startup then every 10 min. Idempotency guard (no-op if already running) is correct.",
+        "Integration in gui/server.ts main() is correct — timer starts after config initialisation.",
+        "_resetTimerForTesting usage is consistent with test patterns; teardown in afterEach correctly calls stopAutoArchiveTimer() before _resetTimerForTesting().",
+        "14 new tests in tests/gui/auto-archive.test.ts cover all ACs. All 1200/1200 tests pass."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-06T19:00:30Z",
+          "note": "src/gui/auto-archive.ts: _resetTimerForTesting does not guard against calling it while a timer is active. The JSDoc documents the precondition correctly. A silent guard (auto-clear interval before reset) would make tests safer without impacting production, but current usage in tests correctly calls stopAutoArchiveTimer() first."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-06T19:00:30Z",
+          "note": "No code smell. Implementation is clean and consistent with the rest of the codebase."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-06T19:03:03Z",
+      "completed_at": "2026-03-06T19:03:55Z",
+      "summary": [
+        "Code review PASS for src/gui/auto-archive.ts, gui/server.ts integration, and tests/gui/auto-archive.test.ts.",
+        "Architecture is clean: runAutoArchive is a pure async function; timer state is minimal (single module-level _intervalHandle); start/stop lifecycle is clear and idempotent. No circular dependencies.",
+        "STDIO discipline is correct — all output uses process.stderr.write, no stdout contamination.",
+        "Eligibility logic is sound: COMPLETE-only filter, exact millisecond threshold comparison, maxAgeDays=0 short-circuits before any I/O.",
+        "Per-project error isolation via try/catch prevents one failing archive from aborting the scan. Logs the error and continues.",
+        "Integration in gui/server.ts is correct: startAutoArchiveTimer called after readConfigFromDisk and startConfigWatcher, ensuring config is populated before the first tick.",
+        "The tick closure reads getConfig() on each invocation, so runtime config changes (auto_archive_days modified in gui-config.json) take effect on the next interval without restarting the server.",
+        "14 tests are comprehensive and use real temp directories. All status variants covered (IN_PROGRESS, READY, BLOCKED, ARCHIVED skip; COMPLETE eligible). Error isolation test uses corrupted JSON to simulate a per-project failure. Timer tests verify idempotency and safe double-stop.",
+        "One cosmetic note: the log message 'inactive for N days' uses Math.floor, while the threshold comparison is in exact milliseconds. A project just crossing the threshold could log '5 days' while maxAgeDays=6 — not a bug but slightly confusing. Low priority.",
+        "_resetTimerForTesting correctly documented as requiring stopAutoArchiveTimer() first; all test teardown correctly follows this pattern.",
+        "All 8 ACs are met."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-06T19:03:55Z",
+          "note": "src/gui/auto-archive.ts runAutoArchive: the 'inactive for N days' log line uses Math.floor(ageMs / dayMs) while the threshold check uses the raw millisecond comparison. A project that just crossed the threshold by <1 day of milliseconds will log as one fewer day than maxAgeDays. Cosmetic only — correctness is unaffected. Consider using Math.ceil for the logged value or documenting the rounding choice."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-06T19:03:55Z",
+          "note": "src/gui/auto-archive.ts _resetTimerForTesting: JSDoc precondition is the only guard. A silent auto-clear (if (_intervalHandle) { clearInterval(_intervalHandle); _intervalHandle = null; }) would make the test helper more resilient against accidental misuse out of teardown order. Existing tests are correct and sequenced properly — this is purely defensive."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-06T19:06:56Z",
+      "completed_at": "2026-03-06T19:11:23Z",
+      "summary": [
+        "Updated mcp-server/docs/agents/project-manifest/api-surface.md: added '## Auto-Archive Module' section documenting src/gui/auto-archive.ts exports (runAutoArchive, startAutoArchiveTimer, stopAutoArchiveTimer, _resetTimerForTesting), eligibility logic, and live-config tick pattern; updated GUI HTTP Server startup sequence to include startAutoArchiveTimer(ledgerRoot).",
+        "Updated mcp-server/docs/agents/project-manifest/file-tree.md: added auto-archive.ts under src/gui/ and auto-archive.test.ts under tests/gui/ with inline annotations.",
+        "Updated mcp-server/docs/agents/project-manifest/data-flows.md: added Flow 12 (Auto-Archive Background Service) covering timer initialization (Flow 12a) and the per-tick scan path (Flow 12b) with all key properties documented."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/file-tree.md",
+          "mcp-server/docs/agents/project-manifest/data-flows.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-06T19:11:23Z",
+          "note": "api-surface.md: documented the _resetTimerForTesting precondition (stopAutoArchiveTimer() must be called first) in the JSDoc note, matching the existing inline JSDoc in the source file."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-03-06T19:11:28Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-03-06T18:31:00Z",
+      "notes": [
+        "New file: src/gui/auto-archive.ts — exports runAutoArchive, startAutoArchiveTimer, stopAutoArchiveTimer, _resetTimerForTesting",
+        "Integration: gui/server.ts main() now calls startAutoArchiveTimer(ledgerRoot) after config initialization",
+        "Key behavior: maxAgeDays=0 disables archiving; only COMPLETE projects are candidates; per-project failures are isolated; all log output goes to stderr",
+        "14 new tests in tests/gui/auto-archive.test.ts. All 1181 tests pass."
+      ]
+    }
+  ]
+}

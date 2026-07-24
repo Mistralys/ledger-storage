@@ -1,0 +1,219 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-002.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "POST /api/projects/:slug/archive transitions COMPLETE to ARCHIVED in both .meta.json and project-ledger.json",
+      "met": true
+    },
+    {
+      "criterion": "POST /api/projects/:slug/archive returns 400 for non-COMPLETE projects",
+      "met": true
+    },
+    {
+      "criterion": "POST /api/projects/:slug/unarchive transitions ARCHIVED back to COMPLETE",
+      "met": true
+    },
+    {
+      "criterion": "POST /api/projects/:slug/unarchive returns 400 for non-ARCHIVED projects",
+      "met": true
+    },
+    {
+      "criterion": "handleDeleteProject accepts ARCHIVED projects",
+      "met": true
+    },
+    {
+      "criterion": "Both archive and unarchive update last_updated",
+      "met": true
+    },
+    {
+      "criterion": "All operations performed under project lock with atomic writes",
+      "met": true
+    },
+    {
+      "criterion": "Unit tests for all happy paths and error cases pass",
+      "met": true
+    }
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-06T17:55:04Z",
+      "completed_at": "2026-03-06T17:58:40Z",
+      "summary": [
+        "Added withLock import from ../src/storage/file-lock.js to gui/api.ts.",
+        "Implemented handleArchiveProject: validates COMPLETE status, acquires project lock, updates root index status to ARCHIVED (which auto-syncs .meta.json), returns {archived: true, slug}.",
+        "Implemented handleUnarchiveProject: validates ARCHIVED status, acquires project lock, updates root index status to COMPLETE (which auto-syncs .meta.json), returns {unarchived: true, slug}.",
+        "Updated handleDeleteProject guard from `!== 'COMPLETE'` to `!['COMPLETE', 'ARCHIVED'].includes(...)` so archived projects can be deleted.",
+        "Added POST /api/projects/:slug/archive and POST /api/projects/:slug/unarchive routes to matchRoute() in server.ts.",
+        "Added 10 new tests in tests/gui/api.test.ts: 5 for handleArchiveProject, 4 for handleUnarchiveProject, 1 for delete-archived.",
+        "All 37 test files, 1145 tests pass — zero regressions."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/api.ts",
+          "mcp-server/gui/server.ts",
+          "mcp-server/tests/gui/api.test.ts"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 1145,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-06T17:58:40Z",
+          "note": "handleArchiveProject and handleUnarchiveProject use withLock(store.storageDir, ...) + store.writeRootIndex() inside the lock. writeRootIndex auto-syncs .meta.json, which means both files are updated atomically within one lock scope — consistent with the existing updateWorkPackageWithSync pattern."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-03-06T17:58:40Z",
+          "note": "The POST /api/projects/:slug/archive and /unarchive routes are added to matchRoute() rather than the special POST block, since they require no body parsing. This is consistent with other body-less routes (DELETE)."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-06T18:12:28Z",
+      "completed_at": "2026-03-06T18:14:05Z",
+      "summary": [
+        "All 8 acceptance criteria verified against source code and test suite.",
+        "AC-1: handleArchiveProject writes ARCHIVED to root index via writeRootIndex, which auto-syncs .meta.json inside withLock scope — both files updated atomically. Test verifies both.",
+        "AC-2: Status guard `meta!.status !== 'COMPLETE'` → validationError (VALIDATION_ERROR → HTTP 400). Tests cover IN_PROGRESS and already-ARCHIVED cases.",
+        "AC-3: handleUnarchiveProject writes COMPLETE to root index via writeRootIndex auto-sync inside withLock. Test verifies both files.",
+        "AC-4: Status guard `meta!.status !== 'ARCHIVED'` → validationError. Test covers COMPLETE input.",
+        "AC-5: handleDeleteProject guard updated to `!['COMPLETE', 'ARCHIVED'].includes(meta!.status)` at api.ts:406. Dedicated test confirms ARCHIVED deletion succeeds.",
+        "AC-6: writeProjectMeta called by writeRootIndex always sets last_updated to current timestamp (ledger-store.ts:286). Timestamp tests for both handlers use a 5ms delay and >= comparison — confirmed correct.",
+        "AC-7: withLock(store.storageDir, ...) wraps writeRootIndex in both handlers, matching the atomic write pattern used throughout the codebase.",
+        "AC-8: Full test suite passes — 39 test files, 1167 tests, zero failures. Test count is 22 higher than implementation baseline (1145), consistent with WP-003 tests now included.",
+        "Routes POST /api/projects/:slug/archive and /unarchive correctly registered in matchRoute() at server.ts:250-269."
+      ],
+      "metrics": {
+        "test_coverage": "39 test files",
+        "tests_passed": 1167,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-03-06T18:14:05Z",
+          "note": "Mild TOCTOU window: status is read from .meta.json before lock acquisition; root index is updated inside the lock without re-validating status. A race between two concurrent archive POSTs could theoretically archive an already-ARCHIVED project without returning VALIDATION_ERROR. Consistent with the pre-existing pattern in handleDeleteProject and acceptable for a single-server GUI. Note for future: consider re-reading status inside the lock for stricter guarantees."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-03-06T18:14:05Z",
+          "note": "The last_updated timestamp test uses >= comparison with a 5ms setTimeout delay. In theory the Node.js timer could collapse when the machine is under load, making timestamps equal and the test still pass. Assertion could be tightened to > in a future hardening pass, but this is a pre-existing pattern and not a regression risk."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-06T18:16:50Z",
+      "completed_at": "2026-03-06T18:18:26Z",
+      "summary": [
+        "Code review PASS. Implementation is architecturally correct, consistent, and well-tested.",
+        "handleArchiveProject and handleUnarchiveProject follow the established api.ts handler pattern exactly: assertSafeSlug → ledgerDirExists check → readProjectMeta → status validation → withLock + writeRootIndex → return result.",
+        "Atomicity confirmed: writeRootIndex delegates to writeProjectMeta (ledger-store.ts:185) inside the lock, updating both project-ledger.json and .meta.json within one lock scope. Consistent with all other state-mutating handlers.",
+        "Route registration in server.ts matchRoute() is correct and unambiguous for POST /api/projects/:slug/archive and /unarchive. Both handlers are properly imported.",
+        "Delete guard update is correct: !['COMPLETE', 'ARCHIVED'].includes(meta.status) with updated error message. Semantics match the intent.",
+        "Type safety is solid: 'ARCHIVED' is a well-defined member of ProjectStatus in enums.ts; no string literals escape the type system.",
+        "Test coverage is comprehensive: happy path (both handlers verify root index + meta), last_updated advancement, VALIDATION_ERROR on wrong-status input (multiple cases), NOT_FOUND on missing project, and delete-of-archived. 1167 tests, zero failures.",
+        "Pre-existing TOCTOU pattern (status read from .meta.json outside the lock, not re-validated inside) is acceptable for a single-server GUI and consistent with handleDeleteProject and other handlers. No action needed."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-06T18:18:26Z",
+          "note": "The TOCTOU window (status validated from readProjectMeta() outside the lock, not re-read inside withLock) is a pre-existing pattern also present in handleDeleteProject. For a future hardening pass, re-reading status inside the lock would close the theoretical race window for concurrent archive POSTs. No action required now."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-06T18:18:26Z",
+          "note": "Timestamp test assertion uses `>=` rather than `>` with a 5ms delay. Pre-existing pattern throughout the test suite. Could be hardened to `>` in a future cleanup, but carries no regression risk as-is."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-03-06T18:18:26Z",
+          "note": "New handler JSDoc blocks document behaviour, error types, and preconditions but omit @param/@returns tags. Consistent with how other handlers (e.g. handleDeleteProject, handleGetProject) are documented in the same file — no drift introduced."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-06T18:21:18Z",
+      "completed_at": "2026-03-06T18:22:38Z",
+      "summary": [
+        "Updated mcp-server/docs/agents/project-manifest/api-surface.md for WP-002 archive/unarchive backend changes.",
+        "1. assertSafeSlug handler list: added handleArchiveProject and handleUnarchiveProject.",
+        "2. handleDeleteProject inline comment: updated from 'COMPLETE only' to 'COMPLETE or ARCHIVED; throws FORBIDDEN for any other status'.",
+        "3. Added new handler signatures after handleDeleteProject: ArchiveProjectResult type + handleArchiveProject, UnarchiveProjectResult type + handleUnarchiveProject, each with full JSDoc-style comments covering atomicity, NOT_FOUND, and VALIDATION_ERROR semantics.",
+        "4. API route table (server.ts section): added POST /api/projects/:slug/archive → handleArchiveProject and POST /api/projects/:slug/unarchive → handleUnarchiveProject rows.",
+        "Frontend API client (app.js section) not updated — archive/unarchive JS wrappers are WP-005 scope."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-06T18:22:38Z",
+          "note": "Frontend API client wrappers (archiveProject, unarchiveProject in app.js) are intentionally deferred to WP-005 — those endpoints do not yet have UI consumers. The api-surface.md API count ('13 REST endpoints') will need updating in WP-005 docs pass when the wrappers land."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-03-06T18:22:38Z",
+          "note": "Handler signatures follow the same inline-comment style used for all other handlers in the api-surface.md GUI API Module block — no signature block for archive/unarchive was added to the code block (only available through the standalone comments), consistent with how handleGetPlanDocument and others are documented."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-03-06T18:22:38Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-03-06T17:58:40Z",
+      "notes": [
+        "Archive/unarchive endpoints are live. WP-003 (list filtering) can now operate on projected ARCHIVED status. The delete guard now accepts both COMPLETE and ARCHIVED projects."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-06T18:14:05Z",
+      "notes": [
+        "WP-002 archive/unarchive endpoints fully verified. All AC met, 1167 tests pass. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-03-06T18:18:26Z",
+      "notes": [
+        "WP-002 code review PASS. Archive/unarchive endpoints are architecturally sound, fully tested, and production-ready. WP-003 (list filtering) and WP-005 (UI) can now proceed."
+      ]
+    }
+  ]
+}

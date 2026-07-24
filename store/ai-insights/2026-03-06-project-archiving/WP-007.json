@@ -1,0 +1,203 @@
+{
+  "work_package_id": "WP-007",
+  "work_package_file": "work/WP-007.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-006"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "GET /api/projects returns paginated envelope { projects, total, page, limit, total_pages, status_counts }",
+      "met": true
+    },
+    {
+      "criterion": "Default request returns page 1, limit 50, status ACTIVE (no archived)",
+      "met": true
+    },
+    {
+      "criterion": "?page=2&limit=25 returns the correct second page of 25 items",
+      "met": true
+    },
+    {
+      "criterion": "?status=ALL includes archived projects",
+      "met": true
+    },
+    {
+      "criterion": "?status=ARCHIVED returns only archived projects",
+      "met": true
+    },
+    {
+      "criterion": "?search=foo filters by substring match on slug, project_name, repository_name",
+      "met": true
+    },
+    {
+      "criterion": "?sort=date_created&dir=asc sorts by creation date ascending",
+      "met": true
+    },
+    {
+      "criterion": "status_counts correctly reflects per-status counts",
+      "met": true
+    },
+    {
+      "criterion": "Out-of-range page returns empty projects with correct metadata",
+      "met": true
+    },
+    {
+      "criterion": "All unit tests pass",
+      "met": true
+    }
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-06T18:37:52Z",
+      "completed_at": "2026-03-06T18:56:46Z",
+      "summary": [
+        "Implemented server-side pagination for GET /api/projects (WP-007).",
+        "gui/api.ts: Added ProjectListParams, ProjectListEnvelope, ProjectSortField interfaces. Refactored handleListProjects to accept rawParams and return a paginated envelope { projects, total, page, limit, total_pages, status_counts }.",
+        "Processing pipeline: enrich all projects → apply search filter → compute status_counts (from search-filtered set before status filter) → apply status filter → sort → paginate.",
+        "Param validation: page clamped >=1; limit clamped [1,200] with correct 0-value handling; status validated against known values (default ACTIVE); sort validated against supported fields (default last_updated); dir defaults to desc.",
+        "gui/server.ts: Updated GET /api/projects route to parse URLSearchParams from the request URL and pass params to handleListProjects.",
+        "tests/gui/api.test.ts: Updated all existing handleListProjects usages from array-return to envelope-return (results.projects.find / results.projects.map). Added 22 new WP-007 tests covering envelope shape, pagination, status filtering, search filtering, sorting, and status_counts. All 1200 tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/api.ts",
+          "mcp-server/gui/server.ts",
+          "mcp-server/tests/gui/api.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-03-06T18:56:46Z",
+          "note": "handleListProjects now enriches ALL projects in memory before paginating. With the WP-006 cache this is fast (just .meta.json reads), but if cache is cold for many projects the first load could be slow. A future optimisation could lazy-enrich only the page slice (acceptable tradeoff for now)."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-06T18:57:23Z",
+      "completed_at": "2026-03-06T19:01:20Z",
+      "summary": [
+        "All 10 ACs verified. GET /api/projects returns a correct paginated envelope. All 22 new tests pass (1200/1200 total).",
+        "Param validation verified: page clamped >=1; limit clamped [1,200] with 0-value handled as 1; invalid status defaults to ACTIVE; invalid sort defaults to last_updated; dir defaults to desc.",
+        "Processing pipeline is correct: enrich all → search filter → status_counts (pre-status-filter) → status filter → sort → paginate.",
+        "ACTIVE status filter correctly excludes only ARCHIVED projects. ALL includes everything. Specific status values filter exactly.",
+        "search filter applies case-insensitive substring match to slug, project_name, and repository_name.",
+        "Out-of-range page returns empty pageSlice with correct total and total_pages metadata.",
+        "KNOWN IMPACT: Frontend currently broken because app.js treats the response as a plain array. WP-008 is required to unwrap the envelope and render pagination controls before end-to-end testing is possible."
+      ],
+      "comments": [
+        {
+          "type": "regression",
+          "priority": "high",
+          "timestamp": "2026-03-06T19:01:20Z",
+          "note": "BREAKING FRONTEND CHANGE (by design, pending WP-008): GET /api/projects now returns { projects, total, page, limit, total_pages, status_counts } instead of a plain array. app.js calls API.getProjects().then(projects => render(projects)) where render()/buildTable() calls projects.length and sortProjects().slice() — both operations will fail on the envelope object, breaking the project list view. This is the intentional pre-condition for WP-008. WP-008 must be implemented before the feature can be tested end-to-end."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-06T19:01:20Z",
+          "note": "status_counts computation uses the search-filtered set before the status filter is applied. This matches the spec intent and supports filter badge counts. Correct."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-06T19:01:20Z",
+          "note": "limit=0 edge case: Math.floor(0)=0, then Math.max(1, 0)=1, so limit=0 is clamped to 1. This is correct per the spec ('limit clamped [1,200] with correct 0-value handling') but not explicitly documented in the inline comments. Low risk."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-06T19:01:20Z",
+          "note": "total_pages = Math.max(1, Math.ceil(total / limit)) — correctly returns 1 when total=0 (empty list). Correct."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-06T19:05:30Z",
+      "completed_at": "2026-03-06T19:06:30Z",
+      "summary": [
+        "Code review PASS for gui/api.ts (handleListProjects refactor) and gui/server.ts (route update) for WP-007.",
+        "Architecture: 6-step pipeline (enrich → search filter → status_counts → status filter → sort → paginate) is clearly documented in JSDoc and implemented in sequential order. Easy to follow and maintain.",
+        "ProjectListParams uses number | string union to accommodate raw query string values, avoiding a parsing layer. Sanitization handles all edge cases: limit=0 → 1, NaN → defaults, out-of-range page → 1, invalid sort/status → defaults. total_pages = Math.max(1, Math.ceil(total/limit)) correctly returns 1 for empty lists.",
+        "Parameter validation uses Set<> whitelist lookups for both status filter (VALID_STATUS_FILTERS) and sort field (SORT_FIELDS). No user-controlled input reaches file I/O directly. Search uses string includes(), no regex injection risk.",
+        "server.ts route uses URLSearchParams to parse the query string; sp.get(key) ?? undefined maps absent params to undefined cleanly, matching optional typed interface.",
+        "22 new tests in 5 describe blocks cover all ACs: envelope shape, pagination arithmetic, status filtering (ALL/ACTIVE/specific), search substring matching, sorting, and status_counts pre-filter semantics. Existing tests updated to unwrap .projects from the envelope. All 1200 tests pass.",
+        "The ACTIVE filter (default) correctly excludes only ARCHIVED projects; CANCELLED is included in ACTIVE — consistent with VALID_STATUS_FILTERS including CANCELLED as a queryable status.",
+        "Known pre-condition for WP-008: frontend app.js currently broken because it expects a plain array. This is intentional and tracked.",
+        "All 10 ACs are met."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-06T19:06:30Z",
+          "note": "gui/api.ts handleListProjects: SORT_FIELDS and VALID_STATUS_FILTERS are Set<> instances providing O(1) lookup for param validation. Clean and correct."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-06T19:06:30Z",
+          "note": "gui/api.ts sort case 'done': sorts by (total_work_packages - pending_work_packages) — absolute completed count, not percentage. The frontend sorts by percentage. For projects with different total WP counts the orderings diverge. This is a reasonable tradeoff (server can't sort by percentage without extra calculation) and the difference is minor. Low priority."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-06T19:06:30Z",
+          "note": "gui/server.ts: sp.get(key) ?? undefined correctly maps absent params to undefined, matching ProjectListParams optionality. No extra null-to-undefined unwrapping needed elsewhere."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-06T19:06:30Z",
+          "note": "status_counts computed from search-filtered set before status filter: correct semantic for filter badge counts. The specific test 'status_counts are computed from search-filtered set (before status filter)' explicitly validates this design decision."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-06T19:11:42Z",
+      "completed_at": "2026-03-06T19:13:50Z",
+      "summary": [
+        "Updated mcp-server/docs/agents/project-manifest/api-surface.md: replaced handleListProjects(ledgerRoot): Promise<ProjectSummary[]> with paginated signature; added ProjectListParams, ProjectListEnvelope, ProjectSortField interfaces; documented 6-step processing pipeline in JSDoc comment.",
+        "Added Flow 13 (GUI Paginated Project Listing) to mcp-server/docs/agents/project-manifest/data-flows.md: covers request path, all 6 processing steps (enrich→search→status_counts→status filter→sort→paginate), param validation, and key behavioral properties."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/data-flows.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-06T19:13:50Z",
+          "note": "api-surface.md: added ProjectListParams, ProjectListEnvelope, ProjectSortField interfaces alongside the updated handleListProjects signature. data-flows.md: added Flow 13 (GUI Paginated Project Listing) with the full 6-step processing pipeline, param validation rules, and key behavioral properties."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-03-06T19:13:55Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-03-06T18:56:46Z",
+      "notes": [
+        "WP-007 Server-Side Pagination fully implemented. GET /api/projects now returns a paginated envelope { projects, total, page, limit, total_pages, status_counts }.",
+        "WP-008 (Frontend Pagination) is now unblocked — it depends on WP-005 (PASS) and WP-007 (PASS). WP-008 needs to update app.js to consume the new envelope shape and render pagination controls."
+      ]
+    }
+  ]
+}

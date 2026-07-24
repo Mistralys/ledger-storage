@@ -1,0 +1,186 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-006.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "Pipeline type includes duration_ms?: number",
+      "met": true
+    },
+    {
+      "criterion": "Zod schema accepts optional duration_ms (number)",
+      "met": true
+    },
+    {
+      "criterion": "ledger_complete_pipeline computes and stores duration_ms when started_at is present",
+      "met": true
+    },
+    {
+      "criterion": "Negative durations are not stored",
+      "met": true
+    },
+    {
+      "criterion": "Missing or invalid started_at results in no duration_ms (no crash)",
+      "met": true
+    },
+    {
+      "criterion": "Existing pipeline data without duration_ms still validates",
+      "met": true
+    },
+    {
+      "criterion": "Existing tests pass without modification",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-22T16:29:50Z",
+      "completed_at": "2026-03-22T16:31:38Z",
+      "summary": [
+        "Added duration_ms?: z.number().optional() to PipelineSchema Zod schema in mcp-server/src/schema/work-package.ts. Being inferred by z.infer, the Pipeline TypeScript type automatically gains duration_ms?: number.",
+        "Added write-time duration_ms computation to ledger_complete_pipeline handler in mcp-server/src/tools/pipeline.ts: parses started_at and completed_at as epoch milliseconds, stores duration_ms only when both parse successfully and result is non-negative (guards against clock skew and invalid timestamps).",
+        "Build passes (tsc), all 1476 MCP server tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/schema/work-package.ts",
+          "mcp-server/src/tools/pipeline.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-22T16:31:38Z",
+          "note": "No observations — code in the touched files is clean and consistent."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-22T16:35:09Z",
+      "completed_at": "2026-03-22T16:36:48Z",
+      "summary": [
+        "All 7 acceptance criteria verified by code inspection and test execution.",
+        "AC1+AC2: PipelineSchema has duration_ms: z.number().optional() in mcp-server/src/schema/work-package.ts:81. Pipeline TypeScript type is derived via z.infer so it automatically gains duration_ms?: number.",
+        "AC3: ledger_complete_pipeline in pipeline.ts lines 455-461 computes duration_ms after setting completed_at, inside an if (pipeline.started_at) guard.",
+        "AC4: endMs >= startMs guard on line 459 prevents storage of negative durations.",
+        "AC5: if (pipeline.started_at) guard + !isNaN(startMs) && !isNaN(endMs) check safely handles missing or unparseable started_at with no crash.",
+        "AC6: z.number().optional() means duration_ms is not required — existing pipeline data without this field passes Zod validation.",
+        "AC7: All 1476 MCP server tests pass (npm test). No existing tests were modified.",
+        "Coverage gap noted (medium priority): missing new tests for duration_ms computation behavior. Not a blocking issue for this WP's ACs."
+      ],
+      "metrics": {
+        "tests_passed": 1476,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "coverage-gap",
+          "priority": "medium",
+          "timestamp": "2026-03-22T16:36:48Z",
+          "note": "No new tests were written for duration_ms in mcp-server/tests/tools/pipeline.test.ts. The plan (step 14) calls for assertions that ledger_complete_pipeline stores duration_ms when started_at is present, covers negative duration guard, and handles invalid started_at. This specific test coverage was not listed as a WP-006 AC, but should be addressed in a follow-up WP or the tests WP."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-22T16:36:48Z",
+          "note": "No observations beyond the coverage gap — the touched code is clean and consistent. Schema addition is backward-compatible, computation guards are correct, and the positive-only check (endMs >= startMs) properly prevents clock-skew artifacts."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-22T16:39:10Z",
+      "completed_at": "2026-03-22T16:40:06Z",
+      "summary": [
+        "Reviewed two modified files: mcp-server/src/schema/work-package.ts and mcp-server/src/tools/pipeline.ts.",
+        "work-package.ts: duration_ms: z.number().optional() added to PipelineSchema after completed_at. Position is logical. Backward-compatible (optional field — existing data validates). Pipeline TypeScript type correctly inherits duration_ms?: number via z.infer. Minor: ReworkCountsSchema uses z.number().int().nonnegative() for its count fields; duration_ms could be tightened similarly but is non-blocking.",
+        "pipeline.ts: Three-guard pattern for duration_ms computation is correct and defensive: (1) pipeline.started_at presence check, (2) !isNaN(startMs) && !isNaN(endMs) for malformed strings, (3) endMs >= startMs for clock skew. Allows duration_ms === 0 for sub-ms pipelines, which is technically correct. The endMs guard is redundant since completed_at is freshly set by now(), but the redundancy is harmless and improves self-containment.",
+        "Security: no issues — no user-controlled data flows into the timestamp parsing; worst case is NaN which is handled. Performance: two Date constructions per completion call, negligible.",
+        "Coverage gap (medium, pre-flagged by QA): no new unit tests for duration_ms behavior. Should be addressed in a follow-up tests WP.",
+        "All 7 acceptance criteria confirmed met. No blocking issues found."
+      ],
+      "comments": [
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-03-22T16:40:06Z",
+          "note": "mcp-server/src/schema/work-package.ts: duration_ms uses z.number().optional() but the value is semantically always a non-negative integer (getTime() subtraction). ReworkCountsSchema uses z.number().int().nonnegative().optional() for its equivalent count fields. Consider tightening to z.number().int().nonnegative().optional() for consistency and precision. Non-blocking — existing consumers will still validate correctly."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-22T16:40:06Z",
+          "note": "mcp-server/src/tools/pipeline.ts: !isNaN(endMs) guard is technically redundant since pipeline.completed_at is set by now() on the immediately preceding line, so endMs is always a valid integer. The redundancy is defensive and does no harm — it makes the computation block self-contained and resilient to future reordering. Leave as-is."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-03-22T16:40:06Z",
+          "note": "mcp-server/tests/tools/pipeline.test.ts: No new tests cover duration_ms behavior (happy path, negative-duration guard, NaN guard). Pre-flagged by QA as medium-priority coverage gap. Plan step 14 calls for this coverage. Should be addressed in a dedicated tests WP."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-22T16:43:11Z",
+      "completed_at": "2026-03-22T16:44:17Z",
+      "summary": [
+        "Updated mcp-server/docs/agents/project-manifest/api-surface.md: added duration_ms?: number to the Pipeline interface with an inline comment describing its semantics (auto-computed by ledger_complete_pipeline from started_at to completed_at when present and non-negative; absent for in-progress, cancelled, or legacy pipelines).",
+        "Also updated the ledger_complete_pipeline tool description sentence to explicitly mention that duration_ms is automatically computed and stored."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-22T16:44:17Z",
+          "note": "No observations — the Pipeline interface addition is minimal and correct. The `duration_ms` description accurately reflects the three-guard computation pattern (started_at presence, non-NaN, non-negative)."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-03-22T16:44:17Z",
+  "last_updated": "2026-03-22T16:44:17Z",
+  "handoff_notes": [
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-22T16:36:48Z",
+      "notes": [
+        "WP-002 (WP-006.md) implementation is clean and correct. All 7 ACs met. All 1476 MCP server tests pass.",
+        "duration_ms is computed as integer milliseconds from getTime() subtraction — no float issues. Guards cover: absent started_at, unparseable timestamps (NaN), and clock skew (endMs >= startMs).",
+        "Medium-priority coverage gap: no new tests for duration_ms in pipeline.test.ts. Plan step 14 calls for this. Recommended to address in a tests-focused WP.",
+        "Files modified: mcp-server/src/schema/work-package.ts, mcp-server/src/tools/pipeline.ts"
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-03-22T16:40:06Z",
+      "notes": [
+        "WP-002 passes code review. All 7 ACs verified. Implementation is clean, secure, and backward-compatible. Three notes recorded (schema type precision, redundant-but-harmless endMs guard, missing duration_ms test coverage) — only the coverage gap is medium priority and requires a follow-up WP.",
+        "Files reviewed: mcp-server/src/schema/work-package.ts, mcp-server/src/tools/pipeline.ts"
+      ]
+    }
+  ]
+}

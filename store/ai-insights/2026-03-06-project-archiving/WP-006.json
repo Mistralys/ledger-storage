@@ -1,0 +1,242 @@
+{
+  "work_package_id": "WP-006",
+  "work_package_file": "work/WP-006.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "ProjectMetaSchema accepts objects with and without new cached fields",
+      "met": true
+    },
+    {
+      "criterion": "Project initialization writes project_name, repository_name, total_work_packages: 0, pending_work_packages: 0 into .meta.json",
+      "met": true
+    },
+    {
+      "criterion": "Creating a work package increments total_work_packages and pending_work_packages in .meta.json",
+      "met": true
+    },
+    {
+      "criterion": "Completing a work package decrements pending_work_packages in .meta.json",
+      "met": true
+    },
+    {
+      "criterion": "handleListProjects uses cached values when present, avoiding extra file reads",
+      "met": true
+    },
+    {
+      "criterion": "handleListProjects falls back to I/O enrichment for legacy meta files",
+      "met": true
+    },
+    {
+      "criterion": "API response shape unchanged — optimization is transparent",
+      "met": true
+    },
+    {
+      "criterion": "All unit tests pass",
+      "met": true
+    }
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-06T18:02:12Z",
+      "completed_at": "2026-03-06T18:12:08Z",
+      "summary": [
+        "Extracted readProjectName into shared utility src/utils/read-project-name.ts with noUncheckedIndexedAccess-safe type guards",
+        "Extended ProjectMetaSchema with 4 optional cache fields: total_work_packages, pending_work_packages, project_name, repository_name",
+        "Updated writeProjectMeta to accept cacheUpdates parameter with field-preservation logic (existing values preserved unless overridden)",
+        "Updated writeRootIndex and updateWorkPackageWithSync to pass WP counters to writeProjectMeta on every root index write",
+        "Updated initializeProject to write all 4 enrichment cache fields (project_name, repository_name, total_work_packages:0, pending_work_packages:0) with best-effort try/catch so enrichment failure never aborts initialization",
+        "Replaced local readProjectName in gui/api.ts with shared utility import; removed ~55 lines of duplicate code",
+        "Added cache fast-path to handleListProjects: uses meta.total_work_packages + meta.project_name as cache hit signal, falls back to parallel I/O for legacy meta files",
+        "Updated handleGetProject to use inferProjectRootFromPlanPath(meta.plan_path) with shared readProjectName",
+        "Created tests/tools/meta-enrichment.test.ts with 11 tests covering schema, initializeProject enrichment, and writeRootIndex counter sync",
+        "Added 5 new tests to handleListProjects suite in api.test.ts covering cache fast-path, I/O fallback, and response shape",
+        "All 1167 tests pass, TypeScript compiles clean"
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/utils/read-project-name.ts",
+          "src/schema/project-meta.ts",
+          "src/storage/ledger-store.ts",
+          "src/tools/project-lifecycle.ts",
+          "gui/api.ts",
+          "tests/tools/meta-enrichment.test.ts",
+          "tests/gui/api.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-06T18:12:08Z",
+          "note": "gui/api.ts previously contained a 55-line duplicate of readProjectName that is now replaced by the shared utility. Future duplication risk eliminated."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-03-06T18:12:08Z",
+          "note": "The planFile parameter in LedgerStore.writeProjectMeta is accepted but not used in the body (plan_path derives from this.planPath). The parameter could be removed in a follow-up cleanup to avoid misleading callers."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-03-06T18:12:08Z",
+          "note": "initializeProject enrichment write is wrapped in best-effort try/catch. If enrichment fails silently, handleListProjects would fall back to I/O for that project indefinitely. A WARN log would help diagnose silent cache misses in production, but STDIO discipline rules prevent adding stdout logging in this layer."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-06T18:15:16Z",
+      "completed_at": "2026-03-06T18:16:21Z",
+      "summary": [
+        "All 8 acceptance criteria verified against source code and test suite.",
+        "AC-1: project-meta.ts:11-14 — all 4 new fields (total_work_packages, pending_work_packages, project_name, repository_name) are z.optional(). Schema accepts objects with and without them. Specific schema tests in meta-enrichment.test.ts.",
+        "AC-2: project-lifecycle.ts:483-493 — initializeProject reads plan_file via readProjectName, derives repository_name, then calls writeProjectMeta with all 4 cache fields. Wrapped in try/catch for best-effort. Test at meta-enrichment.test.ts:120 verifies total=0, pending=0 written.",
+        "AC-3: ledger-store.ts:185-187 — writeRootIndex passes validated.total_work_packages + pending_work_packages to writeProjectMeta on every call, including when ledger_create_work_package increments counters in root index. meta-enrichment.test.ts:175-180 directly verifies the sync.",
+        "AC-4: ledger-store.ts:242-244 — updateWorkPackageWithSync (used by pipeline complete flow) also passes WP counters to writeProjectMeta. Same mechanism and same test coverage as AC-3.",
+        "AC-5: gui/api.ts:194-207 — fast-path condition: `meta.total_work_packages !== undefined && meta.project_name !== undefined`. When both present, uses meta values directly, skipping rootIndex and plan-file reads. api.test.ts 'WP-006: uses cached enrichment values' test confirmed.",
+        "AC-6: gui/api.ts:208-224 — else branch reads rootIndex I/O + readProjectName for legacy meta files. api.test.ts 'WP-006: falls back to I/O enrichment for legacy meta without cache fields' test confirmed.",
+        "AC-7: api.test.ts 'WP-006: response shape includes all required fields' test verifies slug, plan_path, status, date_created, last_updated, total_work_packages, pending_work_packages, project_name, repository_name are all present regardless of code path.",
+        "AC-8: 39 test files, 1167 tests, zero failures. TypeScript compiles clean (per implementation notes)."
+      ],
+      "metrics": {
+        "test_coverage": "39 test files",
+        "tests_passed": 1167,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-03-06T18:16:21Z",
+          "note": "AC-3 and AC-4 (counter increment/decrement in .meta.json) rely on the writeRootIndex meta-sync mechanism rather than direct WP create/complete flow tests. meta-enrichment.test.ts:175 verifies `writeRootIndex({total_work_packages:3,pending_work_packages:2})` propagates to meta, which is the same code path used by ledger_create_work_package and ledger_complete_pipeline. This is sufficient but indirect. A future improvement could add two integration-style tests: one that calls createWorkPackage via _internal and checks meta, and one that calls completePipeline and checks meta decrement."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-03-06T18:16:21Z",
+          "note": "initializeProject enrichment is wrapped in a silent try/catch (best-effort). If enrichment fails, the cache miss is not surfaced to any observable signal — no log, no field in the initialization response. STDIO discipline prevents adding logging in this layer. Consider adding enrichment_cached: boolean to the initializeProject response in a future WP, so callers can detect enrichment misses without logs."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-03-06T18:16:21Z",
+          "note": "The fast-path cache hit signal checks `meta.total_work_packages !== undefined && meta.project_name !== undefined`. The `total_work_packages` check is necessary because a project with 0 WPs needs to be a cache hit too (0 !== undefined). Correct — Zod schema has it as `optional()` so newly created projects with 0 WPs still have the field populated, not just omitted."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-06T18:18:49Z",
+      "completed_at": "2026-03-06T18:20:30Z",
+      "summary": [
+        "Code review PASS. WP-006 meta enrichment cache implementation is architecturally sound, backward-compatible, and well-tested.",
+        "Schema changes: 4 optional fields added to ProjectMetaSchema with correct Zod types. All fields are optional, preserving full backward compatibility with existing .meta.json files.",
+        "Cache fast-path condition (`meta.total_work_packages !== undefined && meta.project_name !== undefined`) correctly distinguishes cache-populated (value or null) from legacy/absent (undefined). The nullable().optional() schema allows null as a distinct valid state for project_name.",
+        "Counter sync path is correct: both writeRootIndex and updateWorkPackageWithSync pass WP counters to writeProjectMeta on every root index write, ensuring meta stays in sync with the ledger state that triggered the update.",
+        "handleListProjects fast/fallback paths produce identical ProjectSummary shapes. meta.title still takes precedence over cached project_name in both paths — title override logic is correctly applied after the cache/fallback branch.",
+        "Extraction of readProjectName to src/utils/read-project-name.ts eliminates ~55 lines of duplication from gui/api.ts. Clean and well-scoped refactor.",
+        "11 new tests in meta-enrichment.test.ts + 5 new tests in api.test.ts. Coverage includes schema validation, initializeProject enrichment, writeRootIndex counter sync, cache fast-path, I/O fallback, and response shape invariant.",
+        "Medium-priority improvement flagged: enrichment failure in initializeProject is silently discarded by try/catch. STDIO discipline prevents a log warning here, but future diagnosability would benefit from a structured error event mechanism."
+      ],
+      "comments": [
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-03-06T18:20:30Z",
+          "note": "Cache hit condition `meta.total_work_packages !== undefined && meta.project_name !== undefined` correctly distinguishes cache-populated (set to value or null) from legacy/absent (undefined). Zod schema correctly uses .nullable().optional() to allow project_name: null as a distinct valid state from absent. Semantics are precise."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-06T18:20:30Z",
+          "note": "repository_name is re-derived from projectRoot path at runtime in both fast-path and fallback, not read from meta.repository_name cache. This is correct — the field is deterministic from path and avoids staleness if the project is moved. The stored meta.repository_name field exists for MCP tool use but is intentionally not consumed in the GUI list path."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-03-06T18:20:30Z",
+          "note": "initializeProject enrichment wrapped in best-effort try/catch: enrichment failure silently leaves meta.total_work_packages undefined, causing handleListProjects to fall back to I/O for that project indefinitely. STDIO discipline prevents adding a WARN log in this layer. Consider a structured error event or debug flag in a future hardening pass so silent cache misses are diagnosable."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-06T18:20:30Z",
+          "note": "~55 lines of duplicate readProjectName logic removed from gui/api.ts and extracted to src/utils/read-project-name.ts. Clean refactor that eliminates a future drift risk between GUI and tool implementations."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-06T18:24:23Z",
+      "completed_at": "2026-03-06T18:25:59Z",
+      "summary": [
+        "Updated mcp-server/docs/agents/project-manifest/api-surface.md for WP-006 meta enrichment cache.",
+        "1. ProjectMeta interface: added 4 optional cache fields (total_work_packages, pending_work_packages, project_name, repository_name) with comments explaining sync semantics and backward-compat.",
+        "2. writeProjectMeta signature: updated from (planFile, status?) to full signature with optional cacheUpdates parameter; added field-preservation semantics and null vs undefined sentinel comment.",
+        "3. handleListProjects comment: added cache fast-path description, fallback path, and transparency guarantee.",
+        "4. New utility section 'src/utils/read-project-name.ts': documents readProjectName() function, resolution order, callers, and export location."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-03-06T18:25:59Z",
+          "note": "initializeProject enrichment write is best-effort (silent try/catch). If it fails, handleListProjects falls back to I/O indefinitely with no observable signal. STDIO discipline prevents log-based diagnosis. Future improvement: add enrichment_cached: boolean to initializeProject response."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-06T18:25:59Z",
+          "note": "AC-3 and AC-4 (counter sync) are covered by the writeRootIndex meta-sync mechanism tests rather than end-to-end create/complete flow tests. Indirect but sufficient; documented in api-surface.md via the writeProjectMeta cacheUpdates param description."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-03-06T18:26:04Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-03-06T18:12:08Z",
+      "notes": [
+        "WP-006 implementation complete. .meta.json now caches total_work_packages, pending_work_packages, project_name, repository_name. handleListProjects fast-path activated when both total_work_packages and project_name are present in meta. Legacy projects without cache fields fall through to existing I/O path transparently.",
+        "initializeProject enrichment is best-effort — enrichment failure does NOT abort project creation. The meta file will simply lack cache fields and handleListProjects will use the I/O fallback.",
+        "13 new tests added (meta-enrichment.test.ts + api.test.ts additions). All 1167 tests pass.",
+        "Key files: src/utils/read-project-name.ts (new shared utility), src/schema/project-meta.ts (4 new optional fields), src/storage/ledger-store.ts (writeProjectMeta extended), src/tools/project-lifecycle.ts (initializeProject enrichment write), gui/api.ts (cache fast-path + shared utility import)."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-06T18:16:21Z",
+      "notes": [
+        "WP-006 meta enrichment cache fully verified. All 8 AC met, 1167 tests pass. initializeProject correctly writes all 4 fields, writeRootIndex auto-syncs counters to meta, handleListProjects fast-path/fallback both confirmed in api.test.ts. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-03-06T18:20:30Z",
+      "notes": [
+        "WP-006 code review PASS. Meta enrichment cache is architecturally clean, backward-compatible, and well-tested. WP-007 can proceed."
+      ]
+    }
+  ]
+}

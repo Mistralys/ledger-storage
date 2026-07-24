@@ -1,0 +1,213 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-002.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "handleRenameProject(ledgerRoot, slug, body) is exported from api.ts",
+      "met": true
+    },
+    {
+      "criterion": "PATCH /api/projects/:slug with { title: '...' } returns 200 and updated meta JSON",
+      "met": true
+    },
+    {
+      "criterion": "PATCH /api/projects/nonexistent returns a NOT_FOUND error response",
+      "met": true
+    },
+    {
+      "criterion": "PATCH /api/projects/:slug with { title: '' } returns a VALIDATION_ERROR response",
+      "met": true
+    },
+    {
+      "criterion": "PATCH is included in the CORS Access-Control-Allow-Methods header",
+      "met": true
+    },
+    {
+      "criterion": "ProjectSummary includes repository_name: string | null",
+      "met": true
+    },
+    {
+      "criterion": "handleListProjects returns the correct repository_name derived from plan_path",
+      "met": true
+    },
+    {
+      "criterion": "When meta.title is set, handleListProjects returns that value as project_name",
+      "met": true
+    },
+    {
+      "criterion": "TypeScript compiles without errors (tsc --noEmit)",
+      "met": true
+    },
+    {
+      "criterion": "No existing tests are broken",
+      "met": true
+    }
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-05T18:03:15Z",
+      "completed_at": "2026-03-05T18:05:07Z",
+      "summary": [
+        "Added handleRenameProject() to gui/api.ts — validates body with safeParse (VALIDATION_ERROR on empty/missing title), guards slug, checks ledger existence (NOT_FOUND), calls store.updateTitle()",
+        "Added repository_name: string | null to ProjectSummary interface",
+        "handleListProjects now computes repository_name via inferProjectRootFromPlanPath and applies meta.title priority over manifest-detected names",
+        "Added inferProjectRootFromPlanPath import to api.ts",
+        "Added PATCH /api/projects/:slug route to server.ts — placed before the POST reset handler, follows same body-parsing/error-handling pattern",
+        "Imported handleRenameProject in server.ts",
+        "Updated CORS Access-Control-Allow-Methods to include PATCH",
+        "tsc --noEmit: clean (0 errors), vitest run: 1077/1077 passed (36 suites)"
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/api.ts",
+          "mcp-server/gui/server.ts"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 1077,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-05T18:05:07Z",
+          "note": "handleRenameProject uses safeParse (matching the pattern in handleUpdateConfig/handleResetProject) rather than .parse() to ensure ZodErrors are converted to structured VALIDATION_ERROR ApiErrors rather than falling through to the 500 handler."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-05T18:05:32Z",
+      "completed_at": "2026-03-05T18:07:34Z",
+      "summary": [
+        "All 10 acceptance criteria verified — tsc --noEmit clean (0 errors), vitest 1077/1077 passed (36 suites).",
+        "handleRenameProject exported from api.ts: slug guarded via assertSafeSlug, body validated with safeParse + z.string().min(1).max(200) → VALIDATION_ERROR on failure, ledgerDirExists() guard for NOT_FOUND, delegates to store.updateTitle().",
+        "PATCH /api/projects/:slug route in server.ts: placed before POST reset handler, JSON parse guard, consistent ApiError/500 error handling, returns 200 + updated ProjectMeta.",
+        "CORS Access-Control-Allow-Methods confirmed to include PATCH.",
+        "ProjectSummary.repository_name: string | null added to interface; computed via inferProjectRootFromPlanPath + last path segment extraction in handleListProjects.",
+        "meta.title priority block correctly overrides auto-detected project_name when a persisted title exists.",
+        "LedgerStore(slug, ledgerRoot) call pattern in handleRenameProject is consistent with all 11 other handler call sites in api.ts — confirmed correct by constructor: storageDir = join(ledgerRoot, slug)."
+      ],
+      "metrics": {
+        "tests_passed": 1077,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "coverage-gap",
+          "priority": "medium",
+          "timestamp": "2026-03-05T18:07:34Z",
+          "note": "handleRenameProject has no dedicated unit tests in tests/gui/api.test.ts. The function is not imported in that test file at all. The four paths (happy path, NOT_FOUND for missing project, VALIDATION_ERROR for empty/missing title, path-traversal rejection) should be covered, matching the thoroughness of handleGetProject, handleDeleteProject, and handleGetWorkPackage test suites. Recommend adding a handleRenameProject describe block in a follow-up WP or as part of WP-003/WP-004 test additions."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-05T18:07:34Z",
+          "note": "The spec pseudocode in WP-002.md shows LedgerStore(ledgerRoot, slug) but the implementation correctly uses LedgerStore(slug, ledgerRoot) — consistent with all other handlers. The WP spec had the argument order reversed from the actual constructor signature. No functional issue, but the WP description could mislead future readers."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-05T18:08:01Z",
+      "completed_at": "2026-03-05T18:09:09Z",
+      "summary": [
+        "WP-002 backend implementation is correct, well-structured, and consistent with codebase conventions. All 10 ACs confirmed met. Implementation follows established handler patterns throughout.",
+        "handleRenameProject: assertSafeSlug → safeParse validation → ledgerDirExists guard → store.updateTitle() — clean and linear. TypeScript narrowing is sound: validationError() returns never, so parseResult.data access after the guard is type-safe. Delegates atomically to LedgerStore.updateTitle() which re-validates via ProjectMetaSchema.parse before atomic write.",
+        "handleListProjects: repository_name uses inferProjectRootFromPlanPath then splits on both / and \\ with .filter(Boolean) guard — correct cross-platform handling. meta.title priority block placed correctly at the end of project_name derivation, ensuring persisted titles always win.",
+        "PATCH route in server.ts: body-parse guard pattern consistent with POST reset handler. ApiError dispatched via apiErrorToStatus. process.stderr.write used correctly for unexpected errors (server.ts is exempt from STDIO discipline). Route placed before POST reset handler — no routing ambiguity.",
+        "CORS Access-Control-Allow-Methods correctly includes PATCH.",
+        "One minor style inconsistency found: RenameBodySchema defined inline (line 623) while all other schemas in api.ts (GuiConfigPartialSchema L502, WpDecisionSchema L533, ResetRequestSchema L538) are module-level consts. Not a blocker, but diverges from the established pattern and adds a minor allocation overhead per call."
+      ],
+      "comments": [
+        {
+          "type": "code-smell",
+          "priority": "low",
+          "timestamp": "2026-03-05T18:09:09Z",
+          "note": "RenameBodySchema (api.ts line 623) is defined inline inside handleRenameProject. Every other schema in api.ts (GuiConfigPartialSchema, WpDecisionSchema, ResetRequestSchema) is a module-level const. Recommend hoisting to module level to restore consistency and avoid per-call re-instantiation."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-05T18:09:09Z",
+          "note": "The z.string().max(200) cap on the rename title has no accompanying comment explaining the choice. A brief note (e.g. '// matches ProjectMetaSchema title constraint') would help future maintainers understand the bound."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "medium",
+          "timestamp": "2026-03-05T18:09:09Z",
+          "note": "Echoing QA finding: handleRenameProject has zero unit tests. The four paths (happy, NOT_FOUND, VALIDATION_ERROR empty title, path-traversal) should be covered in a follow-up WP. The existing test thoroughness for handleGetProject, handleDeleteProject, and handleGetWorkPackage sets the standard."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-05T18:09:39Z",
+      "completed_at": "2026-03-05T18:11:26Z",
+      "summary": [
+        "Updated mcp-server/docs/agents/project-manifest/api-surface.md: (1) added repository_name: string | null to the ProjectSummary interface entry with derivation note; (2) updated handleListProjects doc comment to mention repository_name and the meta.title priority rule; (3) added full handleRenameProject signature entry with body schema, error codes, and delegation note; (4) added PATCH /api/projects/:slug row to the API route table with placement note; (5) corrected CORS Access-Control-Allow-Methods to include PATCH.",
+        "Updated JSDoc in mcp-server/gui/api.ts: expanded handleListProjects to document repository_name and project_name resolution order; expanded handleRenameProject to document the max(200) title constraint and its link to ProjectMetaSchema.",
+        "tsc --noEmit: 0 errors after changes."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/gui/api.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-05T18:11:26Z",
+          "note": "Reviewer flag (carried forward): RenameBodySchema (api.ts ~line 625) is defined inline inside handleRenameProject. All other schemas in api.ts (GuiConfigPartialSchema, WpDecisionSchema, ResetRequestSchema) are module-level consts. Recommend hoisting to module level in a follow-up to restore consistency and avoid per-call re-instantiation."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "medium",
+          "timestamp": "2026-03-05T18:11:26Z",
+          "note": "QA and Reviewer flag (carried forward): handleRenameProject has zero unit tests in tests/gui/api.test.ts. Four paths need coverage: happy path, NOT_FOUND for missing project, VALIDATION_ERROR for empty/missing title, and path-traversal rejection. Recommend adding a handleRenameProject describe block in WP-003 or WP-004 alongside those test additions."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-03-05T18:11:26Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-03-05T18:05:07Z",
+      "notes": [
+        "WP-002 backend is complete. api.ts exports handleRenameProject and the ProjectSummary interface now includes repository_name. server.ts has PATCH /api/projects/:slug wired up with CORS updated. WP-003 (frontend rename UI) and WP-004 (frontend repository column) can now proceed."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-05T18:07:34Z",
+      "notes": [
+        "WP-002 QA: PASS. All 10 ACs met, 1077/1077 tests passing, tsc clean. Coverage gap flagged: no tests for handleRenameProject — recommend addressing in WP-003 or WP-004 additions. WP-003 (frontend rename UI) and WP-004 (frontend repository column) are now unblocked."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-03-05T18:09:09Z",
+      "notes": [
+        "WP-002 PASS. Backend is solid. One low-priority style issue (inline schema) and the QA-flagged coverage gap for handleRenameProject — neither blocks WP-003 or WP-004. Frontend work can proceed. Recommend WP-003 or WP-004 Developer adds the handleRenameProject unit tests alongside their own test additions."
+      ]
+    }
+  ]
+}

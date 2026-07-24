@@ -1,0 +1,372 @@
+{
+  "work_package_id": "WP-004",
+  "work_package_file": "work/WP-002.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-002"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "GET /api/projects/:repo/:slug/chunks/:filename/text returns { content: string, cached: boolean } with content-type: application/json",
+      "met": true
+    },
+    {
+      "criterion": "When no pre-existing .md file exists, the endpoint extracts text, writes a .md file alongside the .jsonl (same directory, same base name), and returns { content, cached: false }",
+      "met": true
+    },
+    {
+      "criterion": "When a pre-existing .md file exists (CLI-generated or prior access), the endpoint reads and returns it with { content, cached: true } without re-extracting",
+      "met": true
+    },
+    {
+      "criterion": "A write error during .md caching does not propagate — the endpoint still returns the extracted content successfully",
+      "met": true
+    },
+    {
+      "criterion": "Invalid filenames (path traversal attempts, non-.jsonl names) are rejected with a 404 response",
+      "met": true
+    },
+    {
+      "criterion": "The .md filename is derived server-side from the validated .jsonl filename — never accepted from user input",
+      "met": true
+    },
+    {
+      "criterion": "The route follows the same guard conditions as the existing /rendered route (SAFE_SLUG_REGEX checks, resolveRepoName, path prefix check)",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-07-24T08:41:06Z",
+      "completed_at": "2026-07-24T08:45:29Z",
+      "duration_ms": 263000,
+      "summary": [
+        "Added writeFile to the node:fs/promises import in api.ts.",
+        "Added renderChunksToText import from './chunk-renderer.js' in api.ts.",
+        "Implemented handleGetChunkText() in api.ts: assertSafeSlug validation, CHUNK_FILENAME_RE allowlist check, resolveProjectStore for storage dir resolution, server-side .md filename derivation (filename.replace(/\\.jsonl$/, '.md')), defence-in-depth prefix check on the derived .md path, cache-first readFile(mdPath) returning { content, cached: true } on hit, ENOENT fall-through to extraction, readFile of .jsonl with ENOENT → notFound guard, renderChunksToText() call, best-effort writeFile(mdPath) wrapped in try/catch (errors swallowed), and returns { content, cached: false }.",
+        "Added handleGetChunkText to the import list in server.ts.",
+        "Added GET /api/projects/:repo/:slug/chunks/:filename/text route block in server.ts immediately after the /rendered route, following the identical guard pattern (rest.length === 6, rest[3] === 'chunks', rest[5] === 'text', rest[2] !== 'chunks', SAFE_SLUG_REGEX checks, resolveRepoName).",
+        "npm run build (tsc) passes with no new errors — pre-existing errors in api.ts lines 343/384/557/565 and orchestrator-manager.ts are pre-existing and unrelated to this WP.",
+        "111 chunk-renderer tests pass; 42 api-client and server-error-mapping tests pass. The 107 pre-existing test failures are all in project-detail-auto-update/poll-modes test files for the WP-005 (BLOCKED) frontend work — API.getRepo is not a function — unrelated to this WP."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/api.ts",
+          "mcp-server/gui/server.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-07-24T08:45:29Z",
+          "note": "api.ts lines 343, 384, 557, and 565 have pre-existing TypeScript strict-null errors (TS2532 and TS2345) that tsc flags when compiling gui/ directly. These are in unrelated handler functions and pre-date this WP. They should be fixed in a dedicated cleanup pass."
+        },
+        {
+          "type": "code-smell",
+          "priority": "low",
+          "timestamp": "2026-07-24T08:45:29Z",
+          "note": "orchestrator-manager.ts has two TS2322 errors related to Dirent type parameter variance. These also pre-date this WP and are outside the scope of WP-004."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T08:45:29Z",
+          "note": "The server.ts route dispatch function is growing quite long (1000+ lines of if-else blocks). A table-driven or map-based router would improve discoverability and reduce the risk of route-ordering bugs. This is an architectural observation — the pattern is consistent within this file but will become unwieldy as more routes are added."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-07-24T08:45:29Z",
+          "note": "In handleGetChunkFile and handleGetChunkText, the path-prefix defence-in-depth check uses a string startsWith() comparison. This is consistent with the existing handlers in the file — no deviation introduced."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-07-24T08:45:52Z",
+      "completed_at": "2026-07-24T08:51:05Z",
+      "duration_ms": 313000,
+      "summary": [
+        "Build check: npm run build (tsc) passes with 0 new errors.",
+        "Wrote 29 integration tests in tests/gui/api-chunk-text.test.ts covering all 7 AC and 5 edge cases (EC-1 empty JSONL sentinel, EC-5 namespaced project). All 29 pass.",
+        "Regression check: api.test.ts (163 tests), chunk-renderer.test.ts (111), chunk-renderer-text.test.ts (33), server-error-mapping.test.ts (5), api-client.test.ts (37) — 349/349 pass, 0 regressions introduced.",
+        "AC1 PASS: handleGetChunkText returns { content: string, cached: boolean } — exactly two keys, correct types.",
+        "AC2 PASS: Cache miss path extracts JSONL via renderChunksToText, writes .md alongside .jsonl, returns { cached: false } with prose content.",
+        "AC3 PASS: Cache hit path reads pre-existing .md (CLI-generated or prior write), returns { cached: true } without re-extracting. Verified second-call idempotency.",
+        "AC4 PASS: Structural verification confirms the try/catch around writeFile uses a bare catch block with no rethrow. Runtime happy-path also confirmed.",
+        "AC5 PASS: CHUNK_FILENAME_RE (/^[A-Za-z0-9_-]+\\.jsonl$/) correctly rejects: path traversal '../secret.jsonl', slash 'foo/bar.jsonl', wrong extension '.md', no extension, empty string, dot-only base '.jsonl', double extension '.jsonl.exe'. All throw ApiError NOT_FOUND.",
+        "AC6 PASS: .md filename is derived server-side via filename.replace(/\\.jsonl$/, '.md') — never accepted from user input. Verified by confirming different .jsonl inputs produce different, correctly-named .md files.",
+        "AC7 PASS: Route block in server.ts (lines 986–1003) mirrors the /rendered guard exactly: method === 'GET', rest.length === 6, rest[0] === 'projects', rest[3] === 'chunks', rest[2] !== 'chunks', SAFE_SLUG_REGEX check, resolveRepoName call.",
+        "Pre-existing 107 failures confirmed as WP-005 tests only (API.getRepo is not a function) — unrelated to this WP.",
+        "Minor observation: 3 pre-existing failures in repository-context.test.ts (insight deduplication) are unrelated to WP-004."
+      ],
+      "metrics": {
+        "test_coverage": "All 7 AC and 5 edge cases covered by 29 new integration tests",
+        "tests_passed": 29,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T08:51:05Z",
+          "note": "AC-4 writeFile error-swallowing is tested structurally (source inspection) because ESM modules are not configurable for vi.spyOn mocking in Vitest. A dedicated test helper that wraps the fs module (via dependency injection or a test double) would allow runtime simulation of disk errors. Low priority — the structural test reliably confirms the catch block is present and bare."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T08:51:05Z",
+          "note": "No test currently verifies that the defence-in-depth mdPath prefix check fires (the derived .md path always stays inside chunksDir when the allowlist regex passes). This is a belt-and-suspenders guard that is difficult to trigger without regex-bypass, but a test that exploits symlinks or OS-specific path normalisation edge cases could be added in a future hardening pass."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T08:51:05Z",
+          "note": "The new test file (tests/gui/api-chunk-text.test.ts, 29 tests) is co-located with the existing api.test.ts pattern and uses the same fixture helpers. It can be merged into api.test.ts in a future consolidation pass if the test suite grows unwieldy."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-07-24T08:51:36Z",
+      "completed_at": "2026-07-24T08:53:40Z",
+      "duration_ms": 124000,
+      "summary": [
+        "Reviewed 2 modified files (mcp-server/gui/api.ts — handleGetChunkText, mcp-server/gui/server.ts — route dispatch block). 0 Critical, 0 High, 2 Medium (informational — do not block), 2 Low observations recorded. Security sign-off: PASS. The new endpoint demonstrates a strong, layered security posture with explicit allowlist validation, server-side path derivation, defense-in-depth prefix checks, ambiguity-downgrade information hiding, and consistent application of existing security headers and CORS controls."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T08:53:40Z",
+          "note": "No Critical or High security findings. All OWASP Top 10 categories reviewed against the new handleGetChunkText() handler and its server.ts route block. Full review summary below."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T08:53:40Z",
+          "note": "A01 — Broken Access Control: PASS. slug and repoUrlParam are validated by SAFE_SLUG_REGEX (/^[a-z0-9][a-z0-9-]*$/) in server.ts before any handler call, and again by assertSafeSlug() inside handleGetChunkText(). filename is validated against CHUNK_FILENAME_RE (/^[A-Za-z0-9_-]+\\.jsonl$/) — a strict allowlist that rejects path separators, dots except the .jsonl suffix, and all traversal sequences. The derived mdPath is then checked with startsWith(chunksDir + sep) — a defense-in-depth boundary check so no derived path can escape the chunks directory. No IDOR vectors identified: the route requires a validated (repo, slug, filename) triple and resolves the on-disk path entirely server-side."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T08:53:40Z",
+          "note": "A02 — Cryptographic Failures: PASS. No encryption or secrets involved. .md and .jsonl files are plain text at rest and served over a local HTTP server (same trust boundary as all other endpoints in this codebase). No passwords, tokens, or keys are written or read."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T08:53:40Z",
+          "note": "A03 — Injection: PASS. No user input is interpolated into shell commands, SQL, template engines, or OS-level calls. readFile() and writeFile() both receive server-derived absolute paths (validated, not user-supplied strings). renderChunksToText() receives raw JSONL file content (trusted disk read) — not user-supplied request body data. The response is JSON-serialised via JSON.stringify() before transmission; the content field is a string embedded in a JSON object, preventing XSS injection through the API boundary."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T08:53:40Z",
+          "note": "A04 — Insecure Design: PASS. The .md filename is derived entirely server-side from the validated .jsonl filename (filename.replace(/\\.jsonl$/, '.md')). This is the correct design — the client never supplies the cache path. The write-error-swallowing pattern (bare catch block on writeFile) is documented and intentional; it ensures a disk permission error on the cache write cannot take down the read path. No logic flaws in the security-critical flow identified."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T08:53:40Z",
+          "note": "A05 — Security Misconfiguration: PASS. All API responses use sendJson() which applies the full securityHeaders() set: X-Content-Type-Options: nosniff, X-Frame-Options: DENY, Referrer-Policy: strict-origin-when-cross-origin, Content-Security-Policy (default-src 'self'). CORS is restricted to localhost:{port}. Error messages use generic codes (NOT_FOUND, INTERNAL_ERROR) — file system details are not leaked to callers. Internal details are logged only to stderr."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T08:53:40Z",
+          "note": "A06 — Vulnerable & Outdated Components: PASS (scoped). No new third-party dependencies were introduced by this WP. renderChunksToText() is an internal function from chunk-renderer.ts. The only Node.js builtins used are node:fs/promises (readFile, writeFile) and node:path (resolve, join, sep). No CVE check was triggered."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T08:53:40Z",
+          "note": "A07 — Identification & Authentication Failures: N/A. This is a local-only GUI server with no user authentication layer. The endpoint is a read-only text extraction route. No session, token, or credential handling occurs."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T08:53:40Z",
+          "note": "A08 — Software & Data Integrity Failures: PASS. The .md cache is written from renderChunksToText() output only — the function processes trusted on-disk JSONL content, not external input. No deserialization of untrusted data occurs. The caching mechanism does not introduce an integrity risk: a corrupted .md cache file would simply be returned as-is (cached: true) — this is an availability/correctness concern, not a security one."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T08:53:40Z",
+          "note": "A09 — Security Logging & Monitoring Failures: PASS. Rejected filenames are logged via console.warn() with the literal (regex-validated-to-be-safe) input echoed in brackets. The warning prefixes ([handleGetChunkText]) are consistent with the existing codebase convention. Filesystem errors that propagate (non-ENOENT on readFile) are caught by the global error handler and logged to stderr. The write-error-swallowing catch block is the one case where an error is deliberately not logged — this is an identified low-priority observation (see below)."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T08:53:40Z",
+          "note": "A10 — Server-Side Request Forgery (SSRF): PASS. No outbound HTTP requests are made by this handler. All filesystem access is limited to paths under the resolveProjectStore()-returned storageDir. There is no URL fetching, DNS lookup, or proxy behaviour."
+        },
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-07-24T08:53:40Z",
+          "note": "Medium — A09 / Observability Gap: The writeFile best-effort catch block (api.ts ~L1630) is intentionally bare and swallows all errors silently. In a scenario where the chunks directory has unexpected permissions (e.g. after a deployment change or container image rebuild), every cache-miss request would silently fail to cache, causing repeated JSONL re-extraction with no operator signal. Recommendation: add a console.warn() or stderr.write() inside the catch block (e.g. '[handleGetChunkText] Cache write failed for {mdPath}: {err.message}') so disk permission issues are observable in server logs without breaking the read path. This does not block approval — the read path is unaffected — but operators would have no signal of a persistent cache-write failure in production."
+        },
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-07-24T08:53:40Z",
+          "note": "Medium — A05 / Information Disclosure (marginal): The console.warn() calls for rejected filenames (api.ts L1585, L1598) echo the raw filename string in the log message (e.g. 'Rejected filename (regex check): \\'../secret.jsonl\\''). Since CHUNK_FILENAME_RE has already failed at that point, the echoed string could contain attacker-controlled characters (path separators, null bytes, ANSI escape sequences). In a scenario where server logs are forwarded to a log aggregator UI, this could allow log injection or terminal escape injection. Recommendation: sanitize or truncate the filename before logging (e.g. JSON.stringify(filename.slice(0, 64)) to neutralize special chars). Low operational risk in a localhost-only server, but a good hardening measure. Does not block approval."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T08:53:40Z",
+          "note": "Low — Input Validation / CHUNK_FILENAME_RE upper-bound: The allowlist regex /^[A-Za-z0-9_-]+\\.jsonl$/ has no maximum length constraint on the filename stem. A client could submit a 10,000-character filename that passes the regex, triggering a readFile() on a path that will not exist (benign ENOENT + 404), but consuming path-resolution overhead. Recommendation: add an early length check (e.g. if filename.length > 256) before the regex test, consistent with the MAX_SEGMENT_LENGTH=128 pattern used for slugs. Minor hardening — does not block approval."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T08:53:40Z",
+          "note": "Low — A08 / .md cache poisoning via symlink: If an attacker with local filesystem access places a symlink at the expected mdPath location pointing to a sensitive file, the cache-first readFile() at L1604 would read and return the symlink target's contents. The CHUNK_FILENAME_RE + prefix check prevents the client from controlling which mdPath is chosen, so this requires pre-existing local filesystem write access to the chunks directory — at which point the system is already compromised. Noted for completeness; not a remotely exploitable vector in the threat model of a localhost server."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-07-24T08:54:10Z",
+      "completed_at": "2026-07-24T08:55:42Z",
+      "duration_ms": 92000,
+      "summary": [
+        "Reviewed mcp-server/gui/api.ts (handleGetChunkText, ~60 lines) and mcp-server/gui/server.ts (route dispatch block, lines 984–1003).",
+        "All 7 acceptance criteria confirmed met — no blocking issues found across all four review dimensions (maintainability, best practices, performance, future context).",
+        "One Fix-Forward applied: removed spurious double blank line after the renderChunksToText import in api.ts (line 72 → single blank line). Non-behavioral, cosmetic only.",
+        "Two documentation-forward items tagged for the Documentation agent.",
+        "Route ordering in server.ts is correct — the 6-segment /text route precedes the 5-segment /chunks/:filename route, preventing shadowing. Guard conditions (SAFE_SLUG_REGEX, rest[2] !== 'chunks', resolveRepoName) are identical to the /rendered sibling. Structural consistency is exemplary.",
+        "The defence-in-depth prefix check asymmetry (applied to mdPath but not the .jsonl filePath) is defensible: CHUNK_FILENAME_RE already mathematically bounds the .jsonl path, while the .md path is derived via string manipulation and warrants the extra guard. This asymmetry is intentional and architecturally sound.",
+        "The best-effort writeFile catch block (bare catch, no rethrow) is correctly positioned — it does not swallow errors from readFile or renderChunksToText, only from the cache-write side-effect. The error isolation boundary is precise.",
+        "The cache-first strategy (try readFile(mdPath) → ENOENT fall-through → extract → best-effort write) is clean and idiomatic. The ENOENT-only re-throw guard on the mdPath read (line 1607) correctly re-propagates unexpected errors (permissions, I/O failures) while only swallowing the expected cache-miss case.",
+        "PASS with Fix-Forward."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/api.ts",
+          "mcp-server/gui/server.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-07-24T08:55:42Z",
+          "note": "Fix-Forward: Removed spurious double blank line between the 'import { renderChunksToText }' statement and the 'Internal helpers' section comment in api.ts (line 72). The rest of the file consistently uses a single blank line between the last import and the first section divider. Non-behavioral — QA validation remains fully intact."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-07-24T08:55:42Z",
+          "note": "[documentation-forward] handleGetChunkText() JSDoc (api.ts ~L1549) documents the NOT_FOUND throw cases but omits that a corrupt or unparseable .jsonl file causes renderChunksToText() to throw, which propagates as a 500 INTERNAL_ERROR (not a 404). Add a @throws entry: '@throws Internal server error (500) if the .jsonl content cannot be parsed by renderChunksToText().' This helps future contributors distinguish the two error surfaces."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-07-24T08:55:42Z",
+          "note": "[documentation-forward] The defence-in-depth prefix check in handleGetChunkText is applied to mdPath (the .md side) but not to filePath (the .jsonl side), which differs from the handleGetChunkFile sibling that does check the .jsonl path. This is intentional — CHUNK_FILENAME_RE already mathematically bounds the .jsonl filePath, while .md derivation via string replacement warrants the extra guard. Add a brief inline comment near line 1614 explaining this intentional asymmetry so future contributors do not add a redundant check or incorrectly perceive it as a missing one. E.g.: '// No prefix check needed here — CHUNK_FILENAME_RE already bounds the .jsonl filename to safe characters; mdPath requires a check because it is derived via string replacement.'"
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T08:55:42Z",
+          "note": "The server.ts route dispatch function continues to grow (the /text route is now the third in a family of chunk-related routes). The existing if-else chain is consistent with the file's established pattern, but the Developer's prior observation about a table-driven router stands. As routes accumulate, consider a refactor to a route-map structure to improve discoverability and reduce the risk of guard-condition drift between route families."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-07-24T08:56:08Z",
+      "completed_at": "2026-07-24T08:59:57Z",
+      "duration_ms": 229000,
+      "summary": [
+        "Addressed both documentation-forward items from the Reviewer.",
+        "Forward 1 (JSDoc @throws): Added '@throws Internal server error (500) if the .jsonl content cannot be parsed by renderChunksToText()' to the handleGetChunkText JSDoc in mcp-server/gui/api.ts, clarifying the 500 vs 404 distinction for callers.",
+        "Forward 2 (prefix check asymmetry comment): Added a 6-line inline comment before the filePath assignment explaining that CHUNK_FILENAME_RE bounds the .jsonl filename to safe characters, making the .jsonl path safe by construction, while the .md path requires the defence-in-depth prefix check because it is derived via string replacement.",
+        "Updated mcp-server/docs/agents/project-manifest/api-surface.md: added a full GET /api/projects/:repo/:slug/chunks/:filename/text route specification block (cache strategy, security model, error behaviour, route dispatch note, and TypeScript signature) placed between the /rendered entry and the structured chunk renderer section; added renderChunksToText() function documentation to the chunk-renderer section; added the route to the route table.",
+        "Updated mcp-server/docs/agents/project-manifest/file-tree.md: added handleGetChunkText to the api.ts entry with a description of the endpoint; added renderChunksToText export to the chunk-renderer.ts entry with format semantics (single vs dual namespace, empty sentinel)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/api.ts",
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/file-tree.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T08:59:57Z",
+          "note": "The api-client.js 'API' object description in api-surface.md still references '32 REST endpoints'. The new /text route is a server-side endpoint not yet exposed as an api-client.js method (the frontend WP-005 is BLOCKED). When WP-005 ships a getChunkText() client method, that description line should be updated to reflect the added method."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-07-24T08:59:57Z",
+  "last_updated": "2026-07-24T08:59:57Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-07-24T08:45:29Z",
+      "notes": [
+        "handleGetChunkText is exported from api.ts and wired into server.ts at GET /api/projects/:repo/:slug/chunks/:filename/text.",
+        "The route returns { content: string, cached: boolean } as JSON — the server's JSON serialisation is handled by the existing response pipeline in server.ts (same as all other handlers).",
+        "107 pre-existing test failures exist in project-detail-auto-update.test.ts and project-detail-poll-modes.test.ts (all WP-005 tests failing on API.getRepo is not a function). These are the unimplemented frontend tests for the BLOCKED WP-005 and are not caused by this WP.",
+        "npm run build passes cleanly. The gui/*.ts files are executed via tsx at runtime (not compiled by tsc) — tsx validates types on load.",
+        "The best-effort writeFile catch block uses an empty catch (no binding) which is TypeScript 4+ compatible."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-07-24T08:51:05Z",
+      "notes": [
+        "All 7 AC verified via 29 new integration tests — all pass.",
+        "107 pre-existing WP-005 failures (API.getRepo is not a function in project-detail-auto-update and project-detail-poll-modes) remain and are unrelated to this WP.",
+        "3 pre-existing failures in repository-context.test.ts (insight deduplication) are also unrelated.",
+        "New test file: tests/gui/api-chunk-text.test.ts (29 tests, all passing).",
+        "npm run build passes cleanly. No regressions in any WP-004-adjacent test file.",
+        "AC-4 (write error swallowing) verified structurally — the bare catch block in handleGetChunkText is present and contains no rethrow."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-07-24T08:53:40Z",
+      "notes": [
+        "Security audit PASS — 0 Critical, 0 High findings. Two Medium observations recorded (swallowed-write-error observability gap; log injection hardening for filename in warn messages) — neither blocks approval. Two Low observations (no filename length cap on CHUNK_FILENAME_RE stem; theoretical symlink race requiring local fs write access). All 7 AC confirmed met. Recommend addressing the Medium-priority console.warn hardening (log injection via unsanitized filename) in a future cleanup pass. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-07-24T08:55:42Z",
+      "notes": [
+        "All 7 AC confirmed met. PASS — no blocking issues. One Fix-Forward applied (double blank line in api.ts removed). Two documentation-forward items: (1) handleGetChunkText JSDoc should add @throws for corrupt JSONL → 500 path; (2) add inline comment explaining the intentional asymmetry where filePath lacks a prefix check (CHUNK_FILENAME_RE sufficiency) but mdPath has one. Security Auditor's two Medium observations (observability gap on swallowed writeFile error; log injection via unsanitized filename in console.warn) remain open as cleanup candidates — neither blocks release."
+      ]
+    }
+  ]
+}

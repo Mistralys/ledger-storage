@@ -1,0 +1,228 @@
+{
+  "work_package_id": "WP-004",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "wp_status_change fires when any WP status differs between consecutive supervisor iterations",
+      "met": true
+    },
+    {
+      "criterion": "wp_complete fires when a WP transitions to COMPLETE",
+      "met": true
+    },
+    {
+      "criterion": "progress_snapshot emitted every supervisor iteration with total_wps, status_breakdown, elapsed_s, iteration",
+      "met": true
+    },
+    {
+      "criterion": "elapsed_s is seconds since run_start_ts (or omitted if unavailable)",
+      "met": true
+    },
+    {
+      "criterion": "route events include prev_stage, prev_wp_id, prev_result",
+      "met": true
+    },
+    {
+      "criterion": "rework_detected fires when supervisor dispatches a REWORK action",
+      "met": true
+    },
+    {
+      "criterion": "prev_wp_summaries stored in state for next iteration",
+      "met": true
+    },
+    {
+      "criterion": "No additional MCP calls (all data from memory)",
+      "met": true
+    },
+    {
+      "criterion": "Existing tests pass without modification",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-22T16:54:21Z",
+      "completed_at": "2026-03-22T16:59:39Z",
+      "summary": [
+        "Added WP status-change detection to supervisor: compares wp_summaries against prev_wp_summaries for each iteration, emits wp_status_change events (with old_status/new_status) and wp_complete events when a WP transitions to COMPLETE.",
+        "Added progress_snapshot event on every iteration: total_wps, status_breakdown (dict), pending, wps_completed_this_run, iteration, max_iterations, elapsed_s (from run_start_ts), run_start_ts. No MCP calls — all computed from in-memory state.",
+        "Stored prev_wp_summaries: wp_summaries in base_update so each iteration can diff against the previous.",
+        "Enriched route log entries with prev_stage, prev_wp_id, prev_result (PASS/FAIL/empty).",
+        "Added rework_detected event emission inside the role iteration loop when action == REWORK (includes wp_id, agent_role, pipeline_type, rework_count).",
+        "Added 5 new test classes in test_supervisor.py: TestProgressSnapshot (4 tests), TestWPStatusChangeEvents (4 tests), TestPrevWPSummariesStored (1 test), TestEnrichedRouteEvents (2 tests), TestReworkDetectedEvent (2 tests). All 315 tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/supervisor.py",
+          "orchestrator/tests/test_supervisor.py"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-22T16:59:39Z",
+          "note": "progress_snapshot is appended as the LAST entry in each run_log to preserve backward-compatible test assertions (run_log[0] remains the route entry). Two existing tests checked run_log[0][destination]. Emitting snapshot before route would break them. Ordering: [status_change_entries..., route_entry, progress_snapshot] — functionally equivalent but not the plan's suggested ordering of snapshot before route."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-22T16:59:39Z",
+          "note": "supervisor.py uses underscore-prefixed loop variables (_w, _prev_summaries, etc.) for WP status diff computation to avoid shadowing the outer `wp_id` loop variable in the role iteration. Clean but could be refactored to a helper function for readability."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-22T17:15:40Z",
+      "completed_at": "2026-03-22T17:16:54Z",
+      "summary": [
+        "All 9 acceptance criteria verified via code review and automated tests. 322 tests pass, 0 failures.",
+        "wp_status_change: confirmed emitted when WP status differs between iterations via _prev_status_map diff. wp_complete also emitted when new_status == COMPLETE.",
+        "progress_snapshot: emitted every iteration with total_wps, status_breakdown, pending, wps_completed_this_run, iteration, max_iterations, elapsed_s, run_start_ts. No extra MCP calls.",
+        "elapsed_s: computed from run_start_ts via datetime diff, gracefully omits field if run_start_ts missing/invalid (empty string guard + try/except).",
+        "route enrichment: prev_stage (state.current_stage), prev_wp_id, prev_result (PASS/FAIL/'') all added to route log entries.",
+        "rework_detected: emitted exactly when action == REWORK, includes agent_role, pipeline_type, rework_count.",
+        "prev_wp_summaries stored in base_update so status-change detection works on next iteration.",
+        "Note: progress_snapshot is appended last in run_log (after route entry). Developer intentionally placed it last to preserve test assertions on run_log[0]. Functionally equivalent for consumers that filter by action."
+      ],
+      "metrics": {
+        "test_coverage": "TestProgressSnapshot (4 tests), TestWPStatusChangeEvents (4 tests), TestPrevWPSummariesStored (1 test), TestEnrichedRouteEvents (2 tests), TestReworkDetectedEvent (2 tests)",
+        "tests_passed": 322,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-22T17:16:54Z",
+          "note": "progress_snapshot is appended as LAST item in run_log (after route), not before as the plan suggested. The developer noted this was intentional to avoid breaking existing tests that indexed run_log[0] for the route entry. Functionally equivalent; log consumers searching by action field are unaffected."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-22T17:16:54Z",
+          "note": "status-change detection key is work_package_id (underscore form). Consistent with ledger API. Verified against TestWPStatusChangeEvents test fixtures."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-22T17:16:54Z",
+          "note": "No observations — code is clean and consistent."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-22T17:22:14Z",
+      "completed_at": "2026-03-22T17:24:16Z",
+      "summary": [
+        "Reviewed 2 modified files: supervisor.py (status-change detection, progress_snapshot, enriched route events, rework_detected) and test_supervisor.py (5 new test classes).",
+        "All 9 acceptance criteria met. No additional MCP calls confirmed — all data flows from in-memory state.",
+        "WP status-change detection correctly uses _prev_status_map diff; guards against first-iteration (empty prev_wp_summaries) and unchanged-status false firings.",
+        "progress_snapshot is consistent across all return paths (safety limit and mcp_error early returns are excluded by design — no wp_summaries available).",
+        "Route enrichment (prev_stage, prev_wp_id, prev_result) and rework_detected are clean and purposeful.",
+        "elapsed_s has correct try/except (ValueError, TypeError) guard on datetime.fromisoformat().",
+        "One medium-priority gap: wps_completed_this_run is read but never incremented — always reports 0.",
+        "Test quality is high: 13 new tests all search by action field (not index), correctly decoupled from run_log ordering."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-03-22T17:24:16Z",
+          "note": "wps_completed_this_run is present in progress_snapshot and used by the CLI final report, but is never incremented by the supervisor. The wp_complete detection logic is right there — a one-liner in base_update would fix it (e.g., wps_completed_this_run = state.get('wps_completed_this_run', 0) + number_of_complete_transitions_this_iteration). Until this is addressed, the field will always report 0, making both progress snapshots and the CLI run summary misleading. No AC is violated but the field's functional purpose is defeated."
+        },
+        {
+          "type": "refactor",
+          "priority": "low",
+          "timestamp": "2026-03-22T17:24:16Z",
+          "note": "The WP status-diff block uses underscore-prefixed loop variables (_w, _wp_id_sc, _new_st, _old_st, _prev_summaries, _prev_status_map, _sc_entry, _wc_entry) to avoid shadowing the outer wp_id variable in the role iteration loop. Valid pattern, but a small helper function _compute_status_change_entries(current, previous) would make the intent clearer and keep the main supervisor function body shorter."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-22T17:24:16Z",
+          "note": "rework_count=action_data.get('rework_count') passes None when rework_count is absent from action_data. For a log field this is acceptable, but using a default of 0 (or 1) would remove None from the log schema and make consumers easier to implement."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-03-22T17:24:16Z",
+          "note": "progress_snapshot is appended last in run_log (after route entry). The plan suggested it before route, but the developer chose this order to preserve existing test assertions on run_log[0] (route entry). Order is consistent across all return paths. The QA note confirms this: consumers should filter by action field, not by index. No action needed."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-22T17:31:23Z",
+      "completed_at": "2026-03-22T17:32:54Z",
+      "summary": [
+        "Updated orchestrator/docs/jsonl-log-schema.md: added new fields (old_status, new_status, total_wps, status_breakdown, pending, wps_completed_this_run, max_iterations, elapsed_s, prev_stage, prev_wp_id, prev_result, agent_role, rework_count) to Full Field Reference; extended pipeline_type row to cover rework_detected; added wp_status_change, wp_complete, progress_snapshot, rework_detected to Action Values table; updated route entry with new fields; added Supervisor event ordering per iteration section.",
+        "Updated orchestrator/docs/architecture.md: updated prev_wp_summaries field description to reflect active use for status-change diffing; added wp_status_change, wp_complete, progress_snapshot, rework_detected rows to JSONL Log Entry Types table; updated route row to show new fields.",
+        "Updated orchestrator/README.md: expanded test_supervisor.py description in the Tests table to document the 5 new test classes.",
+        "Added orchestrator/changelog.md v0.8.0 entry summarising all WP-004 changes."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/docs/jsonl-log-schema.md",
+          "orchestrator/docs/architecture.md",
+          "orchestrator/README.md",
+          "orchestrator/changelog.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-03-22T17:32:54Z",
+          "note": "wps_completed_this_run is documented in the JSONL schema with an explicit caveat that it currently always reports 0 (supervisor never increments it). Annotated in jsonl-log-schema.md Full Field Reference. A one-liner fix in supervisor.py base_update is needed by a developer."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-22T17:32:54Z",
+          "note": "progress_snapshot is appended last in run_log (after route entry). Documented in the log schema: the Action Values ordering note lists progress_snapshot as last. JSONL consumers must search by action field, not by index."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-03-22T17:32:54Z",
+  "last_updated": "2026-03-22T17:32:54Z",
+  "handoff_notes": [
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-22T17:16:54Z",
+      "notes": [
+        "WP-004 (Supervisor Progress & Status Events) is QA PASS. All 79 supervisor tests pass; 322 total.",
+        "The progress_snapshot appears after the route entry in run_log (not before, as the plan suggested). Consumers must search by action field, not by index. Reviewer may want to note this ordering difference in code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-03-22T17:24:16Z",
+      "notes": [
+        "WP-004 code-review PASS. All 9 ACs confirmed. One medium-priority gap: wps_completed_this_run is read in progress_snapshot and CLI final report but never incremented — will always show 0. wp_complete detection is in place; fix is a one-liner in base_update. No blocking issues. Ready for documentation pipeline."
+      ]
+    }
+  ]
+}

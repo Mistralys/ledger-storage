@@ -1,0 +1,168 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "updateTitle(title) is a new public async method on LedgerStore",
+      "met": true
+    },
+    {
+      "criterion": "It reads the existing .meta.json, sets title, and updates last_updated",
+      "met": true
+    },
+    {
+      "criterion": "The write is atomic (uses atomicWriteJson)",
+      "met": true
+    },
+    {
+      "criterion": "It returns the updated ProjectMeta object",
+      "met": true
+    },
+    {
+      "criterion": "The method passes TypeScript type-checking (tsc --noEmit)",
+      "met": true
+    },
+    {
+      "criterion": "No existing tests are broken",
+      "met": true
+    }
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-05T17:56:13Z",
+      "completed_at": "2026-03-05T17:57:16Z",
+      "summary": [
+        "Added `updateTitle(title: string): Promise<ProjectMeta>` public async method to LedgerStore. The method reads the current .meta.json via readProjectMeta(), merges in the new title and a fresh last_updated timestamp, validates with ProjectMetaSchema.parse(), writes atomically via atomicWriteJson(this.metaPath(), updated), and returns the updated ProjectMeta. No new imports needed — atomicWriteJson and ProjectMetaSchema were already in scope. TypeScript type-check (tsc --noEmit) passed clean. All 1077 existing tests pass (36 test files)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/storage/ledger-store.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-05T17:57:16Z",
+          "note": "No observations — code is clean and consistent. The method follows the same pattern as writeProjectMeta but is a targeted mutator that reads first and returns the validated result, which is the correct approach for a rename operation."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-05T17:58:09Z",
+      "completed_at": "2026-03-05T17:59:11Z",
+      "summary": [
+        "All 6 acceptance criteria verified.",
+        "AC1: updateTitle(title: string): Promise<ProjectMeta> is a public async method on LedgerStore — confirmed at ledger-store.ts:295.",
+        "AC2: Reads existing .meta.json via readProjectMeta(), sets title and last_updated, validates with ProjectMetaSchema.parse() — confirmed.",
+        "AC3: Write is atomic via atomicWriteJson() — confirmed.",
+        "AC4: Returns the updated ProjectMeta object — confirmed.",
+        "AC5: tsc --noEmit exits 0 — confirmed.",
+        "AC6: Full test suite — 1077 tests across 36 files, all pass."
+      ],
+      "metrics": {
+        "test_coverage": "36 test files",
+        "tests_passed": 1077,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "edge-case",
+          "priority": "medium",
+          "timestamp": "2026-03-05T17:59:11Z",
+          "note": "updateTitle() performs a read-modify-write without withLock(). The plan's Risks section flags this as a potential race condition. writeRootIndexWithLock() uses proper locking; updateTitle() only relies on atomicWriteJson() for the write half. The WP-001 AC only required atomicWriteJson (met), but the Developer or Reviewer should decide whether to add withLock() wrapping before this ships. File: mcp-server/src/storage/ledger-store.ts, around line 295."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-03-05T17:59:11Z",
+          "note": "Plan step 12 calls for a dedicated updateTitle unit test in tests/storage/ledger-store.test.ts. That test is scoped to a later WP (WP-004 or wherever tests land). No coverage gap for WP-001 itself, but flagging so the test WP owner doesn't miss it."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-05T18:00:08Z",
+      "completed_at": "2026-03-05T18:01:01Z",
+      "summary": [
+        "Reviewed updateTitle(title: string): Promise<ProjectMeta> in mcp-server/src/storage/ledger-store.ts:295. All 6 acceptance criteria are met. Implementation is clean, minimal, and internally consistent with the codebase's established single-file meta write pattern (writeProjectMeta also does not use withLock for standalone writes — the lock is only applied at the multi-file level in writeRootIndexWithLock). The locking concern raised by QA is acknowledged: it is documented in the plan's Risks table and is a pre-ship decision, not a WP-001 blocker. No code changes required."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-03-05T18:01:01Z",
+          "note": "The read-modify-write in updateTitle() runs without withLock(). Confirmed this is consistent with standalone writeProjectMeta() calls elsewhere in the class (e.g. initializeProject at line 173). The lock pattern in this codebase applies only to multi-file atomic operations (writeRootIndexWithLock). For a GUI rename endpoint with inherently low concurrency, atomicWriteJson is sufficient. Revisit if the method is ever called from a high-concurrency path. File: mcp-server/src/storage/ledger-store.ts:295."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-05T18:01:01Z",
+          "note": "Input validation (min(1) / max(200)) is intentionally deferred to the API layer (handleRenameProject in WP-002). The storage method accepts any string and ProjectMetaSchema would not reject an empty title (title is z.string().optional()). This is correct layering, but worth confirming that the API handler applies .min(1) as specced in the plan."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-05T18:01:29Z",
+      "completed_at": "2026-03-05T18:02:16Z",
+      "summary": [
+        "Updated mcp-server/docs/agents/project-manifest/api-surface.md: added updateTitle(title: string): Promise<ProjectMeta> to the LedgerStore class signature under the Meta methods section, with an inline description matching the JSDoc comment in source. No other documentation changes are required for WP-001 — the method is storage-layer internal, no MCP tools were added, and no data flows changed."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-05T18:02:16Z",
+          "note": "No documentation gaps — the method is straightforward and its single-comment inline description in api-surface.md is sufficient. The locking trade-off (no withLock) is already documented in the plan Risks table and in the QA/Reviewer pipeline comments; no need to surface it in the public API docs unless the behaviour changes."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-03-05T18:02:16Z",
+  "handoff_notes": [
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-05T17:59:11Z",
+      "notes": [
+        "WP-001 PASS. updateTitle() implementation is clean and correct for WP-001 scope.",
+        "Medium flag: no withLock() on read-modify-write in updateTitle() — plan Risks section identified this; decide before shipping.",
+        "Next: WP-002 is BLOCKED on WP-001 completing — it should now be unblocked."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-03-05T18:01:01Z",
+      "notes": [
+        "WP-001 review PASS. updateTitle() is correct, minimal, and consistent with codebase patterns. The locking concern is documented but is not a blocker — matches established writeProjectMeta() standalone pattern.",
+        "Confirm API handler (WP-002) applies z.string().min(1).max(200) validation and PATCH is added to CORS Allow-Methods header.",
+        "WP-001 is now COMPLETE — WP-002 should be unblocked."
+      ]
+    },
+    {
+      "from_agent": "Documentation",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-03-05T18:02:16Z",
+      "notes": [
+        "WP-001 fully COMPLETE. api-surface.md updated with updateTitle() signature. WP-002 (handleRenameProject API handler + PATCH route) should proceed — confirm PATCH is added to CORS Allow-Methods and z.string().min(1).max(200) validation is applied in handleRenameProject."
+      ]
+    }
+  ]
+}
