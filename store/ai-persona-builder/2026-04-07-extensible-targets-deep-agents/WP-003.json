@@ -1,0 +1,398 @@
+{
+  "work_package_id": "WP-003",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001",
+    "WP-002"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "Config using only outVscode/outClaudeCode builds successfully.",
+      "met": true
+    },
+    {
+      "criterion": "Config using outputDirs builds successfully.",
+      "met": true
+    },
+    {
+      "criterion": "Frontmatter defaults resolved from registry.",
+      "met": true
+    },
+    {
+      "criterion": "Context flags injected from registry definitions.",
+      "met": true
+    },
+    {
+      "criterion": "grep -r \"=== 'vscode'\" src/builders/ returns zero matches.",
+      "met": true
+    },
+    {
+      "criterion": "All existing tests pass without modification.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-07T20:07:39Z",
+      "completed_at": "2026-04-07T20:15:39Z",
+      "duration_ms": 480000,
+      "summary": [
+        "Refactored build pipeline to use TargetRegistry, eliminating all hardcoded ternary branches on target literals from src/builders/.",
+        "Made outVscode and outClaudeCode optional in SuiteConfig, with outputDirs taking precedence (deprecated-field fallback still works).",
+        "Added resolveOutputDir() helper that builds a merged map from deprecated fields + outputDirs, supporting arbitrary custom targets without === equality checks.",
+        "Updated buildContext() to spread contextFlags from the registry definition instead of manually constructing the flag key string.",
+        "Updated buildPersona() and buildSuite() with optional registry parameter (defaults to defaultRegistry), wired through all call sites.",
+        "Updated resolveFrontmatterTemplate() to accept optional registry parameter; uses registry.get(target).defaultFrontmatter as fallback, replacing hardcoded ternary.",
+        "Updated build() to resolve registry from config.targetRegistry ?? defaultRegistry; uses registry.names() as default targets only when a custom registry is explicitly provided, preserving the historical ['vscode', 'claude-code'] default for backward compatibility.",
+        "Updated BuildConfig.targetRegistry JSDoc to remove the 'not yet consumed' note — the field is now fully wired.",
+        "TypeScript compilation: zero errors. Test suite: 281/281 passed. grep -r \"=== 'vscode'\" src/builders/ returns zero matches."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/plugins/types.ts",
+          "src/builders/frontmatter.ts",
+          "src/builders/persona-builder.ts",
+          "src/builders/types.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T20:15:39Z",
+          "note": "build() default-targets fallback uses the string literals 'vscode'/'claude-code' instead of registry.names() to preserve backward compatibility — because defaultRegistry now includes 'deep-agents' (registered by WP-001), using registry.names() would silently expand the default scope and break configs that don't declare a 'deep-agents' output dir. Consider adding a 'defaultEnabled' boolean to TargetDefinition so targets can opt-in/out of the default build set without requiring explicit targets[] config."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-04-07T20:15:39Z",
+          "note": "The two-registry pattern (defaultRegistry vs. a consumer-provided registry) means that calling buildPersona() or buildSuite() directly without passing a registry always uses defaultRegistry. If a consumer registers custom targets on a separate TargetRegistry instance and passes it only to build(), direct calls to buildPersona() will not see those custom targets. This is a minor API inconsistency that could cause confusion. Documenting this limitation in the JSDoc for buildPersona/buildSuite would help."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-07T20:16:05Z",
+      "completed_at": "2026-04-07T20:20:21Z",
+      "duration_ms": 256000,
+      "summary": [
+        "All 6 acceptance criteria verified. TypeScript compiles cleanly. 281/281 tests pass without modification. AC-5 confirmed: zero '=== vscode' literals in src/builders/. AC-1 verified: resolveOutputDir() correctly merges deprecated outVscode/outClaudeCode as fallback. AC-2 verified: outputDirs-only config works and takes precedence. AC-3 verified: resolveFrontmatterTemplate() precedence chain is plugin > configTemplates > registry.defaultFrontmatter > absolute fallback. AC-4 verified: buildContext() spreads contextFlags from all three built-in target definitions; fallback path handles unregistered targets. Two documentation bugs found (detailed in comments) — neither affects runtime correctness or blocks promotion."
+      ],
+      "metrics": {
+        "test_coverage": "all 17 test files passed",
+        "tests_passed": 281,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "bug",
+          "priority": "high",
+          "timestamp": "2026-04-07T20:20:21Z",
+          "note": "src/targets/types.ts TargetDefinition.contextFlags JSDoc says 'Not yet consumed by the runtime… a follow-up WP will wire the registry lookup.' WP-003 already implemented this wiring in buildContext() in persona-builder.ts. The comment is now a direct factual contradiction. Must be updated before the documentation agent reviews this, or it will generate incorrect user-facing docs."
+        },
+        {
+          "type": "bug",
+          "priority": "medium",
+          "timestamp": "2026-04-07T20:20:21Z",
+          "note": "TargetDefinition.outputDirKey is declared as a required field in the public interface and used in registry.ts JSDoc examples, but is never read by the runtime. resolveOutputDir() uses the target name (first arg) directly as the key for the merged map — not outputDirKey. A consumer who registers name:'my-target', outputDirKey:'mydir' expecting outputDirs['mydir'] to be used will get a 'no output directory configured' error instead. Either the runtime should use outputDirKey for the map lookup, or outputDirKey should be removed/marked optional with a note that the runtime uses the target name."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-04-07T20:20:21Z",
+          "note": "No test in tests/builders/target-variable-injection.test.ts explicitly verifies target_deep_agents=true injection for the third built-in target. The code path is correct (shared with vscode/claude-code), but a dedicated test would protect against future regression."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "FAIL",
+      "started_at": "2026-04-07T20:20:50Z",
+      "completed_at": "2026-04-07T20:24:36Z",
+      "duration_ms": 226000,
+      "summary": [
+        "Reviewed all four implementation files plus targets/types.ts, targets/built-in.ts, and targets/registry.ts.",
+        "Applied two Fix-Forward JSDoc corrections (contextFlags and built-in target count).",
+        "Found one blocking issue: outputDirKey contract mismatch — the field is required in the public TargetDefinition interface, its JSDoc says it is the output directory lookup key, but resolveOutputDir() ignores it and uses the target name directly. Must be wired before promotion.",
+        "Tagged two documentation gaps for the Documentation agent."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/targets/types.ts",
+          "src/targets/built-in.ts",
+          "src/builders/persona-builder.ts",
+          "src/builders/frontmatter.ts",
+          "src/builders/types.ts",
+          "src/plugins/types.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "high",
+          "timestamp": "2026-04-07T20:24:36Z",
+          "note": "Fix-Forward applied — src/targets/types.ts: replaced stale contextFlags JSDoc ('Not yet consumed by the runtime… A follow-up WP will wire the registry lookup') with accurate description reflecting that buildContext() already wires the registry lookup via registry.get(target).contextFlags. This was a direct factual contradiction in a public interface field."
+        },
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-07T20:24:36Z",
+          "note": "Fix-Forward applied — src/targets/built-in.ts: corrected module JSDoc from 'pre-populated with the two built-in targets' to 'three built-in targets: vscode, claude-code, and deep-agents'. WP-001/WP-003 added the deep-agents target but the comment was never updated."
+        },
+        {
+          "type": "improvement",
+          "priority": "high",
+          "timestamp": "2026-04-07T20:24:36Z",
+          "note": "BLOCKING: outputDirKey contract mismatch. TargetDefinition.outputDirKey is declared required and its JSDoc reads 'Key used to look up the output directory in the suite's output dir map.' However, resolveOutputDir() (persona-builder.ts ~L127) uses the `target` parameter (the name) directly as the map lookup key — outputDirKey is never read at runtime. For all three built-ins outputDirKey === name so no visible breakage. But any consumer who registers a custom target with outputDirKey !== name (e.g. name:'my-target', outputDirKey:'mydir') will receive a 'no output directory configured' error even when outputDirs['mydir'] is present. Fix: pass the TargetDefinition into resolveOutputDir() and use def.outputDirKey ?? target as the lookup key."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-07T20:24:36Z",
+          "note": "[documentation-forward] buildPersona() and buildSuite() in src/builders/persona-builder.ts accept an optional registry parameter defaulting to defaultRegistry. When a consumer passes a custom TargetRegistry only to build() and later calls buildPersona()/buildSuite() directly without the registry argument, their custom targets will not be visible. This two-registry limitation should be documented in the @param registry note for both functions."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-04-07T20:24:36Z",
+          "note": "[documentation-forward] BuildConfig.targets JSDoc in src/builders/types.ts reads 'Defaults to both vscode and claude-code when omitted.' This is no longer fully accurate: build() conditionally defaults to registry.names() when config.targetRegistry is explicitly supplied. Update the JSDoc to document the conditional default logic."
+        }
+      ]
+    },
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-07T20:25:40Z",
+      "completed_at": "2026-04-07T20:27:32Z",
+      "duration_ms": 112000,
+      "summary": [
+        "Rework: wired TargetDefinition.outputDirKey into resolveOutputDir() as the map lookup key, fixing the blocking contract mismatch identified by the code review.",
+        "Added import for TargetDefinition type from '../targets/types.js' in persona-builder.ts.",
+        "Updated resolveOutputDir() signature to accept an optional TargetDefinition third parameter; uses definition?.outputDirKey ?? target as the lookup key instead of raw target name.",
+        "Moved the registry definition lookup (def = registry.has(target) ? registry.get(target) : undefined) before the resolveOutputDir() call in buildPersona() so the definition is available for both the outputDirKey lookup and the filenameContextKey resolution.",
+        "Updated resolveOutputDir error message to report the actual lookupKey used (outputDirKey) rather than the target name, making error messages accurate for custom targets where the two differ.",
+        "Updated JSDoc for resolveOutputDir to document the new definition parameter and outputDirKey-based lookup.",
+        "TypeScript compilation: zero errors. Test suite: 281/281 passed. No test files required changes."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/builders/persona-builder.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T20:27:32Z",
+          "note": "The outputDirKey fix reveals a subtle API constraint: for all three built-in targets, outputDirKey matches name, so existing users see no change. Custom targets with outputDirKey != name now work correctly. Consider adding a test in tests/builders/persona-builder.test.ts that explicitly registers a target with outputDirKey !== name and verifies the correct output dir is resolved — this would prevent future regressions on the exact contract that was broken. The fix itself is minimal and correct."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-07T20:28:00Z",
+      "completed_at": "2026-04-07T20:31:26Z",
+      "duration_ms": 206000,
+      "summary": [
+        "TypeScript compilation: zero errors.",
+        "AC1 verified: existing test suite exclusively uses outVscode/outClaudeCode config pattern — all 281 tests pass, confirming backward compatibility.",
+        "AC2 verified: manually exercised outputDirs-only config and outputDirs-overrides-deprecated path via two targeted Vitest tests — both PASS. No existing automated tests covered this path.",
+        "AC3 verified: resolveFrontmatterTemplate() uses registry.get(target).defaultFrontmatter at priority step 3 of 4 — code path confirmed by implementation review and target-registry.test.ts (33 tests).",
+        "AC4 verified: buildContext() spreads registry.get(target).contextFlags when target is registered, verified by 12 target-variable-injection tests.",
+        "AC5 verified: grep -r \"=== 'vscode'\" src/builders/ returns zero matches (exit code 1).",
+        "AC6 verified: 281/281 existing tests pass without modification.",
+        "Rework fix confirmed: resolveOutputDir() correctly uses definition?.outputDirKey ?? target as the map lookup key — prevents mismatch when outputDirKey differs from target name."
+      ],
+      "metrics": {
+        "test_coverage": "17 test files",
+        "tests_passed": 281,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-04-07T20:31:26Z",
+          "note": "No existing automated tests exercise the outputDirs code path in tests/builders/. All 281 existing tests use the deprecated outVscode/outClaudeCode fields exclusively. AC2 was manually verified via two temporary Vitest tests (outputDirs-only, and outputDirs-overrides-deprecated). Recommend adding a permanent test in tests/builders/persona-builder.test.ts or tests/integration/ covering the outputDirs config pattern."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T20:31:26Z",
+          "note": "The outputDirKey field in TargetDefinition means users must use the definition's outputDirKey (rather than the target name) as the key in outputDirs config. For built-in targets this is transparent (outputDirKey === name), but custom targets where these differ could cause surprising 'no output directory configured' errors. This should be called out clearly in the API documentation."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-07T20:31:52Z",
+      "completed_at": "2026-04-07T20:35:10Z",
+      "duration_ms": 198000,
+      "summary": [
+        "Reviewed all key implementation files: persona-builder.ts (resolveOutputDir, buildContext, buildPersona, buildSuite, build), frontmatter.ts (resolveFrontmatterTemplate), targets/types.ts (TargetDefinition, contextFlags JSDoc), targets/built-in.ts (defaultRegistry), targets/registry.ts, builders/types.ts, plugins/types.ts.",
+        "Previous rework fix confirmed correct: resolveOutputDir() uses definition?.outputDirKey ?? target as the map lookup key; error message also reports lookupKey. JSDoc for the function and its definition parameter is accurate.",
+        "buildContext() contextFlags spread via registry lookup is clean — registry.get(target).contextFlags ?? {} with a well-defined fallback for unregistered targets.",
+        "resolveFrontmatterTemplate() precedence chain (plugin > configTemplates > registry.defaultFrontmatter > library fallback) is correct.",
+        "Applied two Fix-Forward JSDoc corrections: (1) built-in.ts module-level file header still said 'two built-in targets' — fixed to 'three'; (2) frontmatter.ts module header said 'two minimal default templates' — fixed to 'three'. Previous review only corrected the export-const JSDoc in built-in.ts, missing the file header.",
+        "Four documentation-forward items tagged for the Documentation agent — none block PASS."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/targets/built-in.ts",
+          "src/builders/frontmatter.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-07T20:35:10Z",
+          "note": "Fix-Forward applied — src/targets/built-in.ts file-level module JSDoc: changed 'two built-in targets: vscode and claude-code' to 'three built-in targets: vscode, claude-code, and deep-agents'. The previous code-review round only corrected the `export const defaultRegistry` JSDoc (which now correctly says three), missing the top-of-file module comment which still said two."
+        },
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-07T20:35:10Z",
+          "note": "Fix-Forward applied — src/builders/frontmatter.ts module JSDoc: changed 'Ships two minimal default templates — one per target' to 'Ships three minimal default templates — one per built-in target'. deep-agents' DEFAULT_FRONTMATTER_DEEP_AGENTS is imported and re-exported from this file, so the old count was stale."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-07T20:35:10Z",
+          "note": "[documentation-forward] BuildConfig.targets JSDoc in src/builders/types.ts reads 'Defaults to both vscode and claude-code when omitted' — this is conditionally inaccurate: build() uses registry.names() when config.targetRegistry is explicitly supplied, otherwise falls back to the historical ['vscode','claude-code'] pair. The same sentence also says 'both the two built-in targets' which should say 'all three built-in targets'. Update the JSDoc to document the conditional default logic (carried forward from previous code-review round)."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-07T20:35:10Z",
+          "note": "[documentation-forward] buildPersona() and buildSuite() in src/builders/persona-builder.ts accept an optional registry parameter defaulting to defaultRegistry. When a consumer passes a custom TargetRegistry only to build() and later calls buildPersona()/buildSuite() directly without the registry argument, their custom targets are invisible. This two-registry limitation should be documented in the @param registry note for both functions. (Carried forward from previous code-review round.)"
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-07T20:35:10Z",
+          "note": "[documentation-forward] SuiteConfig.outputDirs JSDoc in src/plugins/types.ts says 'each key must match a registered target name'. This is accurate for built-ins (outputDirKey === name) but misleading for custom targets where outputDirKey may differ from the target name. resolveOutputDir() uses definition.outputDirKey (not the target name) as the map lookup key, so a custom target with name:'my-target' and outputDirKey:'mydir' requires outputDirs['mydir'] — not outputDirs['my-target']. Add a clarifying note that keys must match the target's outputDirKey field, with a note that for built-in targets this equals the target name."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-04-07T20:35:10Z",
+          "note": "[documentation-forward] TargetType in src/plugins/types.ts JSDoc says 'to allow custom targets alongside the two built-in well-known values' and lists only vscode and claude-code. With WP-001/WP-003 adding deep-agents as a third built-in, the comment should be updated to list all three well-known values."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-07T20:35:35Z",
+      "completed_at": "2026-04-07T20:39:57Z",
+      "duration_ms": 262000,
+      "summary": [
+        "Addressed all four documentation-forward items from the code-review pipeline.",
+        "src/builders/types.ts — BuildConfig.targets JSDoc rewritten to document the conditional default logic: uses registry.names() when config.targetRegistry is supplied, otherwise falls back to ['vscode','claude-code']. Fixed stale 'both the two built-in targets' phrase to 'all three built-in targets'.",
+        "src/builders/persona-builder.ts — Added two-registry limitation warning to @param registry on both buildPersona() and buildSuite(): explains that custom registries passed only to build() are invisible when these functions are called directly without the registry argument.",
+        "src/plugins/types.ts — SuiteConfig.outputDirs JSDoc clarified: keys must match the target's outputDirKey field (not necessarily the target name), with a note that for all three built-in targets outputDirKey === name so no practical difference exists. Updated @example to show all three built-in targets.",
+        "src/plugins/types.ts — TargetType JSDoc updated: 'two built-in well-known values' corrected to 'three built-in well-known values'; added 'deep-agents' to the listed values; updated VS Code description from 'code-workspace instruction files' to accurate '.prompt.md / .agent.md instruction files'; added TARGET_DEEP_AGENTS to the constants reference.",
+        "docs/configuration.md — BuildConfig table: updated targets row (type string[], conditional default documented); updated frontmatter type (Record<string,string>); added targetRegistry row. SuiteConfig table: outVscode and outClaudeCode marked deprecated/optional; added outputDirs row with outputDirKey distinction note.",
+        "docs/api.md — Fully restructured: split into Build functions, Types, Target registry, and Utilities sections. Added all missing exports (buildPersona, buildSuite, TargetDefinition, TargetRegistry, defaultRegistry, TARGET_VSCODE, TARGET_CLAUDE_CODE, TARGET_DEEP_AGENTS). Fixed TargetType description (resolves to string; lists all three built-ins). Updated code example to demonstrate custom registry and deep-agents target.",
+        "README.md — Updated Features list from 'dual-target output' to 'multi-target output / extensible target registry'. Updated Quick Start programmatic example to use outputDirs instead of the deprecated outVscode/outClaudeCode fields.",
+        "TypeScript compilation: zero errors after all JSDoc edits."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/builders/types.ts",
+          "src/builders/persona-builder.ts",
+          "src/plugins/types.ts",
+          "docs/configuration.md",
+          "docs/api.md",
+          "README.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T20:39:57Z",
+          "note": "docs/getting-started.md still uses outVscode/outClaudeCode in its step-by-step tutorial. The deprecated fields still work, so this is not a blocking gap, but a follow-up pass should update the tutorial to demonstrate the outputDirs pattern for new readers."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T20:39:57Z",
+          "note": "No dedicated docs page covers custom target registration (TargetRegistry.register(), outputDirKey, contextFlags, defaultFrontmatter). The information is now present in docs/api.md and JSDoc, but a 'Custom Targets' guide page would improve discoverability for consumers extending the build system beyond the three built-ins."
+        }
+      ]
+    }
+  ],
+  "rework_counts": {
+    "implementation": 1,
+    "qa": 1,
+    "code-review": 1
+  },
+  "status_changed_at": "2026-04-07T20:39:57Z",
+  "last_updated": "2026-04-07T20:39:57Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-07T20:15:39Z",
+      "notes": [
+        "WP-003 complete. All 6 acceptance criteria met. No source or test files needed to be modified to make existing tests pass — only the four production source files listed in artifacts. Key design decisions: (1) outVscode/outClaudeCode are now optional in SuiteConfig; resolveOutputDir() handles migration via a merged-map approach. (2) build() default targets remain ['vscode', 'claude-code'] when no custom targetRegistry is supplied — 'deep-agents' must be opted in via config.targets or a custom registry. (3) buildPersona() and buildSuite() now carry an optional registry parameter defaulting to defaultRegistry. QA: focus on outputDirs-only configs, custom target registration, frontmatter template precedence ordering, and the contextFlags injection path for all three built-in targets."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-07T20:20:21Z",
+      "notes": [
+        "WP-003 QA passed. Before code review begins: (1) The stale ContextFlags JSDoc in src/targets/types.ts is a high-priority doc bug — correct the comment so it accurately reflects that contextFlags ARE wired. (2) The outputDirKey field is declared required in TargetDefinition but unused at runtime — reviewer should decide whether to wire it or remove it. (3) Consider adding a deep-agents contextFlag injection test as a follow-up."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Developer",
+      "timestamp": "2026-04-07T20:24:36Z",
+      "notes": [
+        "WP-003 blocked on one issue that must be fixed by the Developer before promotion: resolveOutputDir() uses the target name as the output directory map key and never reads TargetDefinition.outputDirKey, contradicting the field's documented contract. Fix: pass the TargetDefinition (or registry) into resolveOutputDir() and use def.outputDirKey ?? target as the lookup key. Two Fix-Forward JSDoc fixes were applied directly (stale contextFlags + built-in target count). Two documentation-forward items are queued for the Documentation agent."
+      ]
+    },
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-07T20:27:32Z",
+      "notes": [
+        "Rework complete. The outputDirKey contract mismatch is resolved: resolveOutputDir() now uses definition?.outputDirKey ?? target as the map lookup key. All 6 acceptance criteria remain met. 281/281 tests pass, zero TypeScript errors. The two documentation-forward items from the code-review pipeline (buildPersona/buildSuite two-registry limitation JSDoc, and BuildConfig.targets conditional-default JSDoc) are still queued for the Documentation agent."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-07T20:31:26Z",
+      "notes": [
+        "WP-003 QA PASS. All 6 AC verified. 281/281 tests pass. Zero TypeScript errors. Zero hardcoded target literal comparisons in src/builders/. The outputDirs migration path (AC2) works correctly: Object.assign semantics give outputDirs priority over the deprecated outVscode/outClaudeCode fields. Rework fix (outputDirKey map lookup key) is correct. Two low-priority observations logged: (1) no automated coverage for the outputDirs path, (2) API doc clarity needed for custom-target outputDirKey vs name distinction. Code Review: focus on the resolveOutputDir() helper, the contextFlags spread in buildContext(), and the resolveFrontmatterTemplate() precedence chain — these are the three core contract points."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-07T20:35:10Z",
+      "notes": [
+        "WP-003 code review PASS. Two additional Fix-Forward JSDoc corrections applied (built-in.ts file header + frontmatter.ts module header — both still said 'two' targets after the previous review round). No blocking issues found. Four documentation-forward items queued: (1) BuildConfig.targets conditional-default logic and stale count; (2) buildPersona/buildSuite two-registry limitation; (3) SuiteConfig.outputDirs key vs outputDirKey distinction for custom targets; (4) TargetType JSDoc missing deep-agents from the well-known values list. All 6 acceptance criteria met. 281/281 tests pass."
+      ]
+    }
+  ]
+}

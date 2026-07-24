@@ -1,0 +1,274 @@
+{
+  "work_package_id": "WP-013",
+  "work_package_file": "work/WP-013.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-012"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "PM agent's create_deep_agent() call includes subagents with at least WP Decomposer.",
+      "met": true
+    },
+    {
+      "criterion": "Subagent definition includes persona content from deep-agents file.",
+      "met": true
+    },
+    {
+      "criterion": "Orchestrator starts without errors.",
+      "met": true
+    },
+    {
+      "criterion": "No changes to agents that don't use subagents.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-07T22:23:59Z",
+      "completed_at": "2026-04-07T22:29:02Z",
+      "duration_ms": 303000,
+      "summary": [
+        "Added STAGE_SUBAGENT_FILES config map in config.py defining PM stage subagents (WP Decomposer).",
+        "Created orchestrator/src/utils/subagents.py: load_subagents() loads persona content from deep-agents files and returns SubAgent spec dicts; results cached per (stage, name) pair.",
+        "Updated nodes/__init__.py create_stage_node: added load_subagents import inside node_fn; calls load_subagents() before create_deep_agent(); passes subagents=list or None (falsy empty list becomes None).",
+        "Non-PM stages return [] from load_subagents → subagents=None → no change in deep agent behaviour.",
+        "Added 7 new tests in TestSubagentWiring covering AC-1 (PM includes WP Decomposer), AC-2 (subagent has system_prompt from persona file), AC-4 (non-subagent stages receive None).",
+        "All 783 tests pass (7 new, 6 skipped pre-existing)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/config.py",
+          "orchestrator/src/nodes/__init__.py",
+          "orchestrator/src/utils/subagents.py",
+          "orchestrator/tests/test_nodes.py"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T22:29:02Z",
+          "note": "STAGE_SUBAGENT_FILES is defined as a module-level constant in config.py rather than manifest-derived. If subagent roles grow, consider adding a 'subagents' array to workflow-manifest.json roles so the config auto-derives from the manifest (consistent with how PERSONA_FILES and AGENT_ROLES are handled)."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T22:29:02Z",
+          "note": "subagents.py uses a module-level dict cache keyed by (stage, name) tuple. The cache is never evicted in production; clear_cache() exists for tests. This is appropriate for a single-run CLI process but worth noting if the orchestrator ever becomes a long-running server."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-07T22:29:02Z",
+          "note": "nodes/__init__.py uses _subagents as the local variable name to avoid shadowing the deepagents.middleware.subagents module. This is consistent but the underscore prefix is slightly unusual for a local variable. A name like 'stage_subagents' would be more descriptive."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-07T22:29:30Z",
+      "completed_at": "2026-04-07T22:30:47Z",
+      "duration_ms": 77000,
+      "summary": [
+        "All 4 acceptance criteria verified via automated tests and direct inspection.",
+        "783 tests pass (7 new in TestSubagentWiring, 6 pre-existing skips), 0 failures.",
+        "AC-1: test_pm_node_passes_subagents_to_create_deep_agent confirms WP Decomposer is passed to create_deep_agent.",
+        "AC-2: test_pm_subagent_definition_contains_system_prompt + live load confirmed 2919-char persona content in system_prompt.",
+        "AC-3: src.config imports cleanly; STAGE_SUBAGENT_FILES and all derived constants load at startup without error.",
+        "AC-4: parametrized test confirms developer/qa/reviewer/docs/synthesis all receive subagents=None.",
+        "Edge cases verified: unknown stage → [], missing persona file → FileNotFoundError (fail-fast), cache hit on repeated calls (tested by clear_cache() path)."
+      ],
+      "metrics": {
+        "tests_passed": 783,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T22:30:47Z",
+          "note": "load_subagents raises FileNotFoundError immediately when a persona file is missing — good fail-fast behaviour. Consider adding a startup-time validation pass in preflight-orchestrator.js or Config.__post_init__ that iterates STAGE_SUBAGENT_FILES and pre-checks all persona paths, matching how PERSONA_FILES is validated."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T22:30:47Z",
+          "note": "No improvement: code is clean and consistent. The _CACHE eviction note from the Developer's comments is accurate but non-critical for a single-run CLI process."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-07T22:31:11Z",
+      "completed_at": "2026-04-07T22:33:09Z",
+      "duration_ms": 118000,
+      "summary": [
+        "Reviewed 3 files (subagents.py, nodes/__init__.py, config.py). 0 Critical, 0 High findings. 1 Low (no path containment guard on workspace_root / persona_file), 1 Medium pre-existing (inherit_env=True, documented/deferred, not WP-013 scope). Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-04-07T22:33:09Z",
+          "note": "Low — A01 (Broken Access Control / Path Traversal): subagents.py:79: `full_path = workspace_root / persona_file` constructs a path without a resolve()-based containment guard. persona_file is a static constant today (no exploit), but pathlib silently resolves `../..` sequences — if STAGE_SUBAGENT_FILES ever accepts user-configurable or manifest-derived paths, traversal outside workspace_root becomes possible. Remediation: add `if not full_path.resolve().is_relative_to(workspace_root.resolve()): raise ValueError(...)` immediately after constructing full_path."
+        },
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-04-07T22:33:09Z",
+          "note": "Medium (pre-existing, documented, not WP-013 scope) — A05 (Security Misconfiguration): nodes/__init__.py:365: `LocalShellBackend(inherit_env=True)` forwards all host environment variables (including ANTHROPIC_API_KEY, GOOGLE_API_KEY, and other secrets) to agent subprocesses. Documented inline (SECURITY DECISION 2026-03-30) and tracked in docs/agents/deferred-topics.md. Not introduced by WP-013; noted for completeness."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T22:33:09Z",
+          "note": "Info — Trust boundary: persona file content is read verbatim and passed as system_prompt to create_deep_agent() without content validation. This is intentional and correct — persona files are developer-authored trusted build artifacts, not runtime user input. The trust model is well-defined and acceptable for a local developer tool."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-07T22:33:27Z",
+      "completed_at": "2026-04-07T22:36:14Z",
+      "duration_ms": 167000,
+      "summary": [
+        "Reviewed orchestrator/src/utils/subagents.py (new), src/nodes/__init__.py, src/config.py, and tests/test_nodes.py. No blocking issues found. Architecture is sound: config-driven subagent wiring via STAGE_SUBAGENT_FILES, clean cache design appropriate for a single-run CLI, correct falsy-list-to-None coercion, and consistent deferred-import pattern.",
+        "Applied three Fix-Forward (non-behavioral) improvements: (1) Added path containment guard in subagents.py per Security Auditor Low recommendation — raises ValueError if full_path resolves outside workspace_root; (2) Renamed local variable _subagents → stage_subagents in nodes/__init__.py for clarity (underscore prefix was confusing for a non-private local); (3) Removed unused _patch_subagents helper method from TestSubagentWiring (dead code — all tests inlined the patch directly).",
+        "All 7 TestSubagentWiring tests pass after Fix-Forward edits."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/utils/subagents.py",
+          "orchestrator/src/nodes/__init__.py",
+          "orchestrator/tests/test_nodes.py"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-07T22:36:14Z",
+          "note": "subagents.py: Added path containment guard after full_path construction — `if not full_path.resolve().is_relative_to(workspace_root.resolve()): raise ValueError(...)`. Addresses Security Auditor Low finding. Guard fires before the exists() check so traversal attempts are rejected before any I/O. Non-behavioral for current static STAGE_SUBAGENT_FILES values."
+        },
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-07T22:36:14Z",
+          "note": "nodes/__init__.py: Renamed local variable `_subagents` → `stage_subagents`. Underscore prefix is Python convention for private/protected names; using it for an ordinary local variable that doesn't shadow anything at module scope was misleading. The name `stage_subagents` maps cleanly to what the value represents."
+        },
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-07T22:36:14Z",
+          "note": "tests/test_nodes.py: Removed unused `_patch_subagents(self, stage, subagents)` helper method from TestSubagentWiring. The method was defined but never called — all three test methods inlined `patch('src.utils.subagents.load_subagents', ...)` directly. Dead code removed."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T22:36:14Z",
+          "note": "No dedicated test_subagents.py exists for load_subagents unit behavior (FileNotFoundError on missing file, cache clear semantics, unknown stage → []). QA verified these edge cases via interactive terminal execution (confirmed in session terminal log), but they are not captured as formal pytest tests. Recommend adding a test_subagents.py unit file to lock in these edge-case contracts."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-04-07T22:36:14Z",
+          "note": "[documentation-forward] STAGE_SUBAGENT_FILES in config.py is a manually maintained constant (not manifest-derived), unlike PERSONA_FILES and AGENT_ROLES. Developer's own comment flags this. Document in orchestrator manifest (constraints.md or data-flows.md) that STAGE_SUBAGENT_FILES is a static config map separate from the workflow manifest, and note the future improvement path: add a 'subagents' key to workflow-manifest.json roles so this auto-derives from the manifest."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T22:36:14Z",
+          "note": "No improvement: subagent wiring is architecturally clean. STAGE_SUBAGENT_FILES is the correct single location to add subagents for future stages. The falsy-list-to-None coercion ('stage_subagents or None') is idiomatic and correct. Cache design is appropriate for a single-run CLI process."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-07T22:36:42Z",
+      "completed_at": "2026-04-07T22:40:41Z",
+      "duration_ms": 239000,
+      "summary": [
+        "Documented the new subagents module (WP-013) in the orchestrator manifest.",
+        "api-surface.md: Added STAGE_SUBAGENT_FILES entry to the src/config.py table — covers its three-key spec shape, static-maintenance status, cross-ref link to Constraint 18, and current 'pm' → WP Decomposer entry.",
+        "api-surface.md: Added a new src/utils/subagents.py section documenting load_subagents() (parameters, return type, cache behaviour, path containment guard, FileNotFoundError fail-fast) and clear_cache() (test-only utility).",
+        "constraints.md: Added Constraint 18 'STAGE_SUBAGENT_FILES Is Manually Maintained — Not Manifest-Derived' in the Code Quality section — covers the rule, rationale (no manifest field yet), how-to-add-a-subagent procedure, future improvement path (subagents array in workflow-manifest.json roles), anti-pattern, and correct pattern. Renumbered the preexisting 'Model Selection' constraint from 18 to 19 to maintain sequential ordering.",
+        "documentation-forward item from code review resolved: STAGE_SUBAGENT_FILES static-maintenance status and the future manifest-derivation path are now captured in both api-surface.md and constraints.md."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/docs/agents/project-manifest/api-surface.md",
+          "orchestrator/docs/agents/project-manifest/constraints.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T22:40:41Z",
+          "note": "No improvement: existing docs were well-structured. The two new entries (api-surface + constraints) integrate cleanly with the established table and constraint formats."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-07T22:40:41Z",
+          "note": "documentation-forward resolved: STAGE_SUBAGENT_FILES static-maintenance status and the future manifest-derivation path documented in both api-surface.md (table entry with cross-ref) and constraints.md (Constraint 18 with anti-pattern + future improvement path)."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-07T22:40:41Z",
+  "last_updated": "2026-04-07T22:40:41Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-07T22:29:02Z",
+      "notes": [
+        "WP-013 implementation complete. Three files modified + one new file created. The subagent wiring is config-driven via STAGE_SUBAGENT_FILES in config.py; to add subagents to other stages, add entries to that dict. QA should verify: (1) STAGE_SUBAGENT_FILES['pm'] has WP Decomposer entry pointing to personas/standalone/deep-agents/wp-decomposer.md, (2) load_subagents('pm', ...) returns a list with system_prompt populated from that file, (3) load_subagents('developer', ...) returns [], (4) all 783 tests pass."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-04-07T22:30:47Z",
+      "notes": [
+        "WP-013 QA PASS. All 783 tests pass. STAGE_SUBAGENT_FILES config correctly wires WP Decomposer to the PM stage; non-PM stages receive subagents=None. Security Auditor should note that workspace_root is a trusted Path from Config (no user-controlled path injection vector), and the FileNotFoundError on missing persona files surfaces early rather than silently degrading."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-07T22:33:09Z",
+      "notes": [
+        "WP-013 security audit PASS. 0 Critical, 0 High. One Low: add a path containment guard (workspace_root.resolve().is_relative_to check) in subagents.py:79 — not blocking but recommended before STAGE_SUBAGENT_FILES grows. One Medium pre-existing (inherit_env=True, tracked in deferred-topics). Code reviewer should verify the path containment recommendation and confirm subagent wiring is architecturally sound."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-07T22:36:14Z",
+      "notes": [
+        "WP-013 code-review PASS. Three reviewer-applied fixes committed (path containment guard, variable rename, dead code removal) — all non-behavioral, all 7 subagent tests still pass. One documentation-forward item: orchestrator manifest should document that STAGE_SUBAGENT_FILES is a static config map (not manifest-derived) and capture the future improvement path. One improvement note: recommend adding test_subagents.py unit tests for load_subagents edge cases. No blocking concerns — documentation agent can proceed."
+      ]
+    }
+  ]
+}
