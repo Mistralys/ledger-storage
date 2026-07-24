@@ -1,0 +1,500 @@
+{
+  "work_package_id": "WP-006",
+  "work_package_file": "work/WP-006.md",
+  "status": "COMPLETE",
+  "assigned_to": "Reviewer",
+  "dependencies": [
+    "WP-001",
+    "WP-002",
+    "WP-005"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "Known hotkey resolves to correct command",
+      "met": true
+    },
+    {
+      "criterion": "Unknown key triggers re-render",
+      "met": true
+    },
+    {
+      "criterion": "q exits the menu",
+      "met": true
+    },
+    {
+      "criterion": "h triggers help output",
+      "met": true
+    },
+    {
+      "criterion": "SIGINT handler registered, calls restoreTerminal(), unregistered on clean exit",
+      "met": true
+    },
+    {
+      "criterion": "Long-running commands take over process, blocking commands show waitForKey",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-15T15:06:17Z",
+      "completed_at": "2026-04-15T15:10:31Z",
+      "duration_ms": 254000,
+      "summary": [
+        "Created src/menu/interactive.ts with showInteractiveMenu(config): keypress loop dispatching q (exit), h (help), known hotkeys, and unknown keys (re-render). Distinguishes long-running commands (Promise return → no waitForKey) from blocking commands (void return → waitForKey after completion). SIGINT handler registered on entry, unregistered in finally block.",
+        "Created src/menu/index.ts barrel exporting showInteractiveMenu and renderMenu.",
+        "Created tests/menu/interactive.test.ts with 19 tests covering all acceptance criteria. All 180 tests pass, no regressions."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/menu/interactive.ts",
+          "src/menu/index.ts",
+          "tests/menu/interactive.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T15:10:31Z",
+          "note": "interactive.ts uses a simple while-loop + waitForKeypress() Promise helper pattern, which is easier to test than a one-time Promise callback. The finally block guarantees SIGINT cleanup even if a command throws."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T15:10:31Z",
+          "note": "Command.run() receives [] in interactive mode since hotkeys carry no extra CLI args. If createMenu() needs to thread through original argv flags, it should pass them when calling showInteractiveMenu — this would require adding an optional args parameter to showInteractiveMenu in a follow-up WP."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-15T15:13:33Z",
+      "completed_at": "2026-04-15T15:15:03Z",
+      "duration_ms": 90000,
+      "summary": [
+        "All 6 acceptance criteria verified — manual code review + automated test suite (180 tests, 0 failures).",
+        "Build check: TypeScript typecheck clean, no errors.",
+        "Regression check: full suite passed with no regressions.",
+        "AC1 (Known hotkey): keymap built at entry with insertion-order, first-occurrence-wins deduplication. Command dispatched via keymap.get(ch). Three tests verify dispatch, restoreTerminal-before-run, and long-running vs blocking distinction.",
+        "AC2 (Unknown key re-renders): unknown key falls through else block without action; while loop continues and re-enters enterRawMode + renderMenu. Two tests verify re-render count.",
+        "AC3 (q exits): running = false triggered by q check before keymap lookup; finally block calls restoreTerminal. Two tests verify exit and cleanup.",
+        "AC4 (h triggers help): restoreTerminal + printHelp + waitForKey sequence in h branch. Three tests verify help call, waitForKey, and restoreTerminal order.",
+        "AC5 (SIGINT lifecycle): process.on('SIGINT', handler) registered before while loop; process.off in finally block guarantees unregistration on all exit paths. Three tests verify registration, deregistration, and handler behaviour (restoreTerminal + process.kill re-raise).",
+        "AC6 (Long-running vs blocking): instanceof Promise discriminant correctly separates the two paths. Three tests cover void path (waitForKey called), async path (waitForKey NOT called), and async path with deferred resolution (awaits correctly)."
+      ],
+      "metrics": {
+        "test_coverage": "19 new tests cover all 6 ACs; full suite green",
+        "tests_passed": 180,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T15:15:03Z",
+          "note": "q and h are checked before the keymap lookup, so they always take priority over any command registered with the same key. This is correct UX behaviour but is not documented in comments or jsdoc. Low risk since q/h are reserved by convention."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T15:15:03Z",
+          "note": "cmd.run([]) is called without a try/catch. A thrown exception skips the waitForKey call and propagates out of the while loop. The finally block still runs (restoreTerminal + SIGINT cleanup), so terminal state is always restored. Not a blocking issue."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T15:15:03Z",
+          "note": "No test for an empty commands array. With no commands, keymap is empty; any key other than q/h triggers a re-render silently. This is correct and safe, but explicit test coverage would strengthen confidence."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-15T15:15:44Z",
+      "completed_at": "2026-04-15T15:18:54Z",
+      "duration_ms": 190000,
+      "summary": [
+        "Reviewed 3 files (src/menu/interactive.ts, src/menu/index.ts, tests/menu/interactive.test.ts) plus supporting modules (raw-mode.ts, screen.ts, types.ts). 0 Critical, 0 High, 1 Medium (noted). Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-04-15T15:18:54Z",
+          "note": "Medium · A04 Insecure Design · src/menu/interactive.ts lines 59–62. sigintHandler calls process.kill(process.pid, 'SIGINT') without first unregistering itself via process.off('SIGINT', sigintHandler). Because process.on() registers a persistent listener, the re-raised SIGINT is delivered back to the same handler. The finally block that calls process.off() never executes: waitForKeypress() is awaiting a keypress event whose listener was already removed by restoreTerminal(), leaving the Promise permanently orphaned. The net effect is repeated SIGINT re-deliveries in a tight event-loop cycle — the process spins rather than exiting cleanly on Ctrl+C. Remediation: add process.off('SIGINT', sigintHandler) as the first line of sigintHandler before restoreTerminal() and process.kill()."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "FAIL",
+      "started_at": "2026-04-15T15:21:41Z",
+      "completed_at": "2026-04-15T15:23:52Z",
+      "duration_ms": 131000,
+      "summary": [
+        "Reviewed src/menu/interactive.ts, src/menu/index.ts, and tests/menu/interactive.test.ts against all four Review Dimensions.",
+        "FAIL — one Blocking issue: SIGINT handler event-loop spin. The sigintHandler calls restoreTerminal() then process.kill(process.pid, 'SIGINT') without first unregistering itself via process.off('SIGINT', sigintHandler). restoreTerminal() orphans the waitForKeypress() Promise (removes its stdin listener), so the finally block never executes. The re-raised SIGINT is immediately redelivered to the same handler, producing an infinite event-loop spin on every Ctrl+C.",
+        "All other dimensions are clean: hotkey dispatch, q/h handling, long-running vs blocking distinction, barrel export, and test coverage are all solid.",
+        "Remediation: add process.off('SIGINT', sigintHandler) as the FIRST statement of sigintHandler. Add a regression test verifying the self-unregistration (not just the process.kill call)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/menu/interactive.ts",
+          "src/menu/index.ts",
+          "tests/menu/interactive.test.ts"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 180,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "blocking",
+          "priority": "high",
+          "timestamp": "2026-04-15T15:23:52Z",
+          "note": "BLOCKING: SIGINT handler spin loop in src/menu/interactive.ts lines 56-59.\n\nThe handler (1) calls restoreTerminal() — which removes the stdin keypress listener, permanently orphaning the waitForKeypress() Promise — then (2) calls process.kill(process.pid, 'SIGINT') without first unregistering itself. Because a persistent listener is still registered, the re-raised SIGINT is delivered back to the same sigintHandler on the very next event-loop tick. The finally block (which calls process.off()) cannot execute because the awaited Promise is permanently orphaned. Result: process.kill + restoreTerminal spin indefinitely on every Ctrl+C press.\n\nRemediation (one line): add `process.off('SIGINT', sigintHandler)` as the FIRST statement in sigintHandler, before restoreTerminal() and process.kill(). This ensures the re-raised SIGINT reaches the default Node.js exit handler, not the registered listener.\n\nAdditionally, add a regression test that verifies process.off('SIGINT', sigintHandler) was called DURING the sigintHandler invocation (not just in the finally block). The current SIGINT test only checks that process.kill was called, which does not cover the self-unregistration."
+        }
+      ]
+    },
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-15T15:25:39Z",
+      "completed_at": "2026-04-15T15:26:21Z",
+      "duration_ms": 42000,
+      "summary": [
+        "Rework: added process.off('SIGINT', sigintHandler) as the first statement of sigintHandler in src/menu/interactive.ts, before restoreTerminal() and process.kill(). This prevents the re-raised SIGINT from being redelivered to the same listener, eliminating the event-loop spin on Ctrl+C.",
+        "Added regression test 'SIGINT handler self-unregisters before re-raising the signal' in tests/menu/interactive.test.ts. The test captures the handler reference from process.on calls, instruments process.off during handler execution, fires the handler, and asserts process.off('SIGINT', sigintHandler) was called inside the handler invocation — not just in the finally block.",
+        "Full suite: 181 tests pass, 0 failures, no regressions."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/menu/interactive.ts",
+          "tests/menu/interactive.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T15:26:21Z",
+          "note": "The sigintHandler now has a clear invariant: self-unregister → restore terminal → re-raise. This ordering guarantees exactly-once handler invocation even if the OS delivers multiple rapid SIGINT signals before the process exits."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-15T15:26:59Z",
+      "completed_at": "2026-04-15T15:28:33Z",
+      "duration_ms": 94000,
+      "summary": [
+        "Rework QA pass — verified SIGINT self-unregistration fix and regression test.",
+        "Build check: `npx tsc --noEmit` clean, no errors.",
+        "Full suite: 181 tests, 0 failures, no regressions.",
+        "All 6 acceptance criteria re-verified:",
+        "AC1 (Known hotkey): keymap lookup dispatches correct command — confirmed.",
+        "AC2 (Unknown key re-renders): falls through else branch, loop continues — confirmed.",
+        "AC3 (q exits): running=false terminates loop, finally restores terminal — confirmed.",
+        "AC4 (h triggers help): restoreTerminal → printHelp → waitForKey sequence — confirmed.",
+        "AC5 (SIGINT lifecycle): process.off('SIGINT', sigintHandler) is now the FIRST statement of sigintHandler (before restoreTerminal and process.kill). Regression test 'SIGINT handler self-unregisters before re-raising the signal' captures the handler reference, instruments process.off during handler execution, and asserts the self-unregistration occurs inside the handler body — not just in the finally block. Fix and test both confirmed correct.",
+        "AC6 (Long-running vs blocking): instanceof Promise discriminant separates paths correctly — confirmed.",
+        "Previous blocking issue (SIGINT spin loop) is resolved. The handler now has the invariant: self-unregister → restore terminal → re-raise. This guarantees exactly-once delivery even under rapid Ctrl+C."
+      ],
+      "metrics": {
+        "test_coverage": "20 tests in interactive.test.ts covering all 6 ACs plus regression for SIGINT self-unregistration",
+        "tests_passed": 181,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T15:28:33Z",
+          "note": "The sigintHandler invariant (self-unregister → restore → re-raise) is now correct and documented by the regression test. No blocking issues remain."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T15:28:33Z",
+          "note": "cmd.run([]) has no try/catch — a thrown exception propagates out of the while loop, but the finally block still runs (restoreTerminal + SIGINT deregistration), so terminal state is always safe. Not a blocking concern."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T15:28:33Z",
+          "note": "No test for empty commands array edge case. With an empty keymap every key other than q/h silently re-renders — correct behaviour, but explicit coverage would strengthen the suite."
+        }
+      ]
+    },
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-15T15:47:31Z",
+      "completed_at": "2026-04-15T15:50:00Z",
+      "duration_ms": 149000,
+      "summary": [
+        "Rework (2nd cycle): Fixed SIGINT handler self-unregistration bug in src/setup/checkbox-menu.ts. Added process.off('SIGINT', sigintHandler) as the first statement of sigintHandler, before restoreTerminal() and process.kill(process.pid, 'SIGINT'). This mirrors the pattern already applied to src/menu/interactive.ts and prevents the re-raised SIGINT from being redelivered to the same listener (event-loop spin on Ctrl+C). The plan explicitly states: 'The same pattern applies to the checkbox TUI in src/setup/checkbox-menu.ts.' src/menu/interactive.ts already had the correct fix from the prior rework cycle — no changes needed there.",
+        "Added regression test 'SIGINT handler self-unregisters before re-raising the signal' to tests/setup/checkbox-menu.test.ts. The test captures the handler reference from process.on calls, instruments process.off during handler execution, fires the handler, and asserts process.off('SIGINT', capturedHandler) was called inside the handler body — not deferred to the cleanup path.",
+        "All 182 tests pass (181 prior + 1 new regression test). No regressions."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/setup/checkbox-menu.ts",
+          "tests/setup/checkbox-menu.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T15:50:00Z",
+          "note": "Both sigintHandler implementations now share the same invariant: self-unregister → restore terminal → re-raise. The checkbox-menu.ts cleanup() function handles normal-exit deregistration (Enter/q), and the sigintHandler handles the abnormal-exit path (Ctrl+C). These two paths are now correctly disjoint — cleanup() removes the listener on normal exit, and sigintHandler removes itself on signal receipt."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-15T15:50:47Z",
+      "completed_at": "2026-04-15T17:12:35Z",
+      "duration_ms": 4908000,
+      "summary": [
+        "Rework QA pass (2nd rework cycle) — verified SIGINT self-unregistration fix in src/setup/checkbox-menu.ts.",
+        "Build check: `npx tsc --noEmit` produces no output — TypeScript clean.",
+        "Full suite: 182 tests, 0 failures (11 test files), no regressions.",
+        "Previously-failed fix re-verified (interactive.ts): process.off('SIGINT', sigintHandler) remains the first statement of sigintHandler in src/menu/interactive.ts — confirmed no regression from prior rework.",
+        "New fix verified (checkbox-menu.ts): src/setup/checkbox-menu.ts sigintHandler now has identical invariant — self-unregister (line 94) → restoreTerminal (line 95) → process.kill (line 96). Fix is correct.",
+        "Regression test verified (checkbox-menu.test.ts line 339): captures sigintHandler reference via process.on spy, instruments process.off during handler execution, asserts process.off('SIGINT', capturedHandler) is called inside the handler body — not deferred. Test logic is correct and covers the fix.",
+        "Regression test verified (interactive.test.ts line 323): same pattern — captures handler, instruments process.off, fires handler, asserts self-unregistration occurs inside the invocation. Still passes.",
+        "All 6 acceptance criteria remain met. No new issues found."
+      ],
+      "metrics": {
+        "test_coverage": "182 tests across 11 files; 20 interactive.test.ts + 23 checkbox-menu.test.ts; both SIGINT regression tests passing",
+        "tests_passed": 182,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T17:12:35Z",
+          "note": "Both SIGINT handlers (interactive.ts and checkbox-menu.ts) now share the canonical invariant: self-unregister → restore terminal → re-raise. The pattern is consistent across both TUI entry points."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T17:12:35Z",
+          "note": "cmd.run([]) in interactive.ts still has no try/catch — a thrown exception propagates out of the while loop but the finally block guarantees terminal restore + SIGINT deregistration. Terminal state is always safe. Not a blocking concern."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T17:12:35Z",
+          "note": "No test for empty commands array in interactive.ts (empty keymap — q/h still work, any other key silently re-renders). Correct behaviour, but explicit coverage would strengthen confidence in edge-case handling."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-15T17:16:47Z",
+      "completed_at": "2026-04-15T17:20:27Z",
+      "duration_ms": 220000,
+      "summary": [
+        "Re-audit (rework cycle 2): reviewed src/menu/interactive.ts, src/setup/checkbox-menu.ts, tests/menu/interactive.test.ts, and tests/setup/checkbox-menu.test.ts. 0 Critical, 0 High, 0 Medium, 0 Low. The previously-identified Medium finding (A04 — SIGINT handler spin loop) is resolved in both files. Both sigintHandlers now implement the correct invariant: self-unregister → restore terminal → re-raise. Regression tests are correct and sufficient. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T17:20:27Z",
+          "note": "A04 Insecure Design — RESOLVED. src/menu/interactive.ts line 58: process.off('SIGINT', sigintHandler) is now the first statement of sigintHandler, before restoreTerminal() and process.kill(). This correctly prevents the re-raised SIGINT from being delivered back to the same listener. Fix matches the remediation recommendation from the prior audit cycle."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T17:20:27Z",
+          "note": "A04 Insecure Design — RESOLVED. src/setup/checkbox-menu.ts line 94: process.off('SIGINT', sigintHandler) is now the first statement of sigintHandler, before restoreTerminal() and process.kill(). Same canonical invariant applied consistently across both TUI entry points. No divergence between interactive.ts and checkbox-menu.ts patterns."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T17:20:27Z",
+          "note": "Regression tests verified. tests/menu/interactive.test.ts 'SIGINT handler self-unregisters before re-raising the signal': correctly captures handler reference via process.on spy, instruments process.off during handler invocation, asserts process.off('SIGINT', sigintHandler) is called inside the handler body. tests/setup/checkbox-menu.test.ts uses identical pattern. Both tests are well-constructed and directly verify the security invariant."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T17:20:27Z",
+          "note": "Full OWASP Top 10 review — no new findings. A01: no access control surface. A02: no crypto/secrets. A03: stdin chars used only as map keys or equality comparisons — no injection risk. A04: SIGINT fix confirmed clean. A05–A10: N/A for a developer CLI tool with no network, auth, or persistence surface. No new dependencies introduced in this rework cycle."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-15T17:20:57Z",
+      "completed_at": "2026-04-15T17:23:10Z",
+      "duration_ms": 133000,
+      "summary": [
+        "Reviewed src/menu/interactive.ts, src/menu/index.ts, tests/menu/interactive.test.ts, src/setup/checkbox-menu.ts, and tests/setup/checkbox-menu.test.ts against all four Review Dimensions.",
+        "PASS — no blocking issues. All prior findings are resolved.",
+        "SIGINT self-unregistration (the Blocking issue from the prior review cycle) is correctly fixed in both TUI entry points: process.off('SIGINT', sigintHandler) is the first statement of each sigintHandler, before restoreTerminal() and process.kill(). Invariant is consistent across interactive.ts and checkbox-menu.ts.",
+        "Regression tests in both test files are well-constructed: they capture the handler reference via process.on spy, instrument process.off during handler execution, and assert the self-unregistration occurs inside the handler body — not deferred to the finally block. This directly validates the behavioral contract.",
+        "Maintainability: codebase is clean and readable. The while-loop + waitForKeypress() Promise pattern is straightforward and easy to test. The JSDoc on showInteractiveMenu is accurate and complete. The finally block correctly guarantees terminal restore on all exit paths including uncaught throws from cmd.run([]).",
+        "Best Practices: hotkey deduplication (first-occurrence-wins, insertion order) is correct and matches expected UX. q/h priority-over-keymap is rational. The instanceof Promise discriminant for long-running vs blocking is idiomatic.",
+        "Performance: no concerns. Loop body is I/O-bound on waitForKeypress; no polling or busy-wait.",
+        "Future Context: passing [] as args to cmd.run is an acknowledged limitation — a follow-up WP can add an optional args parameter if argv forwarding is ever needed. No technical debt is introduced silently.",
+        "Full suite: 182 tests, 0 failures, 11 test files. TypeScript clean."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/menu/interactive.ts",
+          "src/menu/index.ts",
+          "tests/menu/interactive.test.ts",
+          "src/setup/checkbox-menu.ts",
+          "tests/setup/checkbox-menu.test.ts"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 182,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T17:23:10Z",
+          "note": "No blocking issues — code is clean, consistent, and all fixes correctly applied across both TUI entry points."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-04-15T17:23:10Z",
+          "note": "[documentation-forward] showInteractiveMenu JSDoc does not mention that cmd.run() is always called with an empty args array ([]) in interactive mode. Future contributors implementing Command.run() need to know not to depend on args values when running interactively. Add a note to the JSDoc or inline comment."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-04-15T17:23:10Z",
+          "note": "[documentation-forward] The waitForKeypress() internal helper JSDoc doesn't note that calling restoreTerminal() while the Promise is pending will orphan it (stdin listener is removed). Relevant for SIGINT ordering reasoning. A short comment would help future maintainers understand why self-unregistration must precede restoreTerminal() in the sigintHandler."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T17:23:10Z",
+          "note": "q and h are guarded before the keymap lookup, so registering a Command with key 'q' or 'h' silently loses the binding. This is correct UX behaviour but there is no runtime warning. Low risk since these keys are reserved by convention — a future enhancement could log a warning if a conflicting key is detected in the keymap build loop."
+        }
+      ]
+    }
+  ],
+  "rework_counts": {
+    "implementation": 2,
+    "qa": 2,
+    "code-review": 1,
+    "security-audit": 1
+  },
+  "status_changed_at": "2026-04-15T17:23:10Z",
+  "last_updated": "2026-04-15T17:23:10Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-15T15:10:31Z",
+      "notes": [
+        "All 6 acceptance criteria met. 19 new tests added; full suite (180 tests) passes with no regressions. Implementation includes: keypress loop (q exits, h prints help, known hotkey dispatches, unknown key re-renders), long-running vs blocking command distinction (Promise vs void), SIGINT lifecycle with finally-guaranteed cleanup, barrel export. Pipeline includes security-audit stage — auditor should review the process.kill call and SIGINT handler pattern."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-04-15T15:15:03Z",
+      "notes": [
+        "All 6 ACs verified — build clean, 180 tests green (36 menu tests, no regressions). Three low-priority observations logged. Implementation is solid — keypress loop is well-structured, SIGINT lifecycle is correctly guarded by finally, long-running vs blocking distinction is cleanly implemented. Security auditor should review: (1) process.kill(process.pid, 'SIGINT') re-raise pattern in the SIGINT handler; (2) raw mode stdin handling and process signal lifecycle for any edge cases."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-15T15:18:54Z",
+      "notes": [
+        "0 Critical, 0 High. One Medium finding: SIGINT handler does not self-unregister before re-raising the signal — potential process hang/spin on Ctrl+C (src/menu/interactive.ts:59-62). Does not block review. Reviewer should consider whether to require a fix in this cycle or log as a follow-up tech-debt item."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Developer",
+      "timestamp": "2026-04-15T15:23:52Z",
+      "notes": [
+        "FAIL — one blocking issue: SIGINT handler does not self-unregister before re-raising the signal, causing an event-loop spin on Ctrl+C. Fix: add process.off('SIGINT', sigintHandler) as the first line of sigintHandler. Also add a regression test that verifies self-unregistration (not just the process.kill call). All other ACs and code patterns are clean — this is the only issue.\""
+      ]
+    },
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-15T15:26:21Z",
+      "notes": [
+        "Rework complete. Single fix: process.off('SIGINT', sigintHandler) added as first statement of sigintHandler in src/menu/interactive.ts. Regression test added to tests/menu/interactive.test.ts verifying self-unregistration happens during handler execution. All 6 ACs now met. 181 tests pass."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-04-15T15:28:33Z",
+      "notes": [
+        "SIGINT self-unregistration fix verified. All 6 ACs met. 181/181 tests pass, TypeScript clean. The implementation is ready for code-review. Reviewer should focus on: (1) confirm sigintHandler ordering is documented in JSDoc/comments; (2) verify test coverage for the regression case is adequate; (3) no architectural concerns flagged — implementation is minimal and correct."
+      ]
+    },
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-15T15:50:00Z",
+      "notes": [
+        "Rework complete. Fixed: src/setup/checkbox-menu.ts sigintHandler now self-unregisters (process.off as first statement) before restoreTerminal() and process.kill(). Regression test added to tests/setup/checkbox-menu.test.ts verifying self-unregistration occurs inside the handler. All 182 tests pass. Both interactive.ts and checkbox-menu.ts now use the correct invariant: self-unregister → restore → re-raise."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-04-15T17:12:35Z",
+      "notes": [
+        "Rework 2 complete. SIGINT self-unregistration fix in src/setup/checkbox-menu.ts verified — sigintHandler now self-unregisters before restoreTerminal() and process.kill(). Regression test in tests/setup/checkbox-menu.test.ts asserts the invariant. All 6 ACs met. 182/182 tests pass, TypeScript clean. Both interactive.ts and checkbox-menu.ts use the correct sigintHandler pattern. Ready for code-review."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-15T17:20:27Z",
+      "notes": [
+        "Re-audit PASS. Both SIGINT handlers (interactive.ts + checkbox-menu.ts) are now correct: self-unregister → restore terminal → re-raise. Prior Medium finding fully resolved. 0 security issues. 182/182 tests pass. All 6 ACs met. Ready for code-review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-04-15T17:23:10Z",
+      "notes": [
+        "WP-006 code-review PASS. 0 blocking issues. All 6 ACs met. 182/182 tests pass. Both SIGINT handlers (interactive.ts + checkbox-menu.ts) implement the correct self-unregister → restore → re-raise invariant, each backed by a targeted regression test. Two low-priority documentation gaps logged as documentation-forward comments: (1) showInteractiveMenu JSDoc should note that cmd.run() receives [] in interactive mode; (2) waitForKeypress() should note the orphan-on-restoreTerminal behaviour. No code changes were needed — this is a clean hand-off to the Documentation agent."
+      ]
+    }
+  ]
+}

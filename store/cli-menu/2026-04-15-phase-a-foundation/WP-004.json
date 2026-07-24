@@ -1,0 +1,299 @@
+{
+  "work_package_id": "WP-004",
+  "work_package_file": "work/WP-004.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001",
+    "WP-003"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "isRawModeSupported() returns false when process.stdin.isTTY is falsy",
+      "met": true
+    },
+    {
+      "criterion": "enterRawMode() does not throw in non-TTY environments (graceful no-op or caught error)",
+      "met": true
+    },
+    {
+      "criterion": "restoreTerminal() is safe to call multiple times without side effects",
+      "met": true
+    },
+    {
+      "criterion": "waitForKey() resolves immediately in non-TTY environments",
+      "met": true
+    },
+    {
+      "criterion": "clearScreen() writes the correct ANSI escape sequence",
+      "met": true
+    },
+    {
+      "criterion": "npm run typecheck passes with all terminal modules included",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-15T12:22:25Z",
+      "completed_at": "2026-04-15T12:26:02Z",
+      "duration_ms": 217000,
+      "summary": [
+        "Implemented src/raw-mode.ts with isRawModeSupported(), enterRawMode(), exitRawMode(), and restoreTerminal(). All non-TTY paths are guarded with early returns and/or wrapped in try/catch.",
+        "Implemented src/screen.ts with clearScreen() (writes \\x1b[2J\\x1b[0;0H) and waitForKey() which resolves immediately when !process.stdin.isTTY.",
+        "waitForKey() uses process.stdin.once('keypress') and delegates full cleanup to restoreTerminal(), keeping the coordination logic in one place.",
+        "npm run typecheck passes with no errors. All 75 existing tests pass (no regressions)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/raw-mode.ts",
+          "src/screen.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T12:26:02Z",
+          "note": "readline.emitKeypressEvents(process.stdin) is called both inside enterRawMode() and waitForKey(). Node.js docs state the function is idempotent, so duplicate calls are safe, but if both are called in sequence the redundancy is slightly noisy. A shared guard (track whether events have been enabled) could be added in Phase B if needed."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T12:26:02Z",
+          "note": "In waitForKey(), the setRawMode(true) call after the isTTY guard is not wrapped in try/catch (unlike enterRawMode). If isTTY is truthy but setRawMode still throws (unusual, but possible on some CI environments with partial TTY emulation), the promise would reject rather than resolving. Wrapping in try/catch with a resolve() in the catch block would be more defensive. Flagged for Phase B."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-15T12:26:02Z",
+          "note": "exitRawMode() and restoreTerminal() have overlapping behaviour — exitRawMode pauses stdin, restoreTerminal pauses stdin plus removes keypress listeners. The distinction is documented implicitly by name, but a brief JSDoc note clarifying 'use restoreTerminal() after interactive keypress sessions, exitRawMode() for lightweight teardown' would help future contributors."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "FAIL",
+      "started_at": "2026-04-15T12:33:18Z",
+      "completed_at": "2026-04-15T12:36:34Z",
+      "duration_ms": 196000,
+      "summary": [
+        "AC 1–5: Code verified correct by source review. isRawModeSupported() returns false via === true guard (handles undefined). enterRawMode() early-returns on non-TTY. restoreTerminal() uses removeAllListeners + try/catch setRawMode(false) + pause() — all idempotent, safe for repeated calls. waitForKey() resolves immediately when !process.stdin.isTTY. clearScreen() writes \\x1b[2J\\x1b[0;0H — correct ANSI sequence.",
+        "AC 6 (typecheck): PASS — npm run typecheck exits 0 with no errors.",
+        "Regression FAIL: npm test --coverage exits code 1. All four coverage thresholds fail (lines 75.22%, functions 74.19%, statements 75.63%, branches 78.94% — all below the 80% minimum). Root cause: vitest.config.ts excludes src/terminal/raw-mode.ts and src/terminal/screen.ts (original plan paths) but WP-004 placed files at src/raw-mode.ts and src/screen.ts. The non-matching exclusion paths leave both new files included in coverage with 0% scores.",
+        "pipeline-configuration.md §Guardrail Note 2 explicitly instructs QA to 'confirm the vitest coverage exclusions from WP-1 are correctly configured' — they are not."
+      ],
+      "metrics": {
+        "tests_passed": 94,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "bug",
+          "priority": "high",
+          "timestamp": "2026-04-15T12:36:34Z",
+          "note": "vitest.config.ts coverage.exclude uses 'src/terminal/raw-mode.ts' and 'src/terminal/screen.ts' (original plan paths). WP-004 placed files at 'src/raw-mode.ts' and 'src/screen.ts'. The mismatch means both files are included in coverage at 0%, dropping all four thresholds below 80% and causing 'npm test -- --coverage' to exit 1. Fix: change the two exclude entries to 'src/raw-mode.ts' and 'src/screen.ts'."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-04-15T12:36:34Z",
+          "note": "clearScreen() unconditionally writes ANSI to process.stdout regardless of whether stdout is a TTY. In piped or CI environments this produces garbage ANSI bytes in captured output. No explicit AC covers this, but a !process.stdout.isTTY guard would be the defensive choice. Flagged for Phase B consideration."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-04-15T12:36:34Z",
+          "note": "In waitForKey(), process.stdin.setRawMode(true) is called after the !isTTY guard but is not wrapped in try/catch (unlike the equivalent path in enterRawMode()). On environments where isTTY is truthy but setRawMode still throws (e.g., partial TTY emulation), the returned Promise would reject instead of resolving. This was also flagged by the Developer — confirming it remains unaddressed."
+        }
+      ]
+    },
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-15T12:39:08Z",
+      "completed_at": "2026-04-15T12:39:42Z",
+      "duration_ms": 34000,
+      "summary": [
+        "Rework: corrected two stale coverage exclusion paths in vitest.config.ts. Changed 'src/terminal/raw-mode.ts' → 'src/raw-mode.ts' and 'src/terminal/screen.ts' → 'src/screen.ts' to match the actual file locations delivered by WP-004. All 94 tests pass; coverage thresholds met (lines 100%, functions 100%, statements 98.9%, branches 90% — all ≥ 80%)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "vitest.config.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T12:39:42Z",
+          "note": "No logic changes were required — all 6 ACs remain satisfied by the existing implementation. The sole defect was a config path mismatch introduced when the plan was adjusted to drop the src/terminal/ subdirectory. This class of issue (config paths out of sync with actual file locations) could be prevented by a post-implementation check script that asserts each coverage.exclude glob resolves to at least one real file."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-15T12:40:24Z",
+      "completed_at": "2026-04-15T12:41:37Z",
+      "duration_ms": 73000,
+      "summary": [
+        "Rework QA PASS. The single defect from the previous bounce (wrong coverage exclusion paths in vitest.config.ts) is confirmed fixed: 'src/raw-mode.ts' and 'src/screen.ts' are now correctly excluded.",
+        "All 6 ACs verified — AC 1–5 by source review, AC 6 by execution. npm run typecheck exits 0; npm test --coverage exits 0.",
+        "94/94 tests pass. Coverage: lines 100%, functions 100%, statements 98.9%, branches 90% — all above the 80% threshold. No regressions."
+      ],
+      "metrics": {
+        "test_coverage": "lines 100% / functions 100% / statements 98.9% / branches 90%",
+        "tests_passed": 94,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T12:41:37Z",
+          "note": "Two low-priority edge cases flagged in the previous QA bounce remain unaddressed per plan (Phase B scope): (1) waitForKey() calls setRawMode(true) without try/catch after the isTTY guard; (2) clearScreen() writes ANSI bytes unconditionally regardless of stdout.isTTY. Neither is an AC failure — both are Phase B hardening items."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T12:41:37Z",
+          "note": "No new issues found. The rework was minimal and targeted — exactly the config path mismatch. Implementation quality is clean and consistent with Phase A conventions."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-15T12:42:16Z",
+      "completed_at": "2026-04-15T12:44:50Z",
+      "duration_ms": 154000,
+      "summary": [
+        "PASS. All 6 acceptance criteria confirmed met. Implementation is clean, correct, and consistent with Phase A conventions.",
+        "Fix-Forward applied: expanded JSDoc on exitRawMode() to document when to use it vs restoreTerminal() — addresses the Developer's own observation from the implementation pipeline.",
+        "Two Phase B items remain acknowledged and non-blocking: (1) setRawMode(true) in waitForKey() is not wrapped in try/catch; (2) clearScreen() writes ANSI unconditionally regardless of stdout.isTTY.",
+        "DRY observation recorded: waitForKey() manually re-implements the three-line enterRawMode() body. No behavioral bug, but creates a future divergence risk if enterRawMode() is updated without updating waitForKey()."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/raw-mode.ts",
+          "src/screen.ts",
+          "vitest.config.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-15T12:44:50Z",
+          "note": "Fix-Forward: Expanded JSDoc on exitRawMode() in src/raw-mode.ts to document the usage distinction from restoreTerminal(). Added: 'Use exitRawMode() for lightweight teardown when no keypress listeners were registered. For full cleanup after an interactive keypress session, prefer restoreTerminal() which also removes keypress event listeners.' Pure documentation addition — zero behavioral change. Addresses Developer's own observation from the implementation pipeline."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-04-15T12:44:50Z",
+          "note": "DRY violation in waitForKey() (src/screen.ts lines 36-39): the three-line sequence `readline.emitKeypressEvents(process.stdin); process.stdin.setRawMode(true); process.stdin.resume();` duplicates the core body of enterRawMode(). If enterRawMode() is updated in Phase B (e.g., with better error handling), waitForKey() will not inherit the fix automatically. Recommend replacing those 3 lines with a call to enterRawMode() in Phase B — this would simultaneously eliminate the duplication and add the missing try/catch protection."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T12:44:50Z",
+          "note": "Phase B hardening reminder (confirmed by Developer + QA): (1) process.stdin.setRawMode(true) in waitForKey() is not wrapped in try/catch — on partial-TTY environments where isTTY is truthy but setRawMode throws, the returned Promise rejects instead of resolving. (2) clearScreen() writes ANSI bytes unconditionally regardless of process.stdout.isTTY — produces garbage in piped/CI output capturing. Both are explicitly Phase B scope."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-15T12:44:50Z",
+          "note": "[documentation-forward] src/screen.ts and src/raw-mode.ts are excluded from Phase A coverage but have no comments or README callout explaining this is intentional (Phase B scope). The API docs should note that interactive tests (stdin/stdout mocking) are deferred to Phase B, so contributors don't mistakenly treat the 0% coverage exclusion as a gap to fill immediately."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T12:44:50Z",
+          "note": "No blocking issues found. Code is readable, guarded correctly for all TTY/non-TTY paths, and consistently uses try/catch in the risk-bearing paths (enterRawMode, exitRawMode, restoreTerminal). The rework cycle was minimal and targeted exactly the config path issue — no logic was regressed."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-15T12:48:18Z",
+      "completed_at": "2026-04-15T12:50:52Z",
+      "duration_ms": 154000,
+      "summary": [
+        "Added Terminal utilities section to README.md documenting all six functions delivered by WP-004: isRawModeSupported(), enterRawMode(), exitRawMode(), restoreTerminal() (src/raw-mode.ts) and clearScreen(), waitForKey() (src/screen.ts).",
+        "Updated Sub-path exports section with a Phase B callout noting that @mistralys/cli-menu/raw-mode and @mistralys/cli-menu/screen sub-paths are planned for Phase B.",
+        "Addressed reviewer documentation-forward: added explicit coverage-note callout clarifying that the 0% exclusion for both files is intentional — interactive stdin/stdout mocking tests are a Phase B deliverable.",
+        "Documented both Phase B hardening items in the API docs: (1) clearScreen() writes ANSI bytes unconditionally regardless of process.stdout.isTTY; (2) waitForKey() calls setRawMode(true) without try/catch after the isTTY guard."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "README.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T12:50:52Z",
+          "note": "All six reviewer-forwarded documentation items addressed: Phase B sub-path callout added to the sub-path exports table; Terminal utilities section added with full function signatures, parameter tables, and Phase B hardening notes for clearScreen() and waitForKey(); coverage exclusion note added to explain intentional 0% deferral."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-15T12:50:52Z",
+          "note": "exitRawMode() vs restoreTerminal() usage distinction is captured in the function descriptions, reinforcing the JSDoc Fix-Forward the Reviewer applied in src/raw-mode.ts."
+        }
+      ]
+    }
+  ],
+  "rework_counts": {
+    "implementation": 1,
+    "qa": 1
+  },
+  "status_changed_at": "2026-04-15T12:50:52Z",
+  "last_updated": "2026-04-15T12:50:52Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-15T12:26:02Z",
+      "notes": [
+        "WP-004 delivers two new modules: src/raw-mode.ts (TTY guard + raw mode lifecycle) and src/screen.ts (clearScreen + waitForKey with non-TTY no-op). Both modules import only Node.js built-ins (node:readline). QA note: raw-mode and screen are excluded from Phase A coverage thresholds per vitest.config.ts — full interactive tests (stdin/stdout mocking) are Phase B scope. Verify the non-TTY acceptance criteria via unit tests in Phase B."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Developer",
+      "timestamp": "2026-04-15T12:36:34Z",
+      "notes": [
+        "One-line fix required in vitest.config.ts: change 'src/terminal/raw-mode.ts' → 'src/raw-mode.ts' and 'src/terminal/screen.ts' → 'src/screen.ts' in the coverage.exclude array. All 6 ACs are satisfied by the implementation logic; the only defect is the stale exclusion paths causing coverage threshold failures. No logic changes needed."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-15T12:41:37Z",
+      "notes": [
+        "WP-004 delivers src/raw-mode.ts and src/screen.ts — TTY guard + raw mode lifecycle and clearScreen/waitForKey utilities. All 6 ACs met. Two low-priority Phase B items: (1) setRawMode(true) in waitForKey() lacks try/catch; (2) clearScreen() does not guard on stdout.isTTY. Both are non-blocking. Coverage exclusions in vitest.config.ts are correctly scoped to the actual file paths."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-15T12:44:50Z",
+      "notes": [
+        "WP-004 PASS. src/raw-mode.ts and src/screen.ts are clean and correct. Fix-Forward applied: JSDoc on exitRawMode() now documents the usage distinction from restoreTerminal(). Two Phase B items remain (setRawMode try/catch in waitForKey; stdout.isTTY guard in clearScreen) — flag both in API docs. Also document that coverage exclusions for these files are intentional Phase B deferrals."
+      ]
+    }
+  ]
+}
