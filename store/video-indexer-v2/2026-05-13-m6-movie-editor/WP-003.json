@@ -1,0 +1,323 @@
+{
+  "work_package_id": "WP-003",
+  "work_package_file": "work/WP-007.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "LabelCleanerResult, LabelCleanerOptions, INameParser exist as pure C# types in Core with no NuGet dependencies.",
+      "met": true
+    },
+    {
+      "criterion": "Date extraction handles three regex patterns from legacy app.",
+      "met": true
+    },
+    {
+      "criterion": "Actor detection uses longest-match, case-insensitive, sorted by length descending.",
+      "met": true
+    },
+    {
+      "criterion": "Studio detection uses longest-match, case-insensitive.",
+      "met": true
+    },
+    {
+      "criterion": "Keyword stripping respects StripKeywords flag.",
+      "met": true
+    },
+    {
+      "criterion": "UCWords transformation works correctly.",
+      "met": true
+    },
+    {
+      "criterion": "Empty known-names list is handled gracefully.",
+      "met": true
+    },
+    {
+      "criterion": "All LabelCleanerTests pass.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-13T22:21:12Z",
+      "completed_at": "2026-05-13T22:31:43Z",
+      "duration_ms": 631000,
+      "summary": [
+        "Created LabelCleanerResult (Core/Models): sealed record with ActorNames, Label, Studio, DetectedTags fields.",
+        "Created LabelCleanerOptions (Core/Options): sealed record with PreserveDates, UCWords, DetectTags, StripKeywords, Keywords fields and sensible defaults.",
+        "Added LabelCleaner property to AppOptions.cs.",
+        "Added LabelCleaner defaults section to appsettings.json.",
+        "Created INameParser (Core/Abstractions): stateless interface with single Parse method taking known actor/studio lists as parameters.",
+        "Created NameParser (Infrastructure/Library): ports the legacy algorithm — date extraction (3 patterns), separator normalisation, longest-match studio/actor detection, keyword stripping, UCWords, label assembly. Tag detection stubbed (always returns empty list).",
+        "Registered INameParser → NameParser as singleton in Program.cs.",
+        "Created LabelCleanerTests.cs (17 tests) covering all 6 acceptance-criteria groups: date formats, actor detection (longest-match + case-insensitive), studio detection (longest-match), UCWords, keyword stripping, empty-list handling.",
+        "Build: 0 errors, 0 warnings. Test run: 517 passed, 0 failed, 6 skipped."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Core/Models/LabelCleanerResult.cs",
+          "src/VideoIndexer.Core/Options/LabelCleanerOptions.cs",
+          "src/VideoIndexer.Core/Options/AppOptions.cs",
+          "src/VideoIndexer.App/Assets/appsettings.json",
+          "src/VideoIndexer.Core/Abstractions/INameParser.cs",
+          "src/VideoIndexer.Infrastructure/Library/NameParser.cs",
+          "src/VideoIndexer.App/Program.cs",
+          "tests/VideoIndexer.Tests/LabelCleanerTests.cs"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 517,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-13T22:31:42Z",
+          "note": "NameParser.cs: the date pattern regex uses a character class [.\\-] for the separator. The escaped hyphen needs to be at the start or end of a character class to avoid ambiguity. Currently written as [.\\-] which is correct (escaped hyphen), but [.-] could be misread as a range in some regex engines. The current form is safe in .NET but a comment noting the intent would aid future maintainers."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-05-13T22:31:42Z",
+          "note": "NameParser.AssembleLabel: trailing tokens after the last separator are discarded (ported from legacy behaviour). This is a documented limitation but could silently drop content if a filename ends with a bracket-delimited section followed by more text. If the label assembly ever produces unexpectedly short results, this is the first place to investigate."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-13T22:31:42Z",
+          "note": "LabelCleanerOptions.Keywords is typed as IReadOnlyList<string> with an empty collection default. Microsoft.Extensions.Configuration binds JSON arrays to IReadOnlyList<string> in .NET 10 without issue, but if a downstream caller mutates the list via reflection or unsafe casting the defaults become corrupted. The record sealed type makes this unlikely but worth noting."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-13T22:35:55Z",
+      "completed_at": "2026-05-13T22:38:06Z",
+      "duration_ms": 131000,
+      "summary": [
+        "All 8 acceptance criteria verified for NameParser / LabelCleaner WP.",
+        "AC1: LabelCleanerResult, LabelCleanerOptions, INameParser are pure C# types in Core with no NuGet deps.",
+        "AC2: Three DatePatterns (yyyymmdd/ddmmyyyy/yymmdd) verified; PreserveDates flag tested on/off.",
+        "AC3: Actor detection uses SortByLengthDescending + GetFullWordMatches with RegexOptions.IgnoreCase; longest-match test passes.",
+        "AC4: Studio detection uses SortByLengthDescending + Regex.Escape with IgnoreCase; longest-match test passes.",
+        "AC5: StripKeywords guard applied conditionally; both on/off tested.",
+        "AC6: UCWords char.ToUpper applied per token; both on/off tested.",
+        "AC7: Empty actor/studio lists return empty result strings without error.",
+        "AC8: 17 new LabelCleanerTests in tests/VideoIndexer.Tests/LabelCleanerTests.cs, 517 total, 0 failed, 6 env-skipped."
+      ],
+      "metrics": {
+        "tests_passed": 517,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "coverage-gap",
+          "priority": "medium",
+          "timestamp": "2026-05-13T22:38:06Z",
+          "note": "GetFullWordMatches in NameParser.cs uses three patterns that all require at least one space bounding the actor name ('\\A(term)[ ]', '[ ](term)\\z', '[ ](term)[ ]'). If the remaining text after studio/date extraction is exactly the actor name with no surrounding tokens, no match occurs. Example: filename 'Jane.Doe' (after normalization 'Jane Doe') with knownActorNames=[\"Jane Doe\"] — actor is not detected. Low probability in practice (filenames normally include title tokens), but the gap is untest-covered."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-13T22:38:06Z",
+          "note": "yymmdd date normalisation produces dd-mm-yyyy output (e.g. '16.12.30' → '30-12-2016') per legacy app behaviour. The Format label 'yymmdd' is slightly misleading since the tokens map yy→century, mm, dd. Covered by test and documented in comment; no functional issue."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-13T22:38:06Z",
+          "note": "INameParser is registered as singleton in Program.cs (line 159) which is correct per the interface docs. Verified no mutable state in NameParser — all methods are static helpers called from the single Parse method."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-05-13T23:03:52Z",
+      "completed_at": "2026-05-13T23:05:04Z",
+      "duration_ms": 72000,
+      "summary": [
+        "Reviewed 8 files. 0 Critical, 0 High, 0 Medium, 2 Low, 1 Info. Security sign-off: PASS. All OWASP Top 10 categories reviewed. Regex injection risk is mitigated by consistent use of Regex.Escape on all caller-supplied terms. No secrets, no external network calls, no auth surfaces in the modified code."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-13T23:05:04Z",
+          "note": "A03 — Injection (Low/Info): NameParser.cs — GetFullWordMatches and GetSubstringMatches both call Regex.Escape on the caller-supplied term before building the regex pattern, eliminating regex injection. DetectStudios also uses Regex.Escape. All date patterns are static readonly constants. No injection vectors identified."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-13T23:05:04Z",
+          "note": "A03 — ReDoS (Low): NameParser.GetFullWordMatches — the alternation pattern duplicates the escaped term three times (start-of-string, end-of-string, surrounded-by-spaces). Inputs come from the internal database (knownActorNames/knownStudios), not raw external user input. No complex nested quantifiers are present. ReDoS risk is low but could be reduced further by pre-compiling these regexes as static readonly fields (also a performance improvement)."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-13T23:05:04Z",
+          "note": "A03 — Regex instantiation in hot path (Low): ExtractDates instantiates new Regex objects on every Parse call for each of the 3 DatePatterns. The patterns are static constants; pre-compiling them as static readonly Regex fields (with RegexOptions.Compiled) would eliminate per-call allocation and any theoretical risk from repeated construction. Not a security vulnerability but worth addressing alongside the GetFullWordMatches note above."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-13T23:05:04Z",
+          "note": "A08 — Data Integrity (Info/Positive): appsettings.json FFmpeg provisioning block includes SHA256 hashes for all download targets (win-x64, win-arm64, linux-x64). This is a sound integrity control that should be validated at download time. Confirm the provisioning code verifies the hash before extracting the archive."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-13T23:06:32Z",
+      "completed_at": "2026-05-13T23:08:56Z",
+      "duration_ms": 144000,
+      "summary": [
+        "Reviewed 8 implementation files. Architecture is sound — INameParser/LabelCleanerResult/LabelCleanerOptions correctly reside in Core with no NuGet dependencies; NameParser lives in Infrastructure and is registered as a singleton. DI registration in Program.cs is correct.",
+        "Applied Fix-Forward: pre-compiled the three static date regex patterns as `static readonly (Regex CompiledRegex, string Format)[]` entries with RegexOptions.Compiled, eliminating per-call Regex allocation flagged by the Security Auditor. Build and all 537 tests verified green.",
+        "No blocking issues found. One low-priority inconsistency noted between DetectStudios (removes all occurrences) and DetectActorNames (only removes the first occurrence of a repeated actor name). Real-world impact is negligible — actor names rarely repeat in a filename — and does not block approval.",
+        "AssembleLabel trailing-token discard is documented in code and faithfully ports legacy behaviour. The debt comment from the Developer is sufficient."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Library/NameParser.cs",
+          "src/VideoIndexer.Core/Models/LabelCleanerResult.cs",
+          "src/VideoIndexer.Core/Options/LabelCleanerOptions.cs",
+          "src/VideoIndexer.Core/Options/AppOptions.cs",
+          "src/VideoIndexer.App/Assets/appsettings.json",
+          "src/VideoIndexer.Core/Abstractions/INameParser.cs",
+          "src/VideoIndexer.App/Program.cs",
+          "tests/VideoIndexer.Tests/LabelCleanerTests.cs"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 537,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-13T23:08:56Z",
+          "note": "NameParser.cs — Pre-compiled the three static date regex patterns. Changed `static readonly (string Pattern, string Format)[]` to `static readonly (Regex CompiledRegex, string Format)[]` with `RegexOptions.IgnoreCase | RegexOptions.Compiled`. Updated `ExtractDates` to destructure `(regex, format)` directly rather than constructing a new `Regex` per call. Addresses the Security Auditor's low-priority ReDoS/allocation recommendation. Non-behavioral change — all 537 tests pass."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-13T23:08:56Z",
+          "note": "NameParser.DetectActorNames — Minor inconsistency with DetectStudios: the text replacement is guarded by `!detected.Contains(name)`, so if the same actor name appears multiple times in the post-processing text, only the first occurrence is removed. DetectStudios removes all occurrences unconditionally before adding to `detected`. Real-world impact is negligible (actor names rarely repeat in a single filename); flagging for awareness. Not blocking."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-13T23:08:56Z",
+          "note": "[documentation-forward] INameParser.Parse — the XML doc comment on the `knownActorNames` parameter should note the full-word matching boundary requirement: an actor name that equals the entire remaining text (no surrounding tokens) will not be detected by GetFullWordMatches. This is a known gap (flagged by QA, AC3 does not require exhaustive matching) but should be surfaced to consumers of the API surface so they understand the edge case."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-13T23:08:56Z",
+          "note": "LabelCleanerTests.cs — No test exercises the DetectStudios vs. DetectActorNames removal-consistency difference noted above. If the inconsistency is ever fixed a regression test for 'actor name repeated in filename' would lock in the behaviour."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-13T23:11:25Z",
+      "completed_at": "2026-05-13T23:13:55Z",
+      "duration_ms": 150000,
+      "summary": [
+        "Updated INameParser.cs XML doc on knownActorNames parameter to document the full-word boundary limitation, addressing the [documentation-forward] item from code review.",
+        "Added INameParser to api-surface.md Abstractions section with full signature and boundary-limitation note.",
+        "Added LabelCleanerResult (sealed record) to api-surface.md Models section.",
+        "Added LabelCleanerOptions (sealed record) to api-surface.md Options section with all five properties and defaults.",
+        "Updated AppOptions entry in api-surface.md to include the new LabelCleaner property.",
+        "Added NameParser : INameParser entry to api-surface.md Infrastructure section noting stateless singleton and pre-compiled regex.",
+        "Added INameParser full-word boundary limitation to constraints.md Known Gotchas section for consumer awareness.",
+        "All acceptance criteria were already met by prior pipeline stages — no changes required to those."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Core/Abstractions/INameParser.cs",
+          "docs/agents/project-manifest/api-surface.md",
+          "docs/agents/project-manifest/constraints.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-13T23:13:55Z",
+          "note": "[documentation-forward] addressed: INameParser.cs knownActorNames XML doc now explicitly documents the full-word boundary requirement with a concrete example ('Jane Doe' as sole remaining text is not matched). The limitation is also captured in constraints.md so manifest readers are alerted before writing consumer code."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-13T23:13:55Z",
+          "note": "api-surface.md was missing all four M6 additions (INameParser, LabelCleanerResult, LabelCleanerOptions, NameParser). These have been added with accurate signatures sourced directly from the source files. AppOptions entry updated to include LabelCleaner property."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-13T23:13:55Z",
+          "note": "file-tree.md already referenced the M6 types correctly (added by a prior agent); no changes needed there."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-13T23:13:55Z",
+  "last_updated": "2026-05-13T23:13:55Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-13T22:31:43Z",
+      "notes": [
+        "All 8 acceptance criteria met. New files: LabelCleanerResult.cs (Core/Models), LabelCleanerOptions.cs (Core/Options), INameParser.cs (Core/Abstractions), NameParser.cs (Infrastructure/Library), LabelCleanerTests.cs (17 tests). Modified: AppOptions.cs (added LabelCleaner property), appsettings.json (added LabelCleaner defaults section), Program.cs (registered INameParser singleton). Algorithm ports the three legacy date patterns, separator normalisation, longest-match studio/actor detection, keyword stripping, UCWords, and stubs tag detection. Build clean, 517 tests pass (17 new)."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-05-13T22:38:06Z",
+      "notes": [
+        "WP-003 PASS. New types: LabelCleanerResult, LabelCleanerOptions (Core), INameParser (Core/Abstractions), NameParser (Infrastructure/Library). AppOptions.LabelCleaner added. INameParser registered as singleton. 17 new LabelCleanerTests pass (517 total, 0 fail). Algorithm: 3 date patterns, separator normalisation, longest-match studio/actor detection, keyword stripping, UCWords, stubbed tag detection. One medium coverage-gap noted (actor name as sole remaining token not detectable)."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-13T23:05:04Z",
+      "notes": [
+        "WP-003 security-audit PASS. 0 Critical/High findings. Low-priority observations: (1) GetFullWordMatches and DetectStudios should pre-compile regexes as static readonly fields to eliminate per-call allocation and theoretical ReDoS surface; (2) ExtractDates instantiates Regex on every call — same fix. Confirm FFmpeg SHA256 hash verification is enforced at extract time (positive control already present in appsettings.json). All acceptance criteria met. Ready for code-review pipeline."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-13T23:08:56Z",
+      "notes": [
+        "Code review PASS. One Fix-Forward applied: NameParser.cs date regex patterns are now pre-compiled as static readonly Regex fields with RegexOptions.Compiled — no behavior change, 537 tests green.",
+        "Documentation agent: see [documentation-forward] comment — INameParser.Parse knownActorNames parameter doc should note the full-word boundary limitation (actor name that equals entire remaining text is not matched).",
+        "All 8 acceptance criteria confirmed met. Ready for documentation pipeline."
+      ]
+    }
+  ]
+}

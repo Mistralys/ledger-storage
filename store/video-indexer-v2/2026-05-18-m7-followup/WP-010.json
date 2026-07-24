@@ -1,0 +1,134 @@
+{
+  "work_package_id": "WP-010",
+  "work_package_file": "work/WP-010.md",
+  "status": "COMPLETE",
+  "assigned_to": "Reviewer",
+  "dependencies": [
+    "WP-001",
+    "WP-002",
+    "WP-004"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "All five repositories use CommandDefinition for every Dapper call that accepts a CancellationToken.",
+      "met": true
+    },
+    {
+      "criterion": "Build passes with zero warnings.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "code-review"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-18T21:08:34Z",
+      "completed_at": "2026-05-18T21:14:25Z",
+      "duration_ms": 351000,
+      "summary": [
+        "Replaced all bare QueryAsync/QuerySingleAsync/QuerySingleOrDefaultAsync/QueryFirstOrDefaultAsync/ExecuteAsync calls with new CommandDefinition(sql, param, [transaction:], cancellationToken: cancellationToken) in all 5 repository files.",
+        "DapperTagsRepository.cs: 25+ calls updated including transaction-aware calls in DeleteTagAsync (5 statements) and MergeTagAsync (9 statements).",
+        "DapperMovieRepository.cs: 8 calls updated across GetByIdAsync, SaveAsync, ResetViewCountAsync, SetReviewAsync, GetOriginalFilenameAsync, GetKnownActorNamesAsync, GetKnownStudiosAsync.",
+        "DapperMovieCatalogRepository.cs: 6 calls updated. DapperFilterSlotRepository.cs: 5 calls. SpdbConfigRepository.cs: 3 calls (2 transaction-aware).",
+        "Build: 0 errors, 0 warnings. All 583 tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Library/DapperMovieRepository.cs",
+          "src/VideoIndexer.Infrastructure/Library/DapperMovieCatalogRepository.cs",
+          "src/VideoIndexer.Infrastructure/Library/DapperFilterSlotRepository.cs",
+          "src/VideoIndexer.Infrastructure/Library/DapperTagsRepository.cs",
+          "src/VideoIndexer.Infrastructure/Database/SpdbConfigRepository.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T21:14:25Z",
+          "note": "DapperTagsRepository.DeleteTagAsync and MergeTagAsync pass ownedTx (which may be null) as the transaction in CommandDefinition. CommandDefinition accepts null transaction without issue — this is correct and consistent with the existing pattern."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-05-18T21:14:25Z",
+          "note": "The LAST_INSERT_ID() calls use CommandDefinition with only a cancellationToken (no parameters). These are session-scoped MySQL functions and are safe in this context since each method uses a single connection per call. If connection pooling behaviour ever changes (e.g., connection multiplexing), the LAST_INSERT_ID pattern could return stale data — but this is pre-existing design, not introduced by this WP."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T21:14:25Z",
+          "note": "SpdbConfigRepository.IsSchemaPresentAsync is not on the ISpdbConfigRepository interface by design (documented in the inline comment). The CT sweep updates this method consistently even though it is not polymorphically accessible — no change needed."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-18T21:37:34Z",
+      "completed_at": "2026-05-18T21:38:18Z",
+      "duration_ms": 44000,
+      "summary": [
+        "Code review PASS. WP-010 is a clean, systematic sweep replacing all bare Dapper calls with CommandDefinition+cancellationToken across 5 repository files. The pattern is applied uniformly, including transaction-aware methods. Build verified at 0 errors/0 warnings under TreatWarningsAsErrors=true. No blocking issues."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Library/DapperMovieRepository.cs",
+          "src/VideoIndexer.Infrastructure/Library/DapperMovieCatalogRepository.cs",
+          "src/VideoIndexer.Infrastructure/Library/DapperFilterSlotRepository.cs",
+          "src/VideoIndexer.Infrastructure/Library/DapperTagsRepository.cs",
+          "src/VideoIndexer.Infrastructure/Database/SpdbConfigRepository.cs"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 583,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T21:38:18Z",
+          "note": "CommandDefinition is applied uniformly across all 5 repository files. Transaction-aware methods (DeleteTagAsync, MergeTagAsync in DapperTagsRepository, and SpdbConfigRepository transaction calls) correctly pass ownedTx as the third positional 'transaction' parameter of CommandDefinition — Dapper handles null transaction cleanly, which is correct for the ambient-transaction fallback path."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T21:38:18Z",
+          "note": "The LAST_INSERT_ID() calls are now wrapped in CommandDefinition with only cancellationToken (no parameters, no transaction). This is sound — LAST_INSERT_ID() is session-scoped and these calls share the same connection as the preceding INSERT. The pre-existing design note about connection pooling risk is accurate but pre-dates this WP."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T21:38:18Z",
+          "note": "No observations — code is clean and consistent. This is a well-executed mechanical sweep: 25+ calls in DapperTagsRepository and 8+ across the other 4 files all follow the same pattern. Build succeeds with TreatWarningsAsErrors=true, which verifies no incorrect overload resolution occurred."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-18T21:38:18Z",
+  "last_updated": "2026-05-18T21:38:18Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-18T21:14:25Z",
+      "notes": [
+        "All Dapper calls in the 5 repository files now use CommandDefinition with cancellationToken. Build succeeds with 0 errors and 0 warnings. 583 tests pass (328 App.Tests + 255 Core/Infrastructure Tests). No interface changes were made. The Infrastructure.Tests suite was not run separately (it requires a live DB) but the build verifies no type errors were introduced."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-05-18T21:38:18Z",
+      "notes": [
+        "WP-010 code-review PASS. Systematic CommandDefinition sweep applied correctly across all 5 repository files. Transaction-aware calls handle null ownedTx correctly. Build passes with 0 warnings. Both ACs met. No documentation gaps identified. Ready for next pipeline stage or project completion."
+      ]
+    }
+  ]
+}

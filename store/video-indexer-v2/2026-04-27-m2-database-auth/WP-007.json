@@ -1,0 +1,251 @@
+{
+  "work_package_id": "WP-007",
+  "work_package_file": "work/WP-007.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-002",
+    "WP-003",
+    "WP-004"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "ExpectedRevision is a public const int equal to 35.",
+      "met": true
+    },
+    {
+      "criterion": "The connection-open failure path returns a status-tagged result and never throws across the abstraction boundary.",
+      "met": true
+    },
+    {
+      "criterion": "Each of the four DatabaseBootstrapStatus values is covered by at least one passing test.",
+      "met": true
+    },
+    {
+      "criterion": "RevisionTooOld and RevisionTooNew results carry the actual revision in ActualRevision.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-27T20:53:06Z",
+      "completed_at": "2026-04-27T20:55:40Z",
+      "duration_ms": 154000,
+      "summary": [
+        "Created DatabaseBootstrapper with ExpectedRevision=35 const, two-stage CheckAsync (connectivity probe + revision read), all 4 status branches.",
+        "Created DatabaseBootstrapperTests with 6 tests covering all ACs.",
+        "37/37 Infrastructure.Tests pass, 0 warnings."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Database/DatabaseBootstrapper.cs",
+          "tests/VideoIndexer.Infrastructure.Tests/Database/DatabaseBootstrapperTests.cs"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 37,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T20:55:40Z",
+          "note": "DatabaseBootstrapper opens a connection via IDbConnectionFactory purely for connectivity probing, then immediately disposes it. In production the repository will open its own separate connection. If ISpdbConfigRepository is ever refactored to accept an IDbConnection directly, the probe connection and the repository connection could be unified into one, saving a round-trip. Acceptable for current design."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-04-27T20:55:40Z",
+          "note": "FakeDbConnection in tests required the same [AllowNull] workaround on ConnectionString as FakeDbConnection in WP-004. Consider extracting a shared MinimalFakeDbConnection base class if a third implementation appears."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-27T20:58:48Z",
+      "completed_at": "2026-04-27T20:59:37Z",
+      "duration_ms": 49000,
+      "summary": [
+        "All 4 acceptance criteria verified against implementation and test suite.",
+        "43/43 tests pass (Infrastructure.Tests). Release build clean: 0 warnings, 0 errors.",
+        "AC-1: public const int ExpectedRevision = 35 confirmed by ExpectedRevision_IsThirtyFive test.",
+        "AC-2: Connection-failure catch block returns ConfigTableMissing result, confirmed by CheckAsync_ConnectionFailure_ReturnsConfigTableMissing_DoesNotThrow.",
+        "AC-3: All four DatabaseBootstrapStatus values (Ok, RevisionTooOld, RevisionTooNew, ConfigTableMissing) covered by at least one test each.",
+        "AC-4: RevisionTooOld and RevisionTooNew branches pass ActualRevision to the result record; confirmed by revision 34 and 36 test assertions."
+      ],
+      "metrics": {
+        "test_coverage": "6 new tests for WP-007; all 4 ACs covered",
+        "tests_passed": 43,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-04-27T20:59:37Z",
+          "note": "No test for null db_revision value (key exists but returns null from ISpdbConfigRepository). Implementation correctly handles this via 'revisionText is null' guard returning ConfigTableMissing, but the path is untested."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-04-27T20:59:37Z",
+          "note": "No test for non-numeric revision string (e.g. 'not-a-number'). Implementation handles via int.TryParse failure returning ConfigTableMissing, but path is untested."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T20:59:37Z",
+          "note": "Connection probe opens and immediately disposes the IDbConnection via (await ...).Dispose(). Any exception thrown during Dispose() would propagate uncaught. Typical IDbConnection implementations do not throw in Dispose(), making this low-risk in practice."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-27T21:02:33Z",
+      "completed_at": "2026-04-27T21:03:21Z",
+      "duration_ms": 48000,
+      "summary": [
+        "Reviewed DatabaseBootstrapper.cs and test file. All OWASP Top 10 categories evaluated. 0 Critical, 0 High, 0 Medium. 1 Info: bare catch blocks swallow exception details without logging. Clean schema-revision guard design. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T21:03:21Z",
+          "note": "INFO | A09 — Security Logging & Monitoring | File: src/VideoIndexer.Infrastructure/Database/DatabaseBootstrapper.cs, lines 34-38 and 45-50. Both catch blocks silently swallow all exceptions and return ConfigTableMissing without logging the underlying exception. If a user reports a connection failure, there is no diagnostic trail. Remediation: inject ILogger<DatabaseBootstrapper> and add _logger.LogWarning(ex, ...) inside each catch block before returning. Does not block approval."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T21:03:21Z",
+          "note": "No Critical or High security findings. OWASP A01–A10 all reviewed. No injection vectors (RevisionKey is a hardcoded const, revision value validated via int.TryParse). Bare catch clauses are intentional and correct for this connectivity-probe pattern. Schema revision guard (ExpectedRevision = 35 const) provides integrity protection against schema version drift."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-27T21:07:46Z",
+      "completed_at": "2026-04-27T21:09:18Z",
+      "duration_ms": 92000,
+      "summary": [
+        "PASS with Fix-Forward. DatabaseBootstrapper is clean, well-structured, and correctly implements all 4 ACs.",
+        "Fix-Forward applied: replaced manual .Dispose() call on the probe connection with idiomatic `using var _ = await ...`. Non-behavioral, improves resource-management clarity.",
+        "Documentation-forward: ConfigTableMissing dual semantics (server unreachable vs. table absent) should be documented.",
+        "No blocking issues. Architecture, maintainability, best practices, and performance all meet standards."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Database/DatabaseBootstrapper.cs"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 43,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-27T21:09:18Z",
+          "note": "Fix-Forward: The connectivity probe used a manual .Dispose() call — `(await _connectionFactory.CreateOpenConnectionAsync(...).ConfigureAwait(false)).Dispose()`. Replaced with `using var _ = await ...` so the IDbConnection is disposed via the standard resource-management pattern. Behavior is identical (connection disposed immediately), but the using form makes the resource lifetime explicit and is idiomatic C#."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-27T21:09:18Z",
+          "note": "[documentation-forward] IDatabaseBootstrapper.CheckAsync (or the DatabaseBootstrapStatus enum) should document that ConfigTableMissing is returned for *two* distinct failure conditions: (1) the database server is unreachable (connection failure), and (2) the spdb_config table does not exist or the db_revision key is absent/non-numeric. Callers cannot currently distinguish between 'server down' and 'schema not bootstrapped' from the result alone. Documenting this dual-use is important for UI error messaging."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T21:09:18Z",
+          "note": "The two-stage probe pattern (open+close a connection for connectivity, then open a second via ISpdbConfigRepository) is clean for current design. Developer's own note about potentially unifying the two connections via direct IDbConnection injection to the repository is a valid future refactor — tracked in the implementation pipeline comment."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-27T21:12:47Z",
+      "completed_at": "2026-04-27T21:13:37Z",
+      "duration_ms": 50000,
+      "summary": [
+        "Expanded DatabaseBootstrapStatus.ConfigTableMissing doc to document both failure conditions (server unreachable vs. schema not bootstrapped) — addresses the documentation-forward from code review.",
+        "Added <remarks> to IDatabaseBootstrapper.CheckAsync cross-referencing the ConfigTableMissing dual semantics and guidance for callers needing to distinguish the two conditions.",
+        "README.md required no changes for WP-007 — no user-facing configuration or setup steps were modified."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Core/Enums/DatabaseBootstrapStatus.cs",
+          "src/VideoIndexer.Core/Abstractions/IDatabaseBootstrapper.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T21:13:37Z",
+          "note": "The documentation-forward was fully addressed in two places: (1) the ConfigTableMissing enum member now has an expanded summary and a <remarks> block listing both conditions; (2) IDatabaseBootstrapper.CheckAsync has a <remarks> block cross-referencing the dual-use and advising callers on how to distinguish the conditions."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-06T09:28:49Z",
+  "last_updated": "2026-05-06T09:28:49Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-27T20:55:40Z",
+      "notes": [
+        "DatabaseBootstrapper.CheckAsync: two-step (connectivity probe + repo read), all 4 status branches covered.",
+        "6 new tests in VideoIndexer.Infrastructure.Tests/Database/DatabaseBootstrapperTests.cs; 37/37 total pass, 0 warnings.",
+        "No DI registration yet — deferred to WP-016.",
+        "FakeDbConnectionFactory and FakeSpdbConfigRepository defined locally in test file (not shared fixtures)."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-04-27T20:59:37Z",
+      "notes": [
+        "WP-007 QA PASS. All 4 ACs verified, 43/43 tests pass, release build clean.",
+        "Three low-priority coverage gaps noted (null revision, non-numeric revision, Dispose exception). None are AC failures.",
+        "DatabaseBootstrapper is ready for security audit review."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-27T21:03:21Z",
+      "notes": [
+        "WP-007 security-audit PASS. 0 Critical, 0 High, 0 Medium. 1 Info noted (no exception logging in catch blocks — low-severity observability gap). All 4 ACs confirmed met. Ready for code-review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-27T21:09:18Z",
+      "notes": [
+        "WP-007 code-review PASS. Fix-Forward applied: using-var pattern for probe connection disposal. One documentation-forward: document ConfigTableMissing dual semantics (unreachable vs. missing table) on the enum or interface. All 4 ACs met. Ready for documentation."
+      ]
+    }
+  ]
+}

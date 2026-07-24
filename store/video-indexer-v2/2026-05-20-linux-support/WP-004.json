@@ -1,0 +1,197 @@
+{
+  "work_package_id": "WP-004",
+  "work_package_file": "work/WP-004.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "The StartsWith call in the Zip-Slip traversal guard passes StringComparison.Ordinal.",
+      "met": true
+    },
+    {
+      "criterion": "No occurrence of StringComparison.OrdinalIgnoreCase remains in ZipArchiveExtractor.cs.",
+      "met": true
+    },
+    {
+      "criterion": "All existing ZipArchiveExtractorTests pass without modification.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-21T06:10:50Z",
+      "completed_at": "2026-05-21T06:12:27Z",
+      "duration_ms": 97000,
+      "summary": [
+        "Changed StringComparison.OrdinalIgnoreCase to StringComparison.Ordinal in the Zip-Slip path-traversal guard in ZipArchiveExtractor.cs. All infrastructure tests pass (189 passed, 6 DB-integration skipped). Release build clean."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/ExternalTools/ZipArchiveExtractor.cs"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 189,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-21T06:12:27Z",
+          "note": "No observations — the single-character change in ZipArchiveExtractor.cs is self-contained and the file is otherwise clean. The original OrdinalIgnoreCase was an inadvertent Windows-ism, not a design pattern to preserve."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-21T06:23:56Z",
+      "completed_at": "2026-05-21T06:24:54Z",
+      "duration_ms": 58000,
+      "summary": [
+        "AC1 verified: src/VideoIndexer.Infrastructure/ExternalTools/ZipArchiveExtractor.cs line 46 uses StringComparison.Ordinal in the StartsWith Zip-Slip guard.",
+        "AC2 verified: only one StringComparison reference in file; it is Ordinal (not OrdinalIgnoreCase).",
+        "AC3 verified: all 4 ZipArchiveExtractorTests pass (flat extraction, nested dirs, traversal throws, traversal leaves no files).",
+        "Edge-case analysis: Ordinal is the correct comparison because both paths are normalized by Path.GetFullPath. On Linux case-sensitive filesystems, Ordinal is more secure than OrdinalIgnoreCase."
+      ],
+      "metrics": {
+        "tests_passed": 4,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-21T06:24:54Z",
+          "note": "Edge-case verified: both canonicalDest and entryFullPath are normalized via Path.GetFullPath before the StartsWith comparison. Since casing is consistent across both paths, Ordinal comparison is safe on Windows and more correct on Linux (case-sensitive filesystem). The old OrdinalIgnoreCase could theoretically create a bypass on Linux if an attacker crafted entry paths with mixed casing that, after GetFullPath normalization, appeared to match the destination but mapped to a different path. Ordinal eliminates this risk."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-21T06:24:54Z",
+          "note": "All 4 ZipArchiveExtractorTests pass: flat extraction, nested directories, traversal guard throws, and traversal guard leaves no files outside destination. No regressions."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-05-21T06:51:01Z",
+      "completed_at": "2026-05-21T06:52:01Z",
+      "duration_ms": 60000,
+      "summary": [
+        "Reviewed 1 modified file (ZipArchiveExtractor.cs). Change is a security improvement: OrdinalIgnoreCase → Ordinal in Zip-Slip traversal guard. 0 Critical, 0 High, 0 Medium findings. 2 Low/Info observations (guard correctness confirmed; pre-existing Zip Bomb note). Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-21T06:52:01Z",
+          "note": "A01/A04 (Zip-Slip Guard — Confirmed Correct): The traversal guard at line 46 is architecturally sound. canonicalDest is produced by Path.GetFullPath + trailing DirectorySeparatorChar (lines 27-29), preventing prefix-collision attacks. entryFullPath is produced by Path.GetFullPath(Path.Combine(canonicalDest, entry.FullName)) (line 44), resolving all '..' sequences. StringComparison.Ordinal is the correct comparison because both sides are canonical GetFullPath outputs — byte-for-byte identical for the same path. The prior OrdinalIgnoreCase was a theoretical bypass risk on Linux case-sensitive filesystems. This change is a verified security improvement. File: src/VideoIndexer.Infrastructure/ExternalTools/ZipArchiveExtractor.cs, line 46."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-21T06:52:01Z",
+          "note": "A04 — Pre-existing: No upper bound on decompressed size or entry count. A Zip Bomb (tiny compressed payload expanding to a huge file) could exhaust disk space. Not introduced by this WP. In context, ZIP files processed by this extractor come from controlled FFmpeg distribution sources, not untrusted user uploads — risk is low in practice. Recommendation: if the extractor is ever used with untrusted ZIP files, add a decompressed-size check against entry.Length before streaming. File: src/VideoIndexer.Infrastructure/ExternalTools/ZipArchiveExtractor.cs, ExtractAsync method."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-21T06:55:10Z",
+      "completed_at": "2026-05-21T06:55:46Z",
+      "duration_ms": 36000,
+      "summary": [
+        "Reviewed ZipArchiveExtractor.cs (sole modified file). The OrdinalIgnoreCase to Ordinal change is a correct, minimal security improvement. The surrounding guard architecture is sound and the implementation is high quality across all review dimensions. No blocking issues."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/ExternalTools/ZipArchiveExtractor.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-21T06:55:46Z",
+          "note": "No observations — the change is minimal, correct, and the surrounding code is high quality. The Zip-Slip guard architecture is sound: trailing DirectorySeparatorChar prevents prefix-collision attacks, Path.GetFullPath canonicalization on both sides resolves all '..' traversal sequences, and StringComparison.Ordinal is the correct comparator for two canonicalized paths. The 80KB buffer size, useAsync: true on FileStream, and ConfigureAwait(false) on CopyToAsync are all best-practice choices. The single-character change from OrdinalIgnoreCase to Ordinal is an unambiguous security improvement with no behavioral regression on Windows."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-21T06:59:08Z",
+      "completed_at": "2026-05-21T06:59:39Z",
+      "duration_ms": 31000,
+      "summary": [
+        "No documentation changes were needed. README.md already accurately documents the Zip-Slip guard using StringComparison.Ordinal and explains why it is correct for both Windows and Linux filesystems. Project manifest files contain no stale OrdinalIgnoreCase references for ZipArchiveExtractor. Code reviewer confirmed no documentation gaps for this WP."
+      ],
+      "artifacts": {
+        "files_modified": []
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-21T06:59:39Z",
+          "note": "No documentation changes required. README.md already accurately states 'The Zip-Slip guard uses StringComparison.Ordinal, which is correct for both Windows and Linux filesystems.' — it was written correctly from the outset and reflects the current state of the code. The code reviewer also confirmed no documentation gaps for this WP."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-21T06:59:39Z",
+  "last_updated": "2026-05-21T06:59:39Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-21T06:12:27Z",
+      "notes": [
+        "OrdinalIgnoreCase changed to Ordinal in the Zip-Slip guard in ZipArchiveExtractor.cs. Infrastructure test suite: 189 passed, 6 skipped (DB-dependent integration tests, expected), 0 failed. Release build clean: 0 warnings, 0 errors."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-05-21T06:24:54Z",
+      "notes": [
+        "WP-004 QA PASS. All 3 ACs verified: StringComparison.Ordinal confirmed in ZipArchiveExtractor.cs, no OrdinalIgnoreCase in the file, all 4 ZipArchiveExtractorTests pass. Ready for security audit and code review.",
+        "Note for Security Auditor: The Ordinal change is a security improvement — on Linux case-sensitive filesystems, OrdinalIgnoreCase could have allowed bypasses if path segments normalized differently under GetFullPath. The fix is correct and both test cases for traversal (throws + leaves no files) pass cleanly."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-21T06:52:01Z",
+      "notes": [
+        "ZipArchiveExtractor.cs reviewed. The Ordinal change is confirmed correct and an improvement — closes a theoretical Zip-Slip bypass on Linux case-sensitive filesystems. Guard architecture is sound (GetFullPath canonicalization + trailing separator + Ordinal StartsWith). One pre-existing low/info note on Zip Bomb: no decompressed-size cap, acceptable in context (controlled source). 0 Critical, 0 High, 0 Medium. Security sign-off: PASS. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-21T06:55:46Z",
+      "notes": [
+        "WP-004 passed code review. ZipArchiveExtractor.cs is clean, well-commented, and architecturally sound. The OrdinalIgnoreCase → Ordinal change is a verified security improvement that closes a theoretical Zip-Slip bypass on Linux case-sensitive filesystems. All 3 ACs met. No documentation gaps found. No further changes needed."
+      ]
+    }
+  ]
+}

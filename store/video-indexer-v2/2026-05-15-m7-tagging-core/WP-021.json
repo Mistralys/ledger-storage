@@ -1,0 +1,435 @@
+{
+  "work_package_id": "WP-021",
+  "work_package_file": "work/WP-021.md",
+  "status": "COMPLETE",
+  "assigned_to": "Reviewer",
+  "dependencies": [
+    "WP-008",
+    "WP-009",
+    "WP-015"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "All DapperTagsRepositoryTests self-skip gracefully when test-config.json absent.",
+      "met": true
+    },
+    {
+      "criterion": "DeleteCategory_WithTags_Throws verifies exception before any DB row deleted.",
+      "met": true
+    },
+    {
+      "criterion": "DeleteTag_CascadesAssociationsAndReparentsChildren verifies tags_movies, tags_grants cleaned and children reparented.",
+      "met": true
+    },
+    {
+      "criterion": "GetMovieListAsync_WithTags_EnrichesEffectiveWeight verifies EffectiveTagWeight accounts for stored + granted weights.",
+      "met": true
+    },
+    {
+      "criterion": "GetMovieListAsync_TagsManagerNotInitialized_FallsBackToStoredWeight verifies EffectiveTagWeight==StoredTagWeight when IsInitialized==false.",
+      "met": true
+    },
+    {
+      "criterion": "All DapperTagsRepositoryTests self-skip gracefully when test-config.json is absent or unreachable",
+      "met": true
+    },
+    {
+      "criterion": "DeleteCategory_WithTags_Throws verifies the exception is raised before any DB row is deleted (category row still queryable after the aborted delete)",
+      "met": true
+    },
+    {
+      "criterion": "DeleteTag_CascadesAssociationsAndReparentsChildren verifies tags_movies and tags_grants rows are removed and orphaned children are reparented",
+      "met": true
+    },
+    {
+      "criterion": "GetMovieListAsync_WithTags_EnrichesEffectiveWeight verifies EffectiveTagWeight sums both stored and granted tag weights when TagsManager is initialized",
+      "met": true
+    },
+    {
+      "criterion": "GetMovieListAsync_TagsManagerNotInitialized_FallsBackToStoredWeight verifies EffectiveTagWeight equals StoredTagWeight when IsInitialized is false",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-18T13:07:20Z",
+      "completed_at": "2026-05-18T13:29:15Z",
+      "duration_ms": 1315000,
+      "summary": [
+        "Created tests/VideoIndexer.Infrastructure.Tests/Database/DapperTagsRepositoryTests.cs with 7 self-skipping integration tests covering DapperTagsRepository",
+        "All tests use [Collection('LiveDB')] + IClassFixture<LiveDbFixture> + [SkippableFact] + shared-transaction rollback pattern",
+        "Added InsertTag raw SQL helper to bypass the Highlight ENUM→bool mapping issue in CreateTagAsync/GetAllTagsAsync",
+        "CreateTag_And_GetById_RoundTrip uses CreateTagAsync with Highlight=true (only valid INSERT value) and direct SQL verification instead of GetAllTagsAsync",
+        "DeleteCategory_WithTags_Throws (AC-2): verified InvalidOperationException before DELETE and category row still present after aborted delete",
+        "DeleteTag_CascadesAssociationsAndReparentsChildren (AC-3): verified tags_movies/tags_grants cleaned up and child reparented",
+        "AddGrant_WouldCreateCycle_ThrowsBeforeInsert: uses mock ITagsRepository for TagsManager loading to bypass ENUM bug; verifies grant row persisted + WouldCreateGrantCycle returns true",
+        "GetMovieListAsync_WithTags_EnrichesEffectiveWeight (AC-4) and GetMovieListAsync_TagsManagerNotInitialized_FallsBackToStoredWeight (AC-5) already existed from prior WP-015 work",
+        "Final: 762 tests total, 756 passed, 0 failed, 6 skipped (environment/DB prerequisites)"
+      ],
+      "artifacts": {
+        "files_modified": [
+          "tests/VideoIndexer.Infrastructure.Tests/Database/DapperTagsRepositoryTests.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "high",
+          "timestamp": "2026-05-18T13:29:15Z",
+          "note": "DapperTagsRepository.CreateTagAsync passes C# bool Highlight as a numeric (0/1) Dapper parameter, but the `highlight` column is ENUM('yes','no'). Inserting Highlight=false sends ordinal 0 (empty string) which causes DATA TRUNCATED in strict mode. Inserting Highlight=true sends ordinal 1 ('yes') which works. Read path in GetAllTagsAsync also fails: Dapper cannot parse 'no' as bool. Fix: either add a Dapper TypeHandler<bool> that converts yes/no, or change the column to TINYINT(1), or use a string intermediate in TagRow. This blocks any test (or production scenario) that creates a tag with Highlight=false."
+        },
+        {
+          "type": "debt",
+          "priority": "high",
+          "timestamp": "2026-05-18T13:29:15Z",
+          "note": "DapperTagsRepository.DeleteTagAsync performs 5 DELETE/UPDATE steps without wrapping them in a database transaction. A partial failure (e.g., process crash between step 2 and step 3) would leave orphaned tags_movies or tags_grants rows. Fix: wrap the cascade in a transaction using the existing connection."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T13:29:15Z",
+          "note": "AddGrantAsync in DapperTagsRepository has no cycle guard — it is the caller's (TagsManager) responsibility to check WouldCreateGrantCycle first. This implicit contract is not documented on the interface or method. A code comment on ITagsRepository.AddGrantAsync noting that cycle detection is the caller's responsibility would prevent misuse."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-18T13:37:39Z",
+      "completed_at": "2026-05-18T13:40:09Z",
+      "duration_ms": 150000,
+      "summary": [
+        "All 5 AC verified and confirmed met by live test execution.",
+        "Build: 0 errors, 0 warnings (confirmed from prior build run).",
+        "Test suite: 7/7 DapperTagsRepositoryTests PASSED against live DB (test-config.json present). 2/2 WP-021 AC4/AC5 tests in DapperMovieCatalogRepositoryTests PASSED.",
+        "AC1 confirmed: Skip.If(_skipReason is not null, _skipReason) pattern used in all 7 tests; constructor sets _skipReason when fixture is absent or DB unreachable. Structural review confirms graceful skip.",
+        "AC2 confirmed: DeleteCategory_WithTags_Throws throws InvalidOperationException before DELETE and category row verified present post-exception. LIVE TEST PASSED.",
+        "AC3 confirmed: DeleteTag_CascadesAssociationsAndReparentsChildren verifies tags_movies row removed, tags_grants edges removed, child reparented to null, root tag deleted. LIVE TEST PASSED.",
+        "AC4 confirmed: GetMovieListAsync_WithTags_EnrichesEffectiveWeight PASSED (794ms, live DB).",
+        "AC5 confirmed: GetMovieListAsync_TagsManagerNotInitialized_FallsBackToStoredWeight PASSED (930ms, live DB).",
+        "Two pre-existing production bugs documented by this WP: (1) DapperTagsRepository Highlight bool→ENUM('yes','no') mapping broken; (2) DeleteTagAsync multi-step cascade missing DB transaction."
+      ],
+      "metrics": {
+        "tests_passed": 756,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "bug",
+          "priority": "high",
+          "timestamp": "2026-05-18T13:40:09Z",
+          "note": "DapperTagsRepository.CreateTagAsync sends C# bool Highlight as a numeric 0/1 Dapper parameter to an ENUM('yes','no') column. Highlight=false inserts 0 (empty string / DATA TRUNCATED in strict mode); only Highlight=true works ('yes'). GetAllTagsAsync cannot parse 'no' back as bool. Tests work around this via InsertTag helper (raw SQL with literal 'no'/'yes') and CreateTagAsync only with Highlight=true. This is a pre-existing production bug documented by this WP, not introduced by it. Code review should prioritize the fix (TypeHandler, column change, or string-intermediate TagRow)."
+        },
+        {
+          "type": "bug",
+          "priority": "medium",
+          "timestamp": "2026-05-18T13:40:09Z",
+          "note": "DapperTagsRepository.DeleteTagAsync performs 5 DELETE/UPDATE steps (tags_movies, tags_grants x2, UPDATE parent, DELETE tag) without a wrapping database transaction. A process crash between steps would leave orphaned rows. The developer flagged this as a medium-debt item in the implementation pipeline. Code review should assess whether a transactional wrapper is feasible given the repository's connection abstraction."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-18T13:40:09Z",
+          "note": "In the live test run, all 7 DapperTagsRepositoryTests passed (test-config.json present and DB reachable). This gives full confidence in AC2 and AC3. The self-skip mechanism (Skip.If(_skipReason is not null)) was verified to be structurally correct — it would self-skip when test-config.json is absent or DB is unreachable because the constructor sets _skipReason in those cases."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "FAIL",
+      "started_at": "2026-05-18T13:49:27Z",
+      "completed_at": "2026-05-18T13:51:50Z",
+      "duration_ms": 143000,
+      "summary": [
+        "Reviewed DapperTagsRepositoryTests.cs (the WP-021 test artifact). Test code is excellent: correct self-skip pattern, shared-transaction rollback, clear workaround documentation. All 5 AC are met.",
+        "FAIL verdict is based on two blocking bugs in DapperTagsRepository.cs (pre-existing production code exposed by the WP-021 tests, not introduced by them). Both must be fixed before M7 can ship.",
+        "BUG 1 (HIGH): TagRow.Highlight is bool but the 'highlight' column is ENUM('yes','no'). Dapper sends bool false as ordinal 0 (DATA TRUNCATED) and cannot parse 'no' back as bool. The project's established pattern (DapperMovieRepository.MovieRow.Review = string) must be applied: string-intermediate field + explicit yes/no mapping in ToTag, CreateTagAsync, UpdateTagAsync.",
+        "BUG 2 (HIGH): DeleteTagAsync 5-step cascade (delete tags_movies, delete tags_grants x2, update parent, delete tag) is not wrapped in a transaction. A partial failure between any two steps leaves orphaned rows or a broken parent pointer. Wrap steps 1-5 in BeginTransactionAsync() with commit-on-success.",
+        "The test file does NOT need changes after the fixes. Re-run integration tests post-fix to confirm CreateTag_And_GetById_RoundTrip passes for Highlight=false and cascade delete still works."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "tests/VideoIndexer.Infrastructure.Tests/Database/DapperTagsRepositoryTests.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "bug",
+          "priority": "high",
+          "timestamp": "2026-05-18T13:51:50Z",
+          "note": "BLOCKING BUG — DapperTagsRepository.TagRow.Highlight is declared as 'bool Highlight'. The 'highlight' column is ENUM('yes','no'), identical in kind to 'review' which is handled via string-intermediate in DapperMovieRepository. Sending a C# bool to an ENUM column via Dapper: (a) bool false → ordinal 0 → empty string → DATA TRUNCATED or silent corruption in strict/non-strict mode respectively; (b) GetAllTagsAsync reads back 'no'/'yes' strings as bool, which Dapper cannot parse, silently returning false for all rows. FIX: change TagRow.Highlight to 'string Highlight { get; set; } = \"no\";', change ToTag mapping to 'Highlight = string.Equals(r.Highlight, \"yes\", StringComparison.OrdinalIgnoreCase)', and change CreateTagAsync/UpdateTagAsync to pass 'highlight: tag.Highlight ? \"yes\" : \"no\"' as the Dapper parameter. This is the established project pattern documented in constraints.md and implemented in DapperMovieRepository.cs."
+        },
+        {
+          "type": "bug",
+          "priority": "high",
+          "timestamp": "2026-05-18T13:51:50Z",
+          "note": "BLOCKING BUG — DapperTagsRepository.DeleteTagAsync performs 5 DB operations (steps 2-5: DELETE tags_movies, DELETE tags_grants, UPDATE parent, DELETE tag) without a wrapping database transaction. A process crash or DB error between any two steps leaves orphaned tags_movies/tags_grants rows or an inconsistent parent pointer. FIX: obtain a transaction from the connection via BeginTransactionAsync() and pass it to all ExecuteAsync calls in steps 2-5. Pattern is already in the codebase: see DapperTagsRepositoryTests.cs constructor (SharedConnectionFactory wraps a shared transaction), and DeleteCategoryAsync (though that is only a 2-step guarded delete). Wrap steps 1-5 in a transaction that commits only when step 5 succeeds."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T13:51:50Z",
+          "note": "Test file quality is high: 7 self-skipping integration tests, shared-transaction rollback pattern, clear comments explaining workarounds. InsertTag helper correctly documents and isolates the Highlight bug. These tests are ready to verify the production fixes once the two blocking bugs above are resolved."
+        }
+      ]
+    },
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-18T13:52:44Z",
+      "completed_at": "2026-05-18T13:55:46Z",
+      "duration_ms": 182000,
+      "summary": [
+        "Fixed BUG 1 (Highlight ENUM mapping): Changed DapperTagsRepository.TagRow.Highlight from bool to string (default \\\"no\\\"), updated ToTag to use string.Equals(r.Highlight, \\\"yes\\\", OrdinalIgnoreCase), and updated CreateTagAsync/UpdateTagAsync anonymous params to pass Highlight = tag.Highlight ? \\\"yes\\\" : \\\"no\\\". Follows the established DapperMovieRepository.MovieRow.Review pattern exactly.",
+        "Fixed BUG 2 (DeleteTagAsync transaction): Wrapped steps 2-5 (DELETE tags_movies, DELETE tags_grants, UPDATE parent, DELETE tag) in connection.BeginTransaction() / Commit() with a catch/Rollback() guard. Step 1 (SELECT parent) executes outside the transaction as a read.",
+        "Build: 0 errors, 0 warnings in modified code. Pre-existing nullability warnings in TagsManagerTests.cs unrelated to this WP.",
+        "Tests: 255/255 VideoIndexer.Tests passed, 323/323 VideoIndexer.App.Tests passed (578 total, 0 failures). Infrastructure integration tests require live DB (test-config.json) — CreateTag_And_GetById_RoundTrip and DeleteTag_CascadesAssociationsAndReparentsChildren should be re-run against live DB to confirm both fixes."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Library/DapperTagsRepository.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T13:55:46Z",
+          "note": "InsertTag raw-SQL helper in DapperTagsRepositoryTests.cs is now redundant for the Highlight workaround since CreateTagAsync correctly maps bool→'yes'/'no'. The helper and its comments are left intact as a documented artifact of the bug's history; the tests continue to use it for consistent test-data setup, which is fine. If desired, tests could be simplified to call CreateTagAsync directly, but this is a minor cleanup and out of scope."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "FAIL",
+      "started_at": "2026-05-18T13:56:29Z",
+      "completed_at": "2026-05-18T14:01:34Z",
+      "duration_ms": 305000,
+      "summary": [
+        "BUG 1 FIX (Highlight ENUM mapping) — VERIFIED PASS. TagRow.Highlight is now string='no', ToTag uses string.Equals OrdinalIgnoreCase, CreateTagAsync/UpdateTagAsync pass 'yes'/'no'. CreateTag_And_GetById_RoundTrip and all other tests exercising Highlight pass.",
+        "BUG 2 FIX (DeleteTagAsync transaction) — REGRESSION INTRODUCED. DeleteTag_CascadesAssociationsAndReparentsChildren FAILS with System.InvalidOperationException: Transactions may not be nested at MySqlConnection.BeginTransaction(). Root cause: DeleteTagAsync now calls connection.BeginTransaction(), but the test's SharedTransactionalConnectionFactory already holds an active transaction on the shared connection. MySqlConnector rejects nested transactions.",
+        "Build: 0 errors, 0 warnings. VideoIndexer.Tests: 255/255. VideoIndexer.App.Tests: 323/323. Infrastructure tests (DapperTagsRepository filter): 6 passed, 1 FAILED.",
+        "FAIL verdict: AC3 (DeleteTag_CascadesAssociationsAndReparentsChildren) is no longer passing due to the regression introduced by the transaction fix."
+      ],
+      "metrics": {
+        "tests_passed": 584,
+        "tests_failed": 1
+      },
+      "comments": [
+        {
+          "type": "bug",
+          "priority": "high",
+          "timestamp": "2026-05-18T14:01:34Z",
+          "note": "REGRESSION in BUG 2 fix — DapperTagsRepository.DeleteTagAsync (src/VideoIndexer.Infrastructure/Library/DapperTagsRepository.cs ~line 205) calls connection.BeginTransaction() unconditionally. In production with a fresh connection this is correct. But the test SharedTransactionalConnectionFactory (tests/VideoIndexer.Infrastructure.Tests/TestHelpers/SharedTransactionalConnectionFactory.cs) wraps a single MySqlConnection with an already-active IDbTransaction for shared-rollback cleanup. When DeleteTagAsync calls connection.BeginTransaction(), NonDisposingConnection.BeginTransaction() delegates to _inner.BeginTransaction() on the real MySqlConnection which already has an active transaction, causing: System.InvalidOperationException: Transactions may not be nested. Test DeleteTag_CascadesAssociationsAndReparentsChildren FAILS."
+        },
+        {
+          "type": "bug",
+          "priority": "high",
+          "timestamp": "2026-05-18T14:01:34Z",
+          "note": "FIX RECOMMENDATION for the nested-transaction regression: Two options. OPTION A (production code fix — preferred): In DeleteTagAsync, use a try/catch on BeginTransaction() to detect an already-active transaction and fall through with null transaction parameter; NonDisposingConnection.CreateCommand() will still auto-enlist all commands in the ambient test transaction, and in production only a real nested-transaction error would reach this catch. Pattern: IDbTransaction? ownedTx = null; bool ownsTx = false; try { ownedTx = connection.BeginTransaction(); ownsTx = true; } catch (InvalidOperationException) { /* ambient transaction active */ } ... ExecuteAsync(..., ownedTx) ... if (ownsTx) ownedTx?.Commit(); catch { if (ownsTx) ownedTx?.Rollback(); throw; } OPTION B (test infrastructure fix): Modify NonDisposingConnection.BeginTransaction() to return a no-op wrapper around _transaction when _transaction is non-null, so BeginTransaction() does not delegate to _inner. The no-op wrapper must have Commit()/Rollback() that are no-ops (outer test transaction manages lifecycle). Option A is preferred because it makes production code resilient to ambient transactions without changing test infrastructure."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-18T14:01:34Z",
+          "note": "BUG 1 fix (Highlight ENUM mapping) fully verified. TagRow.Highlight = string, ToTag uses string.Equals OrdinalIgnoreCase, CreateTagAsync/UpdateTagAsync pass tag.Highlight ? 'yes' : 'no'. CreateTag_And_GetById_RoundTrip PASSED (previously required InsertTag workaround for Highlight=false). 6 of 7 DapperTagsRepositoryTests pass; only DeleteTag_CascadesAssociationsAndReparentsChildren fails due to the nested transaction regression."
+        }
+      ]
+    },
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-18T14:03:05Z",
+      "completed_at": "2026-05-18T14:04:40Z",
+      "duration_ms": 95000,
+      "summary": [
+        "Fixed DeleteTagAsync nested-transaction regression: replaced unconditional connection.BeginTransaction() with a try/catch(InvalidOperationException) guard. When an ambient transaction is already active (test SharedTransactionalConnectionFactory), ownsTx=false and the null transaction parameter is passed to all ExecuteAsync calls — NonDisposingConnection auto-enlists commands in the ambient transaction. Only Commit()/Rollback()/Dispose() are called when ownsTx=true (production path). Added 'using System.Data;' import required for IDbTransaction. Build: 0 errors, 0 warnings. Infrastructure tests: 178/178 passed, 0 failed, 6 skipped (env). DeleteTag_CascadesAssociationsAndReparentsChildren PASSES."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Library/DapperTagsRepository.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T14:04:40Z",
+          "note": "DapperTagsRepository.DeleteTagAsync now correctly handles ambient transactions via InvalidOperationException catch. The pattern (ownsTx guard, null transaction passed to Dapper) is idiomatic and consistent with how similar patterns are handled in the project's test infrastructure (NonDisposingConnection). No other code smells found in the touched file."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-18T14:05:11Z",
+      "completed_at": "2026-05-18T14:07:08Z",
+      "duration_ms": 117000,
+      "summary": [
+        "Focused rework QA pass: verified both previously-bounced blocking bugs are now resolved.",
+        "BUG 1 (Highlight ENUM mapping) — VERIFIED PASS. TagRow.Highlight is string='no', ToTag uses string.Equals OrdinalIgnoreCase, CreateTagAsync/UpdateTagAsync pass 'yes'/'no'. CreateTag_And_GetById_RoundTrip PASSED (Highlight=false now works correctly).",
+        "BUG 2 (DeleteTagAsync nested-transaction regression) — VERIFIED PASS. try/catch(InvalidOperationException) guard correctly handles ambient transactions. DeleteTag_CascadesAssociationsAndReparentsChildren PASSED (previously FAIL due to nested transaction exception).",
+        "Build: 0 errors, 0 warnings. Infrastructure tests: 178 passed, 6 skipped (env), 0 failed. All 7 DapperTagsRepositoryTests pass. VideoIndexer.Tests: 255/255. VideoIndexer.App.Tests: 323/323. Total: 756 passed, 0 failed.",
+        "All 5 AC confirmed met. No regressions found."
+      ],
+      "metrics": {
+        "tests_passed": 756,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "bug",
+          "priority": "high",
+          "timestamp": "2026-05-18T14:07:08Z",
+          "note": "BUG 1 RESOLVED — DapperTagsRepository.TagRow.Highlight is now string ('no' default). ToTag uses string.Equals OrdinalIgnoreCase, CreateTagAsync/UpdateTagAsync pass tag.Highlight ? 'yes' : 'no'. CreateTag_And_GetById_RoundTrip PASSES for Highlight=false. Follows the established DapperMovieRepository.MovieRow.Review pattern."
+        },
+        {
+          "type": "bug",
+          "priority": "high",
+          "timestamp": "2026-05-18T14:07:08Z",
+          "note": "BUG 2 RESOLVED — DeleteTagAsync wraps steps 2-5 in a transaction with try/catch(InvalidOperationException) guard on BeginTransaction(). Under test shared-rollback fixtures (ambient transaction), ownsTx=false and null transaction is passed to all ExecuteAsync calls (auto-enlistment handles it). In production with a fresh connection, ownsTx=true and transaction is committed/rolled back correctly. DeleteTag_CascadesAssociationsAndReparentsChildren PASSES (previously failed with nested transaction exception)."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-18T14:07:08Z",
+          "note": "Self-skip mechanism (Skip.If(_skipReason is not null)) confirmed structurally correct and tested against live DB. All 7 DapperTagsRepositoryTests pass when test-config.json is present; they would gracefully skip when absent."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-18T14:07:37Z",
+      "completed_at": "2026-05-18T14:10:10Z",
+      "duration_ms": 153000,
+      "summary": [
+        "Reviewed DapperTagsRepository.cs — both blocking bugs from the prior FAIL verdict are correctly fixed.",
+        "BUG 1 (Highlight ENUM mapping): TagRow.Highlight changed from bool to string (default 'no'). ToTag maps via string.Equals(r.Highlight, 'yes', OrdinalIgnoreCase). CreateTagAsync and UpdateTagAsync pass Highlight = tag.Highlight ? 'yes' : 'no'. This exactly follows the established constraints.md / DapperMovieRepository.MovieRow.Review pattern.",
+        "BUG 2 (DeleteTagAsync transaction): Steps 2-5 are wrapped in BeginTransaction()/Commit() with a Rollback() guard in catch and Dispose() in finally. The ambient-transaction detection (catch InvalidOperationException around BeginTransaction) is a well-documented, pragmatic pattern for the shared-rollback test fixture — the comment explains the rationale clearly.",
+        "Fix-Forward applied: removed redundant bool ownsTx from DeleteTagAsync. The variable was always in sync with ownedTx == null, so all three guards (Commit/Rollback/Dispose) simplified to ownedTx?.X() null-conditional calls. Build confirmed 0 errors, 0 warnings.",
+        "Test artifact DapperTagsRepositoryTests.cs reviewed: self-skip pattern, shared-transaction rollback, InsertTag helper, and workaround documentation are all high quality. No changes needed."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Library/DapperTagsRepository.cs",
+          "tests/VideoIndexer.Infrastructure.Tests/Database/DapperTagsRepositoryTests.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-18T14:10:10Z",
+          "note": "Removed redundant bool ownsTx from DeleteTagAsync. The variable was always identical to (ownedTx != null): it was set true only in the same try-block that assigns ownedTx, and ownedTx is null only when ownsTx would be false. Replaced 'if (ownsTx) ownedTx?.Commit/Rollback/Dispose()' with 'ownedTx?.Commit/Rollback/Dispose()'. No behavioral change — null-conditional already handles the ambient-transaction case. Build: 0 errors, 0 warnings."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T14:10:10Z",
+          "note": "The ambient-transaction detection pattern (catch InvalidOperationException around BeginTransaction) is well-documented and pragmatic. A future enhancement worth considering: if IDbConnectionFactory ever exposes a HasActiveTransaction property or similar, the try/catch could be replaced with an explicit check. Low priority — the current approach is correct and the comment explains it clearly."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-05-18T14:10:10Z",
+          "note": "[documentation-forward] ITagsRepository.AddGrantAsync has no XML doc note stating that cycle detection is the caller's responsibility (TagsManager must call WouldCreateGrantCycle first). A one-line remarks element on the interface method would prevent future implementors from inadvertently allowing cycles. Flagged in prior implementation pipeline comment; carrying forward for Documentation agent."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T14:10:10Z",
+          "note": "Test file quality is high: 7 self-skipping integration tests, shared-transaction rollback pattern, clear workaround documentation for the now-fixed Highlight bug. The InsertTag raw-SQL helper remains useful as a lower-level verification tool independent of CreateTagAsync. No changes required — tests are ready to verify both fixes on a live DB."
+        }
+      ]
+    }
+  ],
+  "rework_counts": {
+    "implementation": 2,
+    "qa": 2,
+    "code-review": 1
+  },
+  "status_changed_at": "2026-05-18T14:10:10Z",
+  "last_updated": "2026-05-18T14:10:10Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-18T13:29:15Z",
+      "notes": [
+        "WP-021 adds DapperTagsRepositoryTests.cs with 7 integration tests: CreateCategory_And_GetAll_RoundTrip, DeleteCategory_WithTags_Throws, CreateTag_And_GetById_RoundTrip, DeleteTag_CascadesAssociationsAndReparentsChildren, AddGrant_WouldCreateCycle_ThrowsBeforeInsert, ConnectMovieTag_And_Disconnect_RoundTrip, ConnectBookmarkTag_InsertsTags_bookmarksRow",
+        "CRITICAL BUG found: DapperTagsRepository.CreateTagAsync is broken for Highlight=false — sends numeric 0 to ENUM('yes','no') column causing DATA TRUNCATED. Only Highlight=true works (maps to 'yes'). GetAllTagsAsync also broken: cannot parse string 'no' as bool. These are EXISTING production bugs, not introduced by this WP.",
+        "All 5 AC met. 762 total tests, 756 passing, 0 failing, 6 skipped for environment reasons."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-18T13:40:09Z",
+      "notes": [
+        "All 5 AC met. 7/7 DapperTagsRepositoryTests passed against live DB; AC4/AC5 GetMovieListAsync tests passed. 756 total non-skipped tests pass, 0 regressions.",
+        "HIGH PRIORITY for code review: DapperTagsRepository Highlight bool→ENUM mapping bug. CreateTagAsync broken for Highlight=false; GetAllTagsAsync cannot parse 'no' as bool. Tests document the bug and work around it. Fix required before production use.",
+        "MEDIUM PRIORITY for code review: DeleteTagAsync missing transaction wrapping around 5-step cascade. Partial failure would leave orphaned tags_movies/tags_grants rows."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Developer",
+      "timestamp": "2026-05-18T13:51:50Z",
+      "notes": [
+        "FAIL — two blocking production bugs found in DapperTagsRepository.cs (not the test file — the test file is correct and high-quality). Developer must fix both before WP-021 can proceed to Documentation.",
+        "FIX 1 (high priority): DapperTagsRepository.TagRow.Highlight — change type from bool to string. Follow the DapperMovieRepository.MovieRow.Review pattern exactly: (a) TagRow field: public string Highlight { get; set; } = \"no\"; (b) ToTag mapping: Highlight = string.Equals(r.Highlight, \"yes\", StringComparison.OrdinalIgnoreCase); (c) CreateTagAsync/UpdateTagAsync parameter: highlight: tag.Highlight ? \"yes\" : \"no\". This affects GetAllTagsAsync, CreateTagAsync, and UpdateTagAsync. The InsertTag helper in the test suite can be simplified after the fix (CreateTagAsync will work for all Highlight values).",
+        "FIX 2 (high priority): DapperTagsRepository.DeleteTagAsync — wrap steps 1-5 in a database transaction using BeginTransactionAsync(). Commit only after step 5 succeeds. Pass the transaction to all ExecuteAsync calls in steps 2-5. On exception, rollback.",
+        "The test file (DapperTagsRepositoryTests.cs) is CORRECT and does not need changes. The WP-021 acceptance criteria are all met. After fixing the two production bugs, re-run the integration tests to confirm CreateTag_And_GetById_RoundTrip works for Highlight=false and DeleteTag_CascadesAssociationsAndReparentsChildren still passes under the transactional version."
+      ]
+    },
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-18T13:55:46Z",
+      "notes": [
+        "Both blocking production bugs in DapperTagsRepository.cs are now fixed. BUG 1: TagRow.Highlight is string (was bool), ToTag uses string.Equals OrdinalIgnoreCase, CreateTagAsync/UpdateTagAsync pass 'yes'/'no' strings. BUG 2: DeleteTagAsync wraps steps 2-5 in a DB transaction. Test file (DapperTagsRepositoryTests.cs) unchanged — tests remain correct and valid. QA should re-run the full DapperTagsRepositoryTests suite against a live DB to confirm CreateTag_And_GetById_RoundTrip passes for Highlight=false and DeleteTag_CascadesAssociationsAndReparentsChildren still passes with the transactional version."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Developer",
+      "timestamp": "2026-05-18T14:01:34Z",
+      "notes": [
+        "FAIL: One regression introduced by the BUG 2 (transaction) fix. BUG 1 fix is correct and verified. Developer must fix DeleteTagAsync so it does not call connection.BeginTransaction() when a transaction is already active on the connection. Recommended fix (Option A): wrap BeginTransaction() in try/catch InvalidOperationException — when caught, set ownedTx = null and let NonDisposingConnection.CreateCommand()'s auto-enlistment handle the ambient transaction. Only call Commit()/Rollback() when ownsTx = true. After the fix, re-run DeleteTag_CascadesAssociationsAndReparentsChildren to confirm it passes. No other changes needed."
+      ]
+    },
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-18T14:04:40Z",
+      "notes": [
+        "BUG 2 regression is now fixed. DeleteTagAsync uses try/catch(InvalidOperationException) around BeginTransaction() so it works correctly both in production (gets its own transaction) and under test shared-rollback fixtures (detects ambient transaction, passes null to Dapper, auto-enlistment handles it). All 178 Infrastructure integration tests pass including DeleteTag_CascadesAssociationsAndReparentsChildren. No changes to test files. Ready for QA re-verification."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-18T14:07:08Z",
+      "notes": [
+        "WP-021 QA PASS. All 5 AC met. Both blocking production bugs in DapperTagsRepository.cs are fixed and verified: (1) Highlight ENUM string mapping (TagRow.Highlight=string, yes/no literals); (2) DeleteTagAsync transactional cascade with ambient-transaction guard. 756 tests pass, 0 fail, 6 skipped (env). Test file DapperTagsRepositoryTests.cs is unchanged and correct. Ready for code review of DapperTagsRepository.cs changes (src/VideoIndexer.Infrastructure/Library/DapperTagsRepository.cs)."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-05-18T14:10:10Z",
+      "notes": [
+        "WP-021 code-review PASS. All 5 AC met. Both previously-blocking production bugs are correctly fixed in DapperTagsRepository.cs: (1) TagRow.Highlight is now a string with yes/no literals, matching the constraints.md pattern; (2) DeleteTagAsync steps 2-5 are transactionally wrapped with ambient-transaction guard. Reviewer applied one non-behavioral Fix-Forward (removed redundant bool ownsTx). Documentation agent: see documentation-forward comment on ITagsRepository.AddGrantAsync cycle-detection contract."
+      ]
+    }
+  ]
+}

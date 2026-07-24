@@ -1,0 +1,303 @@
+{
+  "work_package_id": "WP-007",
+  "work_package_file": "work/WP-007.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-002",
+    "WP-003",
+    "WP-004",
+    "WP-005",
+    "WP-006"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "First scan of a folder containing supported-extension files produces one Inserted outcome per file.",
+      "met": true
+    },
+    {
+      "criterion": "Second scan produces SkippedAlreadyKnown for all previously-inserted files.",
+      "met": true
+    },
+    {
+      "criterion": "Files with unsupported extensions produce SkippedUnsupportedExtension without any catalog writes.",
+      "met": true
+    },
+    {
+      "criterion": "A per-file hasher exception produces Failed and does not abort the remaining scan.",
+      "met": true
+    },
+    {
+      "criterion": "A file whose absolute path exceeds 250 UTF-8 bytes produces RefreshOutcome.Failed with a Warning log entry and no DB write.",
+      "met": true
+    },
+    {
+      "criterion": "Cancellation via CancellationToken stops processing between files without throwing to the caller.",
+      "met": true
+    },
+    {
+      "criterion": "Progress events carry monotonically-increasing Processed counts.",
+      "met": true
+    },
+    {
+      "criterion": "No Task.Run or Thread usage exists in the implementation.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-07T22:07:26Z",
+      "completed_at": "2026-05-07T22:19:19Z",
+      "duration_ms": 713000,
+      "summary": [
+        "Implemented LibraryScanner in src/VideoIndexer.Infrastructure/Library/LibraryScanner.cs",
+        "Created InMemoryMovieCatalogRepository test fixture in tests/VideoIndexer.Tests/Fixtures/InMemoryMovieCatalogRepository.cs",
+        "Created 11 unit tests covering all 8 ledger acceptance criteria in tests/VideoIndexer.Tests/LibraryScannerTests.cs",
+        "All 243 tests pass across the full solution (0 failures, 4 pre-existing skips)"
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Library/LibraryScanner.cs",
+          "tests/VideoIndexer.Tests/Fixtures/InMemoryMovieCatalogRepository.cs",
+          "tests/VideoIndexer.Tests/LibraryScannerTests.cs"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 243,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-05-07T22:19:19Z",
+          "note": "LibraryScanner.RefreshAsync enumerates all files eagerly into a List before processing to compute an accurate Total. For extremely large libraries (millions of files) this could consume significant memory. A streaming approach with a two-pass or estimated Total would be more scalable, but the current approach matches the plan spec and is acceptable for M3."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T22:19:19Z",
+          "note": "ProcessFileAsync checks the extension using TryGetObfuscatedExtension (real→obfuscated lookup) and IsObfuscated (obfuscated→real lookup). This is correct but slightly non-obvious — a dedicated IObfuscationMap.IsSupportedExtension(ext) helper would be more expressive. Noted for a future interface revision."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T22:19:19Z",
+          "note": "The path-length constant MaxPathUtf8Bytes = 250 is defined in LibraryScanner with no accompanying explanation of its origin (legacy DB column width or OS constraint). A code comment or link to the spec would improve maintainability."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-07T22:29:04Z",
+      "completed_at": "2026-05-07T22:30:55Z",
+      "duration_ms": 111000,
+      "summary": [
+        "Build succeeded with 0 warnings and 0 errors.",
+        "All 11 LibraryScanner unit tests pass, covering all 8 acceptance criteria.",
+        "Full regression suite: 262 passed, 0 failed, 5 pre-existing skips (live/infrastructure tests).",
+        "AC-8 confirmed structurally: no Task.Run or Thread usage found in Library/ source directory.",
+        "Edge-case analysis passed: non-existent folders silently skipped, empty folders produce clean zero-count summary, exactly-250-byte paths correctly allowed (guard is strictly > 250)."
+      ],
+      "metrics": {
+        "test_coverage": "11 dedicated LibraryScanner tests covering all 8 ACs; 262 total across solution",
+        "tests_passed": 262,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-07T22:30:55Z",
+          "note": "Boundary test for 250-byte path: guard is `> MaxPathUtf8Bytes` (strictly greater), so exactly 250 bytes is allowed. This is consistent with the AC wording 'exceeds 250 UTF-8 bytes'. No issue."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-05-07T22:30:55Z",
+          "note": "AC-8 (no Task.Run/Thread) is verified by structural grep rather than a runtime test. This is appropriate for a static constraint — the grep confirms no violations exist in src/VideoIndexer.Infrastructure/Library/."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T22:30:55Z",
+          "note": "The path-length guard silently skips the test on Windows when totalBytes > 259 due to OS limits. This is safe for CI but means AC-5 is not exercisable on some Windows configurations with long %TEMP% paths. No production impact since the guard still runs in production regardless."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-05-07T22:33:53Z",
+      "completed_at": "2026-05-07T22:35:01Z",
+      "duration_ms": 68000,
+      "summary": [
+        "Reviewed 3 files: LibraryScanner.cs, InMemoryMovieCatalogRepository.cs, LibraryScannerTests.cs. 0 Critical, 0 High, 0 Medium, 2 Low (recorded). Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-05-07T22:35:01Z",
+          "note": "Low | A01 (Broken Access Control) — src/VideoIndexer.Infrastructure/Library/LibraryScanner.cs:88 | Directory.EnumerateFiles with SearchOption.AllDirectories follows symbolic links (Windows junction points, Unix symlinks). If an attacker with local filesystem write access can plant a symlink inside a registered library folder, the scanner will traverse into the symlink target. Risk is limited: (1) library folder paths originate from ILibraryFolderRepository — a trusted internal source, not user-supplied input; (2) the scanner only reads files to compute hashes, no write operations occur. Remediation (optional, defence-in-depth): skip symlinked entries using FileInfo.LinkTarget != null or FileAttributes.ReparsePoint before processing."
+        },
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-05-07T22:35:01Z",
+          "note": "Low | A09 (Security Logging & Monitoring) — src/VideoIndexer.Infrastructure/Library/LibraryScanner.cs:149 | Absolute file paths logged at Warning level may include OS user-identifiable components (e.g. C:\\Users\\<username>\\...). Structured logging with named placeholders is used correctly — no log injection risk. If log output is forwarded to an external SIEM or shared log store, consider scrubbing or truncating paths to remove personal directory segments. No immediate action required."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T22:35:01Z",
+          "note": "All OWASP Top 10 categories reviewed. No Critical or High issues identified. Code has no user-controlled path injection, no deserialization, no external process spawning, no cryptographic misuse, no hardcoded secrets, and no new third-party dependencies."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-07T22:35:30Z",
+      "completed_at": "2026-05-07T22:39:22Z",
+      "duration_ms": 232000,
+      "summary": [
+        "Code review PASS. No blocking issues. Three Fix-Forward improvements applied directly to LibraryScanner.cs (non-behavioral): (1) added origin comment to MaxPathUtf8Bytes referencing the MariaDB varchar(255) column constraint, (2) added clarifying comment to the obfuscation-aware extension check explaining why two lookups are needed, (3) wrapped the outcomes dictionary in ReadOnlyDictionary<RefreshOutcome,int> in BuildSummary to be consistent with progress reporting and make the immutability intent explicit. Build and all 11 LibraryScanner tests pass after changes."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Library/LibraryScanner.cs"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 11,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-07T22:39:22Z",
+          "note": "Added origin comment to MaxPathUtf8Bytes = 250 in LibraryScanner.cs. The constant originates from the MariaDB movies_filenames.filename column (varchar(255), utf8mb4), as documented in plan.md line 753. A 5-byte margin is kept to avoid hitting the column limit on multi-byte trailing characters. Without this comment the magic number was opaque to future maintainers."
+        },
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-07T22:39:22Z",
+          "note": "Added clarifying comment to the extension check in ProcessFileAsync (LibraryScanner.cs). The check uses TryGetObfuscatedExtension (native→obfuscated lookup, i.e., is it a real extension?) combined with IsObfuscated (obfuscated→native lookup, i.e., is it an obfuscated extension?). This is correct behaviour but non-obvious; the comment explains why both lookups are needed."
+        },
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-07T22:39:22Z",
+          "note": "Wrapped the outcomes dictionary in new ReadOnlyDictionary<RefreshOutcome, int>(outcomes) inside BuildSummary. Previously the mutable local Dictionary was passed directly as IReadOnlyDictionary — technically safe since the method exits immediately after, but asymmetric with progress reporting (which always copies the dictionary). The ReadOnlyDictionary wrapper makes the immutability guarantee explicit and prevents accidental mutation via cast. No behaviour change; all 11 tests continue to pass."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-07T22:39:22Z",
+          "note": "[documentation-forward] The 250-byte path-length guard in LibraryScanner.cs now has a code comment, but the milestone doc (plan.md line 753) states 'Document the 255-byte path limit in the milestone doc as a known M3 constraint.' This obligation is still open — the Documentation agent should add a Known Constraints or Limitations section to the M3 milestone documentation covering: (a) the MariaDB varchar(255) column limit on movies_filenames.filename, (b) the 250 UTF-8-byte effective guard (5-byte margin for multi-byte trailing characters), and (c) the AC-5 test skip condition on Windows when %TEMP% paths are already long."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T22:39:22Z",
+          "note": "The eager file enumeration in RefreshAsync (collecting all files into a List<> before processing) is a known trade-off documented by the Developer. For M3 library sizes this is acceptable. If library growth becomes a concern, a future revision could stream files per-folder with an estimated Total, or use two-pass enumeration."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-07T22:43:27Z",
+      "completed_at": "2026-05-07T22:50:03Z",
+      "duration_ms": 396000,
+      "summary": [
+        "Added LibraryScanner architecture section to README.md, documenting extension filtering, path-length guard (250 UTF-8 bytes), file enumeration, per-file exception handling, cancellation, progress reporting, logging, threading model, and DI registration status.",
+        "Added Known Constraints (M3) section to README.md covering the MariaDB varchar(255) path-length constraint, the 250-byte effective guard with 5-byte margin, per-platform impact table, and the AC-5 test skip caveat on Windows with long %TEMP% paths. Addresses the documentation-forward item from code review.",
+        "Updated Library Scanning Contracts (M3 — VideoIndexer.Core) intro to remove stale 'No Infrastructure implementations exist yet' text, replaced with list of documented implementations.",
+        "Updated unit tests paragraph to include LibraryScanner (11 tests covering all 8 acceptance criteria).",
+        "Updated shared test fixtures table to include InMemoryMovieCatalogRepository.",
+        "Created docs/projects/rebuild/milestones/m3-library-indexing.md with milestone Purpose, Specifications references, Known Constraints section (path-length constraint), and Manual Smoke Test steps."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "README.md",
+          "docs/projects/rebuild/milestones/m3-library-indexing.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-07T22:50:03Z",
+          "note": "README.md Library Scanning Contracts intro previously stated 'No Infrastructure implementations exist yet' — this was stale since at least WP-003 (ExtensionObfuscationMap). Future documentation WPs should audit for similar stale forward-references when adding new implementation sections."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T22:50:03Z",
+          "note": "The documentation-forward item (250 UTF-8-byte path-length constraint) was fully addressed: the constraint is now documented in the LibraryScanner architecture section of README.md, in the dedicated Known Constraints (M3) section, and in the new m3-library-indexing.md milestone doc. The code-level comment added by the Reviewer in LibraryScanner.cs provides the authoritative in-code explanation."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-07T22:50:03Z",
+  "last_updated": "2026-05-07T22:50:03Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-07T22:19:19Z",
+      "notes": [
+        "LibraryScanner is in src/VideoIndexer.Infrastructure/Library/LibraryScanner.cs — stateless, safe for singleton registration.",
+        "11 unit tests cover all 8 ledger ACs including the 250-byte path-length guard (AC-5 in ledger, not in WP file).",
+        "FakeVideoHasher and SynchronousProgress<T> are private nested classes in LibraryScannerTests — intentionally not extracted to fixtures since they're scanner-specific.",
+        "InMemoryMovieCatalogRepository is in tests/VideoIndexer.Tests/Fixtures/ for reuse by RefreshOrchestratorTests.",
+        "The 250-byte path test silently skips if the OS path-length limit would be exceeded (guard: totalBytes > 259); this is acceptable as it cannot occur on any standard CI environment.",
+        "DI registration of LibraryScanner → ILibraryScanner is handled by a later WP (DI wiring / Program.cs)."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-05-07T22:30:55Z",
+      "notes": [
+        "LibraryScanner implementation is complete and fully tested. 11 unit tests cover all 8 ACs.",
+        "No security-sensitive operations identified: no user-controlled path injection (paths come from ILibraryFolderRepository, a trusted internal source), no deserialization, no external process spawning.",
+        "Key code paths for security review: path length guard at LibraryScanner.cs:139, exception handling catch clause at LibraryScanner.cs:185 (OperationCanceledException excluded from swallow).",
+        "The InMemoryMovieCatalogRepository fixture in tests/VideoIndexer.Tests/Fixtures/ is available for reuse by RefreshOrchestratorTests."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-07T22:35:01Z",
+      "notes": [
+        "Security audit complete — PASS with 0 Critical/High findings. Two Low observations recorded (symlink traversal via Directory.EnumerateFiles and potential PII in log paths), neither blocking. All 8 acceptance criteria confirmed met. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-07T22:39:22Z",
+      "notes": [
+        "Code review PASS. Three Fix-Forward comments/encapsulation improvements applied to LibraryScanner.cs (non-behavioral, all tests pass). One documentation-forward item open: the M3 milestone doc must document the 250 UTF-8-byte path-length constraint (MariaDB varchar(255) column limit) as a known M3 constraint, as specified in plan.md line 753. All 8 acceptance criteria confirmed met."
+      ]
+    }
+  ]
+}

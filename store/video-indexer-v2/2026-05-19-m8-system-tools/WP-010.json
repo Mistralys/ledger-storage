@@ -1,0 +1,202 @@
+{
+  "work_package_id": "WP-010",
+  "work_package_file": "work/WP-014.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-002",
+    "WP-004"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "`GetAllMoviesForObfuscationAsync_ReturnsRowsWithHashAndFilename` passes against the test database configured at schema revision 41.",
+      "met": true
+    },
+    {
+      "criterion": "`MigratesFrom40To41_AddsOriginalFilenameColumn` passes — column `movies.original_filename` is present after migration.",
+      "met": true
+    },
+    {
+      "criterion": "All pre-existing integration tests continue to pass.",
+      "met": true
+    },
+    {
+      "criterion": "`dotnet test` succeeds.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-19T20:04:25Z",
+      "completed_at": "2026-05-19T20:14:15Z",
+      "duration_ms": 590000,
+      "summary": [
+        "Added `MigratesFrom40To41_AddsOriginalFilenameColumn` [SkippableFact] to DatabaseBootstrapperTests.cs as a new `DatabaseBootstrapperMigrationTests` class using the LiveDB collection fixture.",
+        "Test simulates pre-m041 state by dropping movies.original_filename and setting db_revision to 40, then runs DatabaseBootstrapper.CheckAsync() with a live connection factory, and asserts the column is recreated and revision is 41.",
+        "`GetAllMoviesForObfuscationAsync_ReturnsRowsWithHashAndFilename` was already present in DapperMovieRepositoryTests.cs.",
+        "dotnet build: 0 warnings, 0 errors. Full test suite: 789 passed, 0 failed."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "tests/VideoIndexer.Infrastructure.Tests/Database/DatabaseBootstrapperTests.cs"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 795,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-19T20:14:15Z",
+          "note": "DatabaseBootstrapperTests.cs: The new `DatabaseBootstrapperMigrationTests` class mutates live DB state (drops column, resets revision) with only best-effort rollback on failure. This is inherent to DDL auto-commit in MariaDB, but documenting the risk and expected post-failure recovery steps in the test summary comment would help future maintainers."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-19T20:53:52Z",
+      "completed_at": "2026-05-19T20:55:27Z",
+      "duration_ms": 95000,
+      "summary": [
+        "PASS: All 4 acceptance criteria verified.",
+        "AC-1: GetAllMoviesForObfuscationAsync_ReturnsRowsWithHashAndFilename passes against live test DB at schema revision 41. Test inserts a (hash, filename) pair, calls GetAllMoviesForObfuscationAsync, and asserts the row is returned with correct Hash and CurrentFilename.",
+        "AC-2: MigratesFrom40To41_AddsOriginalFilenameColumn passes against live test DB. Test drops movies.original_filename, resets revision to 40, runs DatabaseBootstrapper.CheckAsync(), and asserts Status=Ok, ActualRevision=41, and information_schema COUNT=1 for the column.",
+        "AC-3: Full solution test suite — 810 passed, 0 failed, 6 skipped (all pre-existing live-DB skips without test-config). No regressions introduced.",
+        "AC-4: dotnet test succeeds with 0 failures."
+      ],
+      "metrics": {
+        "tests_passed": 2,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-19T20:55:27Z",
+          "note": "DatabaseBootstrapperMigrationTests.MigratesFrom40To41_AddsOriginalFilenameColumn: DDL auto-commit means test state mutation cannot be wrapped in a transaction. The test does include best-effort recovery (restores db_revision on failure), but if the test process crashes mid-run the column will be absent and revision will be 40 on the next run. A setup guard that checks and restores pre-conditions at the start of the test would make it more resilient to dirty state from a prior failure."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-19T21:05:31Z",
+      "completed_at": "2026-05-19T21:06:37Z",
+      "duration_ms": 66000,
+      "summary": [
+        "PASS — WP-010 is a test-only work package adding live-DB integration coverage for the m041 migration and GetAllMoviesForObfuscationAsync.",
+        "DatabaseBootstrapperMigrationTests (new class in DatabaseBootstrapperTests.cs) correctly uses [Collection(\"LiveDB\")], IClassFixture<LiveDbFixture>, and [SkippableFact]. The migration test simulates pre-m041 state by dropping the column and rolling back revision to 40, runs DatabaseBootstrapper.CheckAsync(), and asserts Status=Ok, ActualRevision=41, and column presence via information_schema.",
+        "DDL auto-commit limitation is acknowledged in the doc comment and handled as well as MariaDB allows. Best-effort recovery restores db_revision on failure to prevent cascade test failures. Private LiveDbConnectionFactory nested class is a clean minimal adapter.",
+        "GetAllMoviesForObfuscationAsync_ReturnsRowsWithHashAndFilename was pre-existing in DapperMovieRepositoryTests.cs — no new concerns.",
+        "ExpectedRevision sentinel test (literal 41) follows the established tripwire pattern."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "tests/VideoIndexer.Infrastructure.Tests/Database/DatabaseBootstrapperTests.cs",
+          "tests/VideoIndexer.Infrastructure.Tests/Library/DapperMovieRepositoryTests.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-19T21:06:37Z",
+          "note": "DatabaseBootstrapperMigrationTests: the `[Collection(\"LiveDB\")]` + `IClassFixture<LiveDbFixture>` + `[SkippableFact]` pattern is consistent with all other live-DB integration tests in the suite. The private `LiveDbConnectionFactory` nested class is a minimal and appropriate adapter — no concerns."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-19T21:06:37Z",
+          "note": "DatabaseBootstrapperMigrationTests.MigratesFrom40To41_AddsOriginalFilenameColumn: the setup block (step 1) is outside the try/catch recovery block. If either ALTER TABLE or UPDATE spdb_config unexpectedly fails during setup, no automatic recovery runs. In practice these operations are near-infallible given a valid DB connection, but wrapping the entire test body (including setup) in try/finally for the recovery logic would make the test fully self-restoring regardless of where failure occurs. Low urgency — both setup statements are safe and use IF EXISTS."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-19T21:06:37Z",
+          "note": "DatabaseBootstrapperMigrationTests: the best-effort recovery only restores `db_revision` to 41 but does not re-add the `original_filename` column in the event that the migration script itself fails. If CheckAsync step 2 fails before the column is added, subsequent tests that rely on the column would be affected. However, this scenario would indicate a real bug in m041 (not in the test) — and the constraints doc already documents the m041 rollback procedure. Acceptable limitation given DDL auto-commit."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-19T21:06:37Z",
+          "note": "ExpectedRevision_MatchesCurrentSchemaRevision test correctly uses the hardcoded literal 41 (not DatabaseBootstrapper.ExpectedRevision) per the INTENTIONAL tripwire comment — this sentinel pattern is well-established in the suite and correctly maintained."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-19T21:06:37Z",
+          "note": "No observations — code is clean and consistent within the constraints imposed by DDL auto-commit in MariaDB."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-19T21:22:04Z",
+      "completed_at": "2026-05-19T21:22:39Z",
+      "duration_ms": 35000,
+      "summary": [
+        "No documentation changes required for WP-010.",
+        "WP-010 modifies only test files (DatabaseBootstrapperTests.cs — adds DatabaseBootstrapperMigrationTests class). No production code was added or modified.",
+        "Reviewer handoff note confirmed: no api-surface.md or file-tree.md updates needed.",
+        "Existing constraints.md already documents the m041 migration rollback procedure and integration-test self-skip behaviour. DDL auto-commit limitation is an established MariaDB constraint already understood by the codebase conventions."
+      ],
+      "artifacts": {
+        "files_modified": []
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-19T21:22:39Z",
+          "note": "No documentation gaps found. WP-010 is test-only (adds DatabaseBootstrapperMigrationTests class and verifies a pre-existing DapperMovieRepository test). The Reviewer explicitly confirmed no api-surface.md or file-tree.md updates are required. The constraints.md already documents the m041 migration rollback procedure and the integration-test self-skip pattern. Existing documentation accurately reflects all production code affected by this WP."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-19T21:22:39Z",
+  "last_updated": "2026-05-19T21:22:39Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-19T20:14:15Z",
+      "notes": [
+        "Added `DatabaseBootstrapperMigrationTests` class to DatabaseBootstrapperTests.cs with `MigratesFrom40To41_AddsOriginalFilenameColumn` [SkippableFact].",
+        "Test drops movies.original_filename and sets revision to 40, runs DatabaseBootstrapper.CheckAsync(), asserts Status=Ok, ActualRevision=41, and verifies column count=1 via information_schema.",
+        "Test ran and passed against the live spdb_tests database (schema revision 41).",
+        "`GetAllMoviesForObfuscationAsync_ReturnsRowsWithHashAndFilename` was already present in DapperMovieRepositoryTests.cs from a prior session.",
+        "Full test suite: 789 passed, 0 failed, 6 skipped (all skips are live-DB tests without test-config)."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-19T20:55:27Z",
+      "notes": [
+        "WP-010 QA PASS. Both live DB integration tests confirmed passing: GetAllMoviesForObfuscationAsync_ReturnsRowsWithHashAndFilename and MigratesFrom40To41_AddsOriginalFilenameColumn. Full suite 810 passed, 0 failed, 6 skipped (all pre-existing). Ready for Code Review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-19T21:06:37Z",
+      "notes": [
+        "WP-010 code review PASS. DatabaseBootstrapperMigrationTests is well-structured and follows the established live-DB integration test pattern. DDL auto-commit limitation is correctly handled with best-effort recovery and thorough documentation.",
+        "No documentation manifest updates required — WP-010 modifies test files only, not production code. No api-surface.md or file-tree.md updates needed."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,230 @@
+{
+  "work_package_id": "WP-005",
+  "work_package_file": "work/WP-005.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "The StartsWith call in the Tar-Slip traversal guard passes StringComparison.Ordinal; OrdinalIgnoreCase no longer appears in TarXzArchiveExtractor.cs.",
+      "met": true
+    },
+    {
+      "criterion": "The entry-processing loop throws InvalidDataException for entries of type TarEntryType.BlockDevice, TarEntryType.CharacterDevice, and TarEntryType.Fifo.",
+      "met": true
+    },
+    {
+      "criterion": "The new device-node guard uses the same exception type (InvalidDataException) and message pattern as the existing symlink/hard-link rejection block.",
+      "met": true
+    },
+    {
+      "criterion": "All existing TarXzArchiveExtractorTests pass without modification.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-21T06:12:34Z",
+      "completed_at": "2026-05-21T06:13:36Z",
+      "duration_ms": 62000,
+      "summary": [
+        "Applied two hardening changes to TarXzArchiveExtractor.cs: changed OrdinalIgnoreCase to Ordinal in the Tar-Slip traversal guard, and added device-node rejection block (BlockDevice, CharacterDevice, Fifo) using the same InvalidDataException pattern as the existing symlink guard. All infrastructure tests pass (189/6 skipped). Release build clean."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/ExternalTools/TarXzArchiveExtractor.cs"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 189,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-21T06:13:36Z",
+          "note": "No observations — both changes are self-contained and follow established patterns in the file. The device-node guard mirrors the symlink guard structure exactly."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-21T06:25:01Z",
+      "completed_at": "2026-05-21T06:25:48Z",
+      "duration_ms": 47000,
+      "summary": [
+        "AC1 verified: only one StringComparison in TarXzArchiveExtractor.cs (line 100) — StringComparison.Ordinal. No OrdinalIgnoreCase.",
+        "AC2 verified: BlockDevice/CharacterDevice/Fifo guard at line 89 throws InvalidDataException.",
+        "AC3 verified: device-node guard message follows 'Archive entry ... is a ... and was rejected.' pattern, matching symlink/hard-link guard (line 83).",
+        "AC4 verified: 8 TarXzArchiveExtractorTests pass, 1 pre-existing SkippableFact skipped (fixture file absent). No failures."
+      ],
+      "metrics": {
+        "tests_passed": 8,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-21T06:25:48Z",
+          "note": "The device-node rejection block is correctly positioned BEFORE the Tar-Slip path guard. This is the right ordering — dangerous entry types are rejected before their paths are normalized and compared. A BlockDevice/CharacterDevice entry with a crafted path would be rejected at the type check rather than the path check."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-21T06:25:48Z",
+          "note": "1 test skipped (ExtractAsync_FromFixtureFile_ExtractsSuccessfully) — this is a SkippableFact that requires a real .tar.xz fixture file not present in the CI/test environment. This is a pre-existing skip, not caused by WP-005 changes. WP-007 will add device-node specific tests."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-21T06:25:48Z",
+          "note": "All 8 executable TarXzArchiveExtractor tests pass: flat extraction, nested dirs, traversal guard (throws + no files outside), symlink rejection, composite extractor routing. No regressions."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-05-21T06:52:09Z",
+      "completed_at": "2026-05-21T06:53:09Z",
+      "duration_ms": 60000,
+      "summary": [
+        "Reviewed 1 modified file (TarXzArchiveExtractor.cs). Both changes are security hardening: Ordinal fix closes Tar-Slip bypass on Linux; device-node guard prevents block/char device creation. Guard ordering is correct. 0 Critical, 0 High, 0 Medium. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-21T06:53:09Z",
+          "note": "A01/A04 (Device-Node Guard — Security Improvement Verified): The new BlockDevice/CharacterDevice/Fifo rejection block (lines 89-93) correctly prevents creation of block/character devices or named pipes on Linux, which could otherwise allow privilege escalation or hardware device access if an attacker controls the archive. Placement is correct: type rejection occurs BEFORE path normalization and the Tar-Slip guard. Entry.Name appears only in the exception message, not in any interpreter. File: src/VideoIndexer.Infrastructure/ExternalTools/TarXzArchiveExtractor.cs, lines 89-93."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-21T06:53:09Z",
+          "note": "A01 (Tar-Slip Guard — Confirmed Correct): canonicalDest uses Path.GetFullPath + trailing DirectorySeparatorChar (lines 49-51). entryFullPath produced by Path.GetFullPath(Path.Combine(canonicalDest, normalizedName)) (line 98). Separator normalization at line 97 ensures Unix-style entries (forward slashes) are handled on Windows. StringComparison.Ordinal at line 100 is correct and closes the theoretical Linux bypass. Guard architecture is sound. File: TarXzArchiveExtractor.cs, lines 97-104."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-21T06:53:09Z",
+          "note": "A04 (Pre-existing) — overwrite: true in ExtractToFileAsync (line 112) silently overwrites existing files in the destination. Acceptable for FFmpeg provisioning (re-extraction is idempotent). Would only be a concern if an attacker controls the downloaded archive. File: TarXzArchiveExtractor.cs, line 112."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-21T06:53:09Z",
+          "note": "A09 (Pre-existing, Acknowledged) — No audit logging for extraction events or guard-triggered rejections. The code itself documents this gap in the XML doc comment (lines 16-29) with a detailed TODO specifying LogDebug/LogWarning/LogInformation integration points. No action required until the provisioning-pipeline logging feature is added. File: TarXzArchiveExtractor.cs, lines 16-29."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-21T06:55:53Z",
+      "completed_at": "2026-05-21T06:57:17Z",
+      "duration_ms": 84000,
+      "summary": [
+        "Reviewed TarXzArchiveExtractor.cs. Both changes (Ordinal fix, device-node guard) are correct security hardening. Applied one Fix-Forward: changed 'using var tarReader' to 'await using var tarReader' for idiomatic IAsyncDisposable usage in async Infrastructure code. Build verified clean. All 4 ACs met. PASS."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/ExternalTools/TarXzArchiveExtractor.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-21T06:57:17Z",
+          "note": "Both changes are correct security hardening. Guard ordering is correct: type guards (symlink, device-node) execute before path normalization and Tar-Slip check, preventing any evaluation of malformed paths for special entry types. Separator normalization (Replace('/', DirectorySeparatorChar)) is pre-existing and correct for cross-platform tar archives. The device-node guard mirrors the symlink guard structure exactly for consistency. Class-level XML doc is comprehensive and already includes a TODO logging gap with actionable guidance."
+        },
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-21T06:57:17Z",
+          "note": "reviewer-applied-fix: Changed 'using var tarReader' to 'await using var tarReader' in ExtractAsync. TarReader implements IAsyncDisposable in .NET 10; using await using is idiomatic for async Infrastructure code per project conventions. With leaveOpen: true the async dispose is a no-op for the underlying stream, so this is strictly non-behavioral. Build verified clean (0 warnings, 0 errors, Release) after the change."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-21T06:59:52Z",
+      "completed_at": "2026-05-21T07:01:03Z",
+      "duration_ms": 71000,
+      "summary": [
+        "Updated README.md TarXzArchiveExtractor section to reflect WP-005 changes: changed 'Two independent guards' to 'Three independent guards' and added the new device-node/FIFO rejection as guard #2 with a full explanation of why on-Linux device-node creation is dangerous.",
+        "Added StringComparison.Ordinal to the Tar-Slip guard description (guard #3), consistent with how the ZipArchiveExtractor section documents the WP-004 Ordinal fix.",
+        "Added 'Device-node or FIFO entry' row to the Error conditions table with the exact exception message pattern.",
+        "Project manifest docs required no changes — api-surface.md, file-tree.md, and constraints.md all reflect the pre-existing service structure accurately for WP-005's scope."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "README.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-21T07:01:03Z",
+          "note": "README.md TarXzArchiveExtractor section updated: (1) 'Two independent guards' corrected to 'Three independent guards' with the device-node/FIFO rejection added as guard #2 with a full description; (2) StringComparison.Ordinal noted in the Tar-Slip guard description, consistent with how the ZipArchiveExtractor section documents the same change from WP-004; (3) 'Device-node or FIFO entry' row added to the Error conditions table. The 'Entry filtering' section's existing mention of BlockDevice/CharacterDevice/Fifo was accurate and retained."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-21T07:01:03Z",
+  "last_updated": "2026-05-21T07:01:03Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-21T06:13:36Z",
+      "notes": [
+        "Two hardening changes applied to TarXzArchiveExtractor.cs: (1) OrdinalIgnoreCase -> Ordinal in Tar-Slip guard; (2) new BlockDevice/CharacterDevice/Fifo rejection block added after symlink guard. Infrastructure tests: 189 passed, 6 DB-integration skipped, 0 failed. Release build clean. Note: WP-007 adds tests for the new device-node rejection block."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-05-21T06:25:48Z",
+      "notes": [
+        "WP-005 QA PASS. All 4 ACs verified: Ordinal in Tar-Slip guard, device-node rejection block (BlockDevice/CharacterDevice/Fifo) throws InvalidDataException with correct message pattern, 8/9 tests pass (1 skipped pre-existing fixture skip). Ready for security audit and code review.",
+        "Note for Security Auditor: Device-node guard is placed before the path guard — correct ordering. Both guards use InvalidDataException consistently. WP-007 adds dedicated tests for the new device-node rejection block."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-21T06:53:09Z",
+      "notes": [
+        "TarXzArchiveExtractor.cs reviewed. Both WP-005 changes are confirmed security hardening: (1) Ordinal fix closes theoretical Tar-Slip bypass on Linux; (2) device-node/FIFO guard prevents creation of block/char devices and named pipes. All guards in correct order (type before path). 0 Critical, 0 High, 0 Medium. 4 Low/Info observations (all confirming correctness or noting pre-existing acknowledged items). Security sign-off: PASS. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-21T06:57:17Z",
+      "notes": [
+        "WP-005 passed code review. TarXzArchiveExtractor.cs is clean, well-commented, and the two hardening changes are correct. All 4 ACs met. Fix-Forward applied: 'using var tarReader' changed to 'await using var tarReader' (IAsyncDisposable, non-behavioral with leaveOpen: true). Build verified clean after fix. No documentation gaps beyond the TODO logging note already documented in the class-level XML doc."
+      ]
+    }
+  ]
+}

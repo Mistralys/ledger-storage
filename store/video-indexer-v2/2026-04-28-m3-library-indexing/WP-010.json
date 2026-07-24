@@ -1,0 +1,312 @@
+{
+  "work_package_id": "WP-010",
+  "work_package_file": "work/WP-010.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-002",
+    "WP-004",
+    "WP-005",
+    "WP-009"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "IFolderPickerService is in the VideoIndexer.App project (not Core); it compiles without reference to any Core type.",
+      "met": true
+    },
+    {
+      "criterion": "LibraryFoldersViewModel.AddFolderCommand invokes IFolderPickerService.PickFolderAsync and, on a non-null result, calls ILibraryFolderRepository.AddAsync.",
+      "met": true
+    },
+    {
+      "criterion": "RefreshIndexViewModel.CancelCommand is only executable (CanExecute) when IsRunning is true.",
+      "met": true
+    },
+    {
+      "criterion": "MainContentViewModel.IndexedMovieCount is set via CountAsync on activation and updated after each refresh completes.",
+      "met": true
+    },
+    {
+      "criterion": "MainContentPage navigation does not open a second window; all state is held in the view-model.",
+      "met": true
+    },
+    {
+      "criterion": "All 110 existing tests continue to pass.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-08T07:38:12Z",
+      "completed_at": "2026-05-08T07:43:57Z",
+      "duration_ms": 345000,
+      "summary": [
+        "Implemented IFolderPickerService interface and AvaloniaFolderPickerService (using IStorageProvider.OpenFolderPickerAsync via injected factory) in new VideoIndexer.App/Services/ directory.",
+        "Implemented LibraryFoldersViewModel with AddFolderCommand (picker → repo.AddAsync), LoadFoldersCommand, and RemoveFolderCommand backed by ObservableCollection<LibraryFolder>.",
+        "Implemented RefreshIndexViewModel with StartRefreshCommand (disabled when IsRunning) and CancelCommand (CanExecute = IsRunning), subscribing to IRefreshOrchestrator.StateChanged to keep IsRunning in sync.",
+        "Modified MainContentViewModel: added full constructor with IMovieCatalogRepository, IRefreshOrchestrator, LibraryFoldersViewModel, RefreshIndexViewModel; added IndexedMovieCount (ObservableProperty); ActivateAsync() loads initial count; OnRefreshStateChanged updates count after Completed/Faulted; parameterless ctor retained for backward-compatible test factories.",
+        "Build succeeded with 0 warnings, 0 errors. All 278 tests pass (0 failures, 5 skipped in infra tests — pre-existing)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/Services/IFolderPickerService.cs",
+          "src/VideoIndexer.App/Services/AvaloniaFolderPickerService.cs",
+          "src/VideoIndexer.App/ViewModels/LibraryFoldersViewModel.cs",
+          "src/VideoIndexer.App/ViewModels/RefreshIndexViewModel.cs",
+          "src/VideoIndexer.App/ViewModels/MainContentViewModel.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "code-smell",
+          "priority": "medium",
+          "timestamp": "2026-05-08T07:43:57Z",
+          "note": "Both RefreshIndexViewModel and MainContentViewModel subscribe to IRefreshOrchestrator.StateChanged but never unsubscribe (no IDisposable). For singleton-lifetime VMs this is harmless today, but if the shell ever reconnects and creates a fresh MainContentViewModel, handlers accumulate on the shared orchestrator. Consider a WeakEventManager or implementing IDisposable."
+        },
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-05-08T07:43:57Z",
+          "note": "RefreshIndexViewModel.StartRefreshAsync silently swallows exceptions from IRefreshOrchestrator.StartRefreshAsync (e.g., InvalidOperationException when already running, or unexpected faults). No error surface exists in the VM. A nullable ErrorMessage property and corresponding notification would allow the view to display failure feedback."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-08T07:43:57Z",
+          "note": "AvaloniaFolderPickerService uses IStorageFolder.Path.LocalPath to obtain the local path. IStorageItem.TryGetLocalPath() (Avalonia extension method) is more defensive for non-file URI schemes and should be preferred to avoid silent empty-string returns on edge-case platforms."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-05-08T07:43:57Z",
+          "note": "MainContentViewModel retains a parameterless constructor solely for backward-compatible test factory lambdas that type-check the VM without exercising its behaviour. Once the project moves to DI-aware test doubles or a factory interface, this ctor can be removed to enforce correct construction at all callsites."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-08T07:47:44Z",
+      "completed_at": "2026-05-08T07:53:09Z",
+      "duration_ms": 325000,
+      "summary": [
+        "Build check: solution compiled with 0 warnings, 0 errors (TreatWarningsAsErrors=true).",
+        "All 6 acceptance criteria verified by code review and new unit tests.",
+        "27 new unit tests added across LibraryFoldersViewModelTests, RefreshIndexViewModelTests, and MainContentViewModelTests — covering all critical AC behaviors identified in the developer handoff.",
+        "Full regression run: 313 passed, 5 pre-existing skipped, 0 failed.",
+        "Edge cases covered: picker-cancelled path (AddFolderCommand skips repo call), CancelCommand CanExecute after state cycle, ActivateAsync on parameterless ctor no-throw, Running state does not trigger count refresh."
+      ],
+      "metrics": {
+        "test_coverage": "27 new tests for 3 new ViewModels added",
+        "tests_passed": 313,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "coverage-gap",
+          "priority": "medium",
+          "timestamp": "2026-05-08T07:53:09Z",
+          "note": "No unit tests existed for LibraryFoldersViewModel, RefreshIndexViewModel, or MainContentViewModel prior to this QA pass. 27 tests were added (tests/VideoIndexer.App.Tests/LibraryFoldersViewModelTests.cs, RefreshIndexViewModelTests.cs, MainContentViewModelTests.cs) to close this gap and directly verify AC #2, #3, and #4."
+        },
+        {
+          "type": "bug",
+          "priority": "low",
+          "timestamp": "2026-05-08T07:53:09Z",
+          "note": "AvaloniaFolderPickerService.PickFolderAsync (src/VideoIndexer.App/Services/AvaloniaFolderPickerService.cs) uses results[0].Path.LocalPath instead of the more defensive results[0].TryGetLocalPath(). On non-file URI schemes this silently returns an empty string rather than null, which would pass the null guard in LibraryFoldersViewModel.AddFolderAsync and persist an empty-string path. Not a blocker for current desktop targets but warrants a follow-up fix. (Originally flagged by Developer pipeline as a low-priority improvement.)"
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-08T07:53:09Z",
+          "note": "MainContentViewModel.OnRefreshStateChanged fires RefreshCountAsync via fire-and-forget (_ = RefreshCountAsync()). Any exception thrown by IMovieCatalogRepository.GetCountAsync will be silently swallowed. Low risk given the repository is a thin DB call, but a logging fallback would improve observability."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-05-08T07:57:54Z",
+      "completed_at": "2026-05-08T07:59:18Z",
+      "duration_ms": 84000,
+      "summary": [
+        "Reviewed 5 files (IFolderPickerService, AvaloniaFolderPickerService, LibraryFoldersViewModel, RefreshIndexViewModel, MainContentViewModel). 0 Critical, 0 High, 0 Medium, 2 Low findings. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-05-08T07:59:18Z",
+          "note": "Low | A04 Insecure Design | src/VideoIndexer.App/Services/AvaloniaFolderPickerService.cs line 37: results[0].Path.LocalPath returns an empty string (not null) for non-file:// URI schemes. The null guard in LibraryFoldersViewModel.AddFolderAsync (line 46) does not catch an empty string, so a non-file URI result would persist an empty-string path to the repository. In practice, IStorageProvider.OpenFolderPickerAsync only returns file:// URIs on all Avalonia desktop targets, so the exploitable surface is negligible. Remediation: replace results[0].Path.LocalPath with results[0].TryGetLocalPath() ?? string.Empty and add an IsNullOrEmpty guard in AddFolderAsync before calling _repository.AddAsync."
+        },
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-05-08T07:59:18Z",
+          "note": "Low | A09 Security Logging & Monitoring Failures | src/VideoIndexer.App/ViewModels/RefreshIndexViewModel.cs (StartRefreshAsync) and src/VideoIndexer.App/ViewModels/MainContentViewModel.cs (OnRefreshStateChanged): both fire async work without any exception handling or logging. Orchestrator errors in StartRefreshAsync and repository errors in RefreshCountAsync are silently swallowed, leaving no audit trail for operational failures. Remediation: add try/catch with ILogger logging, or at minimum surface errors to an observable ErrorMessage property so diagnostic information is available."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-08T07:59:44Z",
+      "completed_at": "2026-05-08T08:01:55Z",
+      "duration_ms": 131000,
+      "summary": [
+        "Reviewed all 5 implementation files (IFolderPickerService, AvaloniaFolderPickerService, LibraryFoldersViewModel, RefreshIndexViewModel, MainContentViewModel) and all 3 new test suites (LibraryFoldersViewModelTests, RefreshIndexViewModelTests, MainContentViewModelTests) plus 4 test helpers.",
+        "No blocking issues found. Architecture, MVVM patterns, CommunityToolkit.Mvvm usage, CancellationToken propagation, and test helper design are all clean.",
+        "Fix-Forward applied: replaced results[0].Path.LocalPath with results[0].TryGetLocalPath() in AvaloniaFolderPickerService. TryGetLocalPath() returns null for non-file:// URIs which propagates correctly to the existing null guard in LibraryFoldersViewModel.AddFolderAsync — closing the silent-empty-string risk flagged by QA and Security Auditor. Build verified: 0 warnings, 0 errors.",
+        "Documentation-forward: ActivateAsync() lifecycle wiring note tagged for the Documentation agent.",
+        "All 6 acceptance criteria remain met. Verdict: PASS."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/Services/AvaloniaFolderPickerService.cs",
+          "src/VideoIndexer.App/Services/IFolderPickerService.cs",
+          "src/VideoIndexer.App/ViewModels/LibraryFoldersViewModel.cs",
+          "src/VideoIndexer.App/ViewModels/RefreshIndexViewModel.cs",
+          "src/VideoIndexer.App/ViewModels/MainContentViewModel.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-08T08:01:55Z",
+          "note": "Fix-Forward applied in src/VideoIndexer.App/Services/AvaloniaFolderPickerService.cs line 37: replaced results[0].Path.LocalPath with results[0].TryGetLocalPath(). IStorageItem.TryGetLocalPath() returns null for non-file:// URI schemes rather than an empty string, which propagates correctly to the existing null guard in LibraryFoldersViewModel.AddFolderAsync. Non-behavioral on all Avalonia desktop targets (file:// URIs only); fully defensive for edge-case platform schemes. Build passes with 0 warnings."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-08T08:01:55Z",
+          "note": "[documentation-forward] MainContentViewModel.ActivateAsync() doc says 'should be called once after the view navigates to this view-model' but does not explain how to wire the lifecycle hook in practice. The DI wiring WP (WP-015) defers this, but the documentation should include a concrete example showing how ActivateAsync is invoked from the view code-behind (or an Avalonia OnActivated override), and clarify that calling it multiple times reloads the count harmlessly."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-08T08:01:55Z",
+          "note": "Carried forward: RefreshIndexViewModel and MainContentViewModel subscribe to IRefreshOrchestrator.StateChanged without unsubscribing. For the current singleton-lifetime VM pattern this is safe, but a future reconnect scenario would leak handlers. Consider implementing IDisposable or using a WeakEventManager pattern in a follow-up WP. (Originally flagged by Developer; confirmed non-blocking by QA and Security Auditor.)"
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-08T08:01:55Z",
+          "note": "Carried forward: RefreshIndexViewModel.StartRefreshAsync and MainContentViewModel.OnRefreshStateChanged both swallow exceptions silently (fire-and-forget + no try/catch). Adding an ILogger-backed catch block or a nullable ErrorMessage observable property would surface operational failures to the view. (Developer and QA flagged as medium-priority debt; Security Auditor confirmed Low severity A09.)"
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-08T08:01:55Z",
+          "note": "MainContentViewModel retains a parameterless constructor as a test compat shim. This results in nullable child VM properties (LibraryFolders, RefreshIndex) that consumers must null-check. Once WP-015 wires DI correctly, the parameterless ctor and all its nullable guard paths (RefreshCountAsync null check) can be removed to enforce correct construction at all call sites."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-08T08:05:51Z",
+      "completed_at": "2026-05-08T08:08:52Z",
+      "duration_ms": 181000,
+      "summary": [
+        "Replaced the stale 'MainContentViewModel' placeholder section in README.md with accurate documentation covering: IndexedMovieCount / LibraryFolders / RefreshIndex observable properties; the ActivateAsync() lifecycle hook with a concrete OnAttachedToVisualTree wiring example (addresses documentation-forward item from Reviewer); the IRefreshOrchestrator.StateChanged subscription and disposal-pattern note (carried medium-priority debt); the fire-and-forget exception-swallowing note for both MainContentViewModel and RefreshIndexViewModel (carried medium-priority debt).",
+        "Added new ### LibraryFoldersViewModel section documenting the Folders collection and AddFolderCommand / LoadFoldersCommand / RemoveFolderCommand.",
+        "Added new ### RefreshIndexViewModel section documenting IsRunning, StartRefreshCommand / CancelCommand, state subscription pattern, and both known limitations (event unsubscription, silent exception swallowing).",
+        "Added new ### IFolderPickerService / AvaloniaFolderPickerService section documenting the interface contract, the TryGetLocalPath() defensive pattern, and the concrete DI registration pattern (with factory lambda) deferred to WP-015.",
+        "Updated the ShellViewModel DI registration note to remove the outdated claim that MainContentViewModel has no DI dependencies; now correctly states the compatibility ctor is used pending WP-015."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "README.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-08T08:08:52Z",
+          "note": "The documentation-forward item from the Reviewer (ActivateAsync wiring example) has been addressed with a concrete OnAttachedToVisualTree code snippet. The note correctly defers production wiring to WP-015 and clarifies idempotency of multiple calls."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-08T08:08:52Z",
+          "note": "Both carried medium-priority debt items (event subscription without unsubscription; StartRefreshAsync/OnRefreshStateChanged silent exception swallowing) are now surfaced in the README under their respective ViewModel sections, tagged as known limitations."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-08T08:08:52Z",
+          "note": "The AvaloniaFolderPickerService DI registration example documents the Func<IStorageProvider?> factory pattern with TopLevel.GetTopLevel(), matching the approach suggested in the Developer handoff notes for WP-015."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-08T08:08:52Z",
+  "last_updated": "2026-05-08T08:08:52Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-08T07:43:57Z",
+      "notes": [
+        "All five files are implemented and compile cleanly (0 warnings under TreatWarningsAsErrors). The test count is now 278 (pre-existing tests + ones added by earlier WPs); all pass.",
+        "IFolderPickerService/AvaloniaFolderPickerService are ready for DI registration in WP-015 (App wiring). The service requires a Func<IStorageProvider?> — the DI registration should capture the MainWindow's StorageProvider via TopLevel.GetTopLevel(window)?.StorageProvider.",
+        "ActivateAsync() on MainContentViewModel must be called from the view's code-behind (or a lifecycle hook) once the MainContentView becomes active — this is deferred to the wiring WP.",
+        "Four Code Insight observations logged: two medium-priority (event subscription without disposal, unhandled StartRefreshAsync exceptions), two low-priority (TryGetLocalPath defensive pattern, parameterless ctor).",
+        "QA note: unit tests for the new ViewModels are not yet written. Tests for LibraryFoldersViewModel.AddFolderCommand and RefreshIndexViewModel.CancelCommand CanExecute behaviour are the highest priority for the QA pipeline."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-05-08T07:53:09Z",
+      "notes": [
+        "All 6 ACs verified as met. Build: 0 warnings/errors. Full test suite: 313 passed, 5 pre-existing infra skips, 0 failures.",
+        "27 new tests added in VideoIndexer.App.Tests for the three new ViewModels.",
+        "Low-priority follow-up: replace results[0].Path.LocalPath with results[0].TryGetLocalPath() in AvaloniaFolderPickerService to guard non-file URI schemes.",
+        "Medium tech debt (carried from implementation): event subscriptions in RefreshIndexViewModel and MainContentViewModel are not unsubscribed — consider IDisposable or WeakEventManager when VM lifetime becomes unbounded.",
+        "Medium tech debt (carried from implementation): RefreshIndexViewModel.StartRefreshAsync silently swallows orchestrator exceptions — a nullable ErrorMessage property would surface failures to the view."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-08T07:59:18Z",
+      "notes": [
+        "Security audit PASS. 0 Critical/High findings. Two Low items carried forward: (1) AvaloniaFolderPickerService should use TryGetLocalPath() with an IsNullOrEmpty guard for defensive path handling; (2) StartRefreshAsync and OnRefreshStateChanged lack exception logging. Neither blocks code review. All 6 ACs confirmed met from security perspective."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-08T08:01:55Z",
+      "notes": [
+        "Code review PASS. One Fix-Forward applied: AvaloniaFolderPickerService now uses TryGetLocalPath() instead of Path.LocalPath — no QA re-run required (non-behavioral on desktop targets, existing null guard handles the null return).",
+        "Three documentation items for this WP: (1) ActivateAsync() lifecycle wiring example; (2) event subscription disposal pattern (carried medium-priority debt); (3) StartRefreshAsync/OnRefreshStateChanged exception handling (carried medium-priority debt). None block COMPLETE.",
+        "Open low-priority debt: parameterless MainContentViewModel ctor can be removed post-WP-015 DI wiring.",
+        "All 6 ACs confirmed met."
+      ]
+    },
+    {
+      "from_agent": "Documentation",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-05-08T08:08:52Z",
+      "notes": [
+        "Documentation PASS. README.md updated with four new/revised sections: MainContentViewModel (full replacement of placeholder), LibraryFoldersViewModel, RefreshIndexViewModel, IFolderPickerService/AvaloniaFolderPickerService. All three documentation-forward items from the code review are addressed. All 6 ACs confirmed met."
+      ]
+    }
+  ]
+}

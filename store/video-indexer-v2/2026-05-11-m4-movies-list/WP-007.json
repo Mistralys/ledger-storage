@@ -1,0 +1,242 @@
+{
+  "work_package_id": "WP-007",
+  "work_package_file": "work/WP-007.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-003",
+    "WP-004"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "dotnet build -c Release produces zero warnings and zero errors.",
+      "met": true
+    },
+    {
+      "criterion": "LoadAsync called concurrently does not launch two simultaneous GetMovieListAsync calls — verified by _loadingGuard logic.",
+      "met": true
+    },
+    {
+      "criterion": "IsLoading is false after LoadAsync completes, including when GetMovieListAsync throws.",
+      "met": true
+    },
+    {
+      "criterion": "IsEmpty is true when Movies.Count == 0 after load completes; false when at least one movie is present.",
+      "met": true
+    },
+    {
+      "criterion": "ToggleCoverPanel produces a new MoviesListOptions via with {} and calls ISettingsService.SaveAsync.",
+      "met": true
+    },
+    {
+      "criterion": "All six context menu commands are present and execute without throwing.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-12T06:13:13Z",
+      "completed_at": "2026-05-12T06:15:41Z",
+      "duration_ms": 148000,
+      "summary": [
+        "Created src/VideoIndexer.App/ViewModels/MoviesListViewModel.cs extending ObservableObject.",
+        "Constructor injects IMovieCatalogRepository, ISettingsService, ILogger<MoviesListViewModel>; parameterless constructor provided for tests.",
+        "ObservableCollection<MovieListItem> Movies never replaced by reference. [ObservableProperty] for SelectedMovie, ShowCoverPanel, ColumnVisibility, IsLoading, IsEmpty.",
+        "LoadAsync uses Interlocked.CompareExchange single-flight gate; clears then repopulates Movies; sets IsLoading/IsEmpty in finally block.",
+        "ToggleCoverPanelAsync and SetColumnVisibilityAsync persist via ISettingsService.SaveAsync using with {} on MoviesListOptions.",
+        "Six context menu stub commands (PlayMovie, PlayMovieFullscreen, EditMovie, GenerateThumbnails, CopyMovieTo, DeleteMovieOnDisk) all return Task.CompletedTask.",
+        "dotnet build -c Release: 0 warnings, 0 errors. dotnet test: 352 passed, 0 failed, 5 skipped."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/ViewModels/MoviesListViewModel.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-12T06:15:41Z",
+          "note": "MoviesListViewModel.LoadAsync catches all non-OperationCanceledException exceptions and logs them via ILogger, swallowing the error rather than surfacing it to the UI. In a future milestone, consider exposing an error state (e.g., [ObservableProperty] bool HasLoadError) so the view can show an error message instead of an empty grid."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-05-12T06:15:41Z",
+          "note": "ToggleCoverPanelAsync and SetColumnVisibilityAsync are async relay commands that persist settings on the UI thread path. If SaveAsync blocks or is slow, there is no loading indicator. This is acceptable for M4 (settings writes are fast), but should be revisited if settings persistence ever becomes a background operation."
+        },
+        {
+          "type": "code-smell",
+          "priority": "low",
+          "timestamp": "2026-05-12T06:15:41Z",
+          "note": "SelectedMovies is a plain IList<MovieListItem> with a public setter, populated by code-behind. This is a correct Avalonia 11 workaround for DataGrid multi-select, but the public setter means any caller can replace the list, potentially breaking the code-behind's reference. A future refactor could restrict the setter to internal or use a dedicated method."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-12T06:18:26Z",
+      "completed_at": "2026-05-12T06:20:29Z",
+      "duration_ms": 123000,
+      "summary": [
+        "All 6 acceptance criteria verified by code inspection and build/test run.",
+        "AC2: Interlocked.CompareExchange(ref _loadingGuard, 1, 0) != 0 guard confirmed. Guard reset in finally block.",
+        "AC3: finally block sets IsLoading=false unconditionally; OperationCanceledException also goes through finally before propagating.",
+        "AC4: IsEmpty = Movies.Count == 0 set in finally after populating Movies.",
+        "AC5: ToggleCoverPanel toggles ShowCoverPanel, produces updated AppOptions via nested with{} expressions, awaits SaveAsync.",
+        "AC6: Six commands verified in source: PlayMovieAsync, PlayMovieFullscreenAsync, EditMovieAsync, GenerateThumbnailsAsync, CopyMovieToAsync, DeleteMovieOnDiskAsync — all return Task.CompletedTask.",
+        "Build: 0 warnings, 0 errors. Tests: 352 passed, 0 failed, 5 skipped."
+      ],
+      "metrics": {
+        "tests_passed": 352,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-12T06:20:29Z",
+          "note": "LoadAsync uses ConfigureAwait(false) on the DB query, then modifies Movies collection on a thread-pool thread. This matches the pattern in DatabaseConnectorViewModel.LoadAsync and LibraryFoldersViewModel.LoadFoldersAsync — consistent with established codebase convention."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-12T06:20:29Z",
+          "note": "OperationCanceledException is not caught — it escapes the try/catch but the finally block still runs, correctly setting IsLoading=false before the exception propagates. With CancellationToken.None (the only call site in M4), this scenario cannot trigger in production."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T06:20:29Z",
+          "note": "SetColumnVisibilityAsync creates a new Dictionary<string,bool> from ColumnVisibility on each call. If ColumnVisibility has 12 entries, this is a negligible allocation. Correct and clean."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-12T06:25:35Z",
+      "completed_at": "2026-05-12T06:27:48Z",
+      "duration_ms": 133000,
+      "summary": [
+        "PASS with Fix-Forwards. Three non-behavioral improvements applied to MoviesListViewModel.cs.",
+        "Fix 1: Parameterless constructor now uses a single `var defaults = new MoviesListOptions()` instead of two separate instantiations — avoids creating two 12-entry ColumnVisibility dictionaries.",
+        "Fix 2 & 3: ToggleCoverPanelAsync and SetColumnVisibilityAsync both read _settingsService.Current into a local variable before the `with {}` expression, eliminating the double-property-read pattern. SetColumnVisibilityAsync uses `snapshot` to avoid collision with the existing `out var current` from TryGetValue.",
+        "Architecture is sound: Interlocked gate is correct, exception filter properly excludes OperationCanceledException, IsLoading/IsEmpty in finally block, all six context menu stubs present. All 6 ACs confirmed met. Build: 0 warnings, 0 errors."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/ViewModels/MoviesListViewModel.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-12T06:27:48Z",
+          "note": "Fix-Forward (parameterless constructor): consolidated two `new MoviesListOptions()` instantiations into one local `var defaults`. Each instantiation created a 12-entry Dictionary<string,bool> for ColumnVisibility — unnecessary double allocation in the test/design-time constructor. Non-behavioral change."
+        },
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "medium",
+          "timestamp": "2026-05-12T06:27:48Z",
+          "note": "Fix-Forward (ToggleCoverPanelAsync): `_settingsService.Current` was read twice in a single `with {}` expression. Captured into a local `var current` first. Eliminates double-property-read and makes the intent explicit. Removes a theoretical race window (negligible in single-user desktop context, but poor practice nonetheless). Non-behavioral change."
+        },
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "medium",
+          "timestamp": "2026-05-12T06:27:48Z",
+          "note": "Fix-Forward (SetColumnVisibilityAsync): same double-read pattern as ToggleCoverPanelAsync. Captured into `var snapshot` (not `current` — that identifier was already taken by the `out var current` from TryGetValue). Non-behavioral change."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-05-12T06:27:48Z",
+          "note": "[documentation-forward] `SelectedMovies { get; set; }` has a public setter with a comment explaining the Avalonia 11 DataGrid workaround. Consider documenting why `internal` access was not used (e.g., cross-assembly code-behind in the same project). A brief inline note or architecture decision record entry would prevent future contributors from tightening it incorrectly."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T06:27:48Z",
+          "note": "The `ConfigureAwait(false)` + `Movies.Add(item)` on a thread-pool thread is consistent with the established pattern in DatabaseConnectorViewModel and LibraryFoldersViewModel. Not a new concern for this WP."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-12T06:31:34Z",
+      "completed_at": "2026-05-12T06:33:03Z",
+      "duration_ms": 89000,
+      "summary": [
+        "Addressed the code-review documentation-forward: MoviesListViewModel.SelectedMovies now has a <remarks> section explaining why the setter is public rather than internal — all ViewModel members are public by codebase convention for unrestricted testability from test projects without InternalsVisibleTo.",
+        "Added MoviesListViewModel to api-surface.md with full constructor, property, and command surface (including the six M4 no-op context menu commands).",
+        "Build verified: dotnet build -c Release — 0 warnings, 0 errors."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/ViewModels/MoviesListViewModel.cs",
+          "docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T06:33:03Z",
+          "note": "[documentation-forward resolved] SelectedMovies { get; set; }: added <remarks> block explaining that the setter is public (rather than internal) to keep all ViewModel members testable from external test assemblies without InternalsVisibleTo declarations, and noting that callers must not tighten it to internal."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T06:33:03Z",
+          "note": "Added MoviesListViewModel to api-surface.md (VideoIndexer.App — ViewModels section). The ViewModel was introduced in WP-007 and was absent from the manifest."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-12T06:33:03Z",
+  "last_updated": "2026-05-12T06:33:03Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-12T06:15:41Z",
+      "notes": [
+        "MoviesListViewModel is created at src/VideoIndexer.App/ViewModels/MoviesListViewModel.cs.",
+        "_loadingGuard uses Interlocked.CompareExchange(ref _loadingGuard, 1, 0) != 0 for single-flight LoadAsync. Guard is released in finally block.",
+        "IsLoading = false and IsEmpty = Movies.Count == 0 both set in finally, ensuring they update even when GetMovieListAsync throws.",
+        "Context menu commands use Async suffix on private method names; CommunityToolkit strips the Async suffix to generate command names (e.g., PlayMovieAsyncCommand -> PlayMovieCommand).",
+        "ToggleCoverPanelAsync and SetColumnVisibilityAsync await SaveAsync without a CancellationToken — QA may want to confirm settings persistence works end-to-end with a live ISettingsService.",
+        "Six context menu stub commands all return Task.CompletedTask — no-ops for M4."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-12T06:20:29Z",
+      "notes": [
+        "WP-007 PASS: MoviesListViewModel is cleanly implemented. Interlocked gate correct. IsLoading/IsEmpty set in finally. ToggleCoverPanel and SetColumnVisibility both use with{} + SaveAsync. All 6 context menu stubs present. Build clean, 352/0 pass/fail.",
+        "Unit tests for MoviesListViewModel (LoadAsync_WithMovies_PopulatesCollection, LoadAsync_ConcurrentCall_SecondCallIsNoOp, etc.) are not yet written — these belong to WP-008."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-12T06:27:48Z",
+      "notes": [
+        "WP-007 code-review PASS. Three Fix-Forwards applied: (1) consolidated double MoviesListOptions() in parameterless ctor, (2) eliminated double _settingsService.Current read in ToggleCoverPanelAsync, (3) same fix in SetColumnVisibilityAsync using `snapshot` name to avoid collision with `out var current`. Build verified: 0 warnings, 0 errors after all fixes. One documentation-forward logged for SelectedMovies public setter explanation. No blocking issues."
+      ]
+    }
+  ]
+}

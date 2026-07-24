@@ -1,0 +1,253 @@
+{
+  "work_package_id": "WP-008",
+  "work_package_file": "work/WP-008.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-003",
+    "WP-004",
+    "WP-005"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "SetPasswordAsync(\"hunter2\") writes config_name = \"app_password_hash\" and config_value equal to Sha256FixedSaltPasswordHasher.Hash(\"hunter2\").",
+      "met": true
+    },
+    {
+      "criterion": "VerifyAsync performs constant-time comparison (verified by inspection that FixedTimeEquals is invoked).",
+      "met": true
+    },
+    {
+      "criterion": "VerifyAsync returns false when no row exists, without throwing.",
+      "met": true
+    },
+    {
+      "criterion": "All test cases pass under dotnet test.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-27T20:55:48Z",
+      "completed_at": "2026-04-27T20:57:00Z",
+      "duration_ms": 72000,
+      "summary": [
+        "Created PasswordService with HasPasswordAsync, VerifyAsync (CryptographicOperations.FixedTimeEquals), SetAsync.",
+        "Created PasswordServiceTests with 6 tests covering all ACs.",
+        "43/43 Infrastructure.Tests pass, 0 warnings, Release build clean."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Auth/PasswordService.cs",
+          "tests/VideoIndexer.Infrastructure.Tests/Auth/PasswordServiceTests.cs"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 43,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T20:57:00Z",
+          "note": "PasswordService.VerifyAsync uses CryptographicOperations.FixedTimeEquals to prevent timing side-channels. Both hashes are always 64 hex chars so length equality is guaranteed by the hasher contract; no need to pad."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T20:57:00Z",
+          "note": "No observations — code in the touched files is clean and consistent."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-27T20:59:45Z",
+      "completed_at": "2026-04-27T21:00:21Z",
+      "duration_ms": 36000,
+      "summary": [
+        "All 4 acceptance criteria verified against implementation and test suite.",
+        "43/43 tests pass (Infrastructure.Tests). Release build clean: 0 warnings, 0 errors.",
+        "AC-1: SetAsync writes 'app_password_hash' key with Sha256FixedSaltPasswordHasher.Hash('hunter2') value, confirmed by SetAsync_WritesAppPasswordHash_WithCorrectHash.",
+        "AC-2: CryptographicOperations.FixedTimeEquals confirmed in PasswordService.cs via code inspection; behavioral coverage via VerifyAsync_CorrectPassword_ReturnsTrue and VerifyAsync_WrongPassword_ReturnsFalse.",
+        "AC-3: VerifyAsync returns false without throwing when no stored row — confirmed by VerifyAsync_NoStoredHash_ReturnsFalseWithoutThrowing.",
+        "AC-4: 43/43 tests pass under dotnet test."
+      ],
+      "metrics": {
+        "test_coverage": "6 new tests for WP-008; all 4 ACs covered",
+        "tests_passed": 43,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T21:00:21Z",
+          "note": "CryptographicOperations.FixedTimeEquals requires equal-length byte arrays to guarantee constant time. Both hashes are always produced by Sha256FixedSaltPasswordHasher (64 hex chars), so equal length is guaranteed by the hasher contract. If stored hash is ever persisted from an external source with a different length, FixedTimeEquals would short-circuit early. Low risk for current design; worth noting for the security auditor."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-04-27T21:00:21Z",
+          "note": "No test for empty string input to VerifyAsync or SetAsync. Implementation handles it correctly (hashes empty string), but the path is untested."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-27T21:03:28Z",
+      "completed_at": "2026-04-27T21:04:43Z",
+      "duration_ms": 75000,
+      "summary": [
+        "Reviewed PasswordService.cs, Sha256FixedSaltPasswordHasher.cs, and test file. 0 Critical, 0 High. 1 Medium: SHA-256+fixed salt is a weak KDF (documented and accepted for local desktop threat model; IPasswordHasher upgrade path available). 1 Low: IPasswordHasher.Verify exposes non-constant-time comparison API (bypassed correctly by PasswordService). CryptographicOperations.FixedTimeEquals usage confirmed correct. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-04-27T21:04:43Z",
+          "note": "MEDIUM | A02 — Cryptographic Failures | File: src/VideoIndexer.Infrastructure/Auth/Sha256FixedSaltPasswordHasher.cs, lines 1-43. SHA-256 with a fixed compile-time application salt ('spdb_42') is not a password KDF. SHA-256 can be computed at billions of hashes/second on commodity hardware; the fixed salt is extractable from the compiled binary, enabling offline attacks with precomputed tables once the database file is obtained. Developer docstring explicitly acknowledges this trade-off ('local, single-user desktop application with no network-exposed authentication surface — practical risk is low'). The IPasswordHasher interface provides a clean upgrade path to Argon2id/bcrypt/PBKDF2 without caller changes. Recommendation: when attack-surface tolerance permits, replace with PBKDF2 (System.Security.Cryptography.Rfc2898DeriveBytes, SHA-256, 600_000 iterations + per-hash random salt) or Argon2id via a NuGet package. Does not block approval for current threat model."
+        },
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-04-27T21:04:43Z",
+          "note": "LOW | A04 — Insecure Design | File: src/VideoIndexer.Infrastructure/Auth/Sha256FixedSaltPasswordHasher.cs, line 40 (Verify method). IPasswordHasher.Verify uses string.Equals(OrdinalIgnoreCase) — a non-constant-time comparison. PasswordService.VerifyAsync correctly bypasses this method and uses CryptographicOperations.FixedTimeEquals directly. However, the timing-vulnerable Verify method remains on the public API surface. Future callers invoking IPasswordHasher.Verify directly would unknowingly introduce a timing side-channel. Recommendation: mark Sha256FixedSaltPasswordHasher.Verify as using a non-CT comparison in its docstring, or replace string.Equals with a FixedTimeEquals call on the encoded bytes."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T21:04:43Z",
+          "note": "INFO | A09 — Security Logging | File: src/VideoIndexer.Infrastructure/Auth/PasswordService.cs. No audit trail for password set or verification events. Adding ILogger calls (at Debug/Information level) for SetAsync and a Warning-level log for VerifyAsync failure would aid incident diagnosis without leaking sensitive data. Does not block approval."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-27T21:09:26Z",
+      "completed_at": "2026-04-27T21:10:58Z",
+      "duration_ms": 92000,
+      "summary": [
+        "PASS with Fix-Forward. PasswordService is well-designed — VerifyAsync correctly uses CryptographicOperations.FixedTimeEquals for constant-time comparison, all 4 ACs met.",
+        "Fix-Forward applied: added docstring warning to Sha256FixedSaltPasswordHasher.Verify to flag its non-constant-time comparison and guide future callers away from using it in security-sensitive paths.",
+        "No blocking issues. Architecture (IPasswordHasher abstraction provides clean upgrade path), maintainability, and best practices all meet standards."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Auth/Sha256FixedSaltPasswordHasher.cs"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 43,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "medium",
+          "timestamp": "2026-04-27T21:10:58Z",
+          "note": "Fix-Forward: Sha256FixedSaltPasswordHasher.Verify used non-constant-time string.Equals and had no docstring warning. Added a <remarks> block explicitly noting (1) the method is not constant-time, (2) callers with timing side-channel requirements should use Hash() + CryptographicOperations.FixedTimeEquals directly, and (3) PasswordService already does this — do not call Verify from security-sensitive paths. This prevents future callers from accidentally introducing a timing side-channel by calling IPasswordHasher.Verify directly."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-27T21:10:58Z",
+          "note": "[documentation-forward] IPasswordHasher interface should document whether implementors are required to make Verify constant-time. Currently the contract is silent on this; the Security Auditor noted the default implementation is NOT constant-time. Adding a <remarks> note to the interface's Verify method that 'Implementations are not required to use constant-time comparison — callers with timing side-channel requirements must hash the candidate themselves and compare via CryptographicOperations.FixedTimeEquals' would prevent misuse by future consumers of the abstraction."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T21:10:58Z",
+          "note": "PasswordService.VerifyAsync correctly encodes both hashes as UTF-8 bytes before passing to FixedTimeEquals. Both outputs of Hash() are always 64-char lowercase hex strings (256-bit SHA-256), so the byte arrays are always equal length. The length-equality precondition for FixedTimeEquals to guarantee constant-time is met by the hasher contract."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-27T21:13:44Z",
+      "completed_at": "2026-04-27T21:14:25Z",
+      "duration_ms": 41000,
+      "summary": [
+        "Added <remarks> block to IPasswordHasher.Verify documenting that implementations are not required to be constant-time, and directing callers with timing side-channel requirements to use Hash() + CryptographicOperations.FixedTimeEquals directly (or PasswordService.VerifyAsync) — addresses the documentation-forward from code review.",
+        "README.md required no changes."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Core/Abstractions/IPasswordHasher.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T21:14:25Z",
+          "note": "The documentation-forward was fully addressed. The <remarks> block on IPasswordHasher.Verify explicitly states implementations are not required to be constant-time, warns callers of the timing risk, and points to PasswordService.VerifyAsync as the safe entry point."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T21:14:25Z",
+          "note": "README.md required no changes for WP-008 — no user-facing configuration, setup, or architecture sections were affected."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-06T09:28:49Z",
+  "last_updated": "2026-05-06T09:28:49Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-27T20:57:00Z",
+      "notes": [
+        "PasswordService: HasPasswordAsync, VerifyAsync (FixedTimeEquals), SetAsync; delegates hashing to IPasswordHasher.",
+        "6 new tests in VideoIndexer.Infrastructure.Tests/Auth/PasswordServiceTests.cs; 43/43 total pass, 0 warnings.",
+        "No DI registration yet — deferred to WP-016."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-04-27T21:00:21Z",
+      "notes": [
+        "WP-008 QA PASS. All 4 ACs verified, 43/43 tests pass, release build clean.",
+        "FixedTimeEquals usage is correct; length equality guaranteed by hasher contract. Flagged for security auditor awareness.",
+        "PasswordService is ready for security audit review."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-27T21:04:43Z",
+      "notes": [
+        "WP-008 security-audit PASS. 0 Critical, 0 High. 1 Medium (SHA-256+fixed salt weak KDF — accepted by design, upgrade path exists via IPasswordHasher). 1 Low (IPasswordHasher.Verify non-constant-time API — bypassed correctly in PasswordService but exposes risky API surface). 1 Info (no auth event logging). FixedTimeEquals usage in PasswordService.VerifyAsync is correct and length-equality is guaranteed by hasher contract. Ready for code-review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-27T21:10:58Z",
+      "notes": [
+        "WP-008 code-review PASS. Fix-Forward applied: added non-CT warning docstring to Sha256FixedSaltPasswordHasher.Verify. Documentation-forward: IPasswordHasher.Verify contract should document CT-time expectations. All 4 ACs met. Ready for documentation."
+      ]
+    }
+  ]
+}

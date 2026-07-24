@@ -1,0 +1,274 @@
+{
+  "work_package_id": "WP-011",
+  "work_package_file": "work/WP-011.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001",
+    "WP-003"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "TagEditorViewModel.SaveCommand clamps Weight to [-10, 10] before emitting CloseRequested<Tag?>.",
+      "met": true
+    },
+    {
+      "criterion": "Parent cycle disables SaveCommand and displays inline error.",
+      "met": true
+    },
+    {
+      "criterion": "Grant cycle displays inline error; grant not added to collection.",
+      "met": true
+    },
+    {
+      "criterion": "Delete button shows impact counts in confirmation dialog before executing.",
+      "met": true
+    },
+    {
+      "criterion": "dotnet build produces 0 errors, 0 warnings.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-17T21:16:13Z",
+      "completed_at": "2026-05-17T21:26:23Z",
+      "duration_ms": 610000,
+      "summary": [
+        "Created ITagEditorService in Core/Abstractions with ShowAsync(Tag? existingTag) returning Task<Tag?>.",
+        "Created TagGrantRowViewModel with GrantedTag (Tag) and RemoveCommand (IRelayCommand).",
+        "Created TagEditorViewModel: ObservableProperty fields for all tag attributes; AvailableTags/AvailableCategories from ITagsManager (excluding self / Most Used); ObservableCollection<TagGrantRowViewModel> Grants; IsBusy, ParentError, GrantError, DeleteImpact observable properties.",
+        "SaveCommand CanExecute: !_hasCycleError && !string.IsNullOrWhiteSpace(Name). SaveAsync clamps weight via Math.Clamp, creates/updates tag, reconciles grants.",
+        "CycleDetection: OnSelectedParentTagChanged calls ITagsManager.WouldCreateParentCycle; AddGrant calls WouldCreateGrantCycle. Inline error messages on violation.",
+        "DeleteCommand: calls GetDeleteImpactAsync, stores result in DeleteImpact (shows confirmation panel). ConfirmDeleteCommand: calls DeleteTagAsync, fires CloseRequested(null). CancelDeleteCommand: clears DeleteImpact.",
+        "Created TagEditorView.axaml with correct Avalonia 11 compiled bindings (x:DataType=models:Tag, models:TagCategory, vm:TagGrantRowViewModel). NumericUpDown + IntDecimalConverter for Weight/SortingWeight.",
+        "Created AvaloniaTagEditorService: loads grants from ITagsRepository.GetAllGrantsAsync(), resolves to Tag objects, constructs TagEditorViewModel, shows modal Window.",
+        "Registered ITagEditorService singleton in Program.cs section 5.75 using factory lambda.",
+        "Build: 0 errors, 0 warnings. 685 tests pass, 6 skipped."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Core/Abstractions/ITagEditorService.cs",
+          "src/VideoIndexer.App/ViewModels/TagGrantRowViewModel.cs",
+          "src/VideoIndexer.App/ViewModels/TagEditorViewModel.cs",
+          "src/VideoIndexer.App/Views/TagEditorView.axaml",
+          "src/VideoIndexer.App/Views/TagEditorView.axaml.cs",
+          "src/VideoIndexer.App/Services/AvaloniaTagEditorService.cs",
+          "src/VideoIndexer.App/Program.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-05-17T21:26:23Z",
+          "note": "TagEditorViewModel.cs: SaveAsync calls UpdateTagAsync/CreateTagAsync then individually calls RemoveGrantAsync/AddGrantAsync per changed edge. These operations are not wrapped in a transaction — a failure partway through leaves the tag updated but grants partially reconciled. A higher-level transaction or a repository method for batch grant reconciliation would be safer."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-17T21:26:23Z",
+          "note": "TagEditorViewModel.cs: _originalGrantedTagIds is captured at construction time. If the user's tag-editing session spans a DataChanged event from another mutation (unlikely but possible), the original grant snapshot may be stale. Refreshing on dialog open would be safer."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-17T21:26:23Z",
+          "note": "TagEditorViewModel.cs: SaveAsync does not reset IsBusy = false on success before firing CloseRequested (it only resets it in the catch block). If CloseRequested doesn't close the dialog (edge case), IsBusy stays true. Consider setting IsBusy = false before the fire-and-forget event."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-17T21:26:23Z",
+          "note": "TagEditorView.axaml: ComboBox for SelectedParentTag shows AvailableTags but has no explicit 'None' option to clear to root-level once a parent is selected. The PlaceholderText appears only when nothing is selected. Users have no UI way to change an existing tag back to root-level unless ComboBox supports clearing to null via keyboard. Recommend adding a '— None —' sentinel item."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-17T21:41:15Z",
+      "completed_at": "2026-05-17T21:42:20Z",
+      "duration_ms": 65000,
+      "summary": [
+        "All 5 acceptance criteria verified and met.",
+        "AC1: SaveAsync clamps weight via Math.Clamp(Weight, TagConstants.MinWeight=-10, TagConstants.MaxWeight=10) before building the Tag record and before CloseRequested fires.",
+        "AC2: OnSelectedParentTagChanged calls WouldCreateParentCycle; sets _hasCycleError=true and ParentError message; calls SaveCommand.NotifyCanExecuteChanged(). CanSave() checks !_hasCycleError. Verified in source.",
+        "AC3: AddGrant() calls WouldCreateGrantCycle when TagId != 0; sets GrantError message and returns without appending to Grants collection. Duplicate guard also present.",
+        "AC4: DeleteCommand (CanDelete: IsExistingTag && DeleteImpact==null) fetches GetDeleteImpactAsync and sets DeleteImpact. ConfirmDeleteCommand (CanConfirmDelete: DeleteImpact!=null) only enabled after impact is shown.",
+        "AC5: Full solution build confirmed 0 errors, 0 warnings. Regression: 288 App.Tests passed, 0 failed."
+      ],
+      "metrics": {
+        "tests_passed": 288,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "coverage-gap",
+          "priority": "medium",
+          "timestamp": "2026-05-17T21:42:20Z",
+          "note": "No unit tests exist for TagEditorViewModel. FakeTagsManager is available in TestHelpers but unused here. A future WP should add tests covering: (a) SaveAsync clamps Weight=15 to 10 and Weight=-15 to -10; (b) CanSave returns false when _hasCycleError=true; (c) AddGrant with cycle returns early and sets GrantError; (d) DeleteAsync sets DeleteImpact; (e) ConfirmDeleteAsync fires CloseRequested(null)."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-17T21:42:20Z",
+          "note": "TagEditorViewModel.SaveAsync: IsBusy is reset to false only in the catch block, not on the success path. If CloseRequested fires but the dialog remains open (edge case), IsBusy stays true indefinitely, preventing further saves. Developer already noted this. Consider setting IsBusy=false before invoking CloseRequested."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-17T21:42:20Z",
+          "note": "TagEditorView.axaml (from developer note): ComboBox for SelectedParentTag has no explicit '\\u2014 None \\u2014' sentinel item. Users cannot clear an existing parent back to null via the UI combo box. This prevents changing a child tag to a root tag. Recommend adding a null-sentinel option before ship."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-17T21:55:13Z",
+      "completed_at": "2026-05-17T21:56:44Z",
+      "duration_ms": 91000,
+      "summary": [
+        "PASS — WP-011 delivers a well-structured Tag Editor ViewModel and dialog service.",
+        "ITagEditorService interface is clean: ShowAsync(Tag?) returns Task<Tag?> with honest CancellationToken-not-observed documentation.",
+        "TagEditorViewModel: correct use of CommunityToolkit.Mvvm partial properties and RelayCommand CanExecute guards. CanSave = !_hasCycleError && !IsNullOrWhiteSpace(Name) is correct.",
+        "Cycle detection: parent cycle check skipped for new tags (TagId==0); grant cycle check also skipped for new tags — both are correct since new tags are not in the graph yet.",
+        "Weight clamping applied before building the Tag record. Grant reconciliation via Except() is elegant and correct.",
+        "AvaloniaTagEditorService: event handler subscribed then unsubscribed in finally — no memory leak.",
+        "Applied Fix-Forward: IsBusy=false added to success path before CloseRequested fires (was only in catch path).",
+        "Known open item: parent ComboBox lacks null-sentinel to clear back to root-level — must be addressed before M7 ships."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Core/Abstractions/ITagEditorService.cs",
+          "src/VideoIndexer.App/ViewModels/TagGrantRowViewModel.cs",
+          "src/VideoIndexer.App/ViewModels/TagEditorViewModel.cs",
+          "src/VideoIndexer.App/Views/TagEditorView.axaml",
+          "src/VideoIndexer.App/Views/TagEditorView.axaml.cs",
+          "src/VideoIndexer.App/Services/AvaloniaTagEditorService.cs",
+          "src/VideoIndexer.App/Program.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-17T21:56:44Z",
+          "note": "TagEditorViewModel.SaveAsync: IsBusy was only reset in the catch block, not on the success path. Applied Fix-Forward: moved IsBusy=false to immediately before CloseRequested fires on the success path. This ensures IsBusy is false if the dialog stays open after the event (e.g., the close handler throws or is not wired). Non-behavioral for the normal close path. Build verified: 0 errors, 0 warnings."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-17T21:56:44Z",
+          "note": "AvaloniaTagEditorService: Correctly unsubscribes viewModel.CloseRequested in a finally block after ShowDialog. This is the correct pattern for modal dialog lifetime management — no memory leak risk here."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "high",
+          "timestamp": "2026-05-17T21:56:44Z",
+          "note": "[documentation-forward] api-surface.md is missing ITagEditorService (new Core interface in Core/Abstractions). Add the interface signature and ShowAsync method with parameter semantics. Also note the CancellationToken-not-observed contract documented in the XML doc."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-17T21:56:44Z",
+          "note": "TagEditorView.axaml: SelectedParentTag ComboBox has no '— None —' sentinel item to clear a tag back to root-level once a parent has been selected. Users cannot change a child tag to a root tag via the UI. Developer and QA both flagged this. Must be addressed before M7 ships."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-17T22:05:22Z",
+      "completed_at": "2026-05-17T22:08:44Z",
+      "duration_ms": 202000,
+      "summary": [
+        "Documentation updated for TagEditorViewModel (WP-011).",
+        "api-surface.md: Added ITagEditorService and AvaloniaTagEditorService (new Core interface + App service). Added TagGrantRowViewModel (row VM for grant edges). Added TagEditorViewModel with full public API including all observable properties, events, and commands; noted parent null-sentinel known gap.",
+        "file-tree.md: Added 5 new file entries: ITagEditorService.cs (Core/Abstractions), TagGrantRowViewModel.cs + TagEditorViewModel.cs (App/ViewModels), TagEditorView.axaml/.cs (App/Views), ITagEditorService.cs + AvaloniaTagEditorService.cs (App/Services).",
+        "constraints.md: Added TagEditorViewModel test-backlog note (5 recommended test cases) and must-fix-before-M7-ships note about SelectedParentTag ComboBox missing null-sentinel item.",
+        "Both documentation-forward items from code-review pipeline addressed (ITagEditorService in api-surface.md, and all new files in file-tree.md)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "docs/agents/project-manifest/api-surface.md",
+          "docs/agents/project-manifest/file-tree.md",
+          "docs/agents/project-manifest/constraints.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-17T22:08:44Z",
+          "note": "api-surface.md: Added ITagEditorService and AvaloniaTagEditorService sections with ShowAsync signature and CancellationToken-not-observed contract. Added TagGrantRowViewModel and TagEditorViewModel sections with full public API, constructor, commands, events, and parent-null-sentinel known gap note."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-17T22:08:44Z",
+          "note": "file-tree.md: Added ITagEditorService.cs to Core/Abstractions description; added TagGrantRowViewModel.cs and TagEditorViewModel.cs to App/ViewModels; added TagEditorView.axaml/.cs to App/Views; added ITagEditorService.cs and AvaloniaTagEditorService.cs to App/Services."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-17T22:08:44Z",
+          "note": "constraints.md: Added TagEditorViewModel test-backlog note with 5 recommended test cases. Added must-fix-before-M7-ships note about TagEditorView SelectedParentTag ComboBox null-sentinel gap."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-17T22:08:44Z",
+  "last_updated": "2026-05-17T22:08:44Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-17T21:26:23Z",
+      "notes": [
+        "ITagEditorService created in Core/Abstractions — ShowAsync(Tag? existingTag) returns Tag? (persisted on save, null on cancel/delete).",
+        "TagGrantRowViewModel: Tag GrantedTag + IRelayCommand RemoveCommand — simple row model.",
+        "TagEditorViewModel: ObservableProperty Name/Abbreviation/Description/Weight/SortingWeight/Highlight/SelectedParentTag/SelectedCategory/SelectedGrantTag/DeleteImpact/IsBusy; ObservableCollection<TagGrantRowViewModel> Grants; AvailableTags/AvailableCategories read-only lists from ITagsManager.",
+        "Cycle detection: OnSelectedParentTagChanged calls WouldCreateParentCycle; AddGrant calls WouldCreateGrantCycle. Both set inline error properties and/or prevent the action.",
+        "Weight clamping: Math.Clamp(Weight, TagConstants.MinWeight, TagConstants.MaxWeight) in SaveAsync.",
+        "Delete flow: DeleteCommand fetches impact via GetDeleteImpactAsync, sets DeleteImpact property. ConfirmDeleteCommand calls DeleteTagAsync, fires CloseRequested(null).",
+        "Save flow: builds Tag record, calls CreateTagAsync or UpdateTagAsync, reconciles grants (AddGrantAsync/RemoveGrantAsync), fires CloseRequested(savedTag).",
+        "TagEditorView.axaml: compiled bindings with correct x:DataType (models:Tag, models:TagCategory, vm:TagGrantRowViewModel). Uses StringConverters.IsNotNullOrEmpty for error visibility, ObjectConverters.IsNull/IsNotNull for delete panel.",
+        "AvaloniaTagEditorService: loads existing grants from ITagsRepository.GetAllGrantsAsync(), resolves Tag objects from ITagsManager.Tags, constructs TagEditorViewModel, shows Window dialog.",
+        "Program.cs: ITagEditorService registered as singleton factory in section 5.75 (after ownerFactory is set up).",
+        "Build: 0 errors, 0 warnings. 685 tests pass, 6 skipped."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-17T21:42:20Z",
+      "notes": [
+        "WP-011 PASS. All 5 AC verified by code review. Build: 0 errors, 0 warnings. Tests: 288 App.Tests passed, 0 failed.",
+        "AC1: Math.Clamp(Weight, TagConstants.MinWeight, TagConstants.MaxWeight) called in SaveAsync before building tagToSave.",
+        "AC2: OnSelectedParentTagChanged sets _hasCycleError and ParentError, calls SaveCommand.NotifyCanExecuteChanged(); CanSave() returns !_hasCycleError && !IsNullOrWhiteSpace(Name).",
+        "AC3: AddGrant() checks WouldCreateGrantCycle, sets GrantError and returns early without adding to Grants collection.",
+        "AC4: DeleteCommand calls GetDeleteImpactAsync + sets DeleteImpact; ConfirmDeleteCommand guarded by CanConfirmDelete = DeleteImpact is not null.",
+        "UI gap flagged: no way to clear parent back to null via the ComboBox — should be addressed before M7 ships."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-17T21:56:44Z",
+      "notes": [
+        "WP-011 code review PASS. Clean MVVM implementation with correct cycle detection, weight clamping, and delete-impact preview flow. AvaloniaTagEditorService correctly handles dialog lifetime and event unsubscription. Fix-Forward applied: IsBusy reset before CloseRequested on success path. One documentation-forward (ITagEditorService missing from api-surface.md). UI gap noted: parent ComboBox has no null-sentinel option (must be addressed before M7 ships).\""
+      ]
+    }
+  ]
+}

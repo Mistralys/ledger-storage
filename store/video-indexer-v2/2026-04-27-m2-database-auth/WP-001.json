@@ -1,0 +1,375 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "DatabaseOptions and DatabaseConnectionOptions are sealed records with init-only properties and full nullable annotations.",
+      "met": true
+    },
+    {
+      "criterion": "Reading an M1-shaped appsettings.json (without Database) produces a non-null AppOptions.Database equal to new DatabaseOptions().",
+      "met": true
+    },
+    {
+      "criterion": "Writing then reading an AppOptions that contains one populated connection preserves every field exactly, including ActiveConnectionId.",
+      "met": true
+    },
+    {
+      "criterion": "dotnet test passes including the new test class with at least three test cases covering default-when-missing, round-trip, and active-id round-trip.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-27T19:46:21Z",
+      "completed_at": "2026-04-27T19:56:07Z",
+      "duration_ms": 586000,
+      "summary": [
+        "Added DatabaseConnectionOptions and DatabaseOptions sealed records to VideoIndexer.Core/Options.",
+        "Extended AppOptions with a Database property (default: new DatabaseOptions()).",
+        "Added empty Database section to Assets/appsettings.json.",
+        "Created DatabaseOptionsTests.cs with three test cases: default-when-missing, full round-trip, and active-id round-trip.",
+        "dotnet test: 23 passed, 0 failed (3 new + 20 pre-existing)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Core/Options/DatabaseConnectionOptions.cs",
+          "src/VideoIndexer.Core/Options/DatabaseOptions.cs",
+          "src/VideoIndexer.Core/Options/AppOptions.cs",
+          "src/VideoIndexer.App/Assets/appsettings.json",
+          "tests/VideoIndexer.Tests/DatabaseOptionsTests.cs"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 23,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T19:56:07Z",
+          "note": "FakeAppPaths and TempDir helpers are duplicated across JsonSettingsServiceTests.cs and DatabaseOptionsTests.cs. As the test suite grows, consider extracting these to a shared TestInfrastructure static class or a separate file in the test project to reduce duplication."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-27T19:56:07Z",
+          "note": "DatabaseConnectionOptions.Id defaults to Guid.NewGuid() in the property initialiser. This means two `new DatabaseConnectionOptions()` instances will never be record-equal on Id, which is intentional but worth documenting for future equality-based tests. Consider adding a brief XML doc note."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-27T19:57:53Z",
+      "completed_at": "2026-04-27T19:59:57Z",
+      "duration_ms": 124000,
+      "summary": [
+        "Build: Clean Release compile — VideoIndexer.Core, VideoIndexer.Infrastructure, VideoIndexer.Tests, VideoIndexer.Infrastructure.Tests all succeeded with 0 errors.",
+        "AC-1: DatabaseConnectionOptions and DatabaseOptions are both sealed records with init-only properties and correct nullable annotations (string?, Guid?, IReadOnlyList<> non-nullable with Array.Empty default). PASS.",
+        "AC-2: Database_DefaultWhenMissing_ReturnsEmptyDatabaseOptions test verified M1-shaped settings file (no Database key) produces AppOptions.Database == new DatabaseOptions(). PASS.",
+        "AC-3: Database_RoundTrip_PreservesAllConnectionFields and Database_ActiveConnectionId_RoundTripPreservesValue both pass — all fields including ActiveConnectionId survive save/reload cycle. PASS.",
+        "AC-4: dotnet test VideoIndexer.Tests — 23/23 passed (3 new + 20 pre-existing). dotnet test VideoIndexer.Infrastructure.Tests — 21/21 passed. Zero regressions. PASS."
+      ],
+      "metrics": {
+        "test_coverage": "3 new test cases covering all AC scenarios",
+        "tests_passed": 44,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "edge-case",
+          "priority": "medium",
+          "timestamp": "2026-04-27T19:59:57Z",
+          "note": "Edge case — explicit null Connections in JSON: STJ will override the Array.Empty<DatabaseConnectionOptions>() property initializer if JSON contains \"Connections\": null, producing a null reference at runtime despite the non-nullable type annotation. This won't occur via the normal save path (SaveAsync always serializes the list properly), but a manually edited settings file could trigger it. Recommend the Reviewer consider adding a [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] or a null-coalescing guard on read. Not a blocker for this WP."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T19:59:57Z",
+          "note": "FakeAppPaths and TempDir are duplicated between JsonSettingsServiceTests.cs and DatabaseOptionsTests.cs (noted by Developer too). As the test suite grows this will create maintenance drag. Recommend extracting to a shared TestInfrastructure class in the next refactoring pass."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "FAIL",
+      "started_at": "2026-04-27T20:01:23Z",
+      "completed_at": "2026-04-27T20:04:40Z",
+      "duration_ms": 197000,
+      "summary": [
+        "Reviewed all five modified files: DatabaseConnectionOptions.cs, DatabaseOptions.cs, AppOptions.cs, appsettings.json, DatabaseOptionsTests.cs.",
+        "DatabaseConnectionOptions: clean sealed record; Id = Guid.NewGuid() default is intentional and appropriate for auto-generating IDs on new connection entries.",
+        "AppOptions.Database = new() follows the established project pattern exactly — consistent with Logging, Appearance, Window, ExternalTools.",
+        "appsettings.json bundled default correctly uses [] (not null) for Connections — the normal save path is safe.",
+        "DatabaseOptionsTests.cs: three well-structured tests cover all AC scenarios. Minor naming inconsistency (TempDir vs TempDirectory from sibling file).",
+        "BLOCKING: DatabaseOptions.Connections is typed IReadOnlyList<DatabaseConnectionOptions> (non-nullable) but System.Text.Json will override the Array.Empty<>() property initializer with null when a JSON file contains '\"Connections\": null'. This violates the non-null type contract and creates a latent NullReferenceException for every future caller. AC-1 marked not-met because the nullable annotation does not accurately reflect runtime behavior."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Core/Options/DatabaseConnectionOptions.cs",
+          "src/VideoIndexer.Core/Options/DatabaseOptions.cs",
+          "src/VideoIndexer.Core/Options/AppOptions.cs",
+          "src/VideoIndexer.App/Assets/appsettings.json",
+          "tests/VideoIndexer.Tests/DatabaseOptionsTests.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "high",
+          "timestamp": "2026-04-27T20:04:40Z",
+          "note": "[BLOCKING] DatabaseOptions.Connections is typed IReadOnlyList<DatabaseConnectionOptions> (non-nullable) but System.Text.Json will set the property to null at runtime when JSON contains \"Connections\": null, defeating the Array.Empty<DatabaseConnectionOptions>() initializer. This violates the non-null contract and produces a latent NullReferenceException for any future caller that uses .Connections without a defensive null check. Two recommended fix options — (A, preferred) change the type annotation to IReadOnlyList<DatabaseConnectionOptions>? to be honest about runtime behaviour, then update callers to use the null-coalescing operator; (B, infrastructure guard) in JsonSettingsService.LoadOrInitialise(), after deserialization apply `options = options with { Database = options.Database with { Connections = options.Database.Connections ?? Array.Empty<DatabaseConnectionOptions>() } }` to normalize null back to empty before returning. Option A is recommended because it corrects the false promise at its source in the model layer."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T20:04:40Z",
+          "note": "DatabaseOptionsTests.cs names its temp-directory helper TempDir; the sibling file JsonSettingsServiceTests.cs uses TempDirectory. Rename TempDir to TempDirectory when reworking to keep the test project consistent."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-27T20:04:40Z",
+          "note": "[documentation-forward] DatabaseConnectionOptions.Id defaults to Guid.NewGuid(). The XML doc on the property (or a class-level summary note) should explicitly state that two instances constructed via new DatabaseConnectionOptions() will never be record-equal due to differing Ids. This prevents future contributors from writing equality-based tests that silently fail."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-04-27T20:04:40Z",
+          "note": "[documentation-forward] DatabaseConnectionOptions.Password stores credentials as plaintext in the user settings file. The existing XML doc comment says 'stored at the user's discretion' but this should also be surfaced in the README or user-facing documentation so end users understand the security trade-off before entering sensitive credentials."
+        }
+      ]
+    },
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-27T20:05:33Z",
+      "completed_at": "2026-04-27T20:06:44Z",
+      "duration_ms": 71000,
+      "summary": [
+        "Changed DatabaseOptions.Connections to IReadOnlyList<DatabaseConnectionOptions>? (nullable) to fix STJ null-override safety issue flagged by Reviewer.",
+        "Renamed TempDir to TempDirectory in DatabaseOptionsTests.cs to match project naming convention.",
+        "Added Database_ConnectionsNull_DoesNotThrow test to cover the explicit null case.",
+        "dotnet test: 24 passed, 0 failed. Release build: zero warnings."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Core/Options/DatabaseOptions.cs",
+          "tests/VideoIndexer.Tests/DatabaseOptionsTests.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T20:06:44Z",
+          "note": "No additional observations — rework was narrowly scoped to the flagged nullable annotation and naming convention."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-27T20:07:13Z",
+      "completed_at": "2026-04-27T20:08:47Z",
+      "duration_ms": 94000,
+      "summary": [
+        "Build: dotnet build src/VideoIndexer.sln -c Release — 0 errors, 0 warnings. Clean compile.",
+        "AC-1 (REWORK VERIFIED): DatabaseConnectionOptions is a sealed record with init-only properties; all string fields are string?, Guid Id is non-nullable with NewGuid() default, int Port=3306, bool UseSsl. DatabaseOptions is a sealed record; ActiveConnectionId is Guid?, Connections is IReadOnlyList<DatabaseConnectionOptions>? (nullable — the blocking code-review issue is resolved). Both type annotations accurately reflect runtime STJ behaviour. PASS.",
+        "AC-2: Database_DefaultWhenMissing_ReturnsEmptyDatabaseOptions — M1-shaped settings file (no Database key) loads to a non-null AppOptions.Database equal to new DatabaseOptions(). PASS.",
+        "AC-3: Database_RoundTrip_PreservesAllConnectionFields and Database_ActiveConnectionId_RoundTripPreservesValue — all connection fields including ActiveConnectionId survive a save/reload cycle. PASS.",
+        "AC-4: DatabaseOptionsTests contains 4 test cases (3 required minimum). All 24/24 in VideoIndexer.Tests pass, 21/21 in VideoIndexer.Infrastructure.Tests pass. Zero regressions. PASS.",
+        "REWORK SCOPE — Previously-failed AC-1 (non-null contract violated by STJ null-override): fixed via nullable annotation IReadOnlyList<DatabaseConnectionOptions>?. Database_ConnectionsNull_DoesNotThrow test confirms null is returned without throwing. TempDir renamed TempDirectory to match project convention. All prior bounce issues resolved."
+      ],
+      "metrics": {
+        "test_coverage": "4 DatabaseOptionsTests cases (default-when-missing, round-trip, active-id round-trip, connections-null)",
+        "tests_passed": 45,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T20:08:47Z",
+          "note": "Connections is now correctly typed as IReadOnlyList<DatabaseConnectionOptions>? — future callers must null-coalesce or null-check before iterating. This is intentional by design (nullable contract is honest), but any UI-layer code that builds on this model should consistently use ?? Array.Empty<DatabaseConnectionOptions>() at the call site. No action needed at this stage."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T20:08:47Z",
+          "note": "FakeAppPaths and TempDirectory helpers remain duplicated between JsonSettingsServiceTests.cs and DatabaseOptionsTests.cs (noted in prior pipelines). No new duplication introduced in this rework; the refactor recommendation carries forward for a future housekeeping pass."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-27T20:09:14Z",
+      "completed_at": "2026-04-27T20:10:25Z",
+      "duration_ms": 71000,
+      "summary": [
+        "Reviewed all five modified files across two rework cycles: DatabaseConnectionOptions.cs, DatabaseOptions.cs, AppOptions.cs, appsettings.json, DatabaseOptionsTests.cs.",
+        "DatabaseConnectionOptions: clean sealed record; all string fields correctly nullable, Guid Id non-nullable with NewGuid() default, int Port=3306, bool UseSsl. No issues.",
+        "DatabaseOptions: prior blocking issue fully resolved — Connections is now IReadOnlyList<DatabaseConnectionOptions>? with Array.Empty<>() initializer providing the safe default for normal paths. Nullable annotation is now honest about STJ runtime behaviour.",
+        "AppOptions: unchanged from M1 pattern — Database = new() is consistent with all sibling options properties (Logging, Appearance, Window, ExternalTools).",
+        "appsettings.json: bundled default correctly uses [] for Connections — safe.",
+        "DatabaseOptionsTests: 4 test cases, all well-structured Arrange/Act/Assert with correct naming convention. TempDir correctly renamed TempDirectory. New Database_ConnectionsNull_DoesNotThrow confirms the nullable contract. FakeAppPaths/TempDirectory duplication is a carry-forward improvement recommendation only.",
+        "No blocking issues. No Fix-Forward changes applied. Two documentation-forward items carried forward for the Documentation agent."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Core/Options/DatabaseConnectionOptions.cs",
+          "src/VideoIndexer.Core/Options/DatabaseOptions.cs",
+          "src/VideoIndexer.Core/Options/AppOptions.cs",
+          "src/VideoIndexer.App/Assets/appsettings.json",
+          "tests/VideoIndexer.Tests/DatabaseOptionsTests.cs"
+        ]
+      },
+      "metrics": {
+        "test_coverage": "4 DatabaseOptionsTests cases (default-when-missing, round-trip, active-id round-trip, connections-null)",
+        "tests_passed": 45,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T20:10:25Z",
+          "note": "FakeAppPaths and TempDirectory helpers are duplicated between JsonSettingsServiceTests.cs and DatabaseOptionsTests.cs. Both Developer and QA flagged this in prior pipelines. Not a blocker — recommend extracting to a shared TestInfrastructure file in a future housekeeping pass as the test suite grows."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-27T20:10:25Z",
+          "note": "[documentation-forward] DatabaseConnectionOptions.Id defaults to Guid.NewGuid(). The XML doc on the property should explicitly state that two instances constructed via new DatabaseConnectionOptions() will never be record-equal due to differing Ids. This prevents future contributors from writing equality-based tests that silently fail."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-04-27T20:10:25Z",
+          "note": "[documentation-forward] DatabaseConnectionOptions.Password stores credentials as plaintext in the user settings file. The existing XML doc says 'stored at the user's discretion' but this trade-off should also be surfaced in the README or user-facing documentation so end users understand the security implications before entering sensitive credentials."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-27T20:18:54Z",
+      "completed_at": "2026-04-27T20:20:08Z",
+      "duration_ms": 74000,
+      "summary": [
+        "Addressed both documentation-forward items from the code-review pipeline.",
+        "DatabaseConnectionOptions.Id: expanded XML doc with a <remarks> block explaining that two default-constructed instances will never be record-equal due to differing generated GUIDs.",
+        "README.md: added the full Database section to the Configuration table (ActiveConnectionId, Connections, and all connection-entry fields) and appended a plaintext-password security notice warning users that Password is stored unencrypted in appsettings.json."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Core/Options/DatabaseConnectionOptions.cs",
+          "README.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T20:20:08Z",
+          "note": "The plaintext-password security notice in README.md is appropriately scoped to this milestone. When a future milestone adds a connection-picker UI or credential store, the notice should be updated or replaced to reflect the new security posture."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T20:20:08Z",
+          "note": "Both documentation-forward items from the code-review pipeline were fully addressed. No unresolved gaps remain for this WP."
+        }
+      ]
+    }
+  ],
+  "rework_counts": {
+    "implementation": 1,
+    "qa": 1,
+    "code-review": 1
+  },
+  "status_changed_at": "2026-05-06T09:28:49Z",
+  "last_updated": "2026-05-06T09:28:49Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-27T19:56:07Z",
+      "notes": [
+        "All four acceptance criteria met and verified by dotnet test.",
+        "DatabaseConnectionOptions: Guid Id (default new Guid), nullable string fields (DisplayName, Host, Database, Username, Password), int Port=3306, bool UseSsl.",
+        "DatabaseOptions: Guid? ActiveConnectionId, IReadOnlyList<DatabaseConnectionOptions> Connections (default Array.Empty).",
+        "AppOptions.Database defaults to new DatabaseOptions() — M1 settings files without the key deserialise cleanly via System.Text.Json property-default fallback.",
+        "appsettings.json updated with empty Database section to keep bundled defaults consistent.",
+        "Test helpers (FakeAppPaths, TempDir) are private inner classes in DatabaseOptionsTests.cs — same pattern as JsonSettingsServiceTests.cs."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-27T19:59:57Z",
+      "notes": [
+        "All 4 AC verified and met. 44 total tests pass (23 VideoIndexer.Tests + 21 VideoIndexer.Infrastructure.Tests), zero failures.",
+        "Implementation is clean: sealed records, init-only, nullable annotations are correct throughout.",
+        "Flag for code-review: IReadOnlyList<DatabaseConnectionOptions> Connections has a non-nullable type but no null-guard against explicit JSON null — consider adding defensive deserialization or a JsonIgnoreCondition."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Developer",
+      "timestamp": "2026-04-27T20:04:40Z",
+      "notes": [
+        "FAIL — one blocking architectural issue must be resolved before progression. DatabaseOptions.Connections is annotated as IReadOnlyList<DatabaseConnectionOptions> (non-nullable) but System.Text.Json overrides the Array.Empty<>() property initializer with null when a settings file contains '\"Connections\": null'. The non-null annotation cannot be honored at runtime, creating a latent NullReferenceException risk for all future callers.",
+        "Recommended fix (option A): change type to IReadOnlyList<DatabaseConnectionOptions>? in DatabaseOptions.cs. Update any callers to use null-coalescing. Re-run dotnet test to confirm no regressions.",
+        "Recommended fix (option B): keep non-nullable annotation but add a null-coalescing normalization step in JsonSettingsService.LoadOrInitialise() after deserialization.",
+        "Minor: rename TempDir to TempDirectory in DatabaseOptionsTests.cs to match project convention.",
+        "All other implementation aspects are clean — only the Connections null-safety issue needs addressing."
+      ]
+    },
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-27T20:06:44Z",
+      "notes": [
+        "Rework addresses: (1) Connections changed to IReadOnlyList<DatabaseConnectionOptions>? to honor STJ null-override semantics; (2) TempDir renamed to TempDirectory in DatabaseOptionsTests.cs to match project convention.",
+        "Added a fourth test Database_ConnectionsNull_DoesNotThrow to confirm the nullable fix prevents NullReferenceException when 'Connections': null appears in the settings file.",
+        "dotnet test: 24 passed, 0 failed. dotnet build -c Release: zero warnings."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-27T20:08:47Z",
+      "notes": [
+        "All 4 ACs met and verified by execution. Rework correctly addresses the code-review blocking issue: Connections is now IReadOnlyList<DatabaseConnectionOptions>? with a test confirming null is safe. Build: 0 errors/warnings. Tests: 45/45 passed.",
+        "Open documentation-forward items from Reviewer (prior code-review pipeline): (1) XML doc on DatabaseConnectionOptions.Id should note that two default-constructed instances will never be record-equal due to differing GUIDs; (2) README/user docs should surface the plaintext password storage trade-off for DatabaseConnectionOptions.Password."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-27T20:10:25Z",
+      "notes": [
+        "WP-001 PASS — all four ACs met and verified across 45 passing tests.",
+        "No blocking issues in this review cycle. Rework correctly resolved the prior Connections nullable annotation concern.",
+        "Two documentation-forward items for the Documentation agent: (1) XML doc on DatabaseConnectionOptions.Id should note that two default-constructed instances will never be record-equal; (2) README/user docs should surface the plaintext password storage trade-off for DatabaseConnectionOptions.Password.",
+        "Low-priority improvement carry-forward: FakeAppPaths and TempDirectory helpers are duplicated between JsonSettingsServiceTests.cs and DatabaseOptionsTests.cs — suggest extracting to shared test infrastructure in a future pass."
+      ]
+    }
+  ]
+}

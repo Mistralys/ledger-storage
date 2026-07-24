@@ -1,0 +1,210 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "Constructor accepts optional `onComplete` parameter without breaking existing single-arg call sites.",
+      "met": true
+    },
+    {
+      "criterion": "`onComplete` is invoked exactly once when `RunProvisioningAsync()` completes successfully.",
+      "met": true
+    },
+    {
+      "criterion": "`onComplete` is NOT invoked when provisioning is cancelled or throws.",
+      "met": true
+    },
+    {
+      "criterion": "Existing `ProvisioningToolsViewModelTests` tests all continue to pass.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-11T07:04:26Z",
+      "completed_at": "2026-05-11T07:05:42Z",
+      "duration_ms": 76000,
+      "summary": [
+        "Added private readonly Action? _onComplete field to ProvisioningToolsViewModel.",
+        "Modified constructor to accept optional Action? onComplete = null parameter — existing single-arg call sites are unaffected.",
+        "Invoked _onComplete?.Invoke() immediately after Stage = \"Complete\" in RunProvisioningAsync(), inside the try block and before the finally, so it is never called on cancel or exception paths.",
+        "All 4 existing ProvisioningToolsViewModelTests tests pass. Build succeeds with 0 warnings and 0 errors."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/ViewModels/ProvisioningToolsViewModel.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-11T07:05:42Z",
+          "note": "ProvisioningToolsViewModel.cs: No observations — code in the touched file is clean, well-documented, and consistent with project conventions."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-11T07:12:57Z",
+      "completed_at": "2026-05-11T07:15:06Z",
+      "duration_ms": 129000,
+      "summary": [
+        "Build: 0 errors, 0 warnings.",
+        "AC-1 PASS: Constructor accepts optional onComplete parameter; all 4 existing single-arg call sites unaffected.",
+        "AC-2 PASS: _onComplete?.Invoke() placed after Stage='Complete' in try block; new test InvokesOnCompleteExactlyOnce confirms callCount==1 on success.",
+        "AC-3 PASS: OperationCanceledException and generic Exception caught in separate catch blocks before the invoke site; new tests for cancel and throw paths confirm callCount==0.",
+        "AC-4 PASS: All 4 existing ProvisioningToolsViewModelTests pass unchanged.",
+        "Added 3 new tests: InvokesOnCompleteExactlyOnce, DoesNotInvokeOnComplete_Cancelled, DoesNotInvokeOnComplete_Throws.",
+        "Full regression: 332 passed, 5 skipped (live/integration), 0 failed across all 3 test projects."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "tests/VideoIndexer.App.Tests/ProvisioningToolsViewModelTests.cs"
+        ]
+      },
+      "metrics": {
+        "test_coverage": "AC-2 and AC-3 callback paths now fully covered",
+        "tests_passed": 7,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-05-11T07:15:06Z",
+          "note": "ProvisioningToolsViewModelTests.cs: The Developer left no tests for the onComplete callback paths. Added 3 targeted tests: InvokesOnCompleteExactlyOnce (success), DoesNotInvokeOnComplete (cancel), DoesNotInvokeOnComplete (throw). All pass."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-11T07:15:06Z",
+          "note": "If the onComplete Action itself throws, the exception propagates unhandled from RunProvisioningAsync. This is caller-side responsibility and not required by AC; noted for Reviewer awareness."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-11T07:15:06Z",
+          "note": "Null-conditional _onComplete?.Invoke() is safe when no callback is provided — confirmed by all 4 original tests constructing without the second argument."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-11T07:29:26Z",
+      "completed_at": "2026-05-11T07:31:17Z",
+      "duration_ms": 111000,
+      "summary": [
+        "WP-001 passes code review. Implementation is minimal, correct, and non-breaking. One Fix-Forward applied: added XML constructor documentation covering parameter semantics, thread affinity of the callback, and the edge-case behaviour when onComplete itself throws (exception caught by existing catch(Exception ex) handler, surfacing as an error state rather than escaping unhandled — contrary to QA's note). All four AC remain met. Build: 0 errors, 0 warnings after edit."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/ViewModels/ProvisioningToolsViewModel.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-11T07:31:17Z",
+          "note": "ProvisioningToolsViewModel.cs constructor: Added full XML documentation comment (summary + provisioner param + onComplete param). Documents that (1) the callback fires once on success, never on cancel/throw; (2) it executes on a ThreadPool thread due to ConfigureAwait(false) — callers must self-dispatch to the UI thread if needed; (3) if the callback throws, its exception is caught by the catch(Exception ex) handler and surfaced via Error, placing the VM in a failed state even though provisioning itself succeeded. Non-behavioral change; QA validation remains intact."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-11T07:31:17Z",
+          "note": "QA handoff note stated the onComplete exception 'escapes RunProvisioningAsync unhandled'. This is inaccurate: the exception is caught by the existing catch(Exception ex) block and written to Error. The real concern is that a throwing callback masks a successful provisioning run with an error state. The new XML doc captures the correct semantics."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-11T07:31:17Z",
+          "note": "Overall: implementation is clean, idiomatic, and well-scoped. The readonly Action? field, optional constructor parameter, and null-conditional invoke pattern are all best-practice C# for this kind of callback extension. No architectural concerns."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-11T07:34:34Z",
+      "completed_at": "2026-05-11T07:37:41Z",
+      "duration_ms": 187000,
+      "summary": [
+        "Added CHANGELOG.md ### Added section documenting the new onComplete callback parameter on ProvisioningToolsViewModel, including thread-affinity callout (ThreadPool thread, callers must dispatch to UI thread) and error-handling semantics (throwing callback lands in catch(Exception ex), surfaces via Error property).",
+        "Updated ShellViewModel.cs class-level remarks transitions list to include the ProvisioningTools → Connecting arc (provisioning succeeded; via AdvanceToConnecting()), which was missing from the existing table.",
+        "Verified ProvisioningToolsViewModel.cs XML docs added by the Reviewer during code-review render correctly: all <see cref>, <see langword>, and <para> tags are well-formed; param documentation covers provisioner (non-null guard) and onComplete (invocation semantics, thread affinity, throw behaviour)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "CHANGELOG.md",
+          "src/VideoIndexer.App/ViewModels/ShellViewModel.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-11T07:37:41Z",
+          "note": "ProvisioningToolsViewModel.cs: XML docs added by the Reviewer are structurally correct and complete. The <param name=\"onComplete\"> block covers all three semantic concerns: invocation timing, thread affinity (ThreadPool due to ConfigureAwait(false)), and throw behaviour (caught by existing catch(Exception ex), surfaces via Error). No rendering issues."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-11T07:37:41Z",
+          "note": "ShellViewModel.cs: The class-level remarks transition table was missing the ProvisioningTools → Connecting arc even though AdvanceToConnecting() was already documented at the method level. Added the missing list item to make the state-machine summary complete."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-11T07:37:41Z",
+          "note": "CHANGELOG.md: No prior ### Added section existed in [Unreleased]. Created the section and placed it above ### Changed per Keep a Changelog convention. Entry documents the new callback, thread-affinity constraint, and error-handling behaviour — addressing the Reviewer's forwarded callout about thread affinity visibility in user-facing documentation."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-11T07:37:41Z",
+  "last_updated": "2026-05-11T07:37:41Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-11T07:05:42Z",
+      "notes": [
+        "Implementation is minimal and focused: one new field, one constructor parameter (optional with default null), one null-conditional invoke after Stage = \"Complete\". No structural changes were made.",
+        "The _onComplete?.Invoke() call is in the try block, after the successful EnsureAsync await and Stage assignment — it will never execute on OperationCanceledException or other exception paths.",
+        "All 4 existing tests pass unchanged. No new tests were added for the callback itself — QA should add coverage for the onComplete invocation count on success, cancel, and throw paths."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-11T07:15:06Z",
+      "notes": [
+        "All 4 AC met. 3 new tests added for the onComplete callback (success, cancel, throw paths). Full regression clean: 332 passed, 5 skipped.",
+        "Minor reviewer note: if onComplete itself throws, the exception will escape RunProvisioningAsync unhandled — caller responsibility, but worth a comment in the code if the API is public-facing."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-11T07:31:17Z",
+      "notes": [
+        "All 4 AC met. Implementation reviewed and approved with one documentation fix applied. Key item for Documentation agent: the constructor now has full XML docs (added during review) — verify they render correctly in the API surface. Note the onComplete thread affinity callout: callback fires on a ThreadPool thread (ConfigureAwait(false)) and callers must self-dispatch to the UI thread if needed. This is worth highlighting in any user-facing documentation."
+      ]
+    }
+  ]
+}

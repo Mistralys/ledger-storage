@@ -1,0 +1,201 @@
+{
+  "work_package_id": "WP-003",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Reviewer",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "AC-3: `OpenFolder` uses `ProcessStartInfo.ArgumentList` (no `Arguments =` string concatenation).",
+      "met": true
+    },
+    {
+      "criterion": "AC-4: `ShowInExplorer` uses `ProcessStartInfo.ArgumentList` with `/select,{filePath}` as a single entry.",
+      "met": true
+    },
+    {
+      "criterion": "AC-3a: `constraints.md` has a new bullet under UI & MVVM section about `ProcessStartInfo.ArgumentList` usage.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-14T20:52:23Z",
+      "completed_at": "2026-05-14T20:54:33Z",
+      "duration_ms": 130000,
+      "summary": [
+        "Rewrote OpenFolder to use ProcessStartInfo.ArgumentList.Add(path) instead of Arguments = path.",
+        "Rewrote ShowInExplorer to use ProcessStartInfo.ArgumentList.Add($\"/select,{filePath}\") as a single entry (avoids explorer.exe token-splitting issue).",
+        "Added bullet to constraints.md under UI & MVVM: 'WindowsFileLauncherService uses ProcessStartInfo.ArgumentList'.",
+        "Build succeeded cleanly. 615/621 tests pass (6 skipped)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/Services/WindowsFileLauncherService.cs",
+          "docs/agents/project-manifest/constraints.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-14T20:54:33Z",
+          "note": "ShowInExplorer uses ArgumentList.Add($\"/select,{filePath}\") as a single entry — the plan explicitly warns against splitting into two entries (/select, and filePath) because explorer.exe treats the ArgumentList as space-separated tokens and cannot parse them separately. The single-entry form is the only correct approach."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-05-14T20:54:33Z",
+          "note": "WindowsFileLauncherService is not unit-tested (Process.Start calls cannot easily be intercepted without an IProcessLauncherService abstraction). The security fix is correct at the call-site level, but a future enhancement could introduce an abstraction layer to enable unit testing of the launch logic."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-14T20:57:41Z",
+      "completed_at": "2026-05-14T20:58:57Z",
+      "duration_ms": 76000,
+      "summary": [
+        "AC-3 confirmed: OpenFolder uses psi.ArgumentList.Add(path) on line 19. grep for 'Arguments =' returns zero matches in the file.",
+        "AC-4 confirmed: ShowInExplorer uses psi.ArgumentList.Add($\"/select,{filePath}\") as a single ArgumentList entry on line 31 — not split into two entries, which would break explorer.exe token parsing.",
+        "AC-3a confirmed: constraints.md UI & MVVM section has the WindowsFileLauncherService ArgumentList bullet with rationale about path-injection risk.",
+        "Build clean (0 errors, 0 warnings). All 613 tests pass (6 live-DB skipped).",
+        "Edge-case analysis: ArgumentList.Add() handles paths with spaces, parentheses, quotes, and other shell-special characters safely via the .NET runtime's built-in Windows argument escaping. The old Arguments-string approach was vulnerable to these cases."
+      ],
+      "metrics": {
+        "tests_passed": 613,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-14T20:58:57Z",
+          "note": "No 'Arguments =' concatenation remains in WindowsFileLauncherService.cs — confirmed by grep with zero matches. The security fix is complete."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-14T20:58:57Z",
+          "note": "Edge-case: paths containing spaces, parentheses, or embedded special characters (e.g., C:\\Users\\John Doe\\file (1).mp4) are now safely handled by ArgumentList's automatic quoting. The previous Arguments-string approach would have split or misrouted such paths."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-05-14T21:03:48Z",
+      "completed_at": "2026-05-14T21:05:24Z",
+      "duration_ms": 96000,
+      "summary": [
+        "Reviewed 2 files (WindowsFileLauncherService.cs, constraints.md). 0 Critical, 0 High, 0 Medium, 1 Low (Process.Start result silently discarded — not exploitable). Security sign-off: PASS. The core A03 argument injection vulnerability has been correctly remediated via ProcessStartInfo.ArgumentList. The ShowInExplorer single-entry interpolation pattern ($\\\"/select,{filePath}\\\") is architecturally sound — this is the required format for explorer.exe's /select switch and the single ArgumentList entry prevents all OS-level argument splitting."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-14T21:05:24Z",
+          "note": "[PASS] All OWASP Top 10 categories reviewed against WindowsFileLauncherService.cs and constraints.md. No Critical or High findings. The A03 (Injection) risk from Arguments= string concatenation is fully remediated by ArgumentList.Add(). The ShowInExplorer single-entry form ($\"/select,{filePath}\") correctly fuses the switch and path into one atomic argument — splitting them would break explorer.exe selection behavior. All other OWASP categories (A01–A02, A04–A10) are not implicated by these changes."
+        },
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-05-14T21:05:24Z",
+          "note": "[Low] A09 — Security Logging: Process.Start() return value is discarded (via `_ = Process.Start(psi)`) in both OpenFolder and ShowInExplorer. If explorer.exe fails to launch (e.g., access denied, or very rare OS-level issue), the failure is silently swallowed — no exception surface, no audit log entry. Not exploitable, but an operational gap. Remediation: wrap in a try/catch or log the null-return case (Process.Start returns null when UseShellExecute=true and the launch succeeds but cannot be tracked). File: src/VideoIndexer.App/Services/WindowsFileLauncherService.cs lines 19, 31."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-14T21:05:50Z",
+      "completed_at": "2026-05-14T21:07:42Z",
+      "duration_ms": 112000,
+      "summary": [
+        "Reviewed WindowsFileLauncherService.cs and constraints.md. No blocking issues found.",
+        "AC-3 confirmed: OpenFolder uses ArgumentList.Add(path) — no Arguments= concatenation.",
+        "AC-4 confirmed: ShowInExplorer uses ArgumentList.Add($\"/select,{filePath}\") as a single entry — correct for explorer.exe token parsing.",
+        "AC-3a confirmed: constraints.md bullet correctly placed in UI & MVVM section, actionable, includes rationale and Do Not Revert directive.",
+        "Code is minimal, idiomatic .NET 10, and consistent with project patterns. No Fix-Forward or architectural concerns."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/Services/WindowsFileLauncherService.cs",
+          "docs/agents/project-manifest/constraints.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-14T21:07:42Z",
+          "note": "UseShellExecute = true combined with ArgumentList is the correct pattern here. PasteArguments.AppendArgument properly escapes each entry into a quoted Arguments string before ShellExecuteEx is called. Paths with spaces are handled safely."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-14T21:07:42Z",
+          "note": "The _ = Process.Start(psi) discard pattern is intentional and avoids CS4014 warnings. The Security Auditor noted the silent-failure risk (Low) — acceptable given this is a UI convenience operation where the user directly observes the outcome."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-14T21:07:42Z",
+          "note": "No observations beyond prior pipeline comments — code is clean, minimal, and consistent with project conventions."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-14T21:07:42Z",
+  "last_updated": "2026-05-14T21:07:42Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-14T20:54:33Z",
+      "notes": [
+        "All three ACs met. Build clean. 615/621 tests pass (6 skipped = live-DB).",
+        "OpenFolder now uses psi.ArgumentList.Add(path) instead of Arguments = path.",
+        "ShowInExplorer now uses psi.ArgumentList.Add($\"/select,{filePath}\") as a SINGLE entry — this is critical; two-entry split would silently break explorer.exe selection.",
+        "constraints.md updated with new bullet in UI & MVVM section."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-05-14T20:58:57Z",
+      "notes": [
+        "All ACs verified. No Arguments= string concatenation remains. ArgumentList correctly used for both OpenFolder and ShowInExplorer. constraints.md updated. 613 tests pass, 0 fail. Security audit warranted given the shell-launch security fix."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-14T21:05:24Z",
+      "notes": [
+        "Security audit complete — PASS. 0 Critical, 0 High findings. The A03 argument injection remediation in WindowsFileLauncherService.cs is correct and complete. One Low observation (Process.Start result discarded, no failure logging) recorded for awareness but does not block. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-05-14T21:07:42Z",
+      "notes": [
+        "Code review PASS. All 3 ACs met and verified. Implementation is clean and correct. No Fix-Forward or blocking issues. WindowsFileLauncherService.cs (34 lines) is well-structured with proper XML docs and idiomatic C#. constraints.md bullet is accurate and actionable. Ready for release engineering or documentation pipeline."
+      ]
+    }
+  ]
+}

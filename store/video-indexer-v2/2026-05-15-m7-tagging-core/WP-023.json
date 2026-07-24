@@ -1,0 +1,222 @@
+{
+  "work_package_id": "WP-023",
+  "work_package_file": "work/WP-023.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-003",
+    "WP-005",
+    "WP-018"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "Existing test call sites that construct LabelCleanerViewModel without optional param compile without change.",
+      "met": true
+    },
+    {
+      "criterion": "RunParse remains synchronous; no async/await introduced to the method signature.",
+      "met": true
+    },
+    {
+      "criterion": "When ITagsManager.IsInitialized==false, _knownTagNames is [] and DetectedTags remains empty.",
+      "met": true
+    },
+    {
+      "criterion": "LabelCleanerView.axaml compiles with compiled bindings for the DetectTags toggle.",
+      "met": true
+    },
+    {
+      "criterion": "dotnet build produces 0 errors, 0 warnings.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-18T14:17:48Z",
+      "completed_at": "2026-05-18T14:21:30Z",
+      "duration_ms": 222000,
+      "summary": [
+        "Added ITagsManager? tagsManager = null optional param to LabelCleanerViewModel full constructor; caches _knownTagNames = tagsManager?.IsInitialized == true ? tagsManager.Tags.Select(t => t.Name).ToArray() : [] at construction.",
+        "Added [ObservableProperty] private bool _detectTags with OnDetectTagsChanged callback triggering RunParse.",
+        "Updated RunParse to include DetectTags in LabelCleanerOptions and pass _knownTagNames to INameParser.Parse; captures result.DetectedTags into _parsedDetectedTags.",
+        "Updated Accept() to use _parsedDetectedTags instead of [] when constructing LabelCleanerResult.",
+        "Updated ToOptions() to include DetectTags = DetectTags.",
+        "Added Detect Tags CheckBox to LabelCleanerView.axaml options section (compiled binding to DetectTags).",
+        "Updated MovieEditorViewModel.CleanLabel call site to pass _tagsManager to LabelCleanerViewModel constructor.",
+        "All tests pass: 756 total (255 + 323 + 178 across three test projects). Build: 0 errors, 0 warnings."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/ViewModels/LabelCleanerViewModel.cs",
+          "src/VideoIndexer.App/Views/LabelCleanerView.axaml",
+          "src/VideoIndexer.App/ViewModels/MovieEditorViewModel.cs",
+          "docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 756,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T14:21:30Z",
+          "note": "LabelCleanerViewModel._parsedDetectedTags is a plain field (not [ObservableProperty]) since the UI does not bind to it directly — only Accept() reads it. This is intentional and keeps the class lean."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-05-18T14:21:30Z",
+          "note": "LabelCleanerViewModel caches _knownTagNames once at construction. If ITagsManager.DataChanged fires after the dialog opens (unlikely but possible), the cached list will be stale for the session. A future WP could subscribe to DataChanged and rebuild the cache, but the current approach is consistent with the synchronous RunParse constraint."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-18T14:23:33Z",
+      "completed_at": "2026-05-18T14:24:34Z",
+      "duration_ms": 61000,
+      "summary": [
+        "All 5 acceptance criteria verified. LabelCleanerViewModel constructor has optional ITagsManager? tagsManager param (default null) — existing 5-arg call sites in tests compile unchanged. RunParse() is a private void with no async. _knownTagNames guard (IsInitialized==true ? ... : []) and NameParser guard (knownTagNames.Count > 0) ensure empty DetectedTags when tags not initialized. DetectTags CheckBox with compiled binding to [ObservableProperty] _detectTags confirmed in LabelCleanerView.axaml. Build: 0 errors, 0 warnings. Regression: 756 tests passed, 0 failed."
+      ],
+      "metrics": {
+        "test_coverage": "756/762 runnable (6 pre-existing skips)",
+        "tests_passed": 756,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-18T14:24:34Z",
+          "note": "DetectTags=true with _knownTagNames=[] (e.g. tags not loaded yet): NameParser.DetectTags is gated on knownTagNames.Count > 0, so the toggle being on with an empty list is a safe no-op. DetectedTags correctly stays empty."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-18T14:24:34Z",
+          "note": "tagsManager?.IsInitialized uses null-conditional + null-equality: if tagsManager is null, expression evaluates to (null == true) == false, correctly falling back to []. Null-safety is complete."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T14:24:34Z",
+          "note": "LabelCleanerViewModelTests.cs does not include a test case for the DetectTags=true path with a non-empty knownTagNames list. The NameParser itself has coverage, but a ViewModel-level integration test for DetectTags wiring would strengthen the suite."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-18T14:27:42Z",
+      "completed_at": "2026-05-18T14:29:45Z",
+      "duration_ms": 123000,
+      "summary": [
+        "Reviewed LabelCleanerViewModel.cs, LabelCleanerView.axaml, MovieEditorViewModel.cs CleanLabel call site, and api-surface.md.",
+        "Optional ITagsManager? tagsManager = null appended as last constructor param — backward-compatible with all existing test call sites. _knownTagNames cached at construction with correct null-conditional + IsInitialized guard (null == true is false in C# nullable bool comparison).",
+        "Constructor uses direct backing-field initialization for all options (not property setters) to prevent the partial void OnXxxChanged callbacks from firing redundant parses during construction — correct and deliberate.",
+        "RunParse remains a private void, passes _knownTagNames (string[], which implements IReadOnlyList<string>) to INameParser.Parse. Synchronous constraint fully preserved.",
+        "_parsedDetectedTags is a non-observable private field consumed only by Accept(). ToOptions() correctly includes DetectTags = DetectTags for settings persistence.",
+        "CleanLabel in MovieEditorViewModel now passes _tagsManager to LabelCleanerViewModel. result.DetectedTags from LabelCleanerResult is captured but not yet applied — intentional M7 scope; full tag-application pipeline deferred to a future WP.",
+        "DetectTags CheckBox added consistently alongside existing option checkboxes in LabelCleanerView.axaml; compiled binding against x:DataType=LabelCleanerViewModel is valid."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/ViewModels/LabelCleanerViewModel.cs",
+          "src/VideoIndexer.App/Views/LabelCleanerView.axaml",
+          "src/VideoIndexer.App/ViewModels/MovieEditorViewModel.cs",
+          "docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T14:29:45Z",
+          "note": "No blocking issues found. The optional-parameter pattern for ITagsManager? tagsManager = null is the correct Avalonia/MVVM approach for preserving backward compatibility with existing test call sites while enabling new runtime functionality."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T14:29:45Z",
+          "note": "Constructor direct-field initialization (e.g. _detectTags = initialOptions.DetectTags rather than the property setter) correctly prevents partial void OnDetectTagsChanged from triggering redundant parses during construction — a clean and intentional design."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T14:29:45Z",
+          "note": "_parsedDetectedTags typed as IReadOnlyList<string> private non-observable field is the right choice: no UI binding needed, only consumed by Accept(). Keeping it non-observable avoids spurious PropertyChanged notifications."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-18T14:29:45Z",
+          "note": "[documentation-forward] The 'Detect Tags' CheckBox in LabelCleanerView has no corresponding result row in the dialog's result section. Detected tags are plumbed through LabelCleanerResult.DetectedTags to the caller but are not yet applied to the movie (CleanLabel discards result.DetectedTags). Documentation should note this is intentional M7 scope — tag detection infrastructure is in place; the application of detected tags to the movie entity is deferred to a future WP. Add a note in the relevant constraints.md or api-surface.md entry."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-18T14:31:29Z",
+      "completed_at": "2026-05-18T14:32:22Z",
+      "duration_ms": 53000,
+      "summary": [
+        "WP-023 documentation pass: LabelCleanerViewModel API already updated by implementation agent. Added DetectTags partial-implementation note to api-surface.md LabelCleanerView description (detection occurs, result not yet applied to movie entity). Added matching Open Items entry in constraints.md stating LabelCleanerViewModel.DetectTags is detection-only — MovieEditorViewModel.CleanLabel discards result.DetectedTags until a future WP implements the application step."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "docs/agents/project-manifest/api-surface.md",
+          "docs/agents/project-manifest/constraints.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T14:32:22Z",
+          "note": "The implementation agent had already updated the LabelCleanerViewModel entry with the new constructor signature and DetectTags toggle. WP-023 documentation pass added: (1) a DetectTags partial-implementation note to the api-surface.md LabelCleanerView description clarifying that detection runs but results are not applied to the movie entity; (2) a matching Open Items entry in constraints.md noting this is intentional M7 scope deferral."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-18T14:32:22Z",
+  "last_updated": "2026-05-18T14:32:22Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-18T14:21:30Z",
+      "notes": [
+        "All 5 acceptance criteria met. Tests pass (756/756). DetectTags toggle added to UI and wired through to INameParser.Parse via _knownTagNames cache. MovieEditorViewModel.CleanLabel now passes _tagsManager so tag names are available when the dialog opens."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-18T14:24:34Z",
+      "notes": [
+        "All 5 AC confirmed PASS. optional tagsManager param preserves existing test call sites. RunParse is synchronous. IsInitialized==false guard correctly yields empty _knownTagNames and empty DetectedTags. DetectTags CheckBox is wired via compiled binding. Build 0 errors/warnings, 756 tests passing.\""
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-18T14:29:45Z",
+      "notes": [
+        "All 5 AC met. Implementation is minimal and exactly matches WP scope. No blocking issues. One documentation-forward: the 'Detect Tags' checkbox detects but does not yet display or apply detected tags — document this as intentional M7 scope with application deferred to a future WP."
+      ]
+    }
+  ]
+}

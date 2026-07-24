@@ -1,0 +1,217 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "AppPaths.CoverImagePath(\"abc123\") returns {MovieDataDirectory(\"abc123\")}/cv.cim (OS path separator).",
+      "met": true
+    },
+    {
+      "criterion": "AppPaths.ThumbnailFilePath(\"abc123\", 42L) returns {MovieDataDirectory(\"abc123\")}/42.thb2.",
+      "met": true
+    },
+    {
+      "criterion": "No caller constructs .cim or .thb2 paths manually — all path construction goes through IAppPaths.",
+      "met": true
+    },
+    {
+      "criterion": "Both FakeAppPaths compile without errors; all existing tests pass.",
+      "met": true
+    },
+    {
+      "criterion": "dotnet build -c Release reports zero warnings.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-22T17:33:24Z",
+      "completed_at": "2026-05-22T17:35:44Z",
+      "duration_ms": 140000,
+      "summary": [
+        "Added CoverImagePath(string hash) and ThumbnailFilePath(string hash, long thumbnailId) to IAppPaths interface.",
+        "Implemented both methods in AppPaths using Path.Combine(MovieDataDirectory(hash), ...) — cv.cim suffix for cover, {thumbnailId}.thb2 suffix for thumbnails.",
+        "Updated FakeAppPaths in VideoIndexer.Tests/Fixtures and VideoIndexer.App.Tests/TestHelpers to implement the new interface members.",
+        "Fixed LiveAppPaths in FfmpegProvisionerLiveTests (an undocumented IAppPaths implementation) which also required the two new methods.",
+        "dotnet build -c Release: 0 warnings, 0 errors. All 643 tests (unit + app) pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Core/Abstractions/IAppPaths.cs",
+          "src/VideoIndexer.Infrastructure/AppPaths.cs",
+          "tests/VideoIndexer.Tests/Fixtures/FakeAppPaths.cs",
+          "tests/VideoIndexer.App.Tests/TestHelpers/FakeAppPaths.cs",
+          "tests/VideoIndexer.Infrastructure.Tests/ExternalTools/FfmpegProvisionerLiveTests.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-05-22T17:35:44Z",
+          "note": "FfmpegProvisionerLiveTests.LiveAppPaths (tests/VideoIndexer.Infrastructure.Tests/ExternalTools/FfmpegProvisionerLiveTests.cs) is a third IAppPaths implementation that was not listed in WP-001 scope and is not documented in file-tree.md. Whenever IAppPaths grows, this hidden test double also needs updating. Consider consolidating it with one of the two existing FakeAppPaths, or note it in file-tree.md so it is visible to future agents."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-22T17:35:44Z",
+          "note": "AppPaths.CoverImagePath and ThumbnailFilePath delegate to MovieDataDirectory, which validates the hash via ArgumentException.ThrowIfNullOrWhiteSpace. The two new methods therefore inherit null/empty guard behaviour transitively without repeating it — consistent and intentional, but worth noting for future interface implementors who may not call MovieDataDirectory internally."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-22T18:02:07Z",
+      "completed_at": "2026-05-22T18:23:48Z",
+      "duration_ms": 1301000,
+      "summary": [
+        "All 5 acceptance criteria verified by code inspection and test execution.",
+        "AC1 & AC2 (path shapes): AppPaths.CoverImagePath and ThumbnailFilePath delegate to MovieDataDirectory via Path.Combine — return values match the required {MovieDataDirectory(hash)}/cv.cim and {MovieDataDirectory(hash)}/{id}.thb2 shapes exactly.",
+        "AC3 (no manual paths): grep over src/ and tests/ confirms .cim and .thb2 strings only appear inside IAppPaths implementations; no caller constructs these paths manually.",
+        "AC4 (FakeAppPaths compile): both VideoIndexer.Tests/Fixtures/FakeAppPaths and VideoIndexer.App.Tests/TestHelpers/FakeAppPaths implement the new members and compile cleanly.",
+        "AC5 (Release build): dotnet build -c Release reports 0 warnings and 0 errors across all 6 projects.",
+        "Regression: 643 tests pass (282 unit + 361 app), 0 failures."
+      ],
+      "metrics": {
+        "test_coverage": "643 tests green (unit + app suites)",
+        "tests_passed": 643,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-05-22T18:23:48Z",
+          "note": "No dedicated unit tests exist for AppPaths.CoverImagePath or AppPaths.ThumbnailFilePath. All AC were verified by static code inspection plus the passing build. A future test for AppPaths path shape assertions (e.g. asserting the return value contains 'cv.cim' or '{id}.thb2') would provide regression safety if suffixes ever change."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-22T18:23:48Z",
+          "note": "AppPaths.ThumbnailFilePath does not independently validate thumbnailId (e.g. negative or zero). Input arrives from DB auto-increment IDs so this is acceptable by convention, but worth noting for future implementors."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-22T18:23:48Z",
+          "note": "App.Tests FakeAppPaths uses hardcoded Windows-style paths (C:\\FakeAppData\\...) which are consistent with the existing fake but would fail cross-platform if the test suite were ever ported to Linux/macOS."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-22T18:29:14Z",
+      "completed_at": "2026-05-22T18:30:41Z",
+      "duration_ms": 87000,
+      "summary": [
+        "Code review complete — PASS with one Fix-Forward applied.",
+        "Interface additions (IAppPaths) are minimal, well-documented, and correctly specify the 'not guaranteed to exist' contract.",
+        "AppPaths.cs implementation correctly delegates to MovieDataDirectory via Path.Combine, inheriting null/whitespace validation transitively — clean and DRY.",
+        "VideoIndexer.Tests/Fixtures/FakeAppPaths: delegates to MovieDataDirectory correctly — good pattern.",
+        "VideoIndexer.App.Tests/TestHelpers/FakeAppPaths: Fix-Forward applied — CoverImagePath and ThumbnailFilePath now delegate to MovieDataDirectory via Path.Combine instead of duplicating the full path inline. Non-behavioral change (identical values on Windows), 643/643 tests still pass.",
+        "LiveAppPaths in FfmpegProvisionerLiveTests.cs: correct implementation; flagged as documentation-forward (undocumented third IAppPaths test double)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "tests/VideoIndexer.App.Tests/TestHelpers/FakeAppPaths.cs",
+          "src/VideoIndexer.Core/Abstractions/IAppPaths.cs",
+          "src/VideoIndexer.Infrastructure/AppPaths.cs",
+          "tests/VideoIndexer.Tests/Fixtures/FakeAppPaths.cs",
+          "tests/VideoIndexer.Infrastructure.Tests/ExternalTools/FfmpegProvisionerLiveTests.cs"
+        ]
+      },
+      "metrics": {
+        "test_coverage": "643/643 green (282 unit + 361 app)",
+        "tests_passed": 643,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-22T18:30:41Z",
+          "note": "tests/VideoIndexer.App.Tests/TestHelpers/FakeAppPaths.cs — CoverImagePath and ThumbnailFilePath were hardcoding the full path inline (e.g. `$@\"C:\\FakeAppData\\...\\{hash}\\cv.cim\"`), duplicating the MovieDataDirectory base path. Changed both to delegate via Path.Combine(MovieDataDirectory(hash), ...) — consistent with VideoIndexer.Tests/Fixtures/FakeAppPaths pattern and removes the duplication. Non-behavioral on Windows; 643/643 tests pass."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-22T18:30:41Z",
+          "note": "[documentation-forward] FfmpegProvisionerLiveTests.cs contains a private nested class LiveAppPaths that is a third IAppPaths implementation. It is not listed in file-tree.md or constraints.md. Add an entry to file-tree.md noting its existence and purpose (test-local fixture to prevent writes to real %APPDATA%), and add a note to constraints.md warning that all three IAppPaths implementations (FakeAppPaths x2 + LiveAppPaths) must be updated whenever the interface grows."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-22T18:30:41Z",
+          "note": "The null/whitespace guard in AppPaths.CoverImagePath and ThumbnailFilePath is inherited transitively through MovieDataDirectory — intentional and correct. The IAppPaths XML docs for both methods do not mention the ArgumentException behaviour. This is acceptable since the contract docs focus on path shape; the guard is an implementation detail. No action required."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-22T19:04:04Z",
+      "completed_at": "2026-05-22T19:06:06Z",
+      "duration_ms": 122000,
+      "summary": [
+        "Updated three project manifest documents to reflect the WP-001 IAppPaths extension. (1) api-surface.md: added CoverImagePath(string hash) and ThumbnailFilePath(string hash, long thumbnailId) to the IAppPaths signature block. (2) file-tree.md: added FfmpegProvisionerLiveTests.cs entry to VideoIndexer.Infrastructure.Tests/ExternalTools/ with a note about the private nested LiveAppPaths class (third IAppPaths implementation). (3) constraints.md: added a new bullet under the IAppPaths section warning that all four IAppPaths implementations (AppPaths + FakeAppPaths×2 + LiveAppPaths) must be updated whenever the interface grows. The documentation-forward from the Reviewer has been fully addressed."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "docs/agents/project-manifest/api-surface.md",
+          "docs/agents/project-manifest/file-tree.md",
+          "docs/agents/project-manifest/constraints.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-22T19:06:06Z",
+          "note": "No README or end-user documentation changes were needed — WP-001 is a pure interface extension with no user-visible behaviour change. All documentation updates are confined to the project manifest (developer-facing)."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-22T19:06:06Z",
+  "last_updated": "2026-05-22T19:06:06Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-22T17:35:44Z",
+      "notes": [
+        "WP-001 is complete. IAppPaths now carries CoverImagePath and ThumbnailFilePath; AppPaths and all three known test doubles implement them. QA should verify the two path-shape acceptance criteria with unit tests (the criteria were validated by inspection and build success; no new tests were added because no test file for AppPaths exists yet in the unit suite — QA may wish to add coverage)."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-22T18:23:48Z",
+      "notes": [
+        "WP-001 QA passed. All 5 ACs verified by code inspection and live test execution (643/643 passing). Release build is clean (0 warnings). No regressions. Minor low-priority observations recorded (no dedicated AppPaths unit tests, hardcoded Windows paths in App.Tests FakeAppPaths) — none are blockers. Ready for Security Audit."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-22T18:30:41Z",
+      "notes": [
+        "WP-001 code-review PASS. Fix-Forward applied: App.Tests FakeAppPaths now delegates CoverImagePath/ThumbnailFilePath to MovieDataDirectory via Path.Combine (non-behavioral, 643/643 still green). One documentation-forward recorded: LiveAppPaths (third IAppPaths test double in FfmpegProvisionerLiveTests.cs) needs entries in file-tree.md and constraints.md. All 5 ACs confirmed met."
+      ]
+    }
+  ]
+}

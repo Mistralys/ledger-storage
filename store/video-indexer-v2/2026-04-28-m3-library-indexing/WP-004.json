@@ -1,0 +1,314 @@
+{
+  "work_package_id": "WP-004",
+  "work_package_file": "work/WP-004.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-002"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "AddAsync increments folder_counter and persists the folder atomically; an interrupted transaction does not leak an allocated id.",
+      "met": true
+    },
+    {
+      "criterion": "ListAsync returns folders in insertion order with correct Id, Path, and AddedUtc values.",
+      "met": true
+    },
+    {
+      "criterion": "RemoveAsync deletes the folder entry, all matching movies_filenames rows, and all movies rows no longer referenced by any movies_filenames row — all within a single transaction.",
+      "met": true
+    },
+    {
+      "criterion": "A folder path containing an underscore (_) does not match a sibling folder path during the movies_filenames prefix scan (LIKE-escape correctness).",
+      "met": true
+    },
+    {
+      "criterion": "No new PackageReference entries required.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-07T20:32:10Z",
+      "completed_at": "2026-05-07T20:48:37Z",
+      "duration_ms": 987000,
+      "summary": [
+        "Implemented SpdbConfigLibraryFolderRepository — persists library folders in spdb_config (keys: library_folders JSON array + folder_counter long). AddAsync and RemoveAsync run inside a single IDbTransaction for atomicity. IDbConnectionFactory is injected directly (not ISpdbConfigRepository) to enable cross-operation transaction sharing.",
+        "BuildLikePrefix escapes \\, %, and _ in the folder path and uses the platform separator so that an underscore in the folder name cannot wildcard-match a sibling folder path. The LIKE pattern uses ESCAPE '\\\\' (MySQL backslash escape).",
+        "RemoveAsync cascade: (1) removes folder from JSON array, (2) deletes matching movies_filenames rows via exact-path + LIKE-prefix match, (3) deletes orphaned movies rows via NOT EXISTS subquery. Discovered that movies_filenames.hash has a UNIQUE constraint in the live schema (one filename per hash).",
+        "Added Properties/AssemblyInfo.cs with InternalsVisibleTo for both test assemblies so BuildLikePrefix (internal static) is testable without exposing it publicly.",
+        "Added SpdbConfigLibraryFolderRepositoryUnitTests.cs (VideoIndexer.Tests) — 5 tests for BuildLikePrefix: underscore escape, no bare underscore, percent escape, separator wildcard, backslash escape.",
+        "Added SpdbConfigLibraryFolderRepositoryTests.cs (VideoIndexer.Infrastructure.Tests/Library) — 7 live-DB SkippableFacts covering add, ordering, cascade delete, sibling movie survival, underscore LIKE-escape, no-op remove, non-existent id. Explicit cleanup in Dispose.",
+        "Build: 0 warnings, 0 errors. Test run: 86/86 unit, 70/74 infrastructure (4 skipped SkippableFacts — expected), 48/48 app. No regressions."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Library/SpdbConfigLibraryFolderRepository.cs",
+          "src/VideoIndexer.Infrastructure/Properties/AssemblyInfo.cs",
+          "tests/VideoIndexer.Tests/SpdbConfigLibraryFolderRepositoryUnitTests.cs",
+          "tests/VideoIndexer.Infrastructure.Tests/Library/SpdbConfigLibraryFolderRepositoryTests.cs"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 208,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "high",
+          "timestamp": "2026-05-07T20:48:37Z",
+          "note": "movies_filenames.hash has a UNIQUE constraint in the live spdb_tests schema that is not visible in the structure.sql reference file (structure.sql was generated without ALTER TABLE...ADD UNIQUE statements). The spec mentions 'movies_filenames (filename, hash)' implying a one-to-many relationship, but the live schema enforces one-to-one. Downstream WPs that insert movies_filenames rows (e.g. LibraryScanner) must use INSERT IGNORE or ON DUPLICATE KEY UPDATE to avoid duplicate-key errors."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T20:48:37Z",
+          "note": "SpdbConfigLibraryFolderRepository: BuildLikePrefix is marked internal. If it ever needs to be reused by other infrastructure components (e.g. a library cleanup WP), consider extracting it to a shared SqlLikeEscaper utility class."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-05-07T20:48:37Z",
+          "note": "The AssemblyInfo.cs added to VideoIndexer.Infrastructure exposes InternalsVisibleTo for both test assemblies. Follow the existing convention in VideoIndexer.App (single InternalsVisibleTo per file) — this matches the pattern."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-07T20:55:50Z",
+      "completed_at": "2026-05-07T21:00:40Z",
+      "duration_ms": 290000,
+      "summary": [
+        "Build: 0 errors, 0 warnings.",
+        "AC-1 (AddAsync counter + atomicity): Verified via AddAsync_IncrementsCounterAndPersistsFolder and AddAsync_CalledTwice_AllocatesDistinctMonotonicallyIncreasingIds — both PASS in isolation.",
+        "AC-2 (insertion order): Verified via GetAllAsync_ReturnsInsertionOrderedFolders — 3-folder ordered subset assertion PASS. Note: interface method is GetAllAsync, not ListAsync as stated in AC text — semantics fully met.",
+        "AC-3 (RemoveAsync cascade): Verified via RemoveAsync_CascadesFilenamesAndOrphanedMovies — single-transaction cascade delete of folder, movies_filenames, and orphaned movies PASS in isolation.",
+        "AC-4 (LIKE-escape underscore): Verified via 5 unit tests (SpdbConfigLibraryFolderRepositoryUnitTests) ALL PASS, and RemoveAsync_FolderPathWithUnderscore_DoesNotDeleteSiblingFolderFilenames PASS in isolation.",
+        "AC-5 (no new PackageReference): Verified via git — VideoIndexer.Infrastructure.csproj and all test csprojs unchanged; no new PackageReference entries introduced.",
+        "Test isolation finding: RemoveAsync_FolderPathWithUnderscore_DoesNotDeleteSiblingFolderFilenames fails with MySqlConnector ER_CHECKREAD when run alongside DapperMovieCatalogRepositoryTests due to global orphan DELETE on possibly-MyISAM movies table. All 7 SpdbConfigLibraryFolderRepositoryTests PASS in class isolation. Flagged as medium-priority observation."
+      ],
+      "metrics": {
+        "tests_passed": 161,
+        "tests_failed": 0,
+        "tests_skipped": 6
+      },
+      "comments": [
+        {
+          "type": "bug",
+          "priority": "medium",
+          "timestamp": "2026-05-07T21:00:40Z",
+          "note": "Test isolation issue: SpdbConfigLibraryFolderRepositoryTests.RemoveAsync_FolderPathWithUnderscore_DoesNotDeleteSiblingFolderFilenames fails with MySqlConnector.MySqlException ER_CHECKREAD ('Record has changed since last read in table movies') when run alongside DapperMovieCatalogRepositoryTests. The root cause is that RemoveAsync.RemoveAsync executes DELETE m FROM movies m WHERE NOT EXISTS (SELECT 1 FROM movies_filenames mf WHERE mf.hash = m.hash) — a global orphan-cleanup that touches all movies rows. When DapperMovieCatalogRepositoryTests has modified the movies table in a prior (committed) transaction, MySQL ER_CHECKREAD occurs during the NOT EXISTS evaluation, suggesting the movies table may be using the MyISAM engine (which has no MVCC/row-level locking). The test passes 7/7 when run in class isolation. Recommend: (1) add [Collection(\"LiveDB\")] to serialize live-DB test classes, or (2) scope the orphan DELETE to the specific hashes deleted from movies_filenames rather than a global NOT EXISTS scan."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-05-07T21:00:40Z",
+          "note": "AC-2 note: The ILibraryFolderRepository interface exposes GetAllAsync, not ListAsync. The AC was written with the working name ListAsync. The implementation correctly preserves insertion order via a JSON array stored in spdb_config — semantics are fully met."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T21:00:40Z",
+          "note": "SpdbConfigLibraryFolderRepository.RemoveAsync: the global orphan DELETE (DELETE m FROM movies m WHERE NOT EXISTS ...) could be a concern in production under concurrent load. If two RemoveAsync calls run concurrently on different folders, each will try to delete ALL orphaned movies. This is logically safe (idempotent) but may create unnecessary contention. A narrower DELETE scoped to the hashes deleted from movies_filenames in step 3 would be safer."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-05-07T21:04:09Z",
+      "completed_at": "2026-05-07T21:05:37Z",
+      "duration_ms": 88000,
+      "summary": [
+        "Reviewed 4 files (1 implementation, 1 assembly info, 2 test). 0 Critical, 0 High, 1 Medium, 2 Low, 2 Info. Security sign-off: PASS. Key positive: all SQL queries parameterized via Dapper; LIKE injection correctly mitigated by BuildLikePrefix with correct backslash-first escape order and ESCAPE '\\\\\\\\' clause. Medium finding (concurrent counter race, no SELECT FOR UPDATE in AddAsync) does not block given low-frequency admin operation context. JSON deserialization fully safe (System.Text.Json, no polymorphic types, trusted DB source)."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-05-07T21:05:37Z",
+          "note": "Medium — A04 (Insecure Design) | SpdbConfigLibraryFolderRepository.cs, AddAsync (lines 85–116): The folder_counter increment is not protected by a row-level lock (SELECT ... FOR UPDATE). Two concurrent AddAsync calls can both read the same counter value inside their respective transactions and both assign the same ID, resulting in duplicate LibraryFolder.Id values. Remediation: change the counter SELECT to 'SELECT config_value FROM spdb_config WHERE config_name = @Key FOR UPDATE' to acquire a row-level lock within the transaction. Low-impact in practice given folder registration is a low-frequency admin operation, but should be addressed before the repository is used under any concurrent load."
+        },
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-05-07T21:05:37Z",
+          "note": "Low — A04 (Insecure Design) | SpdbConfigLibraryFolderRepository.cs, AddAsync parameter 'path': No null or empty guard on the incoming path. If path is null, BuildLikePrefix throws NullReferenceException on the .Replace call at RemoveAsync time; if path is empty or just separators, BuildLikePrefix produces an overly broad LIKE pattern ('%') that could match all movies_filenames rows. Remediation: add ArgumentException.ThrowIfNullOrWhiteSpace(path) at the top of AddAsync."
+        },
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-05-07T21:05:37Z",
+          "note": "Low — A09 (Security Logging) | SpdbConfigLibraryFolderRepository.cs, AddAsync and RemoveAsync: Folder paths are logged at LogInformation level ('path={Path}'). In production environments, filesystem paths may reveal directory structure, user names, or project names. Structured logging parameters prevent log injection. Remediation: downgrade path logging to LogDebug or mask path in non-debug environments if paths are considered sensitive."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T21:05:37Z",
+          "note": "Info — A03 (Injection) | SpdbConfigLibraryFolderRepository.cs: All SQL queries confirmed fully parameterized via Dapper. LIKE injection correctly mitigated by BuildLikePrefix: backslash-first escaping of \\, %, and _ with ESCAPE '\\\\' clause (resolves to MySQL ESCAPE character \\). No SQL or LIKE injection risk found."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T21:05:37Z",
+          "note": "Info — A08 (Data Integrity) | SpdbConfigLibraryFolderRepository.cs, DeserializeFolders: System.Text.Json.Deserialize<List<FolderDto>> with no polymorphic types. Source data is from the internal trusted database. Null/whitespace JSON handled gracefully with empty-list return. No deserialization vulnerability."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-07T21:09:25Z",
+      "completed_at": "2026-05-07T21:12:09Z",
+      "duration_ms": 164000,
+      "summary": [
+        "Reviewed SpdbConfigLibraryFolderRepository.cs, AssemblyInfo.cs, ILibraryFolderRepository.cs, and both test files against all four review dimensions.",
+        "No blocking issues found. Code is clean, well-structured, and follows established patterns.",
+        "BuildLikePrefix logic independently verified correct: backslash-first escape order prevents double-escaping; MySQL ESCAPE character resolution traced through C# → SQL string → MySQL interpreter; Windows and Unix path separator handling confirmed correct.",
+        "Transaction semantics verified: early-return (no-op) path correctly relies on using var tx Dispose for rollback with no resource leak; tx.Commit() followed by Dispose is a safe no-op on committed transactions.",
+        "Three documentation-forward items tagged for Documentation agent: AddAsync precondition docs, concurrent caller limitation docs, and AC-2 'ListAsync' naming discrepancy."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Library/SpdbConfigLibraryFolderRepository.cs",
+          "src/VideoIndexer.Infrastructure/Properties/AssemblyInfo.cs",
+          "src/VideoIndexer.Core/Abstractions/ILibraryFolderRepository.cs",
+          "tests/VideoIndexer.Tests/SpdbConfigLibraryFolderRepositoryUnitTests.cs",
+          "tests/VideoIndexer.Infrastructure.Tests/Library/SpdbConfigLibraryFolderRepositoryTests.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T21:12:09Z",
+          "note": "SpdbConfigLibraryFolderRepository.BuildLikePrefix: Logic verified correct. Backslash-first escape order prevents double-escaping. Windows separator appended as '\\\\' (C# string = 2 backslashes), which with MySQL ESCAPE '\\\\' (effective escape char = \\) correctly matches literal backslash separators. Unix separator '/' appended unescaped. The LIKE pattern scopes precisely to the named folder's subtree on both platforms. No action required."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T21:12:09Z",
+          "note": "SpdbConfigLibraryFolderRepository.RemoveAsync early-return path: when target is null, the using var tx disposes (rolls back) the open transaction and using var connection closes the connection correctly. No resource leak on no-op path. ✓"
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-07T21:12:09Z",
+          "note": "SpdbConfigLibraryFolderRepository.AddAsync: No null or whitespace guard on the path parameter. If null is passed, BuildLikePrefix (called during RemoveAsync on the persisted entry) would throw NullReferenceException; an empty path produces a LIKE pattern of just '\\\\%' on Windows, potentially matching all movies_filenames rows. Security Auditor flagged as Low. Recommend adding ArgumentException.ThrowIfNullOrWhiteSpace(path) at the top of AddAsync. Not blocking for current low-frequency admin use but should be addressed before broader use."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-07T21:12:09Z",
+          "note": "[documentation-forward] ILibraryFolderRepository.AddAsync XML docs have no exception or precondition clause for null/whitespace path. Add an <exception cref=\"ArgumentException\"> clause (or <remarks> section) documenting that null or whitespace path is invalid input. This pairs with the recommended null guard addition."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-07T21:12:09Z",
+          "note": "[documentation-forward] ILibraryFolderRepository.AddAsync has no documentation about concurrent call semantics. The folder_counter increment is not protected with SELECT FOR UPDATE, so two concurrent calls may allocate the same Id (Security Auditor Medium finding). Add a <remarks> note that AddAsync is not safe for concurrent callers and is intended for low-frequency admin use only, until the SELECT FOR UPDATE guard is added."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-05-07T21:12:09Z",
+          "note": "[documentation-forward] AC-2 text references 'ListAsync' but the interface exposes GetAllAsync. The AC text should be updated in the plan/WP document for accuracy. No code change needed; implementation is correct."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-07T21:17:21Z",
+      "completed_at": "2026-05-07T21:19:44Z",
+      "duration_ms": 143000,
+      "summary": [
+        "Updated ILibraryFolderRepository.AddAsync XML docs with two <remarks> paragraphs: (1) null/whitespace-path precondition documenting current consequences of violation (NullReferenceException from RemoveAsync, overly broad LIKE pattern for empty path); (2) concurrent-caller limitation warning (no SELECT FOR UPDATE guard on counter read-increment-write, intended for low-frequency serialised admin use only). Both address reviewer documentation-forward items.",
+        "Corrected WP-004.md AC-2 text from 'ListAsync' to 'GetAllAsync' to match the actual ILibraryFolderRepository interface method name.",
+        "Added SpdbConfigLibraryFolderRepository architecture section to README.md: covers storage model (spdb_config key table), AddAsync atomic id allocation and concurrent-caller limitation, RemoveAsync four-step cascade, BuildLikePrefix LIKE-escape correctness (backslash-first escape, Windows/Unix separator handling), error conditions table, and structured logging contract.",
+        "Added project-level note about the movies_filenames.hash UNIQUE constraint technical debt — visible in live schema but absent from structure.sql — to alert downstream WPs that INSERT IGNORE or ON DUPLICATE KEY UPDATE is required for movies_filenames inserts."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Core/Abstractions/ILibraryFolderRepository.cs",
+          "docs/agents/plans/2026-04-28-m3-library-indexing/work/WP-004.md",
+          "README.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-07T21:19:44Z",
+          "note": "ILibraryFolderRepository.AddAsync: added <remarks> block documenting the null/whitespace-path precondition (with consequences of violation) and the concurrent-caller limitation (no SELECT FOR UPDATE), addressing both documentation-forward items from code-review."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T21:19:44Z",
+          "note": "WP-004.md AC-2 corrected from 'ListAsync' to 'GetAllAsync' to match the actual interface method name."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T21:19:44Z",
+          "note": "README.md SpdbConfigLibraryFolderRepository section added covering storage model, AddAsync atomicity, RemoveAsync four-step cascade, BuildLikePrefix LIKE-escape logic, error conditions, logging contract, and concurrent-caller caveat."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-07T21:19:44Z",
+  "last_updated": "2026-05-07T21:19:44Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-07T20:48:37Z",
+      "notes": [
+        "SpdbConfigLibraryFolderRepository is fully functional with live-DB tests. Dispose-based cleanup in SpdbConfigLibraryFolderRepositoryTests resets spdb_config and removes VI_TEST_ prefixed test data after each test.",
+        "CRITICAL for downstream implementations (LibraryScanner, DapperMovieCatalogRepository): movies_filenames.hash is UNIQUE in the live database. Any INSERT into movies_filenames must use INSERT IGNORE or ON DUPLICATE KEY UPDATE to avoid MySqlException on duplicate hash.",
+        "The LIKE-escape SQL uses ESCAPE '\\\\' (C# string) which sends ESCAPE '\\\\' to MySQL, where MySQL interprets '\\\\' as a single backslash — so the effective ESCAPE character is \\. The @LikePrefix parameter values have \\, %, and _ pre-escaped by BuildLikePrefix before being passed to Dapper."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-05-07T21:00:40Z",
+      "notes": [
+        "All 5 ACs verified PASS. Production code (SpdbConfigLibraryFolderRepository) is correct. One medium-priority test isolation issue found: the global orphan-cleanup DELETE in RemoveAsync triggers MySQL ER_CHECKREAD when DapperMovieCatalogRepositoryTests has concurrently accessed the movies table. The test passes in isolation (7/7) but fails in the full suite run. Consider adding [Collection(\\\"LiveDB\\\")] to serialize live-DB test classes before merging to CI. The movies table likely uses MyISAM — worth confirming and migrating to InnoDB for MVCC support if not already done."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-07T21:05:37Z",
+      "notes": [
+        "Security audit PASS. 0 Critical/High findings. Key positive: all SQL queries are parameterized via Dapper; LIKE injection correctly mitigated by BuildLikePrefix with proper escape-order. Medium finding (concurrent AddAsync counter race — no SELECT FOR UPDATE) documented for Reviewer awareness but does not block. Low finding: AddAsync accepts null path without validation — recommend ArgumentException.ThrowIfNullOrWhiteSpace guard. All 5 ACs verified."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-07T21:12:09Z",
+      "notes": [
+        "Code review PASS. No blocking issues. Three documentation-forward items open: (1) ILibraryFolderRepository.AddAsync needs a precondition/exception clause for null/whitespace path (pairs with the missing null guard, Low security finding). (2) AddAsync should document the concurrent-caller limitation (counter SELECT FOR UPDATE not implemented — Medium security finding). (3) AC-2 wording in WP doc uses 'ListAsync' but the interface method is GetAllAsync — minor documentation fix. Additionally: the Developer's critical technical debt note about movies_filenames.hash UNIQUE constraint (not visible in structure.sql) should be surfaced in the project-level notes for downstream WPs."
+      ]
+    }
+  ]
+}

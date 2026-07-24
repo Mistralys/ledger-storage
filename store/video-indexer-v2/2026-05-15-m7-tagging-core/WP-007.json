@@ -1,0 +1,219 @@
+{
+  "work_package_id": "WP-007",
+  "work_package_file": "work/WP-007.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-004"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "FilterExpressionParser.Parse(\"HasTag(1)\") and Parse(\"TagHasSubTags(1)\") no longer throw.",
+      "met": true
+    },
+    {
+      "criterion": "Parse(\"StoredTagsWeight > 5\") and Parse(\"AmountStoredTags < 3\") parse without error.",
+      "met": true
+    },
+    {
+      "criterion": "FilterExpressionEvaluator.Evaluate remains a static method.",
+      "met": true
+    },
+    {
+      "criterion": "M10Identifiers deferred guard is untouched.",
+      "met": true
+    },
+    {
+      "criterion": "dotnet build and dotnet test (Core test project) pass with 0 errors and 0 failures.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-17T20:55:25Z",
+      "completed_at": "2026-05-17T20:58:40Z",
+      "duration_ms": 195000,
+      "summary": [
+        "Activated HasTag and TagHasSubTags in FilterExpressionParser: moved from M7Identifiers to FunctionIdentifiers; M7Identifiers set left empty (guard structure preserved).",
+        "Added StoredTagsWeight and AmountStoredTags to NumericIdentifiers in FilterExpressionParser.",
+        "Added StoredTagsWeight→StoredTagWeight and AmountStoredTags→StoredTagCount mappings to s_numericIdentifiers in FilterExpressionEvaluator.",
+        "Added HasTag(id) and TagHasSubTags(id) to s_functions in FilterExpressionEvaluator with EvaluateHasTag and EvaluateTagHasSubTags helpers (numeric argument, cast to long for EffectiveTagIds/StoredTagParentIds lookup).",
+        "Updated XML docs in FilterExpressionEvaluator for new identifiers and functions.",
+        "Inverted parser test AC11: replaced Parse_DeferredHasTag_ThrowsWithM7Message with Parse_HasTag_ReturnsFunctionCallNode; added Parse_TagHasSubTags_ReturnsFunctionCallNode, Parse_StoredTagsWeight_ReturnsComparisonNode, Parse_AmountStoredTags_ReturnsComparisonNode.",
+        "Build: 0 errors, 0 warnings. Tests: 228 passed, 0 failed."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Core/Filtering/FilterExpressionParser.cs",
+          "src/VideoIndexer.Core/Filtering/FilterExpressionEvaluator.cs",
+          "tests/VideoIndexer.Tests/Filtering/FilterExpressionParserTests.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-17T20:58:40Z",
+          "note": "FilterExpressionParser.cs: M7Identifiers is now an empty set. The guard branch (if M7Identifiers.Contains(name) throw) will never trigger and could be removed in a future cleanup WP once all M7 activations land. Keeping it now is intentional (constraint: do not remove guard sets)."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-17T20:58:40Z",
+          "note": "FilterExpressionEvaluator.cs: EvaluateHasTag and EvaluateTagHasSubTags cast decimal→long via (long)num.Value. If a caller passes a non-integer literal like HasTag(1.5), the cast truncates silently. A future hardening WP could validate that num.Value is an integer before the cast."
+        },
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-05-17T20:58:40Z",
+          "note": "FilterExpressionEvaluator.cs: HasTag uses EffectiveTagIds which is empty until the M7 enrichment WP ships. The evaluator is wired correctly but will silently return false for all movies until TagsManager populates EffectiveTagIds. This is consistent with the existing pattern for EffectiveTagWeight/EffectiveTagCount but worth tracking."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-17T21:34:08Z",
+      "completed_at": "2026-05-17T21:35:49Z",
+      "duration_ms": 101000,
+      "summary": [
+        "All 5 acceptance criteria verified and met.",
+        "AC1: Parse(HasTag(1)) and Parse(TagHasSubTags(1)) no longer throw — confirmed by new parser tests Parse_HasTag_ReturnsFunctionCallNode and Parse_TagHasSubTags_ReturnsFunctionCallNode.",
+        "AC2: Parse(StoredTagsWeight > 5) and Parse(AmountStoredTags < 3) parse without error — confirmed by Parse_StoredTagsWeight_ReturnsComparisonNode and Parse_AmountStoredTags_ReturnsComparisonNode.",
+        "AC3: FilterExpressionEvaluator.Evaluate is static — confirmed in source (public static bool Evaluate).",
+        "AC4: M10Identifiers set still contains HasRatedBookmarks, BookmarkContains, AmountBookmarks — guard untouched.",
+        "AC5: Full solution build: 0 errors, 0 warnings. dotnet test VideoIndexer.Tests: 228 passed, 0 failed.",
+        "Evaluator implementation verified: EvaluateHasTag uses EffectiveTagIds.Contains((long)num.Value); EvaluateTagHasSubTags uses StoredTagParentIds.Contains((long)num.Value). Both properties exist on MovieListItem."
+      ],
+      "metrics": {
+        "test_coverage": "Parser: 4 new tests added for AC1/AC2. Evaluator: new functions exercised via build+parse round-trip; direct evaluator tests for HasTag/TagHasSubTags/StoredTagsWeight/AmountStoredTags absent.",
+        "tests_passed": 228,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "coverage-gap",
+          "priority": "medium",
+          "timestamp": "2026-05-17T21:35:49Z",
+          "note": "FilterExpressionEvaluatorTests.cs: Evaluate_AllNumericIdentifiers_ResolveFromItem covers Rating/TagsWeight/AmountTags/AmountThumbnails/ViewCount but omits the two new identifiers: StoredTagsWeight (→ StoredTagWeight) and AmountStoredTags (→ StoredTagCount). No evaluator-level tests exist for HasTag or TagHasSubTags. A future hardening WP should add: Evaluate_StoredTagsWeight_ResolvesFromItem, Evaluate_AmountStoredTags_ResolvesFromItem, Evaluate_HasTag_TrueWhenIdInEffectiveTagIds, Evaluate_TagHasSubTags_TrueWhenIdInStoredTagParentIds."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-17T21:35:49Z",
+          "note": "FilterExpressionEvaluator.cs EvaluateHasTag/EvaluateTagHasSubTags: decimal→long cast via (long)num.Value silently truncates non-integer literals (e.g. HasTag(1.5) treated as HasTag(1)). Noted by Developer; acceptable for now but a future hardening WP could add integer-value validation before the cast."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-17T21:47:00Z",
+      "completed_at": "2026-05-17T21:49:16Z",
+      "duration_ms": 136000,
+      "summary": [
+        "PASS — implementation is clean, correct, and consistent with established patterns. No blocking issues found.",
+        "FilterExpressionParser.cs: M7 activations (HasTag, TagHasSubTags → FunctionIdentifiers; StoredTagsWeight, AmountStoredTags → NumericIdentifiers) are correct. M7Identifiers empty set preserved per constraint. M10 guard untouched.",
+        "FilterExpressionEvaluator.cs: s_numericIdentifiers and s_functions dispatch tables correctly wired to MovieListItem.StoredTagWeight/StoredTagCount and EffectiveTagIds/StoredTagParentIds. EvaluateHasTag/EvaluateTagHasSubTags follow the same validation pattern as EvaluateStringContains.",
+        "Performance note: EffectiveTagIds is IReadOnlySet<long> (O(1) Contains); StoredTagParentIds is IReadOnlyList<long> (O(n) Contains). Asymmetry is intentional — EffectiveTagIds can be large; StoredTagParentIds is bounded by stored tags per movie. Not a concern at typical cardinalities.",
+        "Applied one Fix-Forward fix: updated stale class-level XML remark in FilterExpressionEvaluator.cs from 'M5 only' to 'M5 and M7' to match the activated identifiers.",
+        "Tests: 4 new parser tests are well-structured, use established FluentAssertions patterns, and cover all 4 AC1/AC2 scenarios thoroughly."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Core/Filtering/FilterExpressionParser.cs",
+          "src/VideoIndexer.Core/Filtering/FilterExpressionEvaluator.cs",
+          "tests/VideoIndexer.Tests/Filtering/FilterExpressionParserTests.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-17T21:49:16Z",
+          "note": "FilterExpressionEvaluator.cs class-level XML remark updated: 'Only identifiers and functions supported in M5 are evaluated' → 'All identifiers and functions active in M5 and M7 (Tag Core milestone) are evaluated' and '(M7/M10) cannot appear' → '(M10) cannot appear'. Non-behavioral comment correction. Build verified: 0 errors, 0 warnings."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "high",
+          "timestamp": "2026-05-17T21:49:16Z",
+          "note": "[documentation-forward] api-surface.md identifier set tables are stale after WP-007 activations: (1) NumericIdentifiers is missing 'StoredTagsWeight' and 'AmountStoredTags'; (2) FunctionIdentifiers is missing 'HasTag(id)' and 'TagHasSubTags(id)'; (3) M7Identifiers comment still says 'produce Phase=Parse exception with M7 hint' but M7Identifiers is now empty — the comment should reflect that all M7 activations have landed and the set is intentionally empty. The DSL function tables also need HasTag/TagHasSubTags entries with their evaluation semantics documented."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-17T21:49:16Z",
+          "note": "FilterExpressionEvaluator.cs EvaluateTagHasSubTags: StoredTagParentIds is IReadOnlyList<long> (O(n) Contains via LINQ), while EffectiveTagIds is IReadOnlySet<long> (O(1) Contains). For typical stored-tag cardinalities this is negligible, but the asymmetry is worth tracking if StoredTagParentIds ever grows large. A future WP could promote StoredTagParentIds to IReadOnlySet<long> on MovieListItem."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-17T21:59:35Z",
+      "completed_at": "2026-05-17T22:00:15Z",
+      "duration_ms": 40000,
+      "summary": [
+        "api-surface.md DSL section updated to reflect WP-007 M7 activations.",
+        "NumericIdentifiers: added StoredTagsWeight and AmountStoredTags with (M7) annotation.",
+        "FunctionIdentifiers: added HasTag(id) and TagHasSubTags(id) with evaluation semantics (EffectiveTagIds.Contains and StoredTagParentIds.Contains).",
+        "M7Identifiers: comment updated to reflect the set is intentionally empty since WP-007 (all M7 tag identifiers activated); guard structure noted as preserved per constraints.",
+        "HasTags() entry updated with interim-semantics note cross-referencing constraints.md pending revision."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "note",
+          "priority": "low",
+          "timestamp": "2026-05-17T22:00:15Z",
+          "note": "High-priority documentation-forward addressed: api-surface.md DSL section updated with (1) StoredTagsWeight/AmountStoredTags added to NumericIdentifiers; (2) HasTag(id)/TagHasSubTags(id) added to FunctionIdentifiers with evaluation semantics; (3) M7Identifiers comment updated to reflect that the set is intentionally empty since WP-007 (all M7 identifiers activated); (4) HasTags() updated with interim-semantics note cross-referencing constraints.md."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-17T22:00:15Z",
+  "last_updated": "2026-05-17T22:00:15Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-17T20:58:40Z",
+      "notes": [
+        "All five acceptance criteria met. FilterExpressionParser now accepts HasTag(id), TagHasSubTags(id), StoredTagsWeight comparison, and AmountStoredTags comparison. Evaluator wired to EffectiveTagIds (HasTag) and StoredTagParentIds (TagHasSubTags). M10 guard untouched. 228 tests pass.",
+        "Note: HasTag will return false for all movies until the M7 enrichment WP populates EffectiveTagIds via TagsManager — this is expected and tracked as a debt comment."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-17T21:35:49Z",
+      "notes": [
+        "WP-007 PASS. All 5 AC verified. Build: 0 errors, 0 warnings. Tests: 228 passed, 0 failed.",
+        "New parser functions (HasTag, TagHasSubTags) and new numeric identifiers (StoredTagsWeight, AmountStoredTags) confirmed active and wired to correct MovieListItem properties.",
+        "Coverage gap flagged: evaluator tests don't directly exercise the 4 new evaluator paths. Not a blocker but worth addressing in a future WP.",
+        "M10 guard intact. M7Identifiers now empty (by design — guard structure preserved per constraints)."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-17T21:49:16Z",
+      "notes": [
+        "WP-007 code review PASS. One Fix-Forward applied (stale M5-only comment in FilterExpressionEvaluator.cs — non-behavioral). One high-priority documentation-forward flagged: api-surface.md identifier tables need updating to reflect M7 activations (NumericIdentifiers + FunctionIdentifiers entries; M7Identifiers now empty). Build: 0 errors, 0 warnings. All 5 AC met."
+      ]
+    }
+  ]
+}

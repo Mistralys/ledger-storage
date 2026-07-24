@@ -1,0 +1,359 @@
+{
+  "work_package_id": "WP-009",
+  "work_package_file": "work/WP-009.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001",
+    "WP-007"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "`LoadAsync` populates all General, Thumbnails, Appearance, and Logging properties from `ISettingsService.Current`.",
+      "met": true
+    },
+    {
+      "criterion": "`LoadAsync` populates Database tab read-only properties from `IDatabaseConnectionStore.GetActiveAsync()`.",
+      "met": true
+    },
+    {
+      "criterion": "`SaveCommand` produces a new `AppOptions` record via `with { }` — no in-place mutation of `ISettingsService.Current`.",
+      "met": true
+    },
+    {
+      "criterion": "`SaveCommand` calls `IThemeService.SetAsync` when `SelectedTheme` differs from the value loaded during `LoadAsync`.",
+      "met": true
+    },
+    {
+      "criterion": "`CancelCommand` reverts all tab fields to match `ISettingsService.Current` (same logic as `LoadAsync` field population, without calling `ObfuscationVm.LoadAsync`).",
+      "met": true
+    },
+    {
+      "criterion": "No `BrowseVlcPathCommand` or `BrowseXmlEditorCommand` is declared on this ViewModel.",
+      "met": true
+    },
+    {
+      "criterion": "dotnet build produces zero warnings.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-19T19:30:38Z",
+      "completed_at": "2026-05-19T19:34:52Z",
+      "duration_ms": 254000,
+      "summary": [
+        "Created SettingsViewModel with 5 constructor parameters (ISettingsService, IThemeService, IDatabaseConnectionStore, ObfuscationSettingsViewModel, IFolderPickerService).",
+        "Implemented all 5 tab observable properties: General (MySqlBinaryFolder, ExternalXmlEditorPath, VlcExecutablePath, UseVlc), Database read-only (ActiveConnectionHost, ActiveConnectionDatabase, ActiveConnectionUsername), Thumbnails (ThumbnailSize, KeepOriginalSize), Appearance (SelectedTheme, SelectedLanguage), Logging (Verbosity). ObfuscationVm is a read-only injected property.",
+        "LoadAsync: calls private PopulateFromSettings(), then GetActiveAsync() for DB tab, then ObfuscationVm.LoadAsync().",
+        "SaveCommand: builds AppOptions snapshot via with { } chains; calls ISettingsService.SaveAsync; calls IThemeService.SetAsync when SelectedTheme != _loadedTheme (IncludeCancelCommand=false to avoid spurious CancelSaveCommand).",
+        "CancelCommand: calls PopulateFromSettings() only — does not reload ObfuscationVm.",
+        "BrowseMySqlFolderCommand: calls IFolderPickerService.PickFolderAsync; no BrowseVlcPathCommand or BrowseXmlEditorCommand declared.",
+        "Build: 0 warnings, 0 errors.",
+        "Updated docs/agents/project-manifest/api-surface.md and file-tree.md to document the new type."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/ViewModels/SettingsViewModel.cs",
+          "docs/agents/project-manifest/api-surface.md",
+          "docs/agents/project-manifest/file-tree.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-19T19:34:52Z",
+          "note": "SettingsViewModel.PopulateFromSettings() is a private helper called by both LoadAsync and CancelCommand. This sharing prevents any drift between the two paths — a good pattern to preserve. Future maintainers adding new settings properties must update PopulateFromSettings(), not just LoadAsync, or CancelCommand will silently not revert the new field."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-19T19:34:52Z",
+          "note": "The Database tab properties (ActiveConnectionHost/Database/Username) are populated only during LoadAsync, not during CancelCommand (PopulateFromSettings only touches ISettingsService.Current fields). This is intentional — the database tab is read-only so there is nothing to revert. However, if the active connection changes while the Preferences page is open, the displayed values will be stale until the page is reloaded. A brief note in the View about this intended behavior would prevent confusion."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-05-19T19:34:52Z",
+          "note": "SettingsViewModel has no tests. The ViewModel logic is straightforward (property mapping + save/cancel) but the SaveCommand theme-change guard (_loadedTheme tracking) and the CancelCommand no-ObfuscationVm-reload contract are both observable behavior that warrant unit tests in VideoIndexer.App.Tests. WP-009 has no QA test scope per the active pipeline stages, so this is deferred work."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-19T19:45:59Z",
+      "completed_at": "2026-05-19T19:46:50Z",
+      "duration_ms": 51000,
+      "summary": [
+        "QA PASS for WP-009 (SettingsViewModel).",
+        "AC#1: LoadAsync populates all General/Thumbnails/Appearance/Logging fields via PopulateFromSettings() — PASS.",
+        "AC#2: LoadAsync calls IDatabaseConnectionStore.GetActiveAsync() and populates all 3 DB read-only properties — PASS.",
+        "AC#3: SaveCommand uses immutable with { } pattern, no in-place mutation of ISettingsService.Current — PASS.",
+        "AC#4: _loadedTheme tracked; IThemeService.SetAsync guarded by SelectedTheme != _loadedTheme check — PASS.",
+        "AC#5: CancelCommand calls only PopulateFromSettings(), not ObfuscationVm.LoadAsync() — PASS.",
+        "AC#6: No BrowseVlcPathCommand or BrowseXmlEditorCommand present — PASS.",
+        "AC#7: dotnet build 0 warnings, 0 errors — PASS.",
+        "Full regression: 786 passed, 0 failed, 6 skipped."
+      ],
+      "metrics": {
+        "tests_passed": 786,
+        "tests_failed": 0,
+        "tests_skipped": 6
+      },
+      "comments": [
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-19T19:46:50Z",
+          "note": "_loadedTheme is updated inside PopulateFromSettings(), which is called from both LoadAsync and Cancel(). This means after a Cancel(), if the user changes the theme and saves, the comparison is against the freshly-reverted (current-saved) theme — correct behavior."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-05-19T19:46:50Z",
+          "note": "SettingsViewModel has no unit tests. The SaveCommand _loadedTheme guard logic and the CancelCommand no-ObfuscationVm-reload contract are observable behavior that would benefit from unit tests in VideoIndexer.App.Tests. Deferred per WP scope — low risk given the simplicity of the logic."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-19T19:46:50Z",
+          "note": "Database tab (ActiveConnectionHost/Database/Username) is not reverted by CancelCommand — by design, since it is read-only. If the active connection changes while the page is open, values will be stale until the next LoadAsync. Acceptable per WP spec."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "FAIL",
+      "started_at": "2026-05-19T19:50:49Z",
+      "completed_at": "2026-05-19T19:52:53Z",
+      "duration_ms": 124000,
+      "summary": [
+        "WP-009 code review: FAIL — one Blocking issue found in SaveCommand.",
+        "SaveCommand does not update _loadedTheme after SaveAsync succeeds. If the user saves (applying a theme change) and then makes another theme change and saves again without navigating away (triggering LoadAsync), the second save will skip SetAsync — IThemeService will be stale while the settings file is correct. Fix: `_loadedTheme = SelectedTheme;` after SaveAsync.",
+        "All other aspects are clean: constructor null guards correct, PopulateFromSettings() DRY pattern is well-designed, with { } immutable update chain is correct, CancelCommand does not reload ObfuscationVm, BrowseMySqlFolderCommand is correct, zero warnings confirmed."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/ViewModels/SettingsViewModel.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "code-smell",
+          "priority": "high",
+          "timestamp": "2026-05-19T19:52:53Z",
+          "note": "BLOCKING — Logic bug in SaveCommand: _loadedTheme is not updated after SaveAsync succeeds. This causes a stale baseline for subsequent saves in the same page session. Repro: (1) Open settings page — LoadAsync sets _loadedTheme = Dark. (2) Change SelectedTheme to Light, click Save — SetAsync(Light) is called correctly, but _loadedTheme is still Dark. (3) Change SelectedTheme back to Dark, click Save — SelectedTheme (Dark) == _loadedTheme (Dark), so SetAsync is NOT called — but IThemeService is still showing Light. Result: theme in the settings file is correct but the live theme (IThemeService) is stale until the page is reloaded. Fix: add `_loadedTheme = SelectedTheme;` immediately after `await _settingsService.SaveAsync(updated, cancellationToken);` in the Save() method. This aligns the tracked baseline with the just-persisted state so future saves in the same session compare against the correct reference point."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-19T19:52:53Z",
+          "note": "AC#4 is marked met by QA but the underlying condition is not fully correct: the AC text says 'when SelectedTheme differs from the value loaded during LoadAsync' — as written, this is what the implementation does. However, the intended semantics should be 'when SelectedTheme differs from the last saved/loaded value' to prevent the stale-theme bug described above. After the fix (_loadedTheme = SelectedTheme post-save), AC#4 will be satisfied under both the literal wording and the correct intent."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-19T19:52:53Z",
+          "note": "[documentation-forward] SettingsViewModel has no unit tests. The SaveCommand _loadedTheme tracking logic and CancelCommand no-ObfuscationVm-reload contract are observable behaviors that warrant unit tests. Consider adding tests in VideoIndexer.App.Tests covering: (a) SaveCommand updates _loadedTheme so a second save in the same session correctly calls SetAsync for a new theme change; (b) CancelCommand does not call ObfuscationVm.LoadAsync. This was deferred per WP scope but should be tracked."
+        }
+      ]
+    },
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-19T19:53:53Z",
+      "completed_at": "2026-05-19T19:54:45Z",
+      "duration_ms": 52000,
+      "summary": [
+        "Rework: fixed stale _loadedTheme baseline in SettingsViewModel.SaveCommand. Added `_loadedTheme = SelectedTheme;` immediately after `await _themeService.SetAsync(...)` inside the `if (SelectedTheme != _loadedTheme)` block. This ensures subsequent saves in the same page session correctly detect whether a further theme change has occurred, and prevents unnecessary repeated calls to IThemeService.SetAsync.",
+        "Build: 0 warnings, 0 errors. All 598 tests pass (260 Core + 338 App)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/ViewModels/SettingsViewModel.cs"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 598,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-19T19:54:45Z",
+          "note": "SettingsViewModel.cs — the `if` block for SetAsync is now a two-statement block and correctly wrapped in braces. No other issues found in the touched code."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-19T19:55:14Z",
+      "completed_at": "2026-05-19T19:56:36Z",
+      "duration_ms": 82000,
+      "summary": [
+        "QA re-run PASS for WP-009 (SettingsViewModel) after Developer rework.",
+        "Rework fix verified: `_loadedTheme = SelectedTheme;` is now assigned inside the `if (SelectedTheme != _loadedTheme)` guard immediately after `await _themeService.SetAsync(...)`. This resolves the stale-baseline bug flagged by the Reviewer (code-review FAIL).",
+        "AC#1–AC#7 all pass on re-verification.",
+        "Build: 0 warnings, 0 errors (Release config). Full regression: 786 passed, 0 failed, 6 skipped."
+      ],
+      "metrics": {
+        "tests_passed": 786,
+        "tests_failed": 0,
+        "tests_skipped": 6
+      },
+      "comments": [
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-19T19:56:36Z",
+          "note": "SaveCommand exception-safety: if SetAsync throws, _loadedTheme is NOT updated (assignment follows the await). On the next save attempt with the same theme, SelectedTheme != _loadedTheme will still be true, causing a retry call to SetAsync — this is correct retry behavior, not a bug, since SaveAsync already persisted the new theme value to the settings file."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-19T19:56:36Z",
+          "note": "CancelCommand after a save: PopulateFromSettings() resets both SelectedTheme and _loadedTheme to opts.Appearance.Theme (the persisted value), correctly reflecting the saved state as the new baseline. No stale-theme issue from this path."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-05-19T19:56:36Z",
+          "note": "SettingsViewModel still has no unit tests. The _loadedTheme tracking logic (including the rework fix) and CancelCommand no-ObfuscationVm-reload contract remain untested. Deferred per WP scope — recommend adding tests in VideoIndexer.App.Tests as follow-up work."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-19T19:57:01Z",
+      "completed_at": "2026-05-19T19:58:34Z",
+      "duration_ms": 93000,
+      "summary": [
+        "WP-009 code review: PASS — previously-Blocking bug confirmed fixed.",
+        "The stale _loadedTheme baseline bug is resolved: `_loadedTheme = SelectedTheme;` is now correctly placed inside the `if (SelectedTheme != _loadedTheme)` block after `await _themeService.SetAsync(...)`. This placement is better than the fix prescription in the previous FAIL comment (which suggested placing it after SaveAsync outside the if block) — it avoids a no-op assignment when the theme is unchanged and preserves exception safety: if SetAsync throws, _loadedTheme is not updated, so the next save correctly retries SetAsync.",
+        "All other aspects remain clean: constructor null guards for all 5 parameters, with { } immutable update chain across all four settings sections, PopulateFromSettings() DRY helper correctly called by both LoadAsync and CancelCommand (including _loadedTheme reset to persisted value), IncludeCancelCommand=false on SaveCommand, no BrowseVlcPathCommand or BrowseXmlEditorCommand declared. api-surface.md is fully and accurately updated. Zero warnings confirmed.",
+        "No Fix-Forward or new Blocking issues found."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/ViewModels/SettingsViewModel.cs",
+          "docs/agents/project-manifest/api-surface.md",
+          "docs/agents/project-manifest/file-tree.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-19T19:58:34Z",
+          "note": "The Developer placed `_loadedTheme = SelectedTheme;` inside the `if (SelectedTheme != _loadedTheme)` block after SetAsync rather than after SaveAsync outside the if block as prescribed in the FAIL comment. This is the superior placement: (1) no spurious no-op assignment when theme is unchanged, (2) full exception safety — if SetAsync throws, _loadedTheme is not updated so the next save correctly detects the pending theme change and retries SetAsync. The QA edge-case note also confirmed this behavior is correct."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-19T19:58:34Z",
+          "note": "PopulateFromSettings() resetting _loadedTheme = opts.Appearance.Theme is intentional and correct — CancelCommand calling PopulateFromSettings() properly re-baselines _loadedTheme to the currently-persisted theme value, so any subsequent save correctly detects only new theme changes from the reverted baseline."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-19T19:58:34Z",
+          "note": "[documentation-forward] SettingsViewModel has no unit tests. The _loadedTheme tracking logic (SaveCommand calling SetAsync only when theme changed, and _loadedTheme updated inside the if block for exception safety) and the CancelCommand no-ObfuscationVm-reload contract are both observable behaviors that warrant unit tests in VideoIndexer.App.Tests. Recommend adding: (a) test that a second Save() in the same session after a theme change correctly calls SetAsync again only when a further theme change is made; (b) test that Cancel() does not call ObfuscationVm.LoadAsync; (c) test that if SetAsync throws, _loadedTheme is not updated and the next Save() retries SetAsync."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-19T20:00:52Z",
+      "completed_at": "2026-05-19T20:02:01Z",
+      "duration_ms": 69000,
+      "summary": [
+        "Addressed the [documentation-forward] from code-review: added an Open Items entry to constraints.md documenting the SettingsViewModel unit test gap.",
+        "The entry covers the _loadedTheme tracking logic (SaveCommand calls SetAsync only when SelectedTheme != _loadedTheme; _loadedTheme is updated inside the if block after SetAsync for exception safety), the CancelCommand no-ObfuscationVm-reload contract, and three recommended test cases in VideoIndexer.App.Tests.",
+        "api-surface.md and file-tree.md were already fully and accurately updated by the Developer (confirmed by code-review PASS) — no changes required to those files."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "docs/agents/project-manifest/constraints.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-19T20:02:01Z",
+          "note": "The [documentation-forward] from code-review asked to track the SettingsViewModel unit test gaps. Added an entry to the Open Items / Known Gotchas section of constraints.md documenting: the _loadedTheme tracking semantics, the exception-safety placement of the _loadedTheme update, the CancelCommand no-ObfuscationVm.LoadAsync contract, and the three recommended test cases for VideoIndexer.App.Tests."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-19T20:02:01Z",
+          "note": "The api-surface.md and file-tree.md were already fully and accurately updated by the Developer during implementation and confirmed clean by the Reviewer. No further changes to those files were needed."
+        }
+      ]
+    }
+  ],
+  "rework_counts": {
+    "implementation": 1,
+    "qa": 1,
+    "code-review": 1
+  },
+  "status_changed_at": "2026-05-19T20:02:01Z",
+  "last_updated": "2026-05-19T20:02:01Z",
+  "handoff_notes": [
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-19T19:46:50Z",
+      "notes": [
+        "WP-009 QA PASS. All 7 ACs met. SettingsViewModel.cs correctly implements all required tab properties, LoadAsync, SaveCommand (immutable with {} pattern + theme guard), and CancelCommand (PopulateFromSettings only). Build: 0 warnings. Full App.Tests suite: 338/338 passed. No regressions."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Developer",
+      "timestamp": "2026-05-19T19:52:53Z",
+      "notes": [
+        "WP-009 code-review FAIL. One Blocking issue found: SaveCommand does not update _loadedTheme after SaveAsync succeeds. This creates a stale theme baseline that prevents subsequent saves in the same page session from correctly calling IThemeService.SetAsync. Fix: add `_loadedTheme = SelectedTheme;` immediately after `await _settingsService.SaveAsync(updated, cancellationToken);` in SettingsViewModel.Save(). All other ACs confirmed correct. After applying the fix, re-run QA (build + regression suite) before routing back to Reviewer."
+      ]
+    },
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-19T19:54:45Z",
+      "notes": [
+        "Rework complete. Applied the single-line fix identified by the Reviewer: `_loadedTheme = SelectedTheme;` is now assigned inside the `if (SelectedTheme != _loadedTheme)` guard after `SetAsync`, eliminating the stale baseline. Build is clean, all 598 tests pass. Ready for QA re-run followed by code-review."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-19T19:56:36Z",
+      "notes": [
+        "WP-009 passes QA. The Reviewer's blocking bug (_loadedTheme stale baseline) is fixed and verified. All 7 ACs met. Ready for code-review — specifically re-check the Save() method fix: `_loadedTheme = SelectedTheme;` inside the `if (SelectedTheme != _loadedTheme)` block in SettingsViewModel.cs."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-19T19:58:34Z",
+      "notes": [
+        "WP-009 passes code review. The stale _loadedTheme bug is fixed and confirmed. SettingsViewModel.cs is clean — all ACs met, zero warnings, correct immutable pattern, DRY PopulateFromSettings helper. Documentation agent: see documentation-forward comment re: unit test gaps for the _loadedTheme tracking logic."
+      ]
+    }
+  ]
+}

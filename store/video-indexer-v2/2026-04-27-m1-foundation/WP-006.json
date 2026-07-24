@@ -1,0 +1,167 @@
+{
+  "work_package_id": "WP-006",
+  "work_package_file": "work/WP-006.md",
+  "status": "COMPLETE",
+  "assigned_to": "Reviewer",
+  "dependencies": [
+    "WP-005"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "Pressing Ctrl+T in a DEBUG build of the app cycles the theme through System → Light → Dark → System in order.",
+      "met": true
+    },
+    {
+      "criterion": "Each cycle persists the new value to `appsettings.json` via `IThemeService` → `ISettingsService`.",
+      "met": true
+    },
+    {
+      "criterion": "The main window's visual theme variant updates immediately on each Ctrl+T press without requiring a relaunch.",
+      "met": true
+    },
+    {
+      "criterion": "The Ctrl+T binding is compiled out of Release builds.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-27T15:26:35Z",
+      "completed_at": "2026-04-27T15:28:51Z",
+      "duration_ms": 136000,
+      "summary": [
+        "Added IThemeService to MainWindowViewModel constructor; DI resolves it automatically.",
+        "Added [RelayCommand] CycleTheme() inside #if DEBUG block in MainWindowViewModel: cycles System→Light→Dark→System via IThemeService.Set.",
+        "Added Ctrl+T KeyBinding in MainWindow.axaml.cs inside #if DEBUG, programmatically using Avalonia KeyBinding API with CycleThemeCommand.",
+        "Binary verification confirms CycleTheme is absent from Release DLL and present in Debug DLL.",
+        "Debug and Release builds both clean with zero warnings."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/ViewModels/MainWindowViewModel.cs",
+          "src/VideoIndexer.App/Views/MainWindow.axaml.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T15:28:51Z",
+          "note": "CycleTheme method and its source-generated RelayCommand property are wrapped entirely in #if DEBUG. Binary inspection confirms the symbol is absent from the Release DLL and present in the Debug DLL."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-27T15:28:51Z",
+          "note": "IThemeService is now a required constructor argument for MainWindowViewModel. The DI registration (AddTransient<MainWindowViewModel>) will resolve it automatically via the container. No manual wiring is needed."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-27T15:28:51Z",
+          "note": "The Ctrl+T KeyBinding is added programmatically in MainWindow code-behind inside #if DEBUG. This keeps XAML clean and avoids XAML preprocessor issues (XAML has no #if directive support)."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-27T15:29:13Z",
+      "completed_at": "2026-04-27T15:30:52Z",
+      "duration_ms": 99000,
+      "summary": [
+        "All 4 acceptance criteria verified by code review and automated tests.",
+        "VideoIndexer.Tests: 20/20 passed — ThemeService Set_UpdatesCurrent, Set_RaisesThemeChanged_ExactlyOnce, Set_PersistedValue_ReemitsOnReload, Initial_Current_ReflectsSettingsService all pass.",
+        "VideoIndexer.Infrastructure.Tests: 21/21 passed — ThemeService suite including Set_PersistsNewModeViaSettingsService, ReInstantiating_ReturnsPersistedTheme, Set_CalledMultipleTimes_RaisesEventEachTime, Set_SameModeAsDefault_StillRaisesEventOnce all pass.",
+        "AC4 (compile-out): #if DEBUG guards on both CycleTheme() RelayCommand and KeyBinding in MainWindow code-behind; binary inspection previously confirmed CycleTheme absent from Release DLL.",
+        "AC3 (immediate repaint): App.axaml.cs subscribes ThemeChanged → RequestedThemeVariant before MainWindow is constructed; event fires synchronously inside ThemeService.Set().",
+        "Cycle order confirmed: System→Light→Dark→System; _ catch-all maps any unknown future mode to System (safe for debug-only code)."
+      ],
+      "metrics": {
+        "tests_passed": 41,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T15:30:52Z",
+          "note": "CycleTheme() switch uses _ catch-all for Dark→System, which also handles any future ThemeMode enum values. Safe for debug-only code but worth noting if the enum grows."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T15:30:52Z",
+          "note": "ThemeService.Set() calls SaveAsync().GetAwaiter().GetResult() — blocking the UI thread. Class docs acknowledge this is intentional (write is <1KB on explicit user action). No issue at current scale."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T15:30:52Z",
+          "note": "No dedicated ViewModel-level unit test for CycleTheme cycle order (System→Light→Dark→System) — coverage relies on ThemeService tests. Acceptable since CycleTheme is debug-only scaffolding, not production logic."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-27T15:31:29Z",
+      "completed_at": "2026-04-27T15:32:56Z",
+      "duration_ms": 87000,
+      "summary": [
+        "All 4 acceptance criteria met and confirmed by code inspection.",
+        "`#if DEBUG` guards are correctly placed in both files: (1) the `using CommunityToolkit.Mvvm.Input;` import and the entire `CycleTheme()` method in MainWindowViewModel.cs, (2) the `KeyBindings.Add(...)` block in MainWindow.axaml.cs. Release builds compile both without any debug symbols.",
+        "Cycle order (System→Light→Dark→System) is implemented via an exhaustive switch expression. The `_` catch-all correctly maps Dark→System and is future-safe if the ThemeMode enum gains new values.",
+        "MVVM layering is clean: the View binds to `viewModel.CycleThemeCommand` (source-generated from the `[RelayCommand]`-annotated `private CycleTheme()`) — theme service is not accessed directly from the View.",
+        "Programmatic KeyBinding in code-behind is the correct Avalonia approach; XAML has no preprocessor directive support.",
+        "DI wiring is consistent: `IThemeService` is singleton and `MainWindowViewModel` is transient — correct for a single-window app. Shared singleton ThemeService ensures no state divergence across transient VM instances.",
+        "No memory leaks: the KeyBinding is held by the window's own `KeyBindings` collection with lifetime matching the window. No orphaned event subscriptions.",
+        "No security, correctness, or maintainability concerns identified."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T15:32:56Z",
+          "note": "MainWindow.axaml.cs: The parameterless and DI constructors are both `public`. The DI constructor could be `internal` with `[assembly: InternalsVisibleTo(...)]` to prevent accidental direct instantiation outside the app entry point. Not a concern for a single-project desktop app, but worth noting if the project grows to multiple assemblies."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-04-27T15:32:56Z",
+          "note": "MainWindowViewModel.cs: `CycleTheme()` is `private` — the correct accessibility for a `[RelayCommand]` method; the source generator exposes the public `CycleThemeCommand` property. No issue."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-27T15:32:56Z",
+          "note": "No issues found — code is clean, minimal, and consistent with the project's existing patterns."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-27T15:32:56Z",
+  "last_updated": "2026-04-27T15:32:56Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-27T15:28:51Z",
+      "notes": [
+        "All 4 ACs met. Both Debug and Release build cleanly. Binary verified: CycleTheme absent from Release, present in Debug.",
+        "CycleThemeCommand is a CommunityToolkit.Mvvm source-generated [RelayCommand] inside #if DEBUG block.",
+        "KeyBinding for Ctrl+T added in MainWindow constructor code-behind inside #if DEBUG. XAML unchanged.",
+        "Immediate repaint is handled by the existing ThemeChanged → RequestedThemeVariant wiring in App.axaml.cs (WP-005).",
+        "Persistence handled by IThemeService.Set → ISettingsService.SaveAsync (WP-004 chain)."
+      ]
+    }
+  ]
+}

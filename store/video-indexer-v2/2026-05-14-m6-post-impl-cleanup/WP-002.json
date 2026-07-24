@@ -1,0 +1,180 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-002.md",
+  "status": "COMPLETE",
+  "assigned_to": "Reviewer",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "AC-1: `LoadFilterSlotsAsync` does not propagate exceptions; `FilterSlots` empty, `ActiveFilterSlot` null after failure.",
+      "met": true
+    },
+    {
+      "criterion": "AC-2: `OnEditorCloseRequested` does not call `CloseSubView()` when `CurrentPage != MainContentPage.MovieEditor`.",
+      "met": true
+    },
+    {
+      "criterion": "AC-2a: Event handler unconditionally unsubscribes BEFORE the `CurrentPage` guard fires.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-14T20:47:08Z",
+      "completed_at": "2026-05-14T20:52:13Z",
+      "duration_ms": 305000,
+      "summary": [
+        "Added try/catch (Exception ex) when (ex is not OperationCanceledException) to MoviesListViewModel.LoadFilterSlotsAsync; on failure logs via _logger.LogError, clears FilterSlots, sets ActiveFilterSlot = null.",
+        "Fixed MainContentViewModel.OnEditorCloseRequested: event unsubscription is now unconditional (before guard); added if (CurrentPage != MainContentPage.MovieEditor) return; guard before CloseSubView() call.",
+        "Extended FakeFilterSlotRepository with SetException(Exception) that causes GetAllAsync to throw.",
+        "Updated MoviesListViewModelTests.BuildSut to accept optional FakeFilterSlotRepository? and FakeActiveFilterSlotRepository? parameters.",
+        "Added test LoadFilterSlotsAsync_WhenRepositoryThrows_DoesNotPropagateException to MoviesListViewModelTests.",
+        "Added test OnEditorCloseRequested_WhenCurrentPageIsNotMovieEditor_DoesNotCloseSubView to MainContentViewModelTests.",
+        "Build succeeded cleanly. All 225 App tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/ViewModels/MoviesListViewModel.cs",
+          "src/VideoIndexer.App/ViewModels/MainContentViewModel.cs",
+          "tests/VideoIndexer.App.Tests/TestHelpers/FakeFilterSlotRepository.cs",
+          "tests/VideoIndexer.App.Tests/MoviesListViewModelTests.cs",
+          "tests/VideoIndexer.App.Tests/MainContentViewModelTests.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-14T20:52:13Z",
+          "note": "LoadFilterSlotsAsync catch block calls FilterSlots.Clear() which is a no-op if the exception was thrown before the initial FilterSlots.Clear() inside the try block. The method still ends in a correct empty/null state regardless. The double-clear is harmless but slightly redundant."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-14T20:52:13Z",
+          "note": "MainContentViewModelTests.OnEditorCloseRequested_WhenCurrentPageIsNotMovieEditor_DoesNotCloseSubView relies on ShowLibraryFoldersCommand to manufacture a non-MovieEditor page state. An alternative would be a dedicated public 'SetCurrentPage' test hook, but that would widen the production API unnecessarily. The current approach is correct."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-14T20:52:13Z",
+          "note": "FakeFilterSlotRepository.SetException configures a single exception used by GetAllAsync. If a future test needs per-call exception control or an exception on SaveAsync/DeleteAsync, the fake will need extending."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-14T20:56:37Z",
+      "completed_at": "2026-05-14T20:57:31Z",
+      "duration_ms": 54000,
+      "summary": [
+        "AC-1 confirmed: LoadFilterSlotsAsync has try/catch (Exception ex) when (ex is not OperationCanceledException). On catch: LogError, FilterSlots.Clear(), ActiveFilterSlot = null. Unit test asserts empty FilterSlots and null ActiveFilterSlot after InvalidOperationException.",
+        "AC-2 confirmed: OnEditorCloseRequested guard 'if (CurrentPage != MainContentPage.MovieEditor) return;' is in place before CloseSubView(). Unit test navigates away then fires CloseRequested — page correctly remains LibraryFolders.",
+        "AC-2a confirmed: Unsubscription is the first statement in OnEditorCloseRequested, unconditionally executed before the CurrentPage guard.",
+        "Build clean (0 errors, 0 warnings). All 613 tests pass (6 live-DB skipped), including the two new unit tests.",
+        "Edge-case analysis: sender null/wrong-type in OnEditorCloseRequested handled via pattern match — unsubscription skipped safely, guard still fires. OperationCanceledException correctly propagates (not caught by the when-filter) so task cancellation is never swallowed."
+      ],
+      "metrics": {
+        "tests_passed": 613,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-14T20:57:31Z",
+          "note": "The 'when (ex is not OperationCanceledException)' filter correctly re-throws OCE rather than swallowing it — important for callers that cancel the token and expect the task to fault with OCE."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-14T20:57:31Z",
+          "note": "No observations beyond Developer notes — implementation is clean. Both new unit tests are well-scoped and cover the exact failure scenarios from the AC."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-14T21:01:26Z",
+      "completed_at": "2026-05-14T21:03:10Z",
+      "duration_ms": 104000,
+      "summary": [
+        "Reviewed LoadFilterSlotsAsync exception-handling change in MoviesListViewModel.cs: catch (Exception ex) when (ex is not OperationCanceledException) correctly swallows repository failures while preserving task cancellation semantics. FilterSlots.Clear() and ActiveFilterSlot = null in catch block are correct safe-state resets.",
+        "Reviewed OnEditorCloseRequested in MainContentViewModel.cs: unsubscription is the first logical statement, positioned unconditionally before the CurrentPage guard — AC-2a ordering satisfied. Guard correctly prevents CloseSubView() when page has transitioned away from MovieEditor.",
+        "FakeFilterSlotRepository.SetException extension is minimal and focused. BuildSut optional-parameter update is non-breaking for all existing tests.",
+        "Both new unit tests precisely exercise the AC scenarios with clear arrange/act/assert structure and descriptive names."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/ViewModels/MoviesListViewModel.cs",
+          "src/VideoIndexer.App/ViewModels/MainContentViewModel.cs",
+          "tests/VideoIndexer.App.Tests/TestHelpers/FakeFilterSlotRepository.cs",
+          "tests/VideoIndexer.App.Tests/MoviesListViewModelTests.cs",
+          "tests/VideoIndexer.App.Tests/MainContentViewModelTests.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-14T21:03:10Z",
+          "note": "FakeFilterSlotRepository.GetAllAsync throws synchronously (not Task.FromException). This works correctly in tests because the async state machine in LoadFilterSlotsAsync captures synchronous throws from awaited expressions into the try/catch. Both approaches (synchronous throw vs Task.FromException) are functionally equivalent for this pattern."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-14T21:03:10Z",
+          "note": "AC-2a: the 'unconditional' unsubscription is implemented as 'if (sender is MovieEditorViewModel editorVm) editorVm.CloseRequested -= OnEditorCloseRequested'. This is intentionally defensive — sender will always be MovieEditorViewModel in practice since we only subscribe via typed editorVm.CloseRequested. The pattern-match is ordered before the CurrentPage guard, satisfying the AC's ordering requirement."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-14T21:03:10Z",
+          "note": "No blocking observations — code is clean, well-structured, and addresses both regression scenarios precisely. The when-filter on OperationCanceledException is an important correctness detail that preserves task cancellation semantics."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-14T21:03:10Z",
+  "last_updated": "2026-05-14T21:03:10Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-14T20:52:13Z",
+      "notes": [
+        "AC-1, AC-2, AC-2a all met. Build clean (0 errors, 0 warnings). 225 App tests pass.",
+        "LoadFilterSlotsAsync: wrapped body in try/catch (Exception ex) when (ex is not OperationCanceledException); on catch logs LogError, clears FilterSlots, sets ActiveFilterSlot = null.",
+        "OnEditorCloseRequested: unsubscription is unconditional (first); CurrentPage guard added before CloseSubView() call. Order: unsubscribe → guard → CloseSubView.",
+        "FakeFilterSlotRepository.SetException added; MoviesListViewModelTests.BuildSut extended with optional filterSlots/activeSlot params; two new unit tests added."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-14T20:57:31Z",
+      "notes": [
+        "All ACs verified. Build clean, 613 tests pass. The two new tests precisely cover AC-1 and AC-2/AC-2a edge cases. No code-review blockers anticipated."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-05-14T21:03:10Z",
+      "notes": [
+        "All 3 ACs confirmed met. Build clean, 613 tests pass including both new unit tests. No Fix-Forward changes applied. No blocking issues.",
+        "Low-priority FYI: FakeFilterSlotRepository.SetException throws synchronously rather than returning Task.FromException — works correctly due to async state machine behavior. Not a bug."
+      ]
+    }
+  ]
+}

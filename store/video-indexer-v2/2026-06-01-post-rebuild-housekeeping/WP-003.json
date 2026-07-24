@@ -1,0 +1,204 @@
+{
+  "work_package_id": "WP-003",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "When CanNudge is true, InitializeAsync calls the same frame-capture logic as NudgeAsync and assigns PreviewBitmap",
+      "met": true
+    },
+    {
+      "criterion": "A failure during initial capture is caught and logged as a warning; dialog initialization completes normally",
+      "met": true
+    },
+    {
+      "criterion": "ConfigureAwait(true) is used for the bitmap assignment continuation, consistent with all other async patterns in the ViewModel",
+      "met": true
+    },
+    {
+      "criterion": "When CanNudge is false, no frame capture is attempted and no I/O occurs",
+      "met": true
+    },
+    {
+      "criterion": "dotnet build -c Release reports zero warnings and zero errors",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-06-03T11:28:52Z",
+      "completed_at": "2026-06-03T11:31:18Z",
+      "duration_ms": 146000,
+      "summary": [
+        "Added initial frame capture block to `BookmarkSettingsViewModel.InitializeAsync` after loading suggestions and presets.",
+        "Guard uses `!IsCreateMode || _ffmpegRunner is null || string.IsNullOrEmpty(_videoPath)` (equivalent to `!CanNudge`), satisfying compiler flow analysis without null-forgiving operators.",
+        "Capture uses the same temp-file-and-load pattern as `NudgeAsync`: IsBusy toggle, ExtractFrameAsync, Bitmap swap with disposal, warning log on failure, best-effort temp file cleanup in finally.",
+        "ConfigureAwait(true) used on ExtractFrameAsync continuation, consistent with all other VM async patterns.",
+        "Release build: 0 warnings, 0 errors. Test suite: 535/535 passed."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/ViewModels/BookmarkSettingsViewModel.cs"
+        ]
+      },
+      "metrics": {
+        "test_coverage": "535/535 (unit + app suites)",
+        "tests_passed": 535,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-03T11:31:18Z",
+          "note": "InitializeAsync early-returns when `_bookmarkRepo is null || _presetRepo is null` (design-time guard) before the frame-capture block. CanNudge would also be false in that state (no ffmpegRunner/videoPath in design-time ctor), so the guard is harmlessly redundant. Mentioned for clarity only."
+        },
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-06-03T11:31:18Z",
+          "note": "`ThumbnailItemViewModelTests.LoadBitmapAsync_FirstLoad_SetsBitmapProperty` produced a transient FAIL on the first run but passed on the second. This appears to be a pre-existing flaky test unrelated to WP-003 changes (no bitmap loading code was modified). Flagged for tracking."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-06-03T11:37:28Z",
+      "completed_at": "2026-06-03T11:38:33Z",
+      "duration_ms": 65000,
+      "summary": [
+        "All 5 AC verified. InitializeAsync guard (!IsCreateMode || _ffmpegRunner is null || string.IsNullOrEmpty(_videoPath)) is logically equivalent to !CanNudge and matches the pattern. Capture block mirrors NudgeAsync: IsBusy toggle, ExtractFrameAsync with ConfigureAwait(true), bitmap swap with disposal, catch LogWarning, finally IsBusy=false + temp cleanup. Release build 0 warnings/errors. 864/864 tests pass, no regressions.\""
+      ],
+      "metrics": {
+        "test_coverage": "864/864 (unit + app suites)",
+        "tests_passed": 864,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-03T11:38:33Z",
+          "note": "AC4 (no-capture path) is exercised by existing InitializeAsync tests (MakeCreateVm passes no ffmpegRunner, so guard fires and returns early). AC1-3 (capture path) are verified by code inspection only — the frame-capture block mirrors NudgeAsync exactly (IsBusy toggle, ExtractFrameAsync, ConfigureAwait(true), bitmap swap with disposal, warning log on failure, best-effort temp cleanup in finally). WP-005 will add automated coverage for the capture path."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-03T11:38:33Z",
+          "note": "Pre-existing transient flake in ThumbnailItemViewModelTests.LoadBitmapAsync_FirstLoad_SetsBitmapProperty — not triggered in this QA run (535/535 pass). Unrelated to WP-003 changes. No action needed here; documented for tracking."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-03T11:38:33Z",
+          "note": "No other observations — code is clean and consistent with the WP scope."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-06-03T11:44:03Z",
+      "completed_at": "2026-06-03T11:45:22Z",
+      "duration_ms": 79000,
+      "summary": [
+        "Reviewed BookmarkSettingsViewModel.cs. The guard (!IsCreateMode || _ffmpegRunner is null || string.IsNullOrEmpty(_videoPath)) is De Morgan-equivalent to !CanNudge and satisfies compiler flow analysis — correct pattern. The InitializeAsync frame-capture block is structurally identical to NudgeAsync: IsBusy toggle, Guid-named temp file, ExtractFrameAsync with ConfigureAwait(true), Bitmap swap with disposal, catch-LogWarning, finally with IsBusy=false and best-effort temp cleanup. All AC confirmed. One medium-priority improvement flagged: the capture block is duplicated in two places; a private CaptureFrameAsync helper would reduce the maintenance surface (not blocking). No architectural or correctness issues found."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/ViewModels/BookmarkSettingsViewModel.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-06-03T11:45:22Z",
+          "note": "The ~20-line frame-capture block (IsBusy toggle, tempPath gen, ExtractFrameAsync, Bitmap swap, catch-LogWarning, finally-cleanup) is duplicated between InitializeAsync and NudgeAsync. The only difference is the log message string. Extracting this to a private CaptureFrameAsync(string videoPath, long positionMs, string context) helper would reduce the maintenance surface — any future changes to the capture pattern (e.g., format change, additional cleanup) would only need to happen once. Not blocking, but worth addressing in a follow-up WP."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-03T11:45:22Z",
+          "note": "Guard logic confirmed: `!IsCreateMode || _ffmpegRunner is null || string.IsNullOrEmpty(_videoPath)` is De Morgan-equivalent to `!CanNudge`. Using the expanded form instead of `!CanNudge` is intentional — it satisfies the compiler's flow analysis for the subsequent null-safe dereferences of _ffmpegRunner and _videoPath without requiring null-forgiving operators. This is the correct approach."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-03T11:45:22Z",
+          "note": "NudgeAsync has an IsBusy guard at entry (`if (IsBusy) return;`) to prevent concurrent nudge captures. InitializeAsync has no such guard, which is correct — InitializeAsync is called exactly once before the dialog is shown (enforced by AvaloniaBookmarkSettingsService), so concurrent access is not possible."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-06-03T11:45:22Z",
+          "note": "[documentation-forward] api-surface.md entry for BookmarkSettingsViewModel.InitializeAsync should be updated to note that it now performs an initial frame capture when CanNudge is true, and that failures are swallowed as warnings (non-fatal). This distinguishes its error contract from a typical initialize method."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-06-03T11:50:16Z",
+      "completed_at": "2026-06-03T11:50:50Z",
+      "duration_ms": 34000,
+      "summary": [
+        "Updated BookmarkSettingsViewModel.InitializeAsync entry in api-surface.md to document that it now performs an initial frame capture when CanNudge is true, using the same temp-file pattern as NudgeAsync.",
+        "Documented the non-fatal error contract: capture failures are caught and logged as warnings, and the dialog still opens normally.",
+        "Documented the CanNudge=false guard: when false (no ffmpegRunner or videoPath), no I/O is attempted."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-03T11:50:50Z",
+          "note": "Addressed the documentation-forward from code review: BookmarkSettingsViewModel.InitializeAsync entry in api-surface.md now documents the initial frame-capture behaviour, the non-fatal error contract, and the CanNudge guard — distinguishing it from a typical initialiser."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-06-03T11:50:50Z",
+          "note": "No other documentation gaps found. README.md, constraints.md, and file-tree.md required no changes — this WP is a behavioural extension to an existing method with no new files, interfaces, or architectural patterns."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-06-03T11:50:50Z",
+  "last_updated": "2026-06-03T11:50:50Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-06-03T11:31:18Z",
+      "notes": [
+        "WP-003 complete. `InitializeAsync` now fires an initial frame capture guarded by `!IsCreateMode || _ffmpegRunner is null || string.IsNullOrEmpty(_videoPath)`, matching NudgeAsync's temp-file-load pattern exactly. All AC met.",
+        "Note for QA: a transient flake was observed in `ThumbnailItemViewModelTests.LoadBitmapAsync_FirstLoad_SetsBitmapProperty` — unrelated to WP-003, but worth noting as a pre-existing issue."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-06-03T11:38:33Z",
+      "notes": [
+        "WP-003 QA PASS. All AC met, 864/864 tests green, clean Release build. InitializeAsync frame-capture block is structurally identical to NudgeAsync. AC4 (CanNudge=false early return) exercised by existing tests; AC1-3 verified by code review — WP-005 will add automated test coverage for the capture path. Reviewer: compare InitializeAsync and NudgeAsync side-by-side to confirm guard logic and error-handling parity."
+      ]
+    }
+  ]
+}

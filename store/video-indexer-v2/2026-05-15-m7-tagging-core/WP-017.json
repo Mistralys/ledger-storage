@@ -1,0 +1,241 @@
+{
+  "work_package_id": "WP-017",
+  "work_package_file": "work/WP-017.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-016"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "dotnet build produces 0 AXAML compilation errors.",
+      "met": true
+    },
+    {
+      "criterion": "Compiled bindings (x:DataType) used on all {Binding} expressions.",
+      "met": true
+    },
+    {
+      "criterion": "TaggerView uses parameterless constructor.",
+      "met": true
+    },
+    {
+      "criterion": "ViewLocator resolves TaggerViewModel → TaggerView correctly.",
+      "met": true
+    },
+    {
+      "criterion": "No FluentTheme element added; FluentAvaloniaUI controls used if needed.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-18T12:31:23Z",
+      "completed_at": "2026-05-18T12:42:40Z",
+      "duration_ms": 677000,
+      "summary": [
+        "Created TaggerView.axaml with full compiled-binding AXAML: DockPanel layout, header toolbar (Add Tag / Add Category / Manage Grants buttons), always-visible FilterText TextBox, TabControl bound to Categories/SelectedCategory, ContentTemplate ListBox with flat-indent item DataTemplate (Depth×16 margin via DepthToMarginConverter), CheckBox for IsCheckedStored, tag name, ImpliedViaLabel, IsDimmed opacity class, right-click ContextMenu with Edit/Delete/Merge commands bound via #Root named-element reference.",
+        "Created TaggerView.axaml.cs with parameterless constructor calling InitializeComponent().",
+        "Created DepthToMarginConverter.cs in Converters/ — IValueConverter that maps int depth to Thickness(depth*16,0,0,0); singleton Instance property.",
+        "Registered TaggerView with AddTransient<TaggerView>(_ => new TaggerView()) in Program.cs so ViewLocator resolves TaggerViewModel → TaggerView.",
+        "Updated docs/agents/project-manifest/file-tree.md to document both new files.",
+        "dotnet build: 0 errors, 0 warnings. Tests: 255 passed (VideoIndexer.Tests) + 296 passed (VideoIndexer.App.Tests) = 551 total, 0 failures."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/Views/TaggerView.axaml",
+          "src/VideoIndexer.App/Views/TaggerView.axaml.cs",
+          "src/VideoIndexer.App/Converters/DepthToMarginConverter.cs",
+          "src/VideoIndexer.App/Program.cs",
+          "docs/agents/project-manifest/file-tree.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T12:42:40Z",
+          "note": "TaggerView.axaml uses x:Name='Root' on the UserControl root element to enable named-element binding from within nested DataTemplates (e.g. ContextMenu inside item template). This is a valid Avalonia pattern but slightly unusual. If Avalonia removes named-root NameScope resolution in a future version, the ContextMenu command bindings would silently fail at runtime. An alternative is a code-behind ContextMenu.Opening handler that sets commands imperatively."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T12:42:40Z",
+          "note": "DepthToMarginConverter.cs is a new converter in Converters/ (src/VideoIndexer.App/Converters/DepthToMarginConverter.cs). The Instance singleton is defined but TaggerView.axaml uses a resource key declaration instead — both patterns exist in the project (IntDecimalConverter uses both). No inconsistency in practice, but a style guide clarification on preferred usage would prevent future duplication."
+        },
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-05-18T12:42:40Z",
+          "note": "TaggerViewModel.SelectedCategory and TaggerViewModel.SelectedTag are bidirectionally bound from TaggerView but TaggerViewModel never consumes them in any command logic — they appear to be placeholders for future right-click selection state used by context-menu enablement (CanExecute). Until a CanExecute guard is added to EditTagCommand/DeleteTagCommand/MergeTagCommand, those commands are always enabled regardless of whether an item is selected. This is consistent with the current TaggerViewModel implementation (no CanExecute guards), so no action is needed in this WP."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-18T13:29:47Z",
+      "completed_at": "2026-05-18T13:32:33Z",
+      "duration_ms": 166000,
+      "summary": [
+        "All 5 AC verified and confirmed met.",
+        "Build: 0 errors, 0 warnings (dotnet build src/VideoIndexer.sln -c Debug).",
+        "Test suite: 756 passed, 0 failed, 6 skipped (all pre-existing environment skips — ffprobe missing, live-download flag absent, DB fixture). No regressions introduced.",
+        "AC1 confirmed via clean build output.",
+        "AC2 confirmed: 4 x:DataType declarations cover all binding scopes (UserControl root → TaggerViewModel, ItemTemplate DataTemplate → TaggerCategoryViewModel, ContentTemplate DataTemplate → TaggerCategoryViewModel, inner ItemTemplate DataTemplate → TaggerTagViewModel). Element-reference bindings (#Root.((vm:TaggerViewModel)DataContext)...) are compiled element bindings not subject to the x:DataType-on-plain-binding rule.",
+        "AC3 confirmed: TaggerView.axaml.cs has exactly one parameterless constructor.",
+        "AC4 confirmed: ViewLocator convention maps TaggerViewModel → TaggerView; TaggerView registered with AddTransient<TaggerView>(_ => new TaggerView()) in Program.cs.",
+        "AC5 confirmed: no FluentTheme element in TaggerView.axaml."
+      ],
+      "metrics": {
+        "tests_passed": 756,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "edge-case",
+          "priority": "medium",
+          "timestamp": "2026-05-18T13:32:33Z",
+          "note": "ContextMenu bindings use {Binding #Root.((vm:TaggerViewModel)DataContext).EditTagCommand} / DeleteTagCommand / MergeTagCommand. ContextMenu is a Popup placed in a separate visual overlay tree in Avalonia; named-element resolution for #Root may silently fail at runtime because the ContextMenu NameScope does not include names from the parent UserControl. Compiled binding resolved statically without errors, but runtime correctness is not covered by any unit or headless UI test. This is flagged by the developer in handoff notes. Recommend adding a headless smoke test or runtime assertion in a future WP to confirm context menu commands fire."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-18T13:32:33Z",
+          "note": "SelectedItem on the ListBox inside TabControl.ContentTemplate binds via element cast: {Binding #Root.((vm:TaggerViewModel)DataContext).SelectedTag}. Since ContentTemplate is within a separate DataTemplate scope with x:DataType='vm:TaggerCategoryViewModel', the element-reference cast to TaggerViewModel must succeed at runtime. Compiled binding accepts this statically; runtime verification pending integration with an actual TaggerViewModel instance."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-05-18T13:32:33Z",
+          "note": "No unit or headless UI test for TaggerView itself was added in this WP (TaggerView is purely an AXAML view scaffold). The WP scope does not require tests, but for full regression coverage a headless UI test confirming ViewLocator resolution and basic binding attachment would be valuable in a subsequent WP."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-18T13:41:36Z",
+      "completed_at": "2026-05-18T13:44:34Z",
+      "duration_ms": 178000,
+      "summary": [
+        "Reviewed all five artifacts from the implementation pipeline: TaggerView.axaml, TaggerView.axaml.cs, DepthToMarginConverter.cs, Program.cs (registration line), and file-tree.md (manifest update).",
+        "No blocking issues found. Code is clean, follows all project conventions, compiles with 0 errors/0 warnings, and 756 tests pass.",
+        "ContextMenu #Root named-element binding assessed: In Avalonia 11, compiled element-name bindings are resolved at AXAML compile-time via code generation, not at visual-tree traversal time. ContextMenu items maintain a logical parent reference back to the host UserControl, so FindNameScope resolves #Root through the logical tree. The 0-warning clean build from the Avalonia AXAML compiler confirms the generated binding code is valid. Not a blocking concern.",
+        "DepthToMarginConverter.Instance property mirrors the IntDecimalConverter precedent already in the project — intentional, not dead code.",
+        "Inline Grid.Styles inside the DataTemplate is intentional (co-location with usage, more discoverable). No Fix-Forward applied.",
+        "All acceptance criteria already marked met by QA. No changes to source files required."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/Views/TaggerView.axaml",
+          "src/VideoIndexer.App/Views/TaggerView.axaml.cs",
+          "src/VideoIndexer.App/Converters/DepthToMarginConverter.cs",
+          "src/VideoIndexer.App/Program.cs",
+          "docs/agents/project-manifest/file-tree.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T13:44:34Z",
+          "note": "ContextMenu MenuItem commands use {Binding #Root.((vm:TaggerViewModel)DataContext).EditTagCommand} pattern. In Avalonia 11, this is valid: compiled element-name bindings resolve #Root at code-generation time via the logical tree, not via the visual overlay tree. The 0-warning build confirms the AXAML compiler generated valid binding code. Runtime is unverified by tests — acceptable for this WP scope, but a headless smoke test exercising ContextMenu command wiring should be added in a follow-up WP."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T13:44:34Z",
+          "note": "DepthToMarginConverter.Instance static property is declared but not used in any AXAML file (TaggerView uses the StaticResource key). This mirrors the IntDecimalConverter precedent in the project, where Instance is similarly declared but all views use StaticResource. The pattern is intentional. A style guide note clarifying when to prefer {x:Static Instance} vs {StaticResource Key} would help future contributors."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-18T13:44:34Z",
+          "note": "[documentation-forward] TaggerViewModel has a known unmanaged subscription: it subscribes to ITagsManager.DataChanged in the constructor but never unsubscribes. The class docstring correctly warns callers to unsubscribe when the Tagger is no longer visible. The api-surface.md and constraints.md should document this lifecycle contract explicitly — callers (future WPs that instantiate TaggerViewModel) must call ITagsManager.DataChanged -= handler on disposal, ideally by having TaggerViewModel implement IDisposable in a future WP."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-05-18T13:44:34Z",
+          "note": "[documentation-forward] api-surface.md does not yet list TaggerView or DepthToMarginConverter in the App layer section. Both were added in this WP. Update api-surface.md with: TaggerView (UserControl, parameterless ctor), DepthToMarginConverter (IValueConverter, sealed, Instance singleton, Convert: int depth → Thickness(depth*16,0,0,0))."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T13:44:34Z",
+          "note": "No observable issue — code is clean and consistent with project conventions. Inline Grid.Styles in DataTemplate is intentional (co-location with usage) and acceptable for the current scale of tag lists."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-18T14:10:30Z",
+      "completed_at": "2026-05-18T14:12:57Z",
+      "duration_ms": 147000,
+      "summary": [
+        "Updated api-surface.md and constraints.md for WP-017. Added TaggerView (UserControl, parameterless ctor, DockPanel layout, ContextMenu #Root binding pattern) to the Views section. Added DepthToMarginConverter (IValueConverter, Instance singleton, int depth → Thickness(depth*16,0,0,0)) to the Converters section. Added TaggerViewModel DataChanged lifecycle contract to api-surface.md TaggerViewModel notes and to constraints.md §UI & MVVM — callers must unsubscribe on Unloaded; future WP should implement IDisposable."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "docs/agents/project-manifest/api-surface.md",
+          "docs/agents/project-manifest/constraints.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T14:12:57Z",
+          "note": "All three documentation-forward items from code-review addressed: (1) TaggerView UserControl entry added to api-surface.md §VideoIndexer.App — Views with layout description and ContextMenu binding note; (2) DepthToMarginConverter entry added to api-surface.md §VideoIndexer.App — Converters; (3) TaggerViewModel ITagsManager.DataChanged lifecycle contract added to both api-surface.md (TaggerViewModel Notes) and constraints.md §UI & MVVM. file-tree.md was already updated by the implementation agent."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-18T14:12:57Z",
+  "last_updated": "2026-05-18T14:12:57Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-18T12:42:40Z",
+      "notes": [
+        "All 5 AC met. Build: 0 errors, 0 warnings. 551 tests passing.",
+        "New files: TaggerView.axaml, TaggerView.axaml.cs, DepthToMarginConverter.cs. Modified: Program.cs (registration), file-tree.md (manifest).",
+        "ContextMenu Edit/Delete/Merge commands use #Root named-element binding to reach TaggerViewModel from within nested DataTemplate — verify this works at runtime with a UI smoke test.",
+        "SelectedItem on the ListBox inside TabControl.ContentTemplate binds to #Root.((vm:TaggerViewModel)DataContext).SelectedTag — also worth runtime verification."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-18T13:32:33Z",
+      "notes": [
+        "All 5 AC met. Build 0 errors/warnings, 756 tests passing, 0 regressions.",
+        "Key structural note: ContextMenu commands inside the ListBox ItemTemplate use named-element bindings (#Root.((vm:TaggerViewModel)DataContext).XxxCommand). Avalonia ContextMenu is a Popup in a separate visual tree — runtime resolution of #Root is unconfirmed by tests. Code review should assess whether this pattern is safe in the project's Avalonia version or whether a code-behind ContextMenu.Opening handler is preferred.",
+        "DepthToMarginConverter is declared as both a StaticResource in TaggerView.axaml and has a static Instance property — minor redundancy, no functional impact."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-18T13:44:34Z",
+      "notes": [
+        "PASS — no blocking issues. All 5 AC confirmed met. Code is clean, well-structured, and follows all project conventions.",
+        "Open runtime risk (not blocking): ContextMenu #Root element binding is theoretically valid in Avalonia 11 compiled bindings via logical-tree NameScope traversal, but no headless UI test covers this path. Recommend a smoke test in a future WP.",
+        "Documentation gaps for the Documentation agent: (1) api-surface.md missing TaggerView and DepthToMarginConverter entries; (2) TaggerViewModel IDisposable / DataChanged unsubscription lifecycle contract should be documented in constraints.md or api-surface.md.",
+        "DepthToMarginConverter.Instance vs StaticResource usage pattern: a style guide clarification in constraints.md would prevent future ambiguity for contributors."
+      ]
+    }
+  ]
+}

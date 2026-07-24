@@ -1,0 +1,225 @@
+{
+  "work_package_id": "WP-018",
+  "work_package_file": "work/WP-015.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-009"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "MovieListItem objects returned by GetMovieListAsync have correct BookmarkCount values matching the database.",
+      "met": true
+    },
+    {
+      "criterion": "HasRatedBookmarks is true only for movies that have at least one bookmark with rating > 0.",
+      "met": true
+    },
+    {
+      "criterion": "BookmarkDescriptions is populated for each movie with bookmarks; movies without bookmarks have an empty list.",
+      "met": true
+    },
+    {
+      "criterion": "No duplicate movies_bookmarks joins exist in MovieListSql after the consolidation.",
+      "met": true
+    },
+    {
+      "criterion": "dotnet build -c Release produces 0 warnings and 0 errors.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-30T12:07:29Z",
+      "completed_at": "2026-05-30T12:12:02Z",
+      "duration_ms": 273000,
+      "summary": [
+        "Extended DapperMovieCatalogRepository.MovieListSql with BookmarkCount and HasRatedBookmarks aggregate columns via a direct LEFT JOIN movies_bookmarks mb (replacing the prior subquery join). Added BatchBookmarkDescriptionSql and enrichment pass to populate MovieListItem.BookmarkDescriptions. Build: 0 errors, 0 warnings. All 956 tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Library/DapperMovieCatalogRepository.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-30T12:12:02Z",
+          "note": "The DB queries (MovieListSql, BatchTagSql, BatchBookmarkDescriptionSql) are all run sequentially on the same connection. For a large library they could in theory be parallelised with multiple connections, but sequential is simpler and the current volume does not warrant the change."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-05-30T12:12:02Z",
+          "note": "The TODO comment in step 5 (WP-J4 — inject ILogger for the StoredTagCount mismatch guard) still has no WP to close it. Worth keeping as-is until that WP exists, but surfacing here for tracking."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-30T12:22:10Z",
+      "completed_at": "2026-05-30T12:23:22Z",
+      "duration_ms": 72000,
+      "summary": [
+        "All 5 acceptance criteria verified and passing. MovieListSql has exactly one LEFT JOIN movies_bookmarks mb (no duplicates, AC4). BookmarkCount uses COUNT(DISTINCT mb.bookmark_id) preventing multi-join inflation (AC1). HasRatedBookmarks uses MAX(CASE WHEN mb.rating > 0 THEN 1 ELSE 0 END) aggregate correctly (AC2). BatchBookmarkDescriptionSql batch-fetches all descriptions ordered by milliseconds; MovieListItem.BookmarkDescriptions defaults to [] so movies without bookmarks retain an empty list (AC3). Release build: 0 errors, 0 warnings (AC5). Full test suite: 956/956 passed, 0 failed."
+      ],
+      "metrics": {
+        "tests_passed": 956,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-30T12:23:22Z",
+          "note": "No unit/integration tests exist that specifically assert BookmarkCount, HasRatedBookmarks, or BookmarkDescriptions values from GetMovieListAsync. The live DB tests do not currently exercise these new columns. Consider adding targeted integration tests with seeded movies_bookmarks rows to lock in these behaviors."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-05-30T12:27:51Z",
+      "completed_at": "2026-05-30T12:28:24Z",
+      "duration_ms": 33000,
+      "summary": [
+        "Reviewed 1 file (DapperMovieCatalogRepository.cs). 0 Critical, 0 High findings. Security sign-off: PASS. All SQL constants are hardcoded with no string concatenation; all external values use Dapper named parameters. The BatchBookmarkDescriptionSql and new aggregate columns (BookmarkCount, HasRatedBookmarks) add no new injection surface. File.Exists hash-path construction is a low-concern theoretical only. All OWASP Top 10 categories reviewed; no blocking issues found."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-30T12:28:24Z",
+          "note": "A03 — SQL Injection (MITIGATED): All SQL in DapperMovieCatalogRepository uses hardcoded constant strings or named Dapper parameters (@Hash, @Filename). MovieListSql, BatchTagSql, and BatchBookmarkDescriptionSql are parameterless constants. MovieExistsAsync, InsertMovieAsync, FilenameExistsAsync, and AddFilenameAsync all pass external values via anonymous-object parameterization. No user-input concatenation present anywhere. No SQL injection surface."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-30T12:28:24Z",
+          "note": "A04 — Insecure Design (INFO): GetMovieListAsync line 311 uses File.Exists(_appPaths.CoverImagePath(item.Hash)) where Hash originates from the database. If a hash value were to contain path traversal characters (e.g. '../../'), CoverImagePath could resolve outside the expected covers directory. In practice hashes are generated by the library scanner (not raw user input) and File.Exists is read-only — no write, execute, or data-exposure risk. Low theoretical concern; no remediation required for a desktop app."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-30T13:10:09Z",
+      "completed_at": "2026-05-30T13:11:06Z",
+      "duration_ms": 57000,
+      "summary": [
+        "Reviewed 1 file: DapperMovieCatalogRepository.cs. No blocking issues. All 5 ACs met. SQL changes are well-designed: COUNT(DISTINCT mb.bookmark_id) prevents join inflation, MAX aggregate for HasRatedBookmarks correctly identifies movies with any rated bookmark, BatchBookmarkDescriptionSql uses a separate round-trip to avoid the MariaDB GROUP_CONCAT length cap (well-documented rationale). Enrichment pass follows the established ConvertAll/with{} pattern for in-memory enrichment. Minor: step numbering (2.5) is unconventional but non-blocking."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Library/DapperMovieCatalogRepository.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-30T13:11:06Z",
+          "note": "COUNT(DISTINCT mb.bookmark_id) is the correct defensive formulation for BookmarkCount. Without DISTINCT, a multi-join SQL query (movies joined to multiple tables) would inflate the count by the Cartesian product of other joined rows. The Developer correctly anticipated this and used DISTINCT throughout (BookmarkCount, HasBookmarks, StoredTagCount, ThumbnailCount)."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-30T13:11:06Z",
+          "note": "HasRatedBookmarks uses MAX(CASE WHEN mb.rating > 0 THEN 1 ELSE 0 END) within the GROUP BY aggregate. This correctly returns 1 if ANY bookmark for a movie has rating > 0, and 0 if all bookmarks have rating = 0 or no bookmarks exist (LEFT JOIN null rows produce 0 from the CASE). Semantics are correct for the AC."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-30T13:11:06Z",
+          "note": "BatchBookmarkDescriptionSql design rationale (separate round-trip to avoid GROUP_CONCAT length cap) is clearly documented in the class-level comment. This is a well-reasoned architectural decision: GROUP_CONCAT has a configurable but often-default 1024-byte limit that would silently truncate results for movies with many bookmarks. The per-row fetch pattern is correct."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-30T13:11:06Z",
+          "note": "Step 2.5 comment numbering in GetMovieListAsync is unconventional — inserting a new query step as '2.5' reads awkwardly. Low priority: in a future cleanup pass, steps 2.5 through 7 could be renumbered to 3–8 for sequential clarity."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-30T13:11:06Z",
+          "note": "[documentation-forward] api-surface.md should document the new batch query pattern in DapperMovieCatalogRepository: three round-trips (MovieListSql, BatchTagSql, BatchBookmarkDescriptionSql) followed by two in-memory enrichment passes and a cover-image pass. This multi-step pattern is non-obvious and important for future contributors modifying GetMovieListAsync."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-30T13:17:45Z",
+      "completed_at": "2026-05-30T13:18:25Z",
+      "duration_ms": 40000,
+      "summary": [
+        "Updated DapperMovieCatalogRepository entry in api-surface.md: corrected 'two SQL round-trips' to 'three round-trips', added BatchBookmarkDescriptionSql with its GROUP_CONCAT-cap rationale, documented the new BookmarkCount (COUNT(DISTINCT)) and HasRatedBookmarks (MAX aggregate) SQL columns, and described the three in-memory enrichment passes (step 5 tag enrichment, step 6 bookmark-description enrichment, step 7 cover-image enrichment)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-30T13:18:25Z",
+          "note": "The DapperMovieCatalogRepository entry previously said 'two SQL round-trips' — now updated to 'three round-trips' with explicit documentation of BatchBookmarkDescriptionSql, its GROUP_CONCAT-avoidance rationale, and the BookmarkCount/HasRatedBookmarks/DISTINCT semantics. This makes the non-obvious multi-pass design self-documenting for contributors who need to modify GetMovieListAsync."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-30T13:18:25Z",
+  "last_updated": "2026-05-30T13:18:25Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-30T12:12:02Z",
+      "notes": [
+        "DapperMovieCatalogRepository SQL changes: (1) Replaced subquery LEFT JOIN (SELECT DISTINCT movie_id FROM movies_bookmarks) bk with direct LEFT JOIN movies_bookmarks mb, updating HasBookmarks to use COUNT(DISTINCT mb.bookmark_id) > 0. (2) Added COUNT(DISTINCT mb.bookmark_id) AS BookmarkCount and CASE WHEN MAX(CASE WHEN mb.rating > 0 THEN 1 ELSE 0 END) = 1 THEN 1 ELSE 0 END AS HasRatedBookmarks to MovieListSql. (3) Added BatchBookmarkDescriptionSql and MovieBookmarkDescriptionRow. (4) GetMovieListAsync now runs BatchBookmarkDescriptionSql on the same connection and performs a bookmark-descriptions enrichment pass (step 6) between tag enrichment (step 5) and cover-image enrichment (step 7). All 5 acceptance criteria met. Build: 0 errors, 0 warnings. 956 tests pass."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-05-30T12:23:22Z",
+      "notes": [
+        "DapperMovieCatalogRepository at src/VideoIndexer.Infrastructure/Library/DapperMovieCatalogRepository.cs. All 5 ACs verified. Single movies_bookmarks join (no duplicates), COUNT(DISTINCT) prevents multi-join inflation, BatchBookmarkDescriptionSql enriches BookmarkDescriptions, movies without bookmarks get default empty list. Build clean. 956/956 tests pass. Low-priority note: no test coverage for the new BookmarkCount/HasRatedBookmarks/BookmarkDescriptions columns."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-30T12:28:24Z",
+      "notes": [
+        "All 5 ACs confirmed met. 0 Critical, 0 High security findings. All SQL is either parameterless constants or uses Dapper named parameters — no injection surface. The File.Exists hash-based path construction is a theoretical low-concern for a desktop app where hashes are scanner-generated. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-30T13:11:06Z",
+      "notes": [
+        "WP-018 PASS — code review complete. No blocking issues. 5/5 ACs met. SQL logic is sound (DISTINCT counts, correct MAX aggregate for HasRatedBookmarks). Separate BatchBookmarkDescriptionSql round-trip is well-justified and avoids GROUP_CONCAT cap. Enrichment pattern follows established ConvertAll/with{} convention. Documentation agent: api-surface.md should document the multi-step query pattern in GetMovieListAsync."
+      ]
+    }
+  ]
+}

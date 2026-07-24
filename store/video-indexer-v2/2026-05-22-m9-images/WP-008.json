@@ -1,0 +1,195 @@
+{
+  "work_package_id": "WP-008",
+  "work_package_file": "work/WP-013.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "PositionLabel for PositionMs = 90500 returns \"00:01:30\".",
+      "met": true
+    },
+    {
+      "criterion": "LoadBitmapAsync disposes the previous Bitmap before replacing.",
+      "met": true
+    },
+    {
+      "criterion": "Dispose() releases the Bitmap without throwing.",
+      "met": true
+    },
+    {
+      "criterion": "dotnet build -c Release reports zero warnings.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-22T17:50:52Z",
+      "completed_at": "2026-05-22T17:51:44Z",
+      "duration_ms": 52000,
+      "summary": [
+        "Created ThumbnailItemViewModel : ObservableObject, IDisposable with ThumbnailId (long), PositionMs (long), FilePath (string) constructor-set properties.",
+        "[ObservableProperty] _bitmap (Bitmap?) and _isSelected (bool).",
+        "PositionLabel computed via TimeSpan.FromMilliseconds(PositionMs).ToString(@\"hh\\:mm\\:ss\").",
+        "LoadBitmapAsync: reads bytes async, creates new Bitmap from MemoryStream, disposes old before assigning new.",
+        "Dispose(): disposes Bitmap and nulls reference.",
+        "Release build: 0 warnings, 0 errors."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/ViewModels/ThumbnailItemViewModel.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-22T17:51:44Z",
+          "note": "LoadBitmapAsync disposes old before assigning new (old?.Dispose(); Bitmap = newBitmap) which creates a brief frame where Bitmap is null. Alternative ordering (Bitmap = new; old?.Dispose()) avoids the null frame but risks accessing a disposed object if bound controls retain a reference. Current order matches the spec's stated semantics."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-22T17:51:44Z",
+          "note": "MemoryStream created in LoadBitmapAsync is not explicitly disposed. Bitmap constructor (from stream) reads the stream and typically retains its own internal buffer, so the MemoryStream can be left for GC. This is acceptable but could be wrapped in a using if future profiling shows memory pressure."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-22T18:28:23Z",
+      "completed_at": "2026-05-22T18:28:48Z",
+      "duration_ms": 25000,
+      "summary": [
+        "All 4 acceptance criteria verified by code inspection.",
+        "AC1: TimeSpan.FromMilliseconds(90500).ToString(@\"hh\\:mm\\:ss\") = '00:01:30'. Correct.",
+        "AC2: LoadBitmapAsync captures var old = Bitmap, calls old?.Dispose(), then assigns Bitmap = newBitmap. Old disposed before new assigned.",
+        "AC3: Dispose() calls Bitmap?.Dispose() with null-conditional then sets Bitmap = null. Cannot throw on null reference.",
+        "AC4: dotnet build -c Release 0 warnings, 0 errors. 643/643 tests pass."
+      ],
+      "metrics": {
+        "test_coverage": "643 tests green (unit + app suites)",
+        "tests_passed": 643,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-22T18:28:48Z",
+          "note": "No observations — code is clean and correct. PositionLabel truncates sub-second precision (format hh:mm:ss), which is the expected behaviour for a UI display label. LoadBitmapAsync correctly captures old reference before nulling it via dispose. Dispose() is null-safe."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-22T18:28:48Z",
+          "note": "LoadBitmapAsync does not check ct before constructing the new Bitmap (only after ReadAllBytesAsync). If cancellation fires between the read and the dispose, the new Bitmap is created and then discarded. This is a very minor resource leak for a single cancelled load, but acceptable."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-22T18:37:19Z",
+      "completed_at": "2026-05-22T18:38:27Z",
+      "duration_ms": 68000,
+      "summary": [
+        "Code review complete — PASS with one Fix-Forward applied.",
+        "PositionLabel uses correct TimeSpan custom format @\"hh\\:mm\\:ss\" with escaped colons.",
+        "LoadBitmapAsync: reads async with CancellationToken, checks cancellation before Bitmap construction, correct dispose-before-replace ordering.",
+        "Fix-Forward: MemoryStream wrapped in 'using' so it is disposed after Bitmap construction. Safe because Bitmap reads the stream fully during construction. Non-behavioral.",
+        "Dispose(): null-safe (?.Dispose()), sets Bitmap = null, no GC.SuppressFinalize needed (sealed, no finalizer)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/ViewModels/ThumbnailItemViewModel.cs"
+        ]
+      },
+      "metrics": {
+        "test_coverage": "643/643 green (282 unit + 361 app)",
+        "tests_passed": 643,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-22T18:38:27Z",
+          "note": "Fix-Forward applied: MemoryStream in LoadBitmapAsync wrapped in 'using var ms = new MemoryStream(bytes)' so the stream is disposed after Bitmap construction completes. Bitmap reads the stream fully during construction and does not retain it, so disposal is safe. Non-behavioral change; 643/643 tests pass."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-22T18:38:27Z",
+          "note": "PositionLabel format @\"hh\\:mm\\:ss\" correctly escapes the colons for the TimeSpan custom format. AC1 (90500 ms = 00:01:30) verified by manual calculation."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-22T18:38:27Z",
+          "note": "LoadBitmapAsync dispose ordering (capture old = Bitmap, old?.Dispose(), Bitmap = newBitmap) is correct per spec semantics. Brief null window between dispose and assignment is acceptable for a ViewModel load path."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-22T18:38:27Z",
+          "note": "IDisposable implemented without GC.SuppressFinalize(this) — correct since the class is sealed and has no finalizer. No finalizer suppression needed."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-22T19:13:47Z",
+      "completed_at": "2026-05-22T19:14:25Z",
+      "duration_ms": 38000,
+      "summary": [
+        "Updated file-tree.md and api-surface.md for WP-008 ThumbnailItemViewModel. Applied AGENTS.md maintenance rules (new ViewModel → both manifest documents). file-tree.md: annotated entry covering IDisposable, [ObservableProperty] fields, PositionLabel format, and LoadBitmapAsync dispose-before-replace pattern. api-surface.md: full section with constructor signature, immutable identity properties, observable properties, PositionLabel computed property, and LoadBitmapAsync/Dispose method contracts."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "docs/agents/project-manifest/file-tree.md",
+          "docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-22T19:14:25Z",
+          "note": "No reviewer documentation-forward. Applied AGENTS.md maintenance rules for new ViewModels. Added ThumbnailItemViewModel to file-tree.md (annotated entry with IDisposable note and PositionLabel format) and api-surface.md (full constructor + property signatures + LoadBitmapAsync/Dispose contracts)."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-22T19:14:25Z",
+  "last_updated": "2026-05-22T19:14:25Z",
+  "handoff_notes": [
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-22T18:28:48Z",
+      "notes": [
+        "WP-008 QA passed. All 4 ACs verified. ThumbnailItemViewModel is clean and correct. Release build clean. 643/643 tests pass."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-22T18:38:27Z",
+      "notes": [
+        "WP-008 code-review PASS. Fix-Forward applied: MemoryStream in LoadBitmapAsync wrapped in using for proper cleanup. Non-behavioral, 643/643 tests pass. All design decisions (dispose ordering, null-safe Dispose, PositionLabel format) are correct."
+      ]
+    }
+  ]
+}

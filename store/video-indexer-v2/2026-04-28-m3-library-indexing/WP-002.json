@@ -1,0 +1,237 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-002.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "All 12 new files compile cleanly under TreatWarningsAsErrors=true with no suppressed warnings.",
+      "met": true
+    },
+    {
+      "criterion": "VideoIndexer.Core project has no new PackageReference entries — BCL only.",
+      "met": true
+    },
+    {
+      "criterion": "Dependency direction is maintained: Core references nothing outside the BCL.",
+      "met": true
+    },
+    {
+      "criterion": "The Models/ subdirectory is created; all three model records reside there.",
+      "met": true
+    },
+    {
+      "criterion": "All 110 existing tests continue to pass.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-07T20:08:39Z",
+      "completed_at": "2026-05-07T20:12:02Z",
+      "duration_ms": 203000,
+      "summary": [
+        "Created 2 new enums: RefreshOutcome (Inserted | FilenameAdded | SkippedAlreadyKnown | SkippedUnsupportedExtension | Failed) and RefreshState (Idle | Running | Completed | Faulted).",
+        "Created 3 new model records: LibraryFolder (Id/Path/AddedUtc), RefreshProgress (snapshot with Outcomes dictionary), RefreshSummary (end-of-run roll-up with Duration/Exception).",
+        "Created 7 new interfaces: ILibraryFolderRepository, IMovieCatalogRepository, IFfprobeRunner, IVideoHasher, IObfuscationMap, ILibraryScanner, IRefreshOrchestrator.",
+        "Build: 0 warnings, 0 errors under TreatWarningsAsErrors=true / WarningLevel=9999. No PackageReference added.",
+        "Test suite: 161 passed, 0 failed, 2 skipped (intentional live skips)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Core/Enums/RefreshOutcome.cs",
+          "src/VideoIndexer.Core/Enums/RefreshState.cs",
+          "src/VideoIndexer.Core/Models/LibraryFolder.cs",
+          "src/VideoIndexer.Core/Models/RefreshProgress.cs",
+          "src/VideoIndexer.Core/Models/RefreshSummary.cs",
+          "src/VideoIndexer.Core/Abstractions/ILibraryFolderRepository.cs",
+          "src/VideoIndexer.Core/Abstractions/IMovieCatalogRepository.cs",
+          "src/VideoIndexer.Core/Abstractions/IFfprobeRunner.cs",
+          "src/VideoIndexer.Core/Abstractions/IVideoHasher.cs",
+          "src/VideoIndexer.Core/Abstractions/IObfuscationMap.cs",
+          "src/VideoIndexer.Core/Abstractions/ILibraryScanner.cs",
+          "src/VideoIndexer.Core/Abstractions/IRefreshOrchestrator.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T20:12:02Z",
+          "note": "IRefreshOrchestrator.StartRefreshAsync returns Task (completes when refresh finishes). QA should confirm this is the intended contract — an alternative would be Task<RefreshSummary> to avoid polling LastSummary, but that would change how callers await completion."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-07T20:14:48Z",
+      "completed_at": "2026-05-07T20:16:01Z",
+      "duration_ms": 73000,
+      "summary": [
+        "Build: 0 warnings, 0 errors under TreatWarningsAsErrors=true / WarningLevel=9999 on net10.0 (AC1).",
+        "VideoIndexer.Core.csproj has zero PackageReference entries — confirmed BCL-only (AC2, AC3).",
+        "Dependency audit: all 12 files use only BCL types (CancellationToken, Task, IProgress, IReadOnly* collections) and cross-references within VideoIndexer.Core itself. No external assembly references (AC3).",
+        "Models/ subdirectory contains LibraryFolder.cs, RefreshProgress.cs, RefreshSummary.cs — all three records present and correctly namespaced as VideoIndexer.Core.Models (AC4).",
+        "Abstractions/ contains all 7 new interfaces; Enums/ contains RefreshOutcome.cs and RefreshState.cs — all 12 WP-002 files verified by directory listing and code inspection (AC1).",
+        "Test suite: 161 passed, 0 failed, 2 skipped (intentional live-network skips) — exceeds the 110-test baseline (AC5).",
+        "Edge case: IMovieCatalogRepository check-then-insert pattern has a TOCTOU race in concurrent scenarios — implementation must address this.",
+        "Edge case: IRefreshOrchestrator.StartRefreshAsync immediate-complete no-op means callers cannot await an already-running refresh via this call — intentional design, confirmed by Developer notes."
+      ],
+      "metrics": {
+        "tests_passed": 161,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T20:16:01Z",
+          "note": "IMovieCatalogRepository has a TOCTOU (check-then-act) race between MovieExistsAsync and InsertMovieAsync. Two concurrent callers could both see false from MovieExistsAsync and then both attempt InsertMovieAsync, causing a duplicate-key error. The interface contract only says 'callers should check first'; the implementation should handle this via transaction isolation or INSERT IGNORE semantics."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T20:16:01Z",
+          "note": "IRefreshOrchestrator.StartRefreshAsync returns an immediately-completed Task when a refresh is already running. Callers cannot await the end of the in-progress refresh via this call alone — they must poll State or subscribe to events. This is an intentional design decision per the Developer's notes, but the Reviewer should confirm the UI/consumer needs are met."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T20:16:01Z",
+          "note": "No observations beyond the above — all 12 files follow clean BCL-only sealed record / interface patterns consistent with the existing Core codebase."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-07T20:18:06Z",
+      "completed_at": "2026-05-07T20:20:19Z",
+      "duration_ms": 133000,
+      "summary": [
+        "Code review PASS with two Fix-Forward edits applied. All 12 Core contract files are well-structured, BCL-only, and follow established conventions. Enums are exhaustive and well-documented. Model records use required/init-only properties correctly (LibraryFolder, RefreshSummary) and document nullable semantics clearly. All 7 interfaces use cancellation tokens consistently, nullable parameters default to null, and BCL collection types (IReadOnlyList, IReadOnlyDictionary, IReadOnlyCollection) are used throughout. Fix 1: InsertMovieAsync doc replaced misleading check-then-act guidance with an implementation-side concurrency contract. Fix 2: StartRefreshAsync return doc clarified to explicitly describe the already-completed-task no-op behavior. Build confirmed clean at 0 warnings after edits."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Core/Enums/RefreshOutcome.cs",
+          "src/VideoIndexer.Core/Enums/RefreshState.cs",
+          "src/VideoIndexer.Core/Models/LibraryFolder.cs",
+          "src/VideoIndexer.Core/Models/RefreshProgress.cs",
+          "src/VideoIndexer.Core/Models/RefreshSummary.cs",
+          "src/VideoIndexer.Core/Abstractions/ILibraryFolderRepository.cs",
+          "src/VideoIndexer.Core/Abstractions/IMovieCatalogRepository.cs",
+          "src/VideoIndexer.Core/Abstractions/IFfprobeRunner.cs",
+          "src/VideoIndexer.Core/Abstractions/IVideoHasher.cs",
+          "src/VideoIndexer.Core/Abstractions/IObfuscationMap.cs",
+          "src/VideoIndexer.Core/Abstractions/ILibraryScanner.cs",
+          "src/VideoIndexer.Core/Abstractions/IRefreshOrchestrator.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "medium",
+          "timestamp": "2026-05-07T20:20:19Z",
+          "note": "IMovieCatalogRepository.InsertMovieAsync: replaced 'Callers should check MovieExistsAsync first to avoid duplicate-key errors' with a <remarks> block that places the concurrency contract on the implementation side — 'Implementations must handle duplicate-key scenarios gracefully (e.g., via INSERT IGNORE or ON DUPLICATE KEY UPDATE semantics) because concurrent callers cannot safely rely on a prior MovieExistsAsync check to prevent races.' The original guidance encouraged a check-then-act pattern that cannot be made safe without DB-level atomicity."
+        },
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-07T20:20:19Z",
+          "note": "IRefreshOrchestrator.StartRefreshAsync <returns> doc: reworded from 'A Task that completes when the refresh finishes (or when it was already running and this call was a no-op)' to explicitly state that the no-op case returns an already-completed task and directs callers to monitor State or LastSummary to track a running instance. Non-behavioral change; build confirmed clean at 0 warnings."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T20:20:19Z",
+          "note": "RefreshProgress.Total uses int (0 = not-yet-known) vs int? semantics. The doc-comment documents this convention correctly. A nullable int? would be more explicit but changing the type is out of scope for a Fix-Forward — flag for a future API review if ambiguity causes consumer bugs."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T20:20:19Z",
+          "note": "IVideoHasher.ComputeHashAsync passes IObfuscationMap as a call-site parameter rather than constructor injection. The Developer's rationale (test isolation without DI rewiring) is valid. If the obfuscation map ever becomes expensive to construct, caching at the scanner level will be the natural fix."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-07T20:20:19Z",
+          "note": "[documentation-forward] IMovieCatalogRepository: the AddFilenameAsync method lacks a <remarks> note similar to the one now on InsertMovieAsync. While the TOCTOU risk is lower (the filename uniqueness constraint is softer), adding a brief concurrency guidance note would make the contract symmetric. Documentation agent should add it."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-07T20:22:35Z",
+      "completed_at": "2026-05-07T20:24:17Z",
+      "duration_ms": 102000,
+      "summary": [
+        "Added <remarks> concurrency guidance to IMovieCatalogRepository.AddFilenameAsync — symmetric with the InsertMovieAsync contract note applied by the Reviewer. Resolves the documentation-forward item.",
+        "Added 'Library Scanning Contracts (M3)' section to README.md Architecture, documenting all 12 new Core types: RefreshOutcome and RefreshState enums, LibraryFolder/RefreshProgress/RefreshSummary model records, and the 7 interfaces (ILibraryFolderRepository, IMovieCatalogRepository, IFfprobeRunner, IVideoHasher, IObfuscationMap, ILibraryScanner, IRefreshOrchestrator). Key contract notes included: IRefreshOrchestrator single-flight behaviour; IMovieCatalogRepository concurrency policy for both methods.",
+        "Build: 0 warnings, 0 errors after XML doc-comment additions."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Core/Abstractions/IMovieCatalogRepository.cs",
+          "README.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-07T20:24:17Z",
+          "note": "Added <remarks> concurrency note to IMovieCatalogRepository.AddFilenameAsync, making it symmetric with InsertMovieAsync. Addresses the documentation-forward item from code review."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-07T20:24:17Z",
+          "note": "Added 'Library Scanning Contracts (M3)' section to README.md Architecture covering all 2 enums, 3 model records, and 7 interfaces introduced in WP-002. Includes the IRefreshOrchestrator no-op contract note and the IMovieCatalogRepository concurrency guidance for future implementers."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-07T20:24:17Z",
+  "last_updated": "2026-05-07T20:24:17Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-07T20:12:02Z",
+      "notes": [
+        "All 12 Core contract files created. No PackageReferences added to VideoIndexer.Core. 0 warnings, 0 errors. All 161 tests pass.",
+        "Key design decisions: IMovieCatalogRepository exposes fine-grained exists/insert primitives rather than a single upsert, to keep the business logic in LibraryScanner. IRefreshOrchestrator returns Task from StartRefreshAsync that resolves when the run finishes; LastSummary holds the roll-up.",
+        "IVideoHasher.ComputeHashAsync takes IObfuscationMap as a parameter (not injected via constructor) so tests can substitute maps without rewiring DI."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-07T20:16:01Z",
+      "notes": [
+        "WP-002 passes QA. All 5 ACs met: 12 files present and correctly placed, Core.csproj has zero PackageReferences, build clean, 161 tests pass. Two low-priority design notes for the Reviewer: (1) TOCTOU race in IMovieCatalogRepository check-then-insert pattern needs to be handled in the implementation layer; (2) IRefreshOrchestrator.StartRefreshAsync no-op behaviour when already running means callers cannot await an in-progress run — confirm the UI consumer pattern handles this correctly."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-07T20:20:19Z",
+      "notes": [
+        "WP-002 code review PASS with two Fix-Forward doc edits applied. IMovieCatalogRepository.InsertMovieAsync concurrency contract tightened — implementation must handle duplicate-key gracefully, not rely on caller pre-check. IRefreshOrchestrator.StartRefreshAsync return doc clarified for the no-op case. All 5 ACs confirmed met. One documentation-forward: AddFilenameAsync should receive a symmetric concurrency guidance note."
+      ]
+    }
+  ]
+}

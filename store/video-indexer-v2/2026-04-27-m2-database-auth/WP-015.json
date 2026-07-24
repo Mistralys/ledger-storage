@@ -1,0 +1,299 @@
+{
+  "work_package_id": "WP-015",
+  "work_package_file": "work/WP-015.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-010",
+    "WP-012",
+    "WP-013",
+    "WP-014"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "Launching with no saved connections shows DatabaseConnectorView and not the M1 main content area.",
+      "met": true
+    },
+    {
+      "criterion": "Once the shell reaches Ready, MainContentView is rendered (empty body).",
+      "met": true
+    },
+    {
+      "criterion": "Ctrl+T cycles the theme only when Shell.Current == Ready; in any other state the keystroke is a no-op.",
+      "met": true
+    },
+    {
+      "criterion": "The window chrome (title, default size, theme application) is unchanged from M1.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-28T08:22:22Z",
+      "completed_at": "2026-04-28T08:26:09Z",
+      "duration_ms": 227000,
+      "summary": [
+        "Added MainContentViewModel and MainContentView (placeholder)",
+        "Modified MainWindowViewModel: inject ShellViewModel, expose Shell property, gate CycleThemeCommand on ShellState.Ready",
+        "Modified MainWindow.axaml: ContentControl bound to Shell.CurrentViewModel",
+        "3 unit tests in App.Tests verifying Shell exposure and Ctrl+T gating; 33 total App.Tests pass"
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/ViewModels/MainContentViewModel.cs",
+          "src/VideoIndexer.App/Views/MainContentView.axaml",
+          "src/VideoIndexer.App/Views/MainContentView.axaml.cs",
+          "src/VideoIndexer.App/ViewModels/MainWindowViewModel.cs",
+          "src/VideoIndexer.App/Views/MainWindow.axaml",
+          "tests/VideoIndexer.App.Tests/MainWindowViewModelTests.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-28T08:26:09Z",
+          "note": "Shell.PropertyChanged subscription for CycleThemeCommand.NotifyCanExecuteChanged is inside #if DEBUG. In Release builds, CycleThemeCommand doesn't exist so this is correct. However, the PropertyChanged subscription is never unsubscribed — for the lifetime of MainWindowViewModel this is acceptable since both objects share the same lifetime."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "FAIL",
+      "started_at": "2026-04-28T08:26:29Z",
+      "completed_at": "2026-04-28T08:31:19Z",
+      "duration_ms": 290000,
+      "summary": [
+        "Build clean (0 errors, 0 warnings). All 60 tests pass. AC-3 (Ctrl+T gating) and AC-4 (window chrome) are fully verified. FAIL on AC-1 and AC-2: both acceptance criteria have zero test coverage because every test helper passes `_ => null` as the viewModelFactory, making Shell.CurrentViewModel always null. No test verifies that non-Ready states (Error, Connecting, LoggingOn, SettingPassword) produce a DatabaseConnectorViewModel, and no test verifies that ShellState.Ready produces a MainContentViewModel."
+      ],
+      "metrics": {
+        "tests_passed": 60,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "bug",
+          "priority": "high",
+          "timestamp": "2026-04-28T08:31:19Z",
+          "note": "AC-1 has no test coverage. MainWindowViewModelTests.BuildShell passes `_ => null` as the viewModelFactory so Shell.CurrentViewModel is always null in every test. A test is needed that uses a factory returning DatabaseConnectorViewModel (or a sentinel object) for non-Ready states and asserts Shell.CurrentViewModel is NOT a MainContentViewModel. Example: build ShellViewModel with a factory of `state => state == ShellState.Ready ? new MainContentViewModel() : new object()`, drive it to Error via ConnectAsync(), and assert CurrentViewModel is not MainContentViewModel."
+        },
+        {
+          "type": "bug",
+          "priority": "high",
+          "timestamp": "2026-04-28T08:31:19Z",
+          "note": "AC-2 has no test coverage. No test verifies that Shell.CurrentViewModel becomes a MainContentViewModel instance after the shell reaches ShellState.Ready. Add a test in MainWindowViewModelTests.cs that builds a ShellViewModel with a factory returning `new MainContentViewModel()` for ShellState.Ready, drives it through ConnectAsync() → SetPasswordAsync() to reach Ready, then asserts `shell.CurrentViewModel.Should().BeOfType<MainContentViewModel>()`."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-28T08:31:19Z",
+          "note": "AC-3 and AC-4 are well covered. The ContentControl binding in MainWindow.axaml, MainContentView/ViewModel placeholder, and Shell property exposure are structurally correct. Only the test coverage for the factory-based CurrentViewModel projections is missing."
+        }
+      ]
+    },
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-28T08:31:43Z",
+      "completed_at": "2026-04-28T08:32:23Z",
+      "duration_ms": 40000,
+      "summary": [
+        "Rework: added 2 tests to MainWindowViewModelTests.cs covering AC-1 (non-Ready CurrentViewModel) and AC-2 (Ready → MainContentViewModel)",
+        "35 App.Tests pass (was 33 before rework)"
+      ],
+      "artifacts": {
+        "files_modified": [
+          "tests/VideoIndexer.App.Tests/MainWindowViewModelTests.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-28T08:32:23Z",
+          "note": "No new observations — rework was additive (two tests). Code is clean and consistent."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-28T08:32:55Z",
+      "completed_at": "2026-04-28T08:34:22Z",
+      "duration_ms": 87000,
+      "summary": [
+        "Rework re-check passed. Build clean (0 errors, 0 warnings). All 35 App.Tests and 48 Infrastructure.Tests pass (83 total). AC-1 and AC-2 are now properly covered by new tests that use explicit viewModelFactory lambdas instead of the null-returning BuildShell helper. AC-3 and AC-4 remain covered and unchanged."
+      ],
+      "metrics": {
+        "tests_passed": 83,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-28T08:34:22Z",
+          "note": "AC-1 fix verified: CurrentViewModel_IsNotMainContent_WhenShellIsNotReady uses a proper sentinel factory and drives shell to Error state before asserting. Correctly closes the previously-bounced coverage gap."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-28T08:34:22Z",
+          "note": "AC-2 fix verified: CurrentViewModel_IsMainContent_WhenShellReachesReady uses a factory returning new MainContentViewModel() for ShellState.Ready, drives through ConnectAsync → SetPasswordAsync to reach Ready, and asserts BeOfType<MainContentViewModel>(). Correctly closes the previously-bounced coverage gap."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-28T08:34:22Z",
+          "note": "No regressions. Infrastructure.Tests 48/48 pass. BuildShell helper (using _ => null) is retained for tests that do not need factory-driven CurrentViewModel — this is the correct design since those tests focus on other behaviors."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-28T08:34:55Z",
+      "completed_at": "2026-04-28T08:37:43Z",
+      "duration_ms": 168000,
+      "summary": [
+        "Code review passed with two Fix-Forward improvements applied directly. All four acceptance criteria are met, implementation is structurally sound, and tests are well-structured. No blocking issues found.",
+        "Fix-Forward #1: Removed dead [ObservableProperty] _greeting field from MainWindowViewModel.cs — the generated Greeting property was not bound in any XAML (MainWindow.axaml hardcodes the title as a string literal). Zero behavioral impact.",
+        "Fix-Forward #2: Added HorizontalContentAlignment='Stretch' and VerticalContentAlignment='Stretch' to the ContentControl in MainWindow.axaml. Avalonia ContentControl defaults to top-left content alignment; without this, future hosted views (DatabaseConnectorView, MainContentView) would not fill the available grid cell. Non-behavioral for current placeholder but prevents a latent layout bug.",
+        "Architecture is clean: ShellViewModel factory pattern is well-abstracted, ViewLocator convention-based resolution is correct, #if DEBUG guards for CycleThemeCommand are appropriate, and the two-constructor (parameterless + DI) pattern on MainContentView follows the established project convention."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/ViewModels/MainWindowViewModel.cs",
+          "src/VideoIndexer.App/Views/MainWindow.axaml",
+          "src/VideoIndexer.App/Views/MainContentView.axaml",
+          "src/VideoIndexer.App/Views/MainContentView.axaml.cs",
+          "src/VideoIndexer.App/ViewModels/MainContentViewModel.cs",
+          "tests/VideoIndexer.App.Tests/MainWindowViewModelTests.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-28T08:37:43Z",
+          "note": "Removed dead [ObservableProperty] _greeting = 'Welcome to Video Indexer' field from MainWindowViewModel.cs. The CommunityToolkit-generated Greeting property was never bound in MainWindow.axaml (the TextBlock hardcodes Text='Video Indexer'). Dead generated properties add noise to the public surface and create false binding targets. Confirmed 0 references across the entire workspace before removal."
+        },
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "medium",
+          "timestamp": "2026-04-28T08:37:43Z",
+          "note": "Added HorizontalContentAlignment='Stretch' VerticalContentAlignment='Stretch' to the ContentControl in MainWindow.axaml (Grid.Row=1). Avalonia ContentControl's default content alignment is top-left, not stretch. Without this, when DatabaseConnectorView or any future real view is hosted, it will appear pinned to the top-left corner rather than filling the content area. Build verified clean (0 errors, 0 warnings) after the change."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-28T08:37:43Z",
+          "note": "In MainWindowViewModelTests.cs AC-1 test, the non-Ready sentinel is an anonymous type: (object)new { NonReady = true }. While functionally correct, a named private class (e.g., class SentinelViewModel {}) would make the test's intent more explicit and align with the test file's established style of using named fake classes. Low priority — the test is readable as-is."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-28T08:37:43Z",
+          "note": "[documentation-forward] MainContentViewModel.cs docstring says 'Will be replaced with the real media-indexer view-model in a future milestone.' The README and docs should note this placeholder so future contributors understand it is intentionally empty and expected to be replaced in a later WP."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-28T08:37:43Z",
+          "note": "The Shell.PropertyChanged subscription in MainWindowViewModel (inside #if DEBUG) is never unsubscribed. This is acceptable for the current architecture since MainWindowViewModel and ShellViewModel share the same application lifetime — both are registered as transient/singleton and neither outlives the other. No action required; documented here for future reference if either lifetime changes."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-28T08:38:22Z",
+      "completed_at": "2026-04-28T08:42:32Z",
+      "duration_ms": 250000,
+      "summary": [
+        "Updated README.md to document all WP-015 changes.",
+        "Added new '### MainWindowViewModel' Architecture section: Shell property, ContentControl binding with Stretch alignment, DEBUG-only CycleThemeCommand gating on ShellState.Ready, DI registration status.",
+        "Added new '### MainContentViewModel' Architecture section with explicit placeholder note that both the view-model and view will be replaced in a future milestone — addresses the documentation-forward from the code review pipeline.",
+        "Updated ShellViewModel viewModelFactory paragraph to reference MainWindowViewModel as the production implementation (removed 'deferred to WP-015' language).",
+        "Removed all five stale 'deferred to WP-015' DI registration references (ShellViewModel, DatabaseConnectorViewModel, LogonViewModel, PasswordSetupViewModel, DatabaseConnectorViewModel LoadAsync note); replaced with 'deferred to a future milestone'.",
+        "Updated Running Tests unit test list to include MainWindowViewModel (Shell property exposure and CycleThemeCommand gating)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "README.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-28T08:42:32Z",
+          "note": "documentation-forward addressed: added explicit placeholder note for MainContentViewModel/MainContentView in the new MainContentViewModel section, documenting that both will be replaced with the real media-indexer view-model in a future milestone."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-28T08:42:32Z",
+          "note": "No CTX configuration found (no context.yaml) — ctx generate step skipped."
+        }
+      ]
+    }
+  ],
+  "rework_counts": {
+    "implementation": 1,
+    "qa": 1
+  },
+  "status_changed_at": "2026-05-06T09:28:49Z",
+  "last_updated": "2026-05-06T09:28:49Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-28T08:26:09Z",
+      "notes": [
+        "MainWindowViewModel now exposes Shell property, Ctrl+T is gated on ShellState.Ready. MainContentViewModel/View added as placeholder. MainWindow.axaml updated with ContentControl bound to Shell.CurrentViewModel. ViewLocator resolves views automatically. 33 App.Tests pass."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Developer",
+      "timestamp": "2026-04-28T08:31:19Z",
+      "notes": [
+        "Bounce on AC-1 and AC-2 only. No structural code changes are needed — the ContentControl binding, MainContentView/ViewModel placeholder, and ShellViewModel integration are all correct. Developer must add two tests to tests/VideoIndexer.App.Tests/MainWindowViewModelTests.cs: (1) a test using a factory that returns a non-MainContentViewModel for non-Ready states, asserting CurrentViewModel is not MainContentViewModel after driving to Error; (2) a test using a factory that returns new MainContentViewModel() for ShellState.Ready, asserting CurrentViewModel is of type MainContentViewModel after driving to Ready. No changes to production code are required."
+      ]
+    },
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-28T08:32:23Z",
+      "notes": [
+        "Added AC-1 test (non-Ready → CurrentViewModel is not MainContentViewModel) and AC-2 test (Ready → CurrentViewModel is MainContentViewModel) using explicit viewModelFactory. 35 App.Tests pass. All 4 ACs covered by tests."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-28T08:34:22Z",
+      "notes": [
+        "All 4 ACs verified and met. 83 tests pass (35 App.Tests, 48 Infrastructure.Tests). Production code unchanged from first implementation pass — only tests/VideoIndexer.App.Tests/MainWindowViewModelTests.cs was modified (2 tests added). No structural concerns for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-28T08:37:43Z",
+      "notes": [
+        "PASS with two reviewer-applied fixes. All 4 ACs confirmed met. 83 tests pass (35 App.Tests, 48 Infrastructure.Tests) — no regressions introduced by Fix-Forward changes (build verified clean). Documentation agent should address: (1) MainContentViewModel placeholder note in README/docs, and (2) any public API surface changes from this WP (Shell property on MainWindowViewModel, new MainContentViewModel/View types)."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,220 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-002.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "Migration SQL file exists at the correct path with ADD COLUMN IF NOT EXISTS syntax.",
+      "met": true
+    },
+    {
+      "criterion": "DatabaseBootstrapper.ExpectedRevision is 38.",
+      "met": true
+    },
+    {
+      "criterion": "InsertMovieAsync SQL includes year, season, episode with NULL values.",
+      "met": true
+    },
+    {
+      "criterion": "Revision integration test passes.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-13T22:18:06Z",
+      "completed_at": "2026-05-13T22:21:04Z",
+      "duration_ms": 178000,
+      "summary": [
+        "Created src/VideoIndexer.Infrastructure/Database/migrations/m038_add_year_season_episode.sql: three ALTER TABLE ADD COLUMN IF NOT EXISTS statements (year INT NULL, season INT NULL, episode INT NULL) followed by UPDATE spdb_config revision 37 → 38.",
+        "Updated DatabaseBootstrapper.ExpectedRevision from 37 to 38.",
+        "Updated DapperMovieCatalogRepository.InsertMovieAsync SQL to include year, season, episode columns with NULL values (16-column INSERT).",
+        "Fixed DatabaseBootstrapperTests.cs: updated hardcoded '37' in RevisionMatchesExpected to '38'; changed RevisionTooHigh test from '38' to '39' (and assertion from 38 to 39); updated sentinel Assert.Equal(37,...) to Assert.Equal(38,...).",
+        "Updated project manifest: constraints.md (revision 38, m038 rollback), api-surface.md (ExpectedRevision = 38), tech-stack.md (schema revision 38).",
+        "Build: 0 errors, 0 warnings. Test run: 500 passed, 0 failed, 6 skipped."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Database/migrations/m038_add_year_season_episode.sql",
+          "src/VideoIndexer.Infrastructure/Database/DatabaseBootstrapper.cs",
+          "src/VideoIndexer.Infrastructure/Library/DapperMovieCatalogRepository.cs",
+          "tests/VideoIndexer.Infrastructure.Tests/Database/DatabaseBootstrapperTests.cs",
+          "docs/agents/project-manifest/constraints.md",
+          "docs/agents/project-manifest/api-surface.md",
+          "docs/agents/project-manifest/tech-stack.md"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 500,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-05-13T22:21:04Z",
+          "note": "The DatabaseBootstrapperTests.cs had two hardcoded integer literals (37 and 38) alongside a reference-based assertion using DatabaseBootstrapper.ExpectedRevision. The mixed approach (some tests use the constant, others use integer literals) creates a maintenance hazard: only the reference-based assertion catches drift automatically. Consider replacing all hardcoded revision integers in the test file with DatabaseBootstrapper.ExpectedRevision ± offset arithmetic."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-05-13T22:21:04Z",
+          "note": "DapperMovieCatalogRepository.cs InsertMovieAsync: with the addition of year/season/episode the INSERT column list is now 16 columns. The columns are ordered differently from the table's CREATE TABLE definition (as seen in the migrations), which is harmless but mildly inconsistent. A convention of matching INSERT column order to CREATE TABLE order would make future audits easier."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-13T22:34:59Z",
+      "completed_at": "2026-05-13T22:35:47Z",
+      "duration_ms": 48000,
+      "summary": [
+        "All four acceptance criteria verified for the schema migration WP.",
+        "AC1: m038_add_year_season_episode.sql exists at src/VideoIndexer.Infrastructure/Database/migrations/ and uses ADD COLUMN IF NOT EXISTS for year/season/episode (INT NULL each).",
+        "AC2: DatabaseBootstrapper.ExpectedRevision = 38 confirmed on line 13.",
+        "AC3: InsertMovieAsync INSERT has 16 columns; year, season, episode at positions 14-16 with NULL, NULL, NULL values.",
+        "AC4: dotnet build 0 errors/warnings. dotnet test 517 passed, 0 failed, 6 env-conditional skips. RevisionMatchesExpected and RevisionTooHigh tests both verified correct."
+      ],
+      "metrics": {
+        "tests_passed": 517,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-13T22:35:47Z",
+          "note": "Column-to-value alignment verified: 16 columns and 16 values in InsertMovieAsync. year/season/episode land at positions 14-16 correctly with NULL, NULL, NULL."
+        },
+        {
+          "type": "edge-case",
+          "priority": "medium",
+          "timestamp": "2026-05-13T22:35:47Z",
+          "note": "DatabaseBootstrapperTests.cs line 167 uses a hardcoded integer literal (38) in the sentinel test Assert.Equal(38, DatabaseBootstrapper.ExpectedRevision). This will require a manual update each time the schema revision increments, making drift possible. Developer flagged this; suggest replacing with a constant arithmetic expression."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-13T22:35:47Z",
+          "note": "Migration SQL comment notes the ALTER TABLE + UPDATE pair is not atomic (DDL auto-commits in MariaDB). If the UPDATE fails, schema is at r38 but spdb_config reports r37. This is a pre-existing architectural pattern documented in the SQL file itself; rollback procedure is included."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-13T22:41:00Z",
+      "completed_at": "2026-05-13T22:42:40Z",
+      "duration_ms": 100000,
+      "summary": [
+        "Code review PASS with one Fix-Forward applied. Migration SQL is well-structured with ADD COLUMN IF NOT EXISTS, correct column types (INT NULL), and a documented rollback procedure. DatabaseBootstrapper.ExpectedRevision correctly updated to 38. InsertMovieAsync INSERT is correctly extended to 16 columns with NULL placeholders for the new fields. Fix-Forward: replaced hardcoded revision string literals in two test helpers with DatabaseBootstrapper.ExpectedRevision expressions to reduce future maintenance cost; sentinel test left intentionally hardcoded as a migration tripwire. All 517 tests pass after the fix.\""
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Database/migrations/m038_add_year_season_episode.sql",
+          "src/VideoIndexer.Infrastructure/Database/DatabaseBootstrapper.cs",
+          "src/VideoIndexer.Infrastructure/Library/DapperMovieCatalogRepository.cs",
+          "tests/VideoIndexer.Infrastructure.Tests/Database/DatabaseBootstrapperTests.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-13T22:42:40Z",
+          "note": "Fix-Forward applied to DatabaseBootstrapperTests.cs: replaced hardcoded string literals \"38\" and \"39\" in CheckAsync_RevisionMatchesExpected_ReturnsOk and CheckAsync_RevisionTooHigh_ReturnsRevisionTooNew_WithActualRevision with interpolated expressions using DatabaseBootstrapper.ExpectedRevision and DatabaseBootstrapper.ExpectedRevision + 1. The sentinel test `Assert.Equal(38, DatabaseBootstrapper.ExpectedRevision)` is intentionally left hardcoded — its design purpose is to act as a migration tripwire that must be manually updated when the schema revision changes. 517 tests pass, 0 failures after the change."
+        },
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-05-13T22:42:40Z",
+          "note": "Sentinel test Assert.Equal(38, DatabaseBootstrapper.ExpectedRevision) at line 167 is intentionally hardcoded. Developers bumping the schema revision MUST manually update this value — recommend adding an inline comment to the test clarifying this is intentional, so it is not confused with an oversight."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-05-13T22:42:40Z",
+          "note": "DapperMovieCatalogRepository.InsertMovieAsync: the INSERT column list ordering (year/season/episode at positions 14-16) differs from the CREATE TABLE column declaration order in the migration. Harmless but mildly inconsistent. Carried forward from Developer pipeline."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-13T22:42:40Z",
+          "note": "Migration m038 correctly documents the non-atomic nature of MariaDB DDL (ALTER TABLE auto-commits) and includes a manual rollback procedure. This is the appropriate mitigation given the infrastructure constraint. No action required."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-13T22:45:50Z",
+      "completed_at": "2026-05-13T22:47:00Z",
+      "duration_ms": 70000,
+      "summary": [
+        "Added CHANGELOG.md entry under [Unreleased] / Added documenting the m038 migration: year/season/episode columns (INT NULL), ExpectedRevision bump 37→38, ADD COLUMN IF NOT EXISTS safe-re-run guarantee, and reference to the rollback procedure in constraints.md.",
+        "Addressed Reviewer-forwarded documentation item: added a 5-line inline comment to the ExpectedRevision_MatchesCurrentSchemaRevision sentinel test in DatabaseBootstrapperTests.cs explaining the intentional hardcoding and warning against replacing the literal with the constant.",
+        "Verified the three manifest files already updated by the Developer (constraints.md, api-surface.md, tech-stack.md) — all are accurate and required no further changes."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "CHANGELOG.md",
+          "tests/VideoIndexer.Infrastructure.Tests/Database/DatabaseBootstrapperTests.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-13T22:47:00Z",
+          "note": "Reviewer-forwarded item addressed: added inline comment to the sentinel test Assert.Equal(38, DatabaseBootstrapper.ExpectedRevision) in DatabaseBootstrapperTests.cs explaining that the literal is an intentional migration tripwire and must NOT be replaced with DatabaseBootstrapper.ExpectedRevision."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-13T22:47:00Z",
+          "note": "The three manifest files (constraints.md, api-surface.md, tech-stack.md) were already updated by the Developer during implementation — no further manifest changes were needed. Documentation verified all three are accurate."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-13T22:47:00Z",
+  "last_updated": "2026-05-13T22:47:00Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-13T22:21:04Z",
+      "notes": [
+        "Migration m038_add_year_season_episode.sql created with ADD COLUMN IF NOT EXISTS for year/season/episode (INT NULL each). ExpectedRevision bumped to 38 in DatabaseBootstrapper.cs. InsertMovieAsync SQL updated to include three new columns with NULL defaults. All four revision-related unit tests updated (two used hardcoded 37/38 and needed updating to 38/39 respectively). Project manifest docs (constraints.md, api-surface.md, tech-stack.md) updated to reflect revision 38 and m038 rollback procedure. Build clean, 500 tests pass.\""
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-13T22:35:47Z",
+      "notes": [
+        "WP-002 PASS. Files: m038_add_year_season_episode.sql (ADD COLUMN IF NOT EXISTS, correct), DatabaseBootstrapper.cs (ExpectedRevision=38), DapperMovieCatalogRepository.cs (16-col INSERT, NULL for year/season/episode), DatabaseBootstrapperTests.cs (revision tests pass). Build clean, 517 tests pass, 0 fail. AC all met."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-13T22:42:40Z",
+      "notes": [
+        "WP-002 code-review PASS. Fix-Forward applied: two hardcoded revision string literals in DatabaseBootstrapperTests.cs replaced with DatabaseBootstrapper.ExpectedRevision expressions (517 tests still pass). Sentinel test at line 167 intentionally left hardcoded — document with inline comment. Medium-priority debt: sentinel test needs manual update on every schema bump; low-priority: INSERT column order inconsistency with CREATE TABLE order."
+      ]
+    }
+  ]
+}

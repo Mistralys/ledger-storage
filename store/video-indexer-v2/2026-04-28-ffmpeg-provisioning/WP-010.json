@@ -1,0 +1,247 @@
+{
+  "work_package_id": "WP-010",
+  "work_package_file": "work/WP-010.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001",
+    "WP-007",
+    "WP-009"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "dotnet build for the entire solution produces zero warnings and zero errors.",
+      "met": true
+    },
+    {
+      "criterion": "ShellViewModelTests asserts the initial CurrentState is ProvisioningTools.",
+      "met": true
+    },
+    {
+      "criterion": "On a successful EnsureAsync (returns AlreadyPresent or Downloaded), ShellViewModel.CurrentState advances to Connecting.",
+      "met": true
+    },
+    {
+      "criterion": "On a failed EnsureAsync (throws or returns Failed), ShellViewModel.CurrentState advances to Error and LastError is non-null.",
+      "met": true
+    },
+    {
+      "criterion": "The new registrations sit in a clearly labelled // 5.5 — External tools provisioning block between the existing step 5 and step 6 comments in Program.cs.",
+      "met": true
+    },
+    {
+      "criterion": "All M1 + M2 existing tests continue to pass.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-30T06:24:25Z",
+      "completed_at": "2026-04-30T06:46:42Z",
+      "duration_ms": 1337000,
+      "summary": [
+        "Inserted step 5.5 External tools provisioning DI block in Program.cs: AddHttpClient('vi-tools'), singleton registrations for IRuntimeIdentifierProvider→DefaultRuntimeIdentifierProvider, IToolDownloader→HttpToolDownloader, IChecksumVerifier→Sha256ChecksumVerifier, IArchiveExtractor→CompositeArchiveExtractor (via factory lambda to avoid constructor ambiguity), IExternalToolProvisioner→FfmpegProvisioner; transient ProvisioningToolsViewModel.",
+        "Extended ShellViewModel: added IExternalToolProvisioner field and constructor parameter, changed initial state from Connecting to ProvisioningTools, added ProvisionAsync() method that calls EnsureAsync and transitions to Connecting (success) or Error (failure).",
+        "Extended Program.cs ShellViewModel factory switch with ProvisioningTools arm dispatching to ProvisioningToolsViewModel; removed stale DatabaseConnectorViewModel fix-up line since initial state no longer needs it.",
+        "Updated ShellViewModelTests: added FakeExternalToolProvisioner, updated BuildSut helper with provisioner parameter, renamed Constructor_InitialState_IsConnecting → IsProvisioningTools, added ProvisionAsync_Success_TransitionsToConnecting and ProvisionAsync_ProvisionerThrows_TransitionsToError tests.",
+        "Fixed 4 other test files (DatabaseConnectorViewModelTests, MainWindowViewModelTests, LogonViewModelTests, PasswordSetupViewModelTests) by adding FakeExternalToolProvisioner and updating ShellViewModel constructor calls.",
+        "Build: 0 warnings, 0 errors. Tests: 47 + 41 + 63 passed, 1 pre-existing skip."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/Program.cs",
+          "src/VideoIndexer.App/ViewModels/ShellViewModel.cs",
+          "tests/VideoIndexer.App.Tests/ShellViewModelTests.cs",
+          "tests/VideoIndexer.App.Tests/DatabaseConnectorViewModelTests.cs",
+          "tests/VideoIndexer.App.Tests/MainWindowViewModelTests.cs",
+          "tests/VideoIndexer.App.Tests/LogonViewModelTests.cs",
+          "tests/VideoIndexer.App.Tests/PasswordSetupViewModelTests.cs"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 151,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-04-30T06:46:42Z",
+          "note": "ProvisioningToolsViewModel.RunProvisioningAsync() and ShellViewModel.ProvisionAsync() both independently invoke IExternalToolProvisioner.EnsureAsync(). In production, one caller will redundantly download/verify if both run. The view-model should either signal back to the shell (callback/event) or the shell should delegate its orchestration through the view-model. Deferred to a later WP."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-04-30T06:46:42Z",
+          "note": "FakeExternalToolProvisioner is duplicated across 4 test files (DatabaseConnectorViewModelTests, MainWindowViewModelTests, LogonViewModelTests, PasswordSetupViewModelTests) due to the project's inline-fakes pattern. A shared TestHelpers or Fixtures file in VideoIndexer.App.Tests could eliminate this repetition."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-30T06:46:42Z",
+          "note": "CompositeArchiveExtractor is registered via a factory lambda to avoid DI constructor-selection ambiguity. Consider marking the 2-parameter constructor with [ActivatorUtilitiesConstructor] or restructuring to use a single constructor to make DI registration straightforward without the lambda workaround."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-30T06:47:09Z",
+      "completed_at": "2026-04-30T06:49:28Z",
+      "duration_ms": 139000,
+      "summary": [
+        "Full QA pass on WP-010 DI wiring and ShellViewModel integration.",
+        "Build: 0 errors, 0 code warnings. Pre-existing Avalonia ref DLL deletion warning is an incremental-build artifact unrelated to this WP.",
+        "Test matrix: VideoIndexer.Tests 47/47, VideoIndexer.App.Tests 41/41, VideoIndexer.Infrastructure.Tests 63/63 + 1 pre-existing TarXz skip. Total: 151 passed, 0 failed.",
+        "AC #1 (build) ✅  AC #2 (initial state ProvisioningTools) ✅  AC #3 (success→Connecting) ✅  AC #4 (throws→Error+LastError) ✅  AC #5 (step 5.5 block placement) ✅  AC #6 (regression) ✅"
+      ],
+      "metrics": {
+        "tests_passed": 151,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-04-30T06:49:28Z",
+          "note": "AC #3 spec mentions 'AlreadyPresent or Downloaded' result values but IExternalToolProvisioner.EnsureAsync returns ToolPaths on success and throws on failure — there is no result-code enum. ShellViewModel.ProvisionAsync correctly handles any non-throwing return as success. The test covers this path. The AC wording is a holdover from an earlier design; the implementation is correct."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-04-30T06:49:28Z",
+          "note": "StaleCodeCoverage incremental-build files (.msCoverageSourceRootsMapping_*) were locked from a prior test run, causing a false-positive MSB3492 build error on first attempt. Deleted the two stale files; subsequent build succeeded cleanly. This is a pre-existing CI hygiene issue unrelated to WP-010."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-30T06:49:28Z",
+          "note": "No test currently validates that ProvisionAsync transitions through ProvisioningTools state before reaching Connecting (i.e. StateChanged events are not asserted). Since the state machine is deterministic and the start state is asserted in Constructor_InitialState_IsProvisioningTools, this is low risk, but an event-sequence assertion would add defence against future refactors."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-30T06:50:12Z",
+      "completed_at": "2026-04-30T06:52:16Z",
+      "duration_ms": 124000,
+      "summary": [
+        "Reviewed Program.cs (step 5.5 DI block), ShellViewModel.cs, ProvisioningToolsViewModel.cs, ShellViewModelTests.cs, DatabaseConnectorViewModelTests.cs, PasswordSetupViewModelTests.cs, MainWindowViewModelTests.cs, LogonViewModelTests.cs.",
+        "All 6 acceptance criteria confirmed met. Architecture, naming, lifetime choices, and test coverage are correct and consistent with existing codebase conventions.",
+        "Three observations recorded (stale WP reference in stub comment, dual EnsureAsync path, FakeExternalToolProvisioner duplication). None block merge.",
+        "PASS — ready for documentation."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/Program.cs",
+          "src/VideoIndexer.App/ViewModels/ShellViewModel.cs",
+          "src/VideoIndexer.App/ViewModels/ProvisioningToolsViewModel.cs",
+          "tests/VideoIndexer.App.Tests/ShellViewModelTests.cs",
+          "tests/VideoIndexer.App.Tests/DatabaseConnectorViewModelTests.cs",
+          "tests/VideoIndexer.App.Tests/MainWindowViewModelTests.cs",
+          "tests/VideoIndexer.App.Tests/LogonViewModelTests.cs",
+          "tests/VideoIndexer.App.Tests/PasswordSetupViewModelTests.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-04-30T06:52:16Z",
+          "note": "ProvisioningToolsViewModel.ProvideManually() doc-comment and inline comment both say 'deferred to WP-010', but this is WP-010. The stub comment should reference the correct future WP number. File: src/VideoIndexer.App/ViewModels/ProvisioningToolsViewModel.cs, line ~100-106."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-04-30T06:52:16Z",
+          "note": "ShellViewModel.ProvisionAsync() calls EnsureAsync(null, ct) with null progress — no progress data reaches ProvisioningToolsViewModel. ProvisioningToolsViewModel.StartAsync() calls EnsureAsync independently for its own progress display. Until WP-015 wires the shell view and decides which path owns the transition, there are two independent EnsureAsync call sites. The developer and QA flagged this; it is deferred but reviewer concurs it should be resolved before the view wiring WP ships."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-04-30T06:52:16Z",
+          "note": "FakeExternalToolProvisioner is duplicated verbatim in 5 test files (ShellViewModelTests, DatabaseConnectorViewModelTests, PasswordSetupViewModelTests, MainWindowViewModelTests, LogonViewModelTests). If IExternalToolProvisioner gains parameters, all 5 copies need updating. A shared TestHelpers.cs or Fixtures project in VideoIndexer.App.Tests would eliminate this fragility. Previously noted by Developer and QA; reviewer concurs this should be addressed in a future test-hygiene WP."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-30T06:52:45Z",
+      "completed_at": "2026-04-30T06:59:53Z",
+      "duration_ms": 428000,
+      "summary": [
+        "Updated README.md: (1) startup sequence diagram now shows step 5.5 with all 7 provisioning registrations; (2) ShellViewModel states/viewModelFactory/DI sections updated to reflect ProvisioningTools as initial state and IExternalToolProvisioner in factory; (3) MainWindowViewModel shell-start description corrected; (4) ProvisioningToolsViewModel shell-wiring and DI notes updated from 'not yet wired/WP-010' to 'wired as of M2.5'; (5) Commands table ProvideManuallyCommand 'deferred to WP-010' changed to 'deferred to a future WP'; (6) all seven Infrastructure DI 'Not yet registered' notes updated with actual registration details; (7) FfmpegProvisioningOptions 'not yet wired' note removed.",
+        "Created docs/projects/rebuild/milestones/m2-5-ffmpeg-provisioning.md: documents manifest format and per-RID fields, 5 default RID entries, how to refresh pins (PowerShell/shell commands), offline/mirror scenario instructions, step-by-step manual smoke test, live download test instructions, and known deferred items table.",
+        "Updated M3 plan (2026-04-28-m3-library-indexing/plan.md): (1) documentation step — replaced 'add ffprobe install paragraph' with note that M2.5 handles provisioning automatically; (2) Dependencies — updated ffprobe external tooling entry to reference M2.5/FfmpegProvisioner; (3) Risks row — updated 'ffprobe not installed' mitigation to reference M2.5.",
+        "Fixed stale WP-010 self-reference in ProvisioningToolsViewModel.ProvideManually() doc-comment and inline comment — changed to 'a future WP'. Build verified: 0 errors, 0 warnings."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "README.md",
+          "docs/projects/rebuild/milestones/m2-5-ffmpeg-provisioning.md",
+          "docs/agents/plans/2026-04-28-m3-library-indexing/plan.md",
+          "src/VideoIndexer.App/ViewModels/ProvisioningToolsViewModel.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-30T06:59:53Z",
+          "note": "README startup sequence diagram and all DI registration sections are now fully consistent with Program.cs. The dual-EnsureAsync call site (ShellViewModel.ProvisionAsync vs ProvisioningToolsViewModel.StartAsync) is documented in m2-5-ffmpeg-provisioning.md under Known Deferred Items as a reminder for the view-wiring WP."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-30T06:59:53Z",
+          "note": "Stale WP-010 self-reference in ProvisioningToolsViewModel.ProvideManually() source comment corrected as part of documentation pass (reviewer debt item, low priority)."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-04-30T06:59:53Z",
+  "last_updated": "2026-04-30T06:59:53Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-30T06:46:42Z",
+      "notes": [
+        "All 6 acceptance criteria satisfied. Build: 0W/0E. Tests: 151 passed, 1 pre-existing skip.",
+        "ShellViewModel now starts in ProvisioningTools state. Callers (e.g. ShellView) must call ProvisionAsync() first; ConnectAsync() remains valid to call directly for unit-test purposes.",
+        "Note: ProvisioningToolsViewModel.RunProvisioningAsync() and ShellViewModel.ProvisionAsync() both call IExternalToolProvisioner.EnsureAsync() independently. Coordination between the two (e.g., the view-model signalling back to the shell) is deferred to a later WP.",
+        "FakeExternalToolProvisioner was duplicated into 4 test files to maintain the project's inline-fakes pattern. A shared test-utilities type could consolidate this in the future.",
+        "CompositeArchiveExtractor was registered via factory lambda (_ => new CompositeArchiveExtractor()) to avoid DI constructor-selection ambiguity (its 2-param ctor has IArchiveExtractor params that would create a circular resolution)."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-30T06:49:28Z",
+      "notes": [
+        "All 6 AC met. Build clean (0E/0W code). 151 tests pass, 1 pre-existing skip.",
+        "No defects found. Three low/medium observations logged (AC wording mismatch, stale coverage files, missing event-sequence test) — none block code review.",
+        "Stale .msCoverageSourceRootsMapping_* files may recur; reviewer/CI should be aware."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-30T06:52:16Z",
+      "notes": [
+        "\"Code review PASS. Three low/medium observations (stale WP stub comment, dual EnsureAsync path, fake duplication) — none are blockers. Proceed to documentation.\""
+      ]
+    }
+  ]
+}

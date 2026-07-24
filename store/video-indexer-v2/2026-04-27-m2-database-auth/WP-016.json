@@ -1,0 +1,259 @@
+{
+  "work_package_id": "WP-016",
+  "work_package_file": "work/WP-016.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-005",
+    "WP-006",
+    "WP-007",
+    "WP-008",
+    "WP-009",
+    "WP-010",
+    "WP-011",
+    "WP-012",
+    "WP-013",
+    "WP-014",
+    "WP-015"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "The app launches end-to-end against a live MariaDB and reaches Ready after logon (manual smoke).",
+      "met": false
+    },
+    {
+      "criterion": "No registration is duplicated; dotnet build reports no analyzer warnings about ambiguous registrations.",
+      "met": true
+    },
+    {
+      "criterion": "The Generic Host bootstrap (CreateApplicationBuilder, logging, settings) is structurally unchanged from M1 — only the service collection grows.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-04-28T08:43:06Z",
+      "completed_at": "2026-04-28T08:49:54Z",
+      "duration_ms": 408000,
+      "summary": [
+        "Registered all M2 services in Program.cs: IDatabaseConnectionStore→JsonDatabaseConnectionStore, IDbConnectionFactory→MySqlConnectionFactory, ISpdbConfigRepository→SpdbConfigRepository, IDatabaseBootstrapper→DatabaseBootstrapper, IPasswordHasher→Sha256FixedSaltPasswordHasher, IPasswordService→PasswordService",
+        "Registered ShellViewModel as singleton with viewModelFactory closure mapping all 5 ShellStates to their respective ViewModels; forward-reference pattern used to break circular dependency",
+        "Build succeeded with 0 warnings. 62 unit tests pass (27 + 35). AC-1 is a manual smoke test against live MariaDB."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/Program.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-04-28T08:49:54Z",
+          "note": "The ShellViewModel factory has a forward-reference fix-up pattern (lazyShell variable) to break the circular dependency: ShellViewModel → DatabaseConnectorViewModel → ShellViewModel. This is a code smell that could be eliminated by introducing an IConnectable or IShellNavigator interface on ShellViewModel so DatabaseConnectorViewModel doesn’t take a concrete ShellViewModel dependency. Consider as a future refactor if the VM graph grows."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-28T08:49:54Z",
+          "note": "DatabaseConnectorViewModel, LogonViewModel, PasswordSetupViewModel, and MainContentViewModel are created directly with 'new' inside the ShellViewModel factory lambda rather than being resolved via IServiceProvider. This is intentional (they have no additional DI dependencies) but means they bypass the container. If these VMs gain DI dependencies in the future, the factory will need to be updated manually."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-04-28T08:50:22Z",
+      "completed_at": "2026-04-28T08:53:52Z",
+      "duration_ms": 210000,
+      "summary": [
+        "Build verified clean: 0 warnings, 0 errors (AC-2 confirmed).",
+        "Full test suite: 62/62 pass in solution (VideoIndexer.Tests: 27, VideoIndexer.App.Tests: 35). VideoIndexer.Infrastructure.Tests (48 tests, outside sln) also pass independently.",
+        "AC-3 confirmed: Generic Host bootstrap structure (CreateApplicationBuilder, logging, AppOptions configuration, pre-created singletons, Serilog) is unchanged from M1. Only new AddSingleton/AddTransient calls in steps 5–6 were added.",
+        "AC-1 (live MariaDB smoke) cannot be automated — marked as requiring manual human verification.",
+        "Edge-case analysis: All transient services captured by the ShellViewModel singleton factory (IDatabaseBootstrapper, IPasswordService, IDbConnectionFactory, ISpdbConfigRepository) are stateless, so the captive dependency pattern is functionally correct and safe.",
+        "lazyShell null-window during ShellViewModel construction is safe: fix-up happens synchronously before the singleton is returned to callers; ShellViewModelTests.Constructor_InitialState_IsConnecting confirms correct behaviour."
+      ],
+      "metrics": {
+        "test_coverage": "62/62 (sln); 48/48 infrastructure tests (out-of-sln)",
+        "tests_passed": 62,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-04-28T08:53:52Z",
+          "note": "AC-1 (end-to-end live MariaDB smoke) cannot be verified without a running MariaDB instance. The DI wiring is structurally correct; human manual verification is required before a production release."
+        },
+        {
+          "type": "bug",
+          "priority": "low",
+          "timestamp": "2026-04-28T08:53:52Z",
+          "note": "VideoIndexer.Infrastructure.Tests is not included in src/VideoIndexer.sln — its 48 tests are invisible to 'dotnet test src/VideoIndexer.sln'. This is a pre-existing gap unrelated to WP-016 but means CI/solution-level test runs silently omit the infrastructure suite. Should be added to the sln file."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-04-28T08:53:52Z",
+          "note": "Captive dependency: IDatabaseBootstrapper and IPasswordService are registered as AddTransient but are resolved once inside the ShellViewModel singleton factory lambda and held for the app lifetime. Safe only because all captured transients (and their own transient dependencies MySqlConnectionFactory, SpdbConfigRepository) are stateless. If any of these services gains mutable state in the future, the captive pattern would become a correctness bug."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-04-28T08:55:21Z",
+      "completed_at": "2026-04-28T08:57:23Z",
+      "duration_ms": 122000,
+      "summary": [
+        "Reviewed 6 files across Auth, Database, Settings, and Program.cs. 0 Critical, 0 High. 2 Medium findings (SHA-256 fixed-salt KDF; plaintext DB password in settings). 2 Low findings (non-constant-time IPasswordHasher.Verify; optional SSL disable). Security sign-off: PASS. The threat model (local single-user desktop, no network authentication surface) is consistent with the Medium findings and no exploitable attack path was identified that does not require prior local machine access."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-04-28T08:57:23Z",
+          "note": "MEDIUM | A02 — Cryptographic Failures | File: src/VideoIndexer.Infrastructure/Auth/Sha256FixedSaltPasswordHasher.cs (line 31: const string Salt = \"spdb_42\") | SHA-256 is a general-purpose hash function with no work-factor, not a password KDF (Argon2id, bcrypt, PBKDF2). The fixed compile-time salt is extractable from the binary, meaning an attacker who obtains the DB file and the binary can run pre-computed table attacks against the application password. Practical risk is limited to the stated single-user local desktop threat model. Remediation: if the application ever gains multi-user or network-exposed auth, replace with PBKDF2-HMACSHA256 (100 000+ iterations with a random per-user salt stored alongside the hash) or Argon2id. The IPasswordHasher interface provides a zero-caller-change upgrade path."
+        },
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-04-28T08:57:23Z",
+          "note": "MEDIUM | A02 — Cryptographic Failures / Data Handling | File: src/VideoIndexer.Core/Options/DatabaseConnectionOptions.cs (Password property, line 37) | Database credentials (MariaDB username and password) are stored in plaintext in the user-settings JSON file. Any process on the local machine with read access to the settings file can obtain the DB server credentials. This is documented design intent (\"stored at the user's discretion\") and is appropriate for a local single-user tool, but the settings file may be captured by cloud sync, backup agents, or other local processes. Remediation (defence-in-depth): encrypt the password field at rest using DPAPI (Windows Data Protection API — System.Security.Cryptography.ProtectedData) keyed to the current user. This is transparent to users and requires no UI change."
+        },
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-04-28T08:57:23Z",
+          "note": "LOW | A02 — Cryptographic Failures / Timing | File: src/VideoIndexer.Infrastructure/Auth/Sha256FixedSaltPasswordHasher.cs (Verify method, line ~46) | The public IPasswordHasher.Verify method uses string.Equals (not constant-time). The XML docs correctly warn callers not to use this from security-sensitive verification paths. PasswordService.VerifyAsync already uses CryptographicOperations.FixedTimeEquals correctly. Risk is low because PasswordService is the only caller on the verify path, but the exposed non-constant-time Verify on the interface is a latent foot-gun. Remediation: either remove Verify from IPasswordHasher (forcing all callers through PasswordService) or replace the implementation body with CryptographicOperations.FixedTimeEquals."
+        },
+        {
+          "type": "risk",
+          "priority": "low",
+          "timestamp": "2026-04-28T08:57:23Z",
+          "note": "LOW | A05 — Security Misconfiguration | File: src/VideoIndexer.Infrastructure/Database/MySqlConnectionFactory.cs (SslMode assignment, line ~40) | SSL/TLS to the database server can be disabled when UseSsl=false in DatabaseConnectionOptions. For a local loopback connection this is acceptable, but a user configuring a remote MariaDB server with SSL disabled exposes database credentials and query traffic in transit. Remediation (defence-in-depth): default UseSsl to true in DatabaseConnectionOptions; surface a UI warning when the user explicitly disables TLS for a non-loopback host."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-04-28T08:58:08Z",
+      "completed_at": "2026-04-28T09:01:13Z",
+      "duration_ms": 185000,
+      "summary": [
+        "Program.cs reviewed line-by-line across all four dimensions (Maintainability, Best Practices, Performance, Future Context). Code is clean, well-structured, and correct. Service lifetime assignments are sound: IDatabaseConnectionStore/IPasswordHasher as singletons (stateless implementations), remaining infrastructure services as transient (correctly stateless, captive-dependency chain QA-verified safe). The lazyShell forward-reference fix-up pattern is well-documented and QA-confirmed correct via ShellViewModelTests.Constructor_InitialState_IsConnecting. The null return from the factory for ShellState.Error is intentional (ShellView renders the error via LastError; no content view-model is needed). One Fix-Forward applied: added inline comment to the wildcard arm of the factory switch to prevent future ambiguity about the Error state. No Blocking issues found. PASS."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/Program.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-04-28T09:01:13Z",
+          "note": "Added inline comment to the wildcard arm of the ShellViewModel viewModelFactory switch expression: '// Error: ShellView renders via LastError; no content view-model needed.' Without this, a future developer reading the factory lambda might assume ShellState.Error is an unintentional gap rather than a deliberate design choice (error display is owned by the ShellView directly via the LastError property)."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-28T09:01:13Z",
+          "note": "The lazyShell circular dependency fix-up is well-documented and safe for the current VM graph. If ShellViewModel gains additional sub-VMs that also back-reference the shell, consider extracting an IShellNavigator or IConnectable interface to break the concrete coupling and simplify the factory. Pre-existing note from Developer — reinforced here as an architectural watch item."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-04-28T09:01:13Z",
+          "note": "[documentation-forward] Program.cs inline comments use numbered steps (1–7) to explain the bootstrap sequence. The README or an architecture doc should surface this numbered pattern as the canonical guide for future contributors adding new M3+ services, so they know where to insert registrations without disrupting the Generic Host setup order."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-28T09:01:13Z",
+          "note": "VideoIndexer.Infrastructure.Tests is not included in src/VideoIndexer.sln — 48 tests are invisible to solution-level 'dotnet test' and any CI pipeline targeting the sln file. Pre-existing gap (flagged by QA); recommend adding the project to the solution in a follow-up task."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-04-28T09:01:56Z",
+      "completed_at": "2026-04-28T09:07:42Z",
+      "duration_ms": 346000,
+      "summary": [
+        "Updated README.md to reflect all M2 (WP-016) service registrations.",
+        "Expanded the Startup Bootstrap Sequence diagram from the old Phase 1/Phase 2 sketch to the canonical 7-step numbered pattern that matches Program.cs inline comments.",
+        "Added 'Adding services in future milestones (M3+)' guide under the Bootstrap Sequence section — addresses the documentation-forward from the code reviewer.",
+        "Updated DI registration blurbs for all 9 affected types: MySqlConnectionFactory, SpdbConfigRepository (now AddTransient in step 5); ShellViewModel (now AddSingleton factory in step 6); MainWindowViewModel (step 7, ShellViewModel auto-resolved); DatabaseConnectorViewModel, LogonViewModel, PasswordSetupViewModel, MainContentViewModel (all created with new inside the step 6 factory, not registered in DI)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "README.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-04-28T09:07:42Z",
+          "note": "No documentation gaps remain from this WP. The VideoIndexer.Infrastructure.Tests sln-exclusion issue (flagged by QA and Reviewer) is a follow-up task, not a documentation gap — no README change is warranted until the project is actually added to the sln."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-06T09:28:49Z",
+  "last_updated": "2026-05-06T09:28:49Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-04-28T08:49:54Z",
+      "notes": [
+        "Program.cs updated with M2 service registrations: IDatabaseConnectionStore, IDbConnectionFactory, ISpdbConfigRepository, IDatabaseBootstrapper, IPasswordHasher, IPasswordService, ShellViewModel (singleton with viewModelFactory), and all 4 screen ViewModels via the factory. Build clean (0 warnings). 62 tests pass. AC-1 (live smoke test) cannot be verified automatically and is marked unmet for QA/manual verification."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-04-28T08:53:52Z",
+      "notes": [
+        "Build is clean (0 warnings). All 62 sln tests pass; 48 out-of-sln infrastructure tests also pass.",
+        "AC-1 (live MariaDB launch smoke) remains unmet — requires human manual verification against a real database.",
+        "Naming: Sha256FixedSaltPasswordHasher uses a fixed salt — recommend security auditor review this implementation for compliance with password-hashing best practices.",
+        "Pre-existing gap: VideoIndexer.Infrastructure.Tests not in solution file — 48 tests invisible to sln-level test runs."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-04-28T08:57:23Z",
+      "notes": [
+        "Security audit PASS (0 Critical, 0 High). Two Medium findings documented for awareness: (1) SHA-256 fixed-salt hasher — not a KDF; acceptable for the local desktop threat model, IPasswordHasher interface provides an upgrade path; (2) plaintext DB password in settings JSON — DPAPI encryption is the recommended defence-in-depth improvement. Two Low findings: non-constant-time IPasswordHasher.Verify (PasswordService already bypasses it correctly); optional SSL disable (default UseSsl=true recommended). All SQL is parameterised, connection strings use MySqlConnectionStringBuilder (no injection), and PasswordService.VerifyAsync uses FixedTimeEquals correctly. No blockers for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-04-28T09:01:13Z",
+      "notes": [
+        "Code review PASS. One Fix-Forward applied (clarifying comment on ShellState.Error arm in factory lambda). No Blocking issues. AC-2 and AC-3 confirmed met; AC-1 (live MariaDB smoke) remains pending manual human verification. One documentation-forward noted: README/arch doc should document the numbered Program.cs bootstrap pattern for future contributors. Infrastructure.Tests sln gap flagged for follow-up. Ready for Documentation pipeline."
+      ]
+    }
+  ]
+}

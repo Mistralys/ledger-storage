@@ -1,0 +1,197 @@
+{
+  "work_package_id": "WP-004",
+  "work_package_file": "work/WP-004.md",
+  "status": "COMPLETE",
+  "assigned_to": "Reviewer",
+  "dependencies": [
+    "WP-001",
+    "WP-002",
+    "WP-003"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "After deleting all `bin/` and `obj/` folders, `dotnet restore` followed by `dotnet build` of `src/VideoIndexer.sln` succeeds with zero warnings and zero errors.",
+      "met": true
+    },
+    {
+      "criterion": "`dotnet test` succeeds for `VideoIndexer.Tests`, `VideoIndexer.App.Tests`, and `VideoIndexer.Infrastructure.Tests` independently.",
+      "met": true
+    },
+    {
+      "criterion": "Build artifacts for at least one production project are present under a `bin/Debug/net10.0/` path (no `net8.0` artifact directories produced by the current build).",
+      "met": true
+    },
+    {
+      "criterion": "`dotnet run --project src/VideoIndexer.App` launches the Avalonia application without unhandled exceptions; the app reaches its initial window state.",
+      "met": true
+    },
+    {
+      "criterion": "Smoke-run outcome (success, observed window, any anomalies) is recorded in the WP completion notes.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "qa",
+    "code-review"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "qa",
+      "status": "FAIL",
+      "started_at": "2026-05-05T17:49:27Z",
+      "completed_at": "2026-05-05T17:54:44Z",
+      "duration_ms": 317000,
+      "summary": [
+        "AC1 PASS: Full clean-from-scratch build (dotnet restore + dotnet build --warnaserror) of src/VideoIndexer.sln completes with 0 errors, 0 warnings on .NET 10.0.6.",
+        "AC2 PASS: All three test suites pass independently — VideoIndexer.Tests 47/47, VideoIndexer.App.Tests 41/41, VideoIndexer.Infrastructure.Tests 63/65 (2 expected intentional skips: live network test requires VI_LIVE_DOWNLOAD=1; fixture-based tar.xz test requires fixture file). Zero failures.",
+        "AC3 PASS: After a complete bin/obj clean across src/ and tests/, the build produces exclusively net10.0 output directories for all 6 projects. Zero net8.0 artifact directories are produced by the current build (net8.0 subdirs inside net10.0/runtimes/win/lib/net8.0 are NuGet package runtime folders, not build outputs).",
+        "AC4 FAIL: VideoIndexer.App crashes immediately on startup with an unhandled System.InvalidOperationException. The application never reaches its initial window state.",
+        "AC5 FAIL (consequent to AC4): Smoke run could not be completed successfully — application terminated with exit code -532462766 due to the unhandled exception."
+      ],
+      "metrics": {
+        "tests_passed": 151,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "bug",
+          "priority": "high",
+          "timestamp": "2026-05-05T17:54:44Z",
+          "note": "AC4 FAIL — Unhandled DI exception on startup. Exception: System.InvalidOperationException: No service for type 'VideoIndexer.App.Views.ProvisioningToolsView' has been registered. Thrown from ViewLocator.Build() at src/VideoIndexer.App/ViewLocator.cs:40 via App.Services.GetRequiredService(viewType). Root cause: Program.cs registers only MainWindow as a view DI service; the five content views (ProvisioningToolsView, DatabaseConnectorView, LogonView, PasswordSetupView, MainContentView) are never added to the DI container. Since the ShellViewModel opens with ShellState.ProvisioningTools as its initial state, ViewLocator is called immediately during the initial layout pass — crash is deterministic and 100% reproducible. Required fix in Program.cs (around line 105, near AddTransient<MainWindow>): add builder.Services.AddTransient<ProvisioningToolsView>(); to unblock AC4. Note: all other content views (DatabaseConnectorView, LogonView, PasswordSetupView, MainContentView) will fail similarly when those shell states are reached — all five should be registered together. This is a pre-existing defect not introduced by WP-001/002/003 (none of those WPs touched Program.cs)."
+        },
+        {
+          "type": "edge-case",
+          "priority": "medium",
+          "timestamp": "2026-05-05T17:54:44Z",
+          "note": "DatabaseConnectorViewModel, LogonViewModel, and PasswordSetupViewModel are NOT registered as DI services (they are constructed manually in the ShellViewModel factory lambda). When those shell states are reached, ViewLocator will call GetRequiredService(DatabaseConnectorView) / GetRequiredService(LogonView) / GetRequiredService(PasswordSetupView), which will attempt to inject those unregistered ViewModels via their DI constructors. These will fail unless the ViewModels are also registered — or the Views are registered with a factory that supplies the ViewModel from the manually-created instance. This is a follow-up crash risk beyond the immediate ProvisioningToolsView failure."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-05-05T17:54:44Z",
+          "note": "The QA runs for WP-001 and WP-002 both reported 151 tests passing but neither attempted an app smoke run. The DI registration gap was therefore undetected by those pipelines. Future QA passes for any WP touching Program.cs or ViewLocator.cs should include a mandatory smoke-launch check."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-05T17:56:50Z",
+      "completed_at": "2026-05-05T17:57:14Z",
+      "duration_ms": 24000,
+      "summary": [
+        "Self-rework pass. Root cause of AC4 failure identified and fixed: Program.cs was missing DI registrations for five content views (ProvisioningToolsView, DatabaseConnectorView, LogonView, PasswordSetupView, MainContentView). Added AddTransient<> factory registrations for all five. Build remains clean (0 warnings, 0 errors) with -warnaserror.",
+        "AC1 PASS: Full clean build (dotnet restore + dotnet build --warnaserror) succeeds. Zero errors, zero warnings.",
+        "AC2 PASS: All three test suites pass — VideoIndexer.Tests 47/47, VideoIndexer.App.Tests 41/41, VideoIndexer.Infrastructure.Tests 63/65 (2 expected intentional skips). Zero failures.",
+        "AC3 PASS: All production and test projects output exclusively to net10.0/ directories. No net8.0 artifact directories produced by the build.",
+        "AC4 PASS: VideoIndexer.App launches without unhandled exceptions and reaches its initial window state (ProvisioningToolsView). App ran for 8+ seconds without crashing.",
+        "AC5 PASS: Smoke run recorded — startup successful, ProvisioningTools initial window observed, no anomalies, stable for 8+ seconds before graceful kill."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/Program.cs"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 151,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "bug",
+          "priority": "high",
+          "timestamp": "2026-05-05T17:57:14Z",
+          "note": "Self-rework fix applied: Program.cs was missing DI registrations for all content views (ProvisioningToolsView, DatabaseConnectorView, LogonView, PasswordSetupView, MainContentView). ViewLocator.Build() calls App.Services.GetRequiredService(viewType) and requires all views resolvable from DI. All five content views added as AddTransient<> with factory registrations using the parameterless constructor, so Avalonia ContentPresenter controls DataContext binding from CurrentViewModel. This was a pre-existing defect not introduced by WP-001/002/003."
+        },
+        {
+          "type": "edge-case",
+          "priority": "medium",
+          "timestamp": "2026-05-05T17:57:14Z",
+          "note": "DatabaseConnectorView, LogonView, PasswordSetupView, and MainContentView are registered via factory (new XView()) rather than DI injection, because their corresponding ViewModels are constructed manually in the ShellViewModel factory and are not DI services. This means their DataContext is set by Avalonia ContentPresenter from the CurrentViewModel binding, not by DI injection. The smoke run verified the initial ProvisioningTools state works correctly; subsequent states (Connecting, LoggingOn, SettingPassword, Ready) were not validated in this smoke run and should be covered by future integration tests."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T17:57:14Z",
+          "note": "Smoke run outcome: VideoIndexer.App launched successfully on .NET 10.0.6. Application started and reached its initial window state (ProvisioningToolsView). Startup log lines observed: 'Application started', 'Hosting environment: Production', 'Content root path: C:\\Webserver\\tools\\video-indexer-v2'. No exceptions, no error output. App remained stable for 8+ seconds before being killed by the test harness. Exit code -1 from SIGKILL (expected)."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-05T17:57:43Z",
+      "completed_at": "2026-05-05T18:00:39Z",
+      "duration_ms": 176000,
+      "summary": [
+        "Code review PASS. Reviewed the QA-applied fix in Program.cs (5 AddTransient<> factory registrations for content views). The factory lambda pattern is architecturally correct: bypassing DI constructor resolution ensures ContentPresenter sets DataContext from CurrentViewModel binding rather than from a second, disconnected DI-injected ViewModel instance. For ProvisioningToolsView (whose ViewModel IS in DI), this is required to avoid creating a throwaway ProvisioningToolsViewModel. For the other 4 views (whose ViewModels are not registered in DI), the factory is consistent and explicit. The comment block in Program.cs explaining the rationale is clear. No blocking issues found.",
+        "One Documentation-Forward finding tagged: the 'DI constructor' comments on all 5 content view code-behinds are misleading post-fix — these constructors are not called in production startup and should be annotated to indicate they are available for direct instantiation only (e.g., in test scenarios)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/Program.cs",
+          "src/VideoIndexer.App/ViewLocator.cs",
+          "src/VideoIndexer.App/App.axaml.cs",
+          "src/VideoIndexer.App/Views/ProvisioningToolsView.axaml.cs",
+          "src/VideoIndexer.App/Views/DatabaseConnectorView.axaml.cs",
+          "src/VideoIndexer.App/Views/LogonView.axaml.cs",
+          "src/VideoIndexer.App/Views/PasswordSetupView.axaml.cs",
+          "src/VideoIndexer.App/Views/MainContentView.axaml.cs",
+          "src/VideoIndexer.App/Views/MainWindow.axaml.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-05T18:00:39Z",
+          "note": "The factory registration pattern in Program.cs (lines 103–108) is correct and well-documented. One nuance worth noting: the 'asymmetry' between MainWindow (auto-wired DI injection via its ViewModel constructor) and the 5 content views (explicit factory lambdas) is intentional and correct. MainWindow's ViewModel is DI-owned; content views' ViewModels are ShellViewModel-owned. The uniform factory pattern across all 5 content views is a good consistency choice."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-05T18:00:39Z",
+          "note": "[documentation-forward] All 5 content view code-behinds (ProvisioningToolsView, DatabaseConnectorView, LogonView, PasswordSetupView, MainContentView) carry the comment '// DI constructor — DataContext is injected at construction time.' on their second constructors. This is now misleading: (1) DatabaseConnectorViewModel, LogonViewModel, PasswordSetupViewModel, and MainContentViewModel are not registered in DI, so those constructors cannot be invoked via DI resolution. (2) ProvisioningToolsView's DI constructor is intentionally bypassed by the factory lambda in Program.cs. Update these comments to clarify: these constructors are available for direct instantiation scenarios (e.g., unit tests or manual view creation) but are not called in production startup — DataContext is provided by Avalonia's ContentPresenter via the CurrentViewModel binding."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-05T18:00:39Z",
+          "note": "QA noted that ShellState transitions Connecting, LoggingOn, SettingPassword, and Ready were not exercised during the smoke run (only ProvisioningTools initial state was validated). Future integration or UI automation tests should cover state transitions and confirm ViewLocator resolves each view correctly for all 5 ShellState values that have content views."
+        }
+      ]
+    }
+  ],
+  "rework_counts": {
+    "qa": 1
+  },
+  "status_changed_at": "2026-05-05T18:00:39Z",
+  "last_updated": "2026-05-05T18:00:39Z",
+  "handoff_notes": [
+    {
+      "from_agent": "QA",
+      "to_agent": "QA",
+      "timestamp": "2026-05-05T17:54:44Z",
+      "notes": [
+        "\"BOUNCE BACK to Developer. AC4 and AC5 are unmet. The app crashes immediately on first launch with a DI registration error in ViewLocator — 'No service for type ProvisioningToolsView has been registered'. Minimal fix: add builder.Services.AddTransient<ProvisioningToolsView>(); to Program.cs (near line 105). Full fix: also register DatabaseConnectorView, LogonView, PasswordSetupView, and MainContentView as AddTransient<> (see bug comment for details on which ViewModels are and are not in DI). This is a pre-existing defect not introduced by WP-001/002/003. Once fixed, re-run the smoke launch to confirm the app reaches its initial window state and record the outcome.\""
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-05T17:57:14Z",
+      "notes": [
+        "All 5 AC met. Pre-existing DI registration defect fixed in Program.cs — all content views now registered for ViewLocator resolution. Full solution builds clean (0 warnings, 0 errors, -warnaserror). 151 tests pass (0 failures). App reaches initial window state without unhandled exceptions on .NET 10.0.6. Note for code reviewer: review the view registration pattern added to Program.cs around line 103. The factory-style AddTransient<XView>(_ => new XView()) is intentional for views whose ViewModels are not DI services; DataContext is handled by Avalonia ContentPresenter binding."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-05-05T18:00:39Z",
+      "notes": [
+        "Code review PASS. All 5 AC confirmed met by QA (second pass). The only source change is in Program.cs: 5 AddTransient factory registrations for content views. Architecture is sound, build is clean, 151 tests pass, smoke run confirmed. One documentation-forward item tagged: the 'DI constructor' comments on the 5 content view code-behinds need updating to clarify they are not used in production startup. Documentation agent should address this before closing the WP."
+      ]
+    }
+  ]
+}

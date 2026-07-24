@@ -1,0 +1,250 @@
+{
+  "work_package_id": "WP-015",
+  "work_package_file": "work/WP-015.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-003",
+    "WP-004",
+    "WP-009"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "dotnet build produces 0 errors, 0 warnings after constructor change and test fixture updates.",
+      "met": true
+    },
+    {
+      "criterion": "When IsInitialized == false, EffectiveTagWeight == StoredTagWeight and EffectiveTagIds is empty.",
+      "met": true
+    },
+    {
+      "criterion": "StoredTagParentIds contains only non-null parent_tag_id values.",
+      "met": true
+    },
+    {
+      "criterion": "All existing DapperMovieCatalogRepositoryTests pass.",
+      "met": true
+    },
+    {
+      "criterion": "LibraryScannerIntegrationTests compiles and self-skips correctly with mock parameter.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-17T22:13:49Z",
+      "completed_at": "2026-05-17T22:23:24Z",
+      "duration_ms": 575000,
+      "summary": [
+        "Added ITagsManager constructor parameter to DapperMovieCatalogRepository. Implemented BatchTagSql + MovieTagRow helper class. Updated GetMovieListAsync with: (1) batch tag round-trip to populate StoredTagIds/StoredTagParentIds, (2) EnsureLoadedAsync call, (3) effective-set enrichment via GetEffectiveTagIds + weight lookup from Tags, (4) IsInitialized==false fallback (EffectiveTagWeight=StoredTagWeight, EffectiveTagIds empty), (5) defensive count-mismatch guard (returns unenriched item). Updated CreateSut() and CreateGuardSut() in DapperMovieCatalogRepositoryTests to pass new Mock<ITagsManager>().Object. Added 2 new SkippableFact tests: GetMovieListAsync_TagsManagerNotInitialized_FallsBackToStoredWeight and GetMovieListAsync_WithTags_EnrichesEffectiveWeight. Updated both DapperMovieCatalogRepository construction sites in LibraryScannerIntegrationTests (CreateCatalog and CreateSut). Build: 0 errors, 0 warnings. Tests: 171 passed, 0 failed, 6 skipped (env-based). Manifest updated: file-tree.md, constraints.md."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Library/DapperMovieCatalogRepository.cs",
+          "tests/VideoIndexer.Infrastructure.Tests/Library/DapperMovieCatalogRepositoryTests.cs",
+          "tests/VideoIndexer.Infrastructure.Tests/Library/LibraryScannerIntegrationTests.cs",
+          "docs/agents/project-manifest/file-tree.md",
+          "docs/agents/project-manifest/constraints.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-17T22:23:24Z",
+          "note": "DapperMovieCatalogRepository.GetMovieListAsync now performs two SQL round-trips per call (main aggregate + BatchTagSql). For catalogs with hundreds of thousands of movies, consider caching the batch tag results or using a single query with GROUP_CONCAT to reduce latency. Current two-query approach is correct and simple but worth monitoring as library size grows."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-17T22:23:24Z",
+          "note": "BatchTagSql fetches all movie-tag rows regardless of how many movies are returned by the main query. If GetMovieListAsync is extended with pagination/filtering in a future WP, BatchTagSql should gain a matching WHERE clause to avoid fetching the full movie-tag table on every filtered request."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-05-17T22:23:24Z",
+          "note": "The count-mismatch defensive guard in GetMovieListAsync returns the unenriched item silently. Since DapperMovieCatalogRepository has no ILogger injected (by design), there is no way to surface this anomaly. If this guard ever fires in production it will be invisible. Consider adding a structured log warning here when a logger is eventually injected, or adding a Serilog static logger as a last resort."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-17T22:49:47Z",
+      "completed_at": "2026-05-17T22:52:28Z",
+      "duration_ms": 161000,
+      "summary": [
+        "Full verification stack completed. Build: 0 errors, 2 pre-existing CS8765 warnings in tests/VideoIndexer.Tests/TagsManagerTests.cs (TreatWarningsAsErrors=false in that project; file not modified by WP-015 — not a regression). Tests: 171/177 passed in Infrastructure (6 env-based SkippableFact skips), 255/255 in Core, 288/288 in App — 0 failures across all projects. All 5 ACs verified: (1) clean build confirmed; (2) IsInitialized=false fallback sets EffectiveTagWeight=StoredTagWeight and leaves EffectiveTagIds=ImmutableHashSet.Empty verified by code inspection and NOTINIT_001 live-DB test; (3) StoredTagParentIds filters via .Where(t => t.ParentTagId.HasValue) — only non-null parent IDs included; (4) all DapperMovieCatalogRepositoryTests pass; (5) LibraryScannerIntegrationTests compiles, passes, and self-skips correctly via SkippableFact. Edge cases reviewed: movie-with-no-tags path safe; count-mismatch defensive guard correct; GetEffectiveTagIds IReadOnlySet.Sum() resolves via IEnumerable cleanly; EffectiveTagCount defaults to 0 in fallback path (consistent with empty EffectiveTagIds)."
+      ],
+      "metrics": {
+        "test_coverage": "171/177 infrastructure (6 env-skips), 255/255 core, 288/288 app",
+        "tests_passed": 714,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-17T22:52:28Z",
+          "note": "Movie-with-no-tags path: storedTagIds.Count=0 matches SQL StoredTagCount=0, count guard passes cleanly, effective set resolves to empty. No issue."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-17T22:52:28Z",
+          "note": "Count-mismatch defensive guard returns unenriched item (EffectiveTagWeight=0, not StoredTagWeight). This is intentional — data inconsistency fallback. Not an AC violation but worth noting the behaviour differs from the IsInitialized=false fallback which does set EffectiveTagWeight=StoredTagWeight."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-05-17T22:52:28Z",
+          "note": "The count-mismatch defensive guard (DapperMovieCatalogRepository.cs, GetMovieListAsync) has no dedicated test exercising it. A unit test using a mock connection factory that returns mismatched counts would give confidence this guard behaves correctly without a live DB."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-17T22:52:28Z",
+          "note": "Pre-existing CS8765 warnings in tests/VideoIndexer.Tests/TagsManagerTests.cs (lines 344, 372) are unrelated to WP-015 but are surfaced by every full solution build. These could be suppressed with #pragma or fixed to keep the build output clean."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-05-18T05:16:57Z",
+      "completed_at": "2026-05-18T05:18:36Z",
+      "duration_ms": 99000,
+      "summary": [
+        "Reviewed 3 source files (DapperMovieCatalogRepository.cs, DapperMovieCatalogRepositoryTests.cs, LibraryScannerIntegrationTests.cs). 0 Critical, 0 High, 0 Medium, 1 Low (monitoring gap — already documented as debt). All OWASP Top 10 categories reviewed. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T05:18:36Z",
+          "note": "A09 — Security Logging & Monitoring: The count-mismatch defensive guard in GetMovieListAsync (DapperMovieCatalogRepository.cs, enrichment loop) silently returns the unenriched MovieListItem with no log output when the batch tag count disagrees with the SQL aggregate StoredTagCount. For a local single-user desktop app this is not an exploitable vulnerability, but any data inconsistency triggering this branch would be invisible. Already documented by the implementation team as a debt item (no ILogger injected by design). Recommendation: add a Warning-level log statement in the mismatch guard branch when a logger is eventually injected."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T05:18:36Z",
+          "note": "A03 — Injection: Confirmed zero SQL injection risk. BatchTagSql and MovieListSql are fully static SQL strings. MovieListQuery is an empty sealed record with no user-controlled fields. All other queries use Dapper anonymous-object parameterization throughout (@Hash, @Filename)."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T05:18:36Z",
+          "note": "No Critical or High security findings identified. All OWASP Top 10 categories reviewed against the 3 modified source files and 2 manifest docs. New tag enrichment logic (BatchTagSql, effective-set computation) operates entirely on data from trusted local database via parameterized queries and introduces no new attack surface."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-18T05:19:08Z",
+      "completed_at": "2026-05-18T05:22:52Z",
+      "duration_ms": 224000,
+      "summary": [
+        "Full line-by-line review of DapperMovieCatalogRepository.cs, DapperMovieCatalogRepositoryTests.cs, and LibraryScannerIntegrationTests.cs against all Review Dimensions. Architecture is clean: ITagsManager injected via Core interface, DI-correct, single connection for both SQL queries, correct TOCTOU guard pattern. One Fix-Forward applied (clarified defensive guard comment). One Documentation-Forward flagged for Documentation agent (api-surface.md update). PASS."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Library/DapperMovieCatalogRepository.cs",
+          "tests/VideoIndexer.Infrastructure.Tests/Library/DapperMovieCatalogRepositoryTests.cs",
+          "tests/VideoIndexer.Infrastructure.Tests/Library/LibraryScannerIntegrationTests.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-18T05:22:52Z",
+          "note": "Fix-Forward applied: expanded the defensive guard comment in DapperMovieCatalogRepository.GetMovieListAsync (enrichment loop) to explicitly note that EffectiveTagWeight is intentionally left at 0 — not set to StoredTagWeight — when the count-mismatch guard fires. This contrasts with the !tagsManagerInitialized branch (which does set EffectiveTagWeight=StoredTagWeight) and was flagged by QA as a potential source of confusion. Non-behavioral: comment only."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-18T05:22:52Z",
+          "note": "[documentation-forward] api-surface.md §DapperMovieCatalogRepository currently defers to 'See source for constructor signature.' The WP-015 constructor change (new mandatory ITagsManager parameter) and the two-round-trip enrichment semantics of GetMovieListAsync should be documented here per manifest maintenance rules: constructor signature and a brief note that GetMovieListAsync runs BatchTagSql + MovieListSql in a single connection and calls EnsureLoadedAsync before the enrichment pass."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T05:22:52Z",
+          "note": "The using var connection block in GetMovieListAsync encompasses the EnsureLoadedAsync call, meaning the MySQL connection is held open while the in-memory tag graph potentially loads (first call only). For a local desktop application at current scale this is inconsequential. Not blocking."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T05:22:52Z",
+          "note": "tagsManagerInitialized is correctly captured once before the ConvertAll loop (prevents TOCTOU mid-transform), and weightByTagId is built once outside the loop. Both patterns are correct and idiomatic."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-18T12:28:34Z",
+      "completed_at": "2026-05-18T12:29:48Z",
+      "duration_ms": 74000,
+      "summary": [
+        "Updated api-surface.md §DapperMovieCatalogRepository: replaced the 'See source for constructor signature' placeholder with the full constructor signature (IDbConnectionFactory + ITagsManager), and documented the two-round-trip GetMovieListAsync enrichment behavior (MovieListSql + BatchTagSql, EnsureLoadedAsync call, fallback semantics, and defensive count-mismatch guard behavior). Addressed all documentation-forward items from the code-review pipeline. file-tree.md and constraints.md were already updated by the implementation agent — no further changes needed there."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T12:29:48Z",
+          "note": "Standalone Documentation agent had already verified file-tree.md and constraints.md were up-to-date from the implementation pipeline. Only api-surface.md §DapperMovieCatalogRepository required updating for WP-015."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-18T12:29:48Z",
+  "last_updated": "2026-05-18T12:29:48Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-17T22:23:24Z",
+      "notes": [
+        "DapperMovieCatalogRepository now fully enriches MovieListItem with StoredTagIds, StoredTagParentIds, EffectiveTagIds, EffectiveTagWeight, and EffectiveTagCount on every GetMovieListAsync call. The ITagsManager mock in infrastructure tests uses MockBehavior.Loose (default) with IsInitialized=false, so the fallback path is exercised by all existing live-DB tests. The new enrichment tests (ENRICH_001, NOTINIT_001) exercise the full enrichment path and fallback path respectively against a live DB. Build clean, 171/177 tests passing (6 env-based skips). Program.cs DI registration did not require changes — AddSingleton<IMovieCatalogRepository, DapperMovieCatalogRepository>() resolves ITagsManager automatically from the DI container."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-05-17T22:52:28Z",
+      "notes": [
+        "WP-015 PASS. Build clean (pre-existing warnings in unrelated test project only). 714 tests pass, 6 env-based skips. All 5 ACs verified: constructor takes ITagsManager, GetMovieListAsync enriches MovieListItem with StoredTagIds/StoredTagParentIds/EffectiveTagIds/EffectiveTagWeight/EffectiveTagCount, IsInitialized=false fallback confirmed by test NOTINIT_001, batch-tag query correctly filters null parent_tag_ids, LibraryScannerIntegrationTests uses mock and self-skips. Minor note for security review: no SQL injection risk (Dapper parameterised queries throughout); BatchTagSql has no WHERE clause and fetches full tags_movies table on every call — acceptable for current scale."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-18T05:22:52Z",
+      "notes": [
+        "WP-015 code-review PASS. One Fix-Forward applied: clarified the defensive guard comment in GetMovieListAsync to make the intentional divergence from the !tagsManagerInitialized fallback explicit (EffectiveTagWeight=0 vs StoredTagWeight). Documentation agent action required: update api-surface.md §DapperMovieCatalogRepository to document the new ITagsManager constructor parameter and the two-round-trip enrichment behavior of GetMovieListAsync."
+      ]
+    }
+  ]
+}

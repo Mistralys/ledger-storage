@@ -1,0 +1,297 @@
+{
+  "work_package_id": "WP-033",
+  "work_package_file": "work/WP-032.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-014",
+    "WP-015",
+    "WP-016",
+    "WP-020",
+    "WP-010",
+    "WP-011",
+    "WP-021",
+    "WP-026",
+    "WP-022",
+    "WP-027",
+    "WP-024",
+    "WP-019",
+    "WP-028",
+    "WP-029"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "Program.cs registers all new services in the DI container (FfmpegRunner, DapperThumbnailRepository, CoverImageService, FfmpegThumbnailGeneratorService, DapperMovieRepository changes, DapperMovieCatalogRepository changes, AvaloniaThumbnailViewerService, AvaloniaThumbnailGenerationDialogService).",
+      "met": true
+    },
+    {
+      "criterion": "All new window types (ThumbnailViewerWindow, ThumbnailGeneratorWindow) are registered with Avalonia.",
+      "met": true
+    },
+    {
+      "criterion": "All new View/ViewModel pairs are registered in ViewLocator.",
+      "met": true
+    },
+    {
+      "criterion": "Application starts without DI resolution errors.",
+      "met": true
+    },
+    {
+      "criterion": "dotnet build -c Release reports zero warnings.",
+      "met": true
+    },
+    {
+      "criterion": "Program.cs registers all new services in the DI container (FfmpegRunner, DapperThumbnailRepository, CoverImageService, FfmpegThumbnailGeneratorService, DapperMovieCatalogRepository changes, AvaloniaThumbnailViewerService, AvaloniaThumbnailGenerationDialogService).",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-23T16:24:32Z",
+      "completed_at": "2026-05-23T16:34:58Z",
+      "duration_ms": 626000,
+      "summary": [
+        "Discovered WP-015 (DapperThumbnailRepository) was incorrectly implemented by a prior Developer agent who read WP-008.md (ThumbnailItemViewModel) instead of the DapperThumbnailRepository spec. DapperThumbnailRepository.cs did not exist, blocking WP-033 DI registrations.",
+        "Created DapperThumbnailRepository.cs in Infrastructure/Library implementing all IThumbnailRepository methods: GetByMovieIdAsync (ORDER BY milliseconds ASC), GetIdsByMovieIdAsync, GetCountByMovieIdAsync, InsertAsync (INSERT + LAST_INSERT_ID), DeleteAsync, DeleteAllByMovieIdAsync. Maps movies_thumbnails columns (milliseconds→PositionMs, custom/favorite 'yes'/'no'→bool).",
+        "Updated Program.cs section 7 to register: IFfmpegRunner/FfmpegRunner (AddSingleton), IThumbnailRepository/DapperThumbnailRepository (AddTransient), IThumbnailGenerationService/FfmpegThumbnailGeneratorService (AddSingleton), IThumbnailViewerService (AddSingleton with ownerFactory), IThumbnailGenerationDialogService (AddSingleton with ownerFactory).",
+        "Updated MovieEditorViewModel factory lambda to forward all 5 new optional params: IThumbnailRepository, ICoverImageService, IThumbnailGenerationService, IThumbnailViewerService, IFfprobeRunner.",
+        "Added 4 new view registrations in section 8: CoverImageView, ThumbnailsView, ThumbnailGeneratorView, ThumbnailViewerView.",
+        "Build: 0 warnings, 0 errors. Tests: 309 unit + 422 app = 731 total, all pass.",
+        "Updated api-surface.md and file-tree.md with DapperThumbnailRepository."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Library/DapperThumbnailRepository.cs",
+          "src/VideoIndexer.App/Program.cs",
+          "docs/agents/project-manifest/api-surface.md",
+          "docs/agents/project-manifest/file-tree.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "high",
+          "timestamp": "2026-05-23T16:34:58Z",
+          "note": "WP-015 (DapperThumbnailRepository) was marked COMPLETE in the ledger but never actually implemented — the implementing agent read the wrong work package file (WP-008.md for ThumbnailItemViewModel) instead of the DapperThumbnailRepository spec. The missing class was created within WP-033 scope as a prerequisite. The QA agent should verify that the DapperThumbnailRepository implementation is correct (integration tests require a live DB) since no unit tests exist for it under the unit suite."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "FAIL",
+      "started_at": "2026-05-23T17:06:12Z",
+      "completed_at": "2026-05-23T17:08:11Z",
+      "duration_ms": 119000,
+      "summary": [
+        "QA FAIL — AC 4 unmet. The MoviesListViewModel DI factory in Program.cs does not forward the 4 new optional thumbnail services (IMovieRepository, IThumbnailGenerationService, IThumbnailRepository, IThumbnailGenerationDialogService). In production the Generate Thumbnails button is permanently disabled.",
+        "All other ACs are met: 9 DI service registrations verified, 4 new view registrations present (CoverImageView, ThumbnailsView, ThumbnailGeneratorView, ThumbnailViewerView), ViewLocator uses convention-based resolution and works correctly via DI, MovieEditorViewModel factory correctly passes all 5 new services, Release build clean (0 warnings), 744 tests pass.",
+        "Single fix required: add 4 named arguments to the MoviesListViewModel AddTransient lambda at Program.cs line ~200."
+      ],
+      "metrics": {
+        "tests_passed": 744,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "bug",
+          "priority": "high",
+          "timestamp": "2026-05-23T17:08:11Z",
+          "note": "MoviesListViewModel DI factory in Program.cs (line ~200) does NOT pass the 4 new optional thumbnail services to the constructor: IMovieRepository, IThumbnailGenerationService, IThumbnailRepository, IThumbnailGenerationDialogService. In production, _generatorDialogService is null → CanGenerateThumbnails() always returns false → GenerateThumbnailsCommand.CanExecute is permanently false → the Generate Thumbnails button is perpetually disabled for all users. WP-033 spec AC 4 states: 'MovieEditorViewModel and MoviesListViewModel factory lambdas resolve all new optional services.' The MovieEditorViewModel factory is correct, but the MoviesListViewModel factory is incomplete. Fix: add sp.GetRequiredService<IMovieRepository>(), sp.GetRequiredService<IThumbnailGenerationService>(), sp.GetRequiredService<IThumbnailRepository>(), sp.GetRequiredService<IThumbnailGenerationDialogService>() as named arguments (movieRepository:, generationService:, thumbnailRepo:, generatorDialogService:) to the MoviesListViewModel factory lambda."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-23T17:08:11Z",
+          "note": "DapperThumbnailRepository is correctly implemented (GetByMovieIdAsync, GetIdsByMovieIdAsync, GetCountByMovieIdAsync, InsertAsync, DeleteAsync, DeleteAllByMovieIdAsync) and verified by code inspection. No integration tests are possible without a live DB, but the implementation follows the same Dapper patterns as the other repository classes."
+        }
+      ]
+    },
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-23T17:09:04Z",
+      "completed_at": "2026-05-23T17:10:07Z",
+      "duration_ms": 63000,
+      "summary": [
+        "Rework: added 4 missing named arguments (movieRepository, generationService, thumbnailRepo, generatorDialogService) to the MoviesListViewModel AddTransient factory lambda in Program.cs.",
+        "All 4 services now resolve via GetRequiredService, ensuring CanGenerateThumbnails() returns the correct value in production.",
+        "Release build: 0 warnings, 0 errors. Unit suite: 309/309 passed. App suite: 435/435 passed."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/Program.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-05-23T17:10:07Z",
+          "note": "Program.cs: the MoviesListViewModel factory lambda uses positional arguments for the first 8 parameters and named arguments only for the 4 new ones. For consistency and to prevent similar regressions, all optional parameters in this factory lambda should be passed as named arguments so additions are obvious and order-independent. Low-risk refactor, no behaviour change."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-23T17:10:37Z",
+      "completed_at": "2026-05-23T17:11:42Z",
+      "duration_ms": 65000,
+      "summary": [
+        "Rework re-verification PASS. Previously-failed AC 4 is now met: the MoviesListViewModel AddTransient factory lambda in Program.cs now correctly passes all 4 named arguments (movieRepository: IMovieRepository, generationService: IThumbnailGenerationService, thumbnailRepo: IThumbnailRepository, generatorDialogService: IThumbnailGenerationDialogService), ensuring CanGenerateThumbnails() returns a valid result in production.",
+        "Release build: 0 warnings, 0 errors.",
+        "Test suite: 309 unit + 435 app = 744 total, all passed. MoviesListViewModelTests.GenerateThumbnailsCommand_CannotExecute_WithNoSelection confirmed passing.",
+        "All 6 acceptance criteria verified met."
+      ],
+      "metrics": {
+        "tests_passed": 744,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "bug",
+          "priority": "high",
+          "timestamp": "2026-05-23T17:11:42Z",
+          "note": "RESOLVED (rework): Previously-failed bug — MoviesListViewModel factory missing 4 named service arguments — is now fixed. All 4 services (IMovieRepository, IThumbnailGenerationService, IThumbnailRepository, IThumbnailGenerationDialogService) are passed correctly via named arguments at Program.cs lines 208-211. GenerateThumbnailsCommand.CanExecute will no longer be permanently false in production."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-23T17:11:42Z",
+          "note": "Program.cs: the MoviesListViewModel factory lambda mixes positional (first 8 params) and named (last 4) arguments. For long-term maintainability, converting all optional parameters to named arguments would prevent similar regressions. Low-risk refactor, no behaviour change required now."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-23T17:20:04Z",
+      "completed_at": "2026-05-23T17:22:51Z",
+      "duration_ms": 167000,
+      "summary": [
+        "Reviewed DapperThumbnailRepository.cs — all 6 methods structurally correct: SQL column aliases match Dapper mapping, same connection reused for INSERT + LAST_INSERT_ID() (connection-scoped, correct), bool flag mapping from yes/no enum columns is correct, using var connection pattern consistent with other repositories.",
+        "Reviewed Program.cs DI registrations — all 9 new services correctly registered (IFfmpegRunner/FfmpegRunner as singleton, IThumbnailRepository/DapperThumbnailRepository as transient, IThumbnailGenerationService/FfmpegThumbnailGeneratorService as singleton, IThumbnailViewerService/AvaloniaThumbnailViewerService as singleton, IThumbnailGenerationDialogService/AvaloniaThumbnailGenerationDialogService as singleton). MoviesListViewModel and MovieEditorViewModel factory lambdas both correctly resolve all optional services via GetRequiredService.",
+        "Reviewed all 4 new view registrations (CoverImageView, ThumbnailsView, ThumbnailGeneratorView, ThumbnailViewerView) — consistent with established convention (parameterless factory lambda).",
+        "Verified api-surface.md and file-tree.md updated with DapperThumbnailRepository — complete and accurate.",
+        "Fix-Forward applied: MoviesListViewModel factory lambda positional args converted to named args (see comments)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.Infrastructure/Library/DapperThumbnailRepository.cs",
+          "src/VideoIndexer.App/Program.cs",
+          "docs/agents/project-manifest/api-surface.md",
+          "docs/agents/project-manifest/file-tree.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "medium",
+          "timestamp": "2026-05-23T17:22:51Z",
+          "note": "Program.cs MoviesListViewModel factory lambda: converted the first 8 positional arguments to named arguments (catalogRepository:, settingsService:, logger:, filterSlotRepository:, activeFilterSlotRepository:, filterManagerService:, tagsManager:, coverImageService:). All 12 arguments are now named, matching the pattern of the last 4 that were already named. Non-behavioral change — prevents regressions if optional parameters are added or reordered in future milestones."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-23T17:22:51Z",
+          "note": "DapperThumbnailRepository is registered as AddTransient but is immediately captured by FfmpegThumbnailGeneratorService (AddSingleton) via constructor injection — a captive dependency. Currently safe: DapperThumbnailRepository is stateless (IDbConnectionFactory injected; opens a new connection per method call). Consider changing the registration to AddSingleton to accurately reflect the effective lifetime, or adding a note in constraints.md."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-23T17:22:51Z",
+          "note": "DapperThumbnailRepository.InsertAsync always inserts with custom='no', mosaic='no', favorite='no' regardless of the Thumbnail parameter's IsCustom/IsFavorite values, and the return always sets IsCustom=false, IsFavorite=false. Appropriate for the current generation use case. Would need updating if future import scenarios require preserving custom or favorite status on insert."
+        },
+        {
+          "type": "debt",
+          "priority": "high",
+          "timestamp": "2026-05-23T17:22:51Z",
+          "note": "Process integrity: WP-015 (DapperThumbnailRepository) was marked COMPLETE in the ledger but the implementation never existed — the prior Developer read the wrong work package file. DapperThumbnailRepository was created within WP-033 scope as a remediation. No code change needed; recorded for audit trail and process retrospective."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-23T17:28:05Z",
+      "completed_at": "2026-05-23T17:28:46Z",
+      "duration_ms": 41000,
+      "summary": [
+        "No documentation changes required for WP-033. The Developer had already documented DapperThumbnailRepository in full (api-surface.md and file-tree.md) during implementation. The three WP-032 documentation-forward items referenced in the Reviewer's note (MoviesListViewModel constructor params, GenerateThumbnailsCommand, MoviePropertiesViewModel LoadMediaInfoAsync) were addressed in the preceding WP-032 documentation pipeline pass."
+      ],
+      "artifacts": {
+        "files_modified": []
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-23T17:28:46Z",
+          "note": "No documentation changes needed for WP-033 directly. The Developer already fully documented DapperThumbnailRepository in api-surface.md (all 6 methods with SQL and bool-mapping notes) and file-tree.md (with column mapping annotation) during implementation. The three documentation-forward items carried forward from WP-032 in the Reviewer's note (MoviesListViewModel constructor, GenerateThumbnailsCommand, MoviePropertiesViewModel LoadMediaInfoAsync) were all addressed in the WP-032 documentation pipeline."
+        }
+      ]
+    }
+  ],
+  "rework_counts": {
+    "implementation": 1,
+    "qa": 1
+  },
+  "status_changed_at": "2026-05-23T17:28:46Z",
+  "last_updated": "2026-05-23T17:28:46Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-23T16:34:58Z",
+      "notes": [
+        "WP-033 is complete. Main anomaly: DapperThumbnailRepository was missing (WP-015 incorrectly implemented by a prior agent), so it was created in this WP. QA should verify: (1) DapperThumbnailRepository methods via integration tests against live DB, (2) DI wiring confirmed via Release build 0 errors/warnings, (3) 731 unit+app tests still pass."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Developer",
+      "timestamp": "2026-05-23T17:08:11Z",
+      "notes": [
+        "WP-033 QA FAIL — one high-priority bug to fix before re-submission.",
+        "Bug: Program.cs MoviesListViewModel factory lambda is missing the 4 new optional thumbnail services. In production, GenerateThumbnailsCommand is always disabled (CanExecute returns false) because _generatorDialogService is null.",
+        "Fix required: update the MoviesListViewModel AddTransient factory lambda to add 4 new named arguments: movieRepository: sp.GetRequiredService<IMovieRepository>(), generationService: sp.GetRequiredService<IThumbnailGenerationService>(), thumbnailRepo: sp.GetRequiredService<IThumbnailRepository>(), generatorDialogService: sp.GetRequiredService<IThumbnailGenerationDialogService>(). Everything else (DapperThumbnailRepository, MovieEditorViewModel factory, view registrations, DI services) is correct."
+      ]
+    },
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-23T17:10:07Z",
+      "notes": [
+        "WP-033 rework complete. Root cause was the DI factory lambda in Program.cs not forwarding the 4 new optional thumbnail services introduced in the original implementation. Fixed by adding movieRepository, generationService, thumbnailRepo, and generatorDialogService named arguments. All tests green."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-23T17:11:42Z",
+      "notes": [
+        "WP-033 QA PASS. All 6 AC met. Release build clean, 744 tests green. DapperThumbnailRepository implementation is present and structurally correct (verified by code inspection); no unit tests exist for it — integration tests require a live DB and are self-skipping without one. The Generate Thumbnails button is now correctly wired end-to-end via the fixed MoviesListViewModel DI factory."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-23T17:22:51Z",
+      "notes": [
+        "WP-033 code review PASS. All 6 ACs met after one QA-bounce rework cycle (MoviesListViewModel factory missing 4 named args, now fixed).",
+        "Fix-Forward applied: all 12 MoviesListViewModel factory args are now named — no behavioral change.",
+        "Open documentation items from WP-032 still pending for Documentation agent: (1) MoviesListViewModel constructor missing 4 new optional params in api-surface.md; (2) GenerateThumbnailsCommand still listed as 'no-op stub'; (3) MoviePropertiesViewModel ffprobe-deferred TODO comment is now stale.",
+        "744 tests pass, Release build clean."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,281 @@
+{
+  "work_package_id": "WP-009",
+  "work_package_file": "work/WP-009.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-002",
+    "WP-005",
+    "WP-006"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "SaveSlotCommand with a valid expression calls IFilterSlotRepository.SaveAsync and clears ValidationMessage.",
+      "met": true
+    },
+    {
+      "criterion": "SaveSlotCommand with an invalid expression sets ValidationMessage to a non-empty string and does not call IFilterSlotRepository.SaveAsync.",
+      "met": true
+    },
+    {
+      "criterion": "After saving a new slot (SlotId == 0), SelectedSlot.SlotId > 0 (reflects the DB-assigned ID).",
+      "met": true
+    },
+    {
+      "criterion": "DeleteSlotCommand.CanExecute returns false when ConfirmDelete == false or SelectedSlot == null.",
+      "met": true
+    },
+    {
+      "criterion": "After DeleteSlotCommand executes, ConfirmDelete is reset to false.",
+      "met": true
+    },
+    {
+      "criterion": "CloseCommand raises CloseRequested.",
+      "met": true
+    },
+    {
+      "criterion": "Changing SelectedSlot resets ConfirmDelete to false.",
+      "met": true
+    },
+    {
+      "criterion": "LoadAsync() populates Slots from the repository.",
+      "met": true
+    },
+    {
+      "criterion": "Zero new warnings; no DI container usage.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-12T16:54:46Z",
+      "completed_at": "2026-05-12T17:00:57Z",
+      "duration_ms": 371000,
+      "summary": [
+        "Created FiltersManagerViewModel with: Slots (ObservableCollection), SelectedSlot, Name, Expression, ValidationMessage, ConfirmDelete observable properties, plus CloseRequested event.",
+        "SaveSlotAsync validates the expression via FilterExpressionParser.Parse; on failure sets ValidationMessage and returns early; on success calls SaveAsync, updates Slots collection (add or replace), sets SelectedSlot to the returned entity, clears ValidationMessage.",
+        "DeleteSlotAsync guarded by CanDeleteSlot (ConfirmDelete && SelectedSlot != null); resets ConfirmDelete to false after execution; wired via [NotifyCanExecuteChangedFor] on SelectedSlot and ConfirmDelete properties.",
+        "CloseCommand raises CloseRequested event.",
+        "OnSelectedSlotChanged resets ConfirmDelete, repopulates Name/Expression/ValidationMessage from the new slot.",
+        "FakeFilterSlotRepository extended with call-tracking (SaveAsyncCallCount, DeleteAsyncCallCount, simulated DB ID assignment).",
+        "Created FiltersManagerViewModelTests.cs with 16 tests covering all 9 ACs.",
+        "All 146 tests pass. Zero new warnings. No DI container usage.",
+        "Updated api-surface.md and file-tree.md."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/ViewModels/FiltersManagerViewModel.cs",
+          "tests/VideoIndexer.App.Tests/FiltersManagerViewModelTests.cs",
+          "tests/VideoIndexer.App.Tests/TestHelpers/FakeFilterSlotRepository.cs",
+          "docs/agents/project-manifest/api-surface.md",
+          "docs/agents/project-manifest/file-tree.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T17:00:57Z",
+          "note": "FiltersManagerViewModel.FindSlotById() iterates Slots linearly to find a slot by ID. Since the Slots collection is expected to be small (user-managed filter presets), this is acceptable. A Dictionary-backed lookup would only be warranted at much larger scales."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-12T17:00:57Z",
+          "note": "SaveSlotAsync sets SelectedSlot = saved after a successful save, which triggers OnSelectedSlotChanged and repopulates Name/Expression fields from the returned entity. For updates (SlotId > 0), the saved entity is returned unchanged by the repository API, so this is a no-op in practice. However, if the repository ever normalizes expressions (e.g., trims whitespace), the fields would update correctly. This is the right design."
+        },
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-05-12T17:00:57Z",
+          "note": "No view (FiltersManagerView.axaml) exists yet for FiltersManagerViewModel. The ViewLocator will return a 'View not found' placeholder until the view is created and registered in DI. This is expected at the current milestone — the view will be added in a subsequent WP."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T17:00:57Z",
+          "note": "FakeFilterSlotRepository was extended (from WP-008 version) to add SaveAsyncCallCount, DeleteAsyncCallCount, LastSavedSlot, LastDeletedSlotId, and simulated DB-ID assignment. All pre-existing WP-008 tests still pass (146 total, 16 new in this WP)."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-12T17:04:29Z",
+      "completed_at": "2026-05-12T17:05:40Z",
+      "duration_ms": 71000,
+      "summary": [
+        "Build: clean, zero warnings (confirmed from prior full-solution build). All 146 App.Tests pass including all 16 new FiltersManagerViewModelTests.",
+        "AC1–AC2: SaveSlotAsync validates via FilterExpressionParser.Parse; invalid expression catches FilterExpressionException and sets ValidationMessage without calling SaveAsync (confirmed: empty expression also throws). AC3: New slot creation sets SelectedSlot to the repository-returned entity with DB-assigned SlotId > 0. AC4: CanDeleteSlot() guards correctly; [NotifyCanExecuteChangedFor] on SelectedSlot and ConfirmDelete ensures ICommand.CanExecuteChanged fires on both properties. AC5: ConfirmDelete reset to false in DeleteSlotAsync after successful delete. AC6: CloseCommand invokes CloseRequested event. AC7: OnSelectedSlotChanged resets ConfirmDelete, repopulates Name/Expression/ValidationMessage. AC8: LoadAsync clears and repopulates Slots collection. AC9: Zero warnings, no DI container or ServiceLocator usage.",
+        "Edge-case analysis: (a) FindSlotById null-guards in DeleteSlotAsync if slot not found in collection. (b) SelectedSlot = null in DeleteSlotAsync triggers OnSelectedSlotChanged, making the subsequent explicit ConfirmDelete = false redundant but harmless. (c) Empty expression treated as invalid by parser."
+      ],
+      "metrics": {
+        "test_coverage": "16 new tests cover all 9 ACs; 146 App.Tests total pass",
+        "tests_passed": 146,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T17:05:40Z",
+          "note": "In DeleteSlotAsync, SelectedSlot = null triggers OnSelectedSlotChanged (which sets ConfirmDelete = false), then ConfirmDelete = false is set explicitly. The redundant explicit set is harmless but minor tech debt."
+        },
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-05-12T17:05:40Z",
+          "note": "No FiltersManagerView.axaml exists yet — ViewLocator will return a placeholder until a subsequent WP adds the view. Expected and noted by Developer. No AC impact."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T17:05:40Z",
+          "note": "Empty expression ('') correctly fails validation (FilterExpressionParser.Parse throws FilterExpressionException for empty input), covered by SaveSlotCommand_EmptyExpression_DoesNotCallSaveAsync test."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-12T17:19:37Z",
+      "completed_at": "2026-05-12T17:20:54Z",
+      "duration_ms": 77000,
+      "summary": [
+        "Reviewed FiltersManagerViewModel.cs, FiltersManagerViewModelTests.cs, and FakeFilterSlotRepository.cs against all four Review Dimensions.",
+        "No blocking issues found.",
+        "Maintainability: All public members carry full XML doc comments. Two-step delete guard (ConfirmDelete) is clearly documented. The SaveSlotAsync new-vs-update branch is readable and correctly separated.",
+        "Best Practices: [NotifyCanExecuteChangedFor] on both SelectedSlot and ConfirmDelete correctly wires CanExecuteChanged. [RelayCommand(CanExecute)] pattern is idiomatic. EventHandler CloseRequested follows standard .NET event pattern. Parameterless design-time constructor follows codebase convention.",
+        "Performance: FindSlotById linear scan is appropriate for small user-managed preset collections. Slots[i] = saved correctly raises CollectionChanged Replace notification.",
+        "Future Context: No view exists yet (out of scope for WP-009); clearly documented as tech debt. FakeFilterSlotRepository backward-compatible extension maintains all prior WP-008 tests."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/ViewModels/FiltersManagerViewModel.cs",
+          "tests/VideoIndexer.App.Tests/FiltersManagerViewModelTests.cs",
+          "tests/VideoIndexer.App.Tests/TestHelpers/FakeFilterSlotRepository.cs",
+          "docs/agents/project-manifest/api-surface.md",
+          "docs/agents/project-manifest/file-tree.md"
+        ]
+      },
+      "metrics": {
+        "test_coverage": "16 new tests cover all 9 ACs; 146 App.Tests total pass",
+        "tests_passed": 146,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T17:20:54Z",
+          "note": "FiltersManagerViewModel.cs DeleteSlotAsync: SelectedSlot = null triggers OnSelectedSlotChanged (which sets ConfirmDelete = false), then ConfirmDelete = false is assigned explicitly. The redundant explicit assignment makes intent clear but is worth noting. Non-behavioral; no fix required."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T17:20:54Z",
+          "note": "FiltersManagerViewModel.cs SaveSlotAsync: SelectedSlot = saved triggers OnSelectedSlotChanged (which sets ValidationMessage = string.Empty), then ValidationMessage = string.Empty is assigned explicitly one line later. Same minor redundancy pattern as the ConfirmDelete case above. Non-behavioral; intent-clarity trade-off favors keeping it."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T17:20:54Z",
+          "note": "FiltersManagerViewModel.cs SaveSlotAsync: Slots[i] = saved (ObservableCollection indexer replace) runs after ConfigureAwait(false) on a background thread. Same pre-existing threading pattern as WP-008 LoadAsync. Not introduced by this WP; noted for consistency with the earlier observation."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-12T17:20:54Z",
+          "note": "[documentation-forward] FiltersManagerView.axaml does not yet exist. The README or milestone M5 doc should note that FiltersManagerViewModel is complete but the view is pending a subsequent WP, so the dialog is not yet navigable from the UI."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-12T17:25:49Z",
+      "completed_at": "2026-05-12T17:26:43Z",
+      "duration_ms": 54000,
+      "summary": [
+        "Reviewed all WP-009 pipeline artifacts (implementation, QA, code-review) and assessed documentation impact.",
+        "Confirmed Developer already updated api-surface.md with the full FiltersManagerViewModel signature and file-tree.md with the new source and test files.",
+        "Addressed the documentation-forward from the Reviewer: added 'FiltersManagerView — pending (not yet created)' section to the Views portion of api-surface.md, clearly stating that the ViewModel is implemented, no view file exists yet, ViewLocator will return a placeholder, and the dialog is not navigable from the UI.",
+        "Added a matching open item to constraints.md Open Items section so developers are warned about the missing view before touching filter-manager navigation or DI wiring.",
+        "README.md requires no changes — the Filter Manager dialog is not yet accessible from the UI; adding a feature bullet would be premature.",
+        "All 9 acceptance criteria were already marked met; no gaps found."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "docs/agents/project-manifest/api-surface.md",
+          "docs/agents/project-manifest/constraints.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-05-12T17:26:43Z",
+          "note": "api-surface.md Views section: Added 'FiltersManagerView — pending (not yet created)' callout addressing the documentation-forward from the Reviewer. Documents that the ViewModel is complete but the view does not exist, ViewLocator returns a placeholder, and the dialog is not navigable from the UI until a subsequent WP creates the view."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T17:26:43Z",
+          "note": "constraints.md Open Items: Added bullet for missing FiltersManagerView so developers are warned before attempting to navigate to the dialog or register related DI services."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-12T17:26:43Z",
+          "note": "README.md and api-surface.md ViewModel section: No changes needed. FiltersManagerViewModel signature was already added by the Developer during implementation. README does not require a feature bullet since the dialog is not yet navigable."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-12T17:26:43Z",
+  "last_updated": "2026-05-12T17:26:43Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-12T17:00:57Z",
+      "notes": [
+        "FiltersManagerViewModel is the CRUD VM for the Filter Manager dialog. All 9 ACs met.",
+        "146 total tests passing (16 new in FiltersManagerViewModelTests.cs).",
+        "FakeFilterSlotRepository extended with call-tracking properties — backward compatible.",
+        "No FiltersManagerView exists yet (out of scope for WP-009). QA may note the view absence.",
+        "The CanExecute guard on DeleteSlotCommand uses [NotifyCanExecuteChangedFor] on both SelectedSlot and ConfirmDelete properties, ensuring the command state updates correctly on any change."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-12T17:05:40Z",
+      "notes": [
+        "WP-009 QA PASS. All 9 ACs verified against implementation and 16 unit tests. 146/146 App.Tests pass.",
+        "Minor: redundant ConfirmDelete = false assignment in DeleteSlotAsync after SelectedSlot = null already triggers the reset via OnSelectedSlotChanged.",
+        "FiltersManagerView.axaml must be created in a subsequent WP before the dialog is usable at runtime."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-12T17:20:54Z",
+      "notes": [
+        "WP-009 code-review PASS. All 9 ACs confirmed. FiltersManagerViewModel is clean, idiomatic, and fully tested.",
+        "Documentation-forward: FiltersManagerView.axaml absence should be documented at the milestone level — see pipeline comment.",
+        "Minor redundant assignments (ConfirmDelete = false, ValidationMessage = string.Empty) logged as low-priority improvements; intentional defensive style, not blocking.",
+        "project_path: c:\\Webserver\\tools\\video-indexer-v2\\docs\\agents\\plans\\2026-05-12-m5-filters-search"
+      ]
+    }
+  ]
+}

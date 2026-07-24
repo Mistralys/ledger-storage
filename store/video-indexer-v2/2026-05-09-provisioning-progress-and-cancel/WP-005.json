@@ -1,0 +1,193 @@
+{
+  "work_package_id": "WP-005",
+  "work_package_file": "work/WP-005.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001",
+    "WP-003"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "`Program.cs` compiles without error.",
+      "met": true
+    },
+    {
+      "criterion": "The `ProvisioningTools` factory arm no longer uses `GetRequiredService<ProvisioningToolsViewModel>()`.",
+      "met": true
+    },
+    {
+      "criterion": "`AddTransient<ProvisioningToolsViewModel>()` is absent from the DI registrations.",
+      "met": true
+    },
+    {
+      "criterion": "`lazyShell!.AdvanceToConnecting()` is wired as the `onComplete` callback.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-11T07:40:31Z",
+      "completed_at": "2026-05-11T07:41:57Z",
+      "duration_ms": 86000,
+      "summary": [
+        "Removed `builder.Services.AddTransient<ProvisioningToolsViewModel>()` from the DI registrations in Program.cs.",
+        "Changed the ProvisioningTools factory arm in the ShellViewModel singleton factory to construct ProvisioningToolsViewModel directly via its two-argument constructor, passing the `provisioner` local variable and an `onComplete` callback that calls `lazyShell!.AdvanceToConnecting()`.",
+        "Added `using System.Diagnostics;` to support `Debug.Assert` in the callback.",
+        "Build: 0 errors, 0 warnings. Tests: 344 passed, 0 failed."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/Program.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-11T07:41:57Z",
+          "note": "No observations — code in the touched files is clean and consistent. The inline lambda in the switch arm is intentionally compact per the existing style of the other factory arms."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-11T07:49:07Z",
+      "completed_at": "2026-05-11T07:50:49Z",
+      "duration_ms": 102000,
+      "summary": [
+        "All 4 acceptance criteria verified through code inspection and build/test execution.",
+        "AC1: dotnet build succeeds — 0 errors, 0 warnings.",
+        "AC2: ProvisioningTools factory arm uses `new ProvisioningToolsViewModel(provisioner, onComplete: ...)` — no GetRequiredService call.",
+        "AC3: No `AddTransient<ProvisioningToolsViewModel>()` found anywhere in the codebase.",
+        "AC4: `lazyShell!.AdvanceToConnecting()` is wired as the onComplete callback in the lambda.",
+        "Regression: 345 passed, 5 skipped, 0 failed across all three test assemblies.",
+        "Edge-case analysis: (1) lazyShell null-before-assign timing is safe — StartAsync() is called after the ShellViewModel constructor returns, so lazyShell is always assigned before any async continuation fires; (2) double-callback via Retry is blocked because CanRetry() requires Error != null, which is null on the success path."
+      ],
+      "metrics": {
+        "tests_passed": 345,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-11T07:50:49Z",
+          "note": "The `Debug.Assert(lazyShell is not null)` guard before `lazyShell!.AdvanceToConnecting()` is appropriate as a debug-mode safety net. In release builds the assert is elided but the null-forgiving operator still produces correct behaviour because the timing guarantees ensure lazyShell is always assigned before the callback fires."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-11T07:50:49Z",
+          "note": "No regressions found. Code is clean and consistent with the rest of the factory arm pattern in Program.cs."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-11T07:54:42Z",
+      "completed_at": "2026-05-11T07:56:29Z",
+      "duration_ms": 107000,
+      "summary": [
+        "WP-005 passes code review. The implementation in Program.cs is correct, minimal, and fully consistent with the existing factory-arm style.",
+        "AC1-4 all met and previously verified by QA.",
+        "The onComplete callback fires only on the success path (after EnsureAsync returns without throwing); cancel and exception paths do not invoke it — correct per ProvisioningToolsViewModel contract.",
+        "AdvanceToConnecting() called from a ThreadPool thread is consistent with the existing ShellViewModel pattern where ConnectAsync, LogOnAsync, and SetPasswordAsync all use ConfigureAwait(false) then call Transition() from the pool.",
+        "Debug.Assert(lazyShell is not null) + ! null-forgiving operator pattern is appropriate — the timing guarantee (lazyShell assigned before StartAsync runs) makes the assert accurate in debug builds and the forgiving operator safe in release builds.",
+        "ShellViewModel.ProvisionAsync() being dead production code is a deliberate, documented decision (plan.md line 75) to preserve existing unit-test coverage — not rework-worthy technical debt.",
+        "One documentation-forward item raised: README.md still describes ProvisionAsync() as the orchestration entry point for ProvisioningTools → Connecting; needs updating to reflect callback-based wiring.",
+        "No Fix-Forward edits applied; no blocking issues found."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/Program.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-11T07:56:29Z",
+          "note": "No blocking or fix-forward issues found. Code is clean and consistent with the existing factory-arm pattern in Program.cs."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-11T07:56:29Z",
+          "note": "ShellViewModel.ProvisionAsync() is intentionally kept as dead production code (plan.md line 75). It preserves existing ShellViewModelTests coverage that validates the shell's transition contract. This is a correct architectural decision — the method continues to serve as a contract-level integration test even though the production call-path now routes through the ProvisioningToolsViewModel callback."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-11T07:56:29Z",
+          "note": "[documentation-forward] README.md lines 321 and 603 describe ShellViewModel.ProvisionAsync() as the orchestration entry point for the ProvisioningTools → Connecting transition ('wired in ShellViewModel.ProvisionAsync() (M2.5, WP-010)'). WP-005 has superseded this: the transition is now driven by the onComplete callback passed to ProvisioningToolsViewModel. Both passages must be updated to reflect the callback-based wiring introduced in this WP."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-11T08:00:56Z",
+      "completed_at": "2026-05-11T08:03:05Z",
+      "duration_ms": 129000,
+      "summary": [
+        "Updated README.md to reflect the callback-based wiring introduced by WP-005.",
+        "Line 321 (ShellState table): Replaced the description of `ShellViewModel.ProvisionAsync()` as the orchestration entry point with an accurate statement that the `ProvisioningTools → Connecting` transition is driven by an `onComplete` callback injected at construction in `Program.cs`, invoking `lazyShell!.AdvanceToConnecting()`.",
+        "Lines 603-609 (ProvisioningToolsViewModel section — Shell wiring + DI registration): Updated 'Shell wiring' to reference WP-005 and the callback pattern; introduced mention of `AdvanceToConnecting()` as the thin public façade. Updated 'DI registration' to reflect that `ProvisioningToolsViewModel` is no longer registered in the DI container — it is constructed directly in the factory lambda.",
+        "Addressed the code-review `documentation-forward` item in full. No other documentation gaps identified."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "README.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-11T08:03:05Z",
+          "note": "documentation-forward item addressed: README.md lines 321 and 603 both updated. The `ShellViewModel.ProvisionAsync()` orchestration description has been replaced with the accurate callback-based wiring description. DI registration section updated to reflect that ProvisioningToolsViewModel is no longer in the DI container."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-11T08:03:05Z",
+  "last_updated": "2026-05-11T08:03:05Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-11T07:41:57Z",
+      "notes": [
+        "WP-005 implementation complete. Program.cs now constructs ProvisioningToolsViewModel inline in the ShellViewModel factory, passing the `provisioner` singleton and an `onComplete` lambda that asserts `lazyShell` is non-null then calls `lazyShell!.AdvanceToConnecting()`. The AddTransient registration has been removed. All 344 tests pass."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-11T07:50:49Z",
+      "notes": [
+        "WP-005 QA passed. All 4 ACs met. Build clean (0 errors, 0 warnings). 345 tests pass, 0 fail. The inline ProvisioningToolsViewModel construction with onComplete callback is correct and safe. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-11T07:56:29Z",
+      "notes": [
+        "WP-005 code review passed with no blocking issues and no Fix-Forward edits. One documentation-forward item is recorded: README.md lines 321 and 603 describe ShellViewModel.ProvisionAsync() as the orchestration entry point for the ProvisioningTools → Connecting transition; these must be updated to reflect the onComplete callback wiring introduced by WP-005."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,151 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Reviewer",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "AC-1a: After the change, `LoadFilterSlotsAsync` is called in the `Loaded` handler.",
+      "met": true
+    },
+    {
+      "criterion": "AC-1b: The `FilterSlots` ObservableCollection is populated on application load.",
+      "met": true
+    },
+    {
+      "criterion": "AC-1c: The `ActiveFilterSlot` binding in `MainContentView` reflects the persisted active slot on startup.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-13T14:48:27Z",
+      "completed_at": "2026-05-13T14:49:41Z",
+      "duration_ms": 74000,
+      "summary": [
+        "Made the Loaded event lambda async and added `await vm.LoadFilterSlotsAsync()` after the existing `await vm.LoadAsync()` in MoviesListView.axaml.cs. Solution builds clean (no warnings/errors)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/Views/MoviesListView.axaml.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-05-13T14:49:41Z",
+          "note": "src/VideoIndexer.App/Views/MoviesListView.axaml.cs: The previous fire-and-forget `_ = vm.LoadAsync()` pattern was silently swallowing any exceptions from the initial load. Switching to `async` + `await` is strictly better, but there is still no top-level try/catch around these awaited calls in the Loaded handler. If either method throws after the first `await`, the exception propagates into an unobserved async void path (Avalonia event handler). Consider wrapping with a try/catch that surfaces errors to the ViewModel error state."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-13T15:01:19Z",
+      "completed_at": "2026-05-13T15:03:26Z",
+      "duration_ms": 127000,
+      "summary": [
+        "Build check: solution compiles clean — 0 errors, 0 warnings.",
+        "AC-1a verified: LoadFilterSlotsAsync is called in the Loaded event handler of MoviesListView.axaml.cs, sequentially after LoadAsync.",
+        "AC-1b verified: FilterSlots ObservableCollection is populated via LoadFilterSlotsAsync → IFilterSlotRepository.GetAllAsync. Both IFilterSlotRepository and IActiveFilterSlotRepository are registered as singletons in Program.cs (lines 155–156) and injected into MoviesListViewModel via DI.",
+        "AC-1c verified: MainContentView.axaml binds SelectedItem to MoviesListVm.ActiveFilterSlot. LoadFilterSlotsAsync resolves the persisted slot ID from IActiveFilterSlotRepository.GetActiveSlotIdAsync and sets ActiveFilterSlot, so the binding reflects the DB-persisted value on startup.",
+        "Regression check: 500/500 tests pass (6 skipped), including all 28 MoviesListViewModel tests.",
+        "Edge-case: null repositories — LoadFilterSlotsAsync guards with an early return if either repository is null; safe.",
+        "Edge-case: orphan active slot ID — LoadFilterSlotsAsync self-heals by clearing the persisted pointer and setting ActiveFilterSlot=null if the stored ID is no longer in the slot list."
+      ],
+      "metrics": {
+        "test_coverage": "28/28 MoviesListViewModel tests pass; full suite 500 pass / 6 skip",
+        "tests_passed": 500,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-13T15:03:26Z",
+          "note": "MoviesListView.axaml.cs Loaded handler is async void (Avalonia event handler). If LoadAsync() or LoadFilterSlotsAsync() throws after the first await, the exception propagates into an unobserved async void path. This is a pre-existing pattern concern carried forward from the prior fire-and-forget approach — not a regression introduced by this change. The Developer already flagged this as low-priority debt. No AC impact."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-13T15:03:26Z",
+          "note": "LoadFilterSlotsAsync is invoked with no CancellationToken (default CancellationToken.None). There is no cancellation support if the view is unloaded mid-startup. Acceptable for a startup init path, but worth noting for future lifecycle hardening."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-13T15:09:59Z",
+      "completed_at": "2026-05-13T15:11:57Z",
+      "duration_ms": 118000,
+      "summary": [
+        "PASS — minimal one-file change in MoviesListView.axaml.cs is clean and correct. The Loaded handler is correctly async void (required by Avalonia), calls await vm.LoadAsync() then await vm.LoadFilterSlotsAsync() sequentially. No ConfigureAwait(false) on awaits in the View is correct per project constraints (App layer may omit where UI-thread continuations are intentional). LoadFilterSlotsAsync in the ViewModel uses ConfigureAwait(false) throughout — correct. All three ACs met. Fix-Forward applied: updated stale XML remarks in MoviesListViewModel.LoadFilterSlotsAsync that described the Loaded-handler wiring as a future deferred item — the wiring is now complete."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/Views/MoviesListView.axaml.cs",
+          "src/VideoIndexer.App/ViewModels/MoviesListViewModel.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-13T15:11:57Z",
+          "note": "src/VideoIndexer.App/ViewModels/MoviesListViewModel.cs: Updated stale XML remarks on LoadFilterSlotsAsync. The two-paragraph block described the Loaded-handler wiring as 'deferred to a future M5 work package' and warned that FilterSlots/ActiveFilterSlot 'will remain empty/null at runtime'. WP-001 completes exactly that wiring, so the remarks now reflect the current state: wiring is done via MoviesListView's Loaded handler."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-05-13T15:11:57Z",
+          "note": "src/VideoIndexer.App/Views/MoviesListView.axaml.cs: The Loaded handler is async void — unavoidable for Avalonia event handlers. If LoadAsync() or LoadFilterSlotsAsync() throws after the first await, the exception propagates into the Avalonia dispatcher's unhandled exception path rather than being caught locally. This is NOT a regression (the previous fire-and-forget pattern was strictly worse — exceptions were fully silenced). Adding a try/catch around the awaited calls to surface errors to the ViewModel's error state (HasLoadError / LoadErrorMessage) would be a cleaner user-facing failure mode, but is a design decision appropriate for a future WP. Not blocking."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-13T15:11:57Z",
+          "note": "src/VideoIndexer.App/Views/MoviesListView.axaml.cs: LoadFilterSlotsAsync is called with no CancellationToken (defaults to CancellationToken.None). No cancellation path if the view is unloaded mid-startup. Acceptable for a startup init sequence; worth considering in a future lifecycle hardening pass alongside the try/catch debt item above."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-13T15:11:57Z",
+  "last_updated": "2026-05-13T15:11:57Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-13T14:49:41Z",
+      "notes": [
+        "Minimal one-file change: MoviesListView.axaml.cs Loaded handler is now async and calls both LoadAsync and LoadFilterSlotsAsync. All AC met; build is clean. QA should verify FilterSlots is populated and ActiveFilterSlot reflects the DB-persisted value on startup."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-13T15:03:26Z",
+      "notes": [
+        "WP-001 passes QA. Single-file change in MoviesListView.axaml.cs: Loaded handler is async, calls await vm.LoadAsync() then await vm.LoadFilterSlotsAsync(). Both repositories are DI-registered. All 3 ACs confirmed by code inspection and full test suite (500 pass). Reviewer should pay attention to the async-void exception propagation noted as low-priority debt — consider whether a try/catch wrapping the awaited calls in the Loaded handler is warranted before release."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-05-13T15:11:57Z",
+      "notes": [
+        "WP-001 PASS. Single-file implementation change (MoviesListView.axaml.cs) is clean and architecturally sound. Reviewer applied one Fix-Forward: updated stale XML doc remarks in MoviesListViewModel.LoadFilterSlotsAsync to remove the 'future M5 WP' forward-reference now that wiring is complete. Two low-priority debt items are carried forward (async void exception handling, no CancellationToken on startup call) — neither blocks release. All 3 ACs met."
+      ]
+    }
+  ]
+}

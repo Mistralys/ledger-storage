@@ -1,0 +1,210 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "MoviesListView.axaml.cs Loaded handler catches exceptions and sets HasLoadError/LoadErrorMessage on the VM.",
+      "met": true
+    },
+    {
+      "criterion": "A CancellationTokenSource is created in the view and cancelled in the Unloaded handler.",
+      "met": true
+    },
+    {
+      "criterion": "Both LoadAsync and LoadFilterSlotsAsync receive the cancellation token.",
+      "met": true
+    },
+    {
+      "criterion": "Full test suite passes with no regressions.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-13T22:15:32Z",
+      "completed_at": "2026-05-13T22:18:00Z",
+      "duration_ms": 148000,
+      "summary": [
+        "Refactored MoviesListView.axaml.cs: replaced anonymous Loaded lambda with named OnLoaded / OnUnloaded event handlers.",
+        "Added private CancellationTokenSource? _cts field; created in OnLoaded, cancelled and disposed in OnUnloaded.",
+        "Both vm.LoadAsync(token) and vm.LoadFilterSlotsAsync(token) now receive the token from the CTS.",
+        "Loaded handler wraps both calls in try/catch: OperationCanceledException is silently swallowed; all other exceptions set vm.HasLoadError = true and vm.LoadErrorMessage = ex.Message.",
+        "Added using Avalonia.Interactivity for RoutedEventArgs (System.Threading is a global implicit using — no explicit import needed).",
+        "Build: 0 errors, 0 warnings. Test run: 500 passed, 0 failed, 6 skipped."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/Views/MoviesListView.axaml.cs"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 500,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-05-13T22:18:00Z",
+          "note": "LoadFilterSlotsAsync (MoviesListViewModel.cs ~L263) has no internal error handling — unlike LoadAsync which catches non-cancellation exceptions internally, any exception from LoadFilterSlotsAsync propagates to all its callers. The view's Loaded handler now guards this path, but other future callers would not be protected. Consider adding a try/catch inside LoadFilterSlotsAsync mirroring the pattern in LoadAsync."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-13T22:18:00Z",
+          "note": "In MoviesListView.axaml.cs OnLoaded: if Loaded fires more than once (e.g., control re-attached to visual tree), the previous _cts instance is overwritten without being cancelled or disposed first, potentially leaking the old CancellationTokenSource. A guard at the top of OnLoaded — cancel and dispose any existing _cts before creating a new one — would prevent this edge-case leak."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-13T22:33:51Z",
+      "completed_at": "2026-05-13T22:34:51Z",
+      "duration_ms": 60000,
+      "summary": [
+        "All four acceptance criteria verified against src/VideoIndexer.App/Views/MoviesListView.axaml.cs.",
+        "AC1: OnLoaded try/catch correctly swallows OperationCanceledException and sets vm.HasLoadError/vm.LoadErrorMessage for all other exceptions.",
+        "AC2: _cts created in OnLoaded, cancelled and disposed (set to null) in OnUnloaded.",
+        "AC3: Both vm.LoadAsync(token) and vm.LoadFilterSlotsAsync(token) receive the cancellation token.",
+        "AC4: dotnet build — 0 errors, 0 warnings. dotnet test — 517 passed, 0 failed, 6 skipped (all environment-conditional skips, no regressions)."
+      ],
+      "metrics": {
+        "tests_passed": 517,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-13T22:34:51Z",
+          "note": "If OnLoaded fires more than once (control detached/reattached), the existing _cts is overwritten without prior Cancel/Dispose, leaking the old CancellationTokenSource. Developer already flagged this. Not a regression; a guard at the top of OnLoaded would close the gap."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-13T22:34:51Z",
+          "note": "LoadFilterSlotsAsync (MoviesListViewModel.cs ~L263) lacks internal error handling — exceptions propagate to callers unguarded. The view's Loaded handler now protects this call path, but future callers would not be. Developer already flagged as debt."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-13T22:34:51Z",
+          "note": "Unloaded handler correctly sets _cts = null after dispose, preventing double-cancel on subsequent Unloaded events. Pattern is clean."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-13T22:39:22Z",
+      "completed_at": "2026-05-13T22:40:47Z",
+      "duration_ms": 85000,
+      "summary": [
+        "Code review PASS. MoviesListView.axaml.cs implementation is clean, correct, and well-structured. All four acceptance criteria are met. The refactor from anonymous lambda to named OnLoaded/OnUnloaded handlers improves discoverability. CTS lifecycle management follows the correct cancel → dispose → null pattern. async void is appropriately used as this is an event handler — the one valid C# use case. Exception handling correctly separates OperationCanceledException (silent swallow) from general exceptions (propagated to VM). Two low-priority edge-case concerns were identified and are recorded as comments; neither is blocking."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/Views/MoviesListView.axaml.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-13T22:40:47Z",
+          "note": "CTS re-attach guard (OnLoaded): if the control is ever detached and re-added to the visual tree, OnLoaded fires a second time and the existing _cts is overwritten without a prior Cancel/Dispose. Adding `_cts?.Cancel(); _cts?.Dispose();` at the top of OnLoaded before creating a new CTS would close this theoretical resource leak. This changes behavior in the re-attach scenario (cancels the previous in-flight load) so it is outside Fix-Forward scope — left as a tracked improvement for the Developer."
+        },
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-05-13T22:40:47Z",
+          "note": "LoadFilterSlotsAsync (MoviesListViewModel.cs ~L263) has no internal error handling. The view's Loaded handler now protects this call site, but any future caller would receive unguarded exceptions. Mirroring the try/catch pattern that LoadAsync uses internally would make LoadFilterSlotsAsync robust regardless of its call site. Carried forward from Developer pipeline."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-13T22:40:47Z",
+          "note": "The sequential await pattern (LoadAsync then LoadFilterSlotsAsync) is acceptable. If profiling ever reveals a startup latency concern, Task.WhenAll could parallelize them — but only if the two operations are proven independent. No action needed now."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-13T22:40:47Z",
+          "note": "No observations — code is clean and consistent. Named handlers, correct CTS lifecycle, well-separated exception paths, and clear inline comment on the OperationCanceledException catch. Solid implementation."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-13T22:44:01Z",
+      "completed_at": "2026-05-13T22:45:39Z",
+      "duration_ms": 98000,
+      "summary": [
+        "Updated four documentation files to reflect the MoviesListView M6 refactor.",
+        "api-surface.md: Updated MoviesListView constructor comment to show named OnLoaded/OnUnloaded handlers and the CancellationToken lifecycle. Added CancellationToken lifecycle paragraph. Removed the resolved M5 tech-debt 'Pending wiring' note about LoadFilterSlotsAsync.",
+        "data-flows.md: Expanded the startup sequence to show LoadFilterSlotsAsync(token) is now wired alongside LoadAsync(token), describe the shared CTS lifecycle, and document the OperationCanceledException / general exception handling paths.",
+        "file-tree.md: Updated the MoviesListView.axaml/.cs annotation to mention CTS ownership and the LoadFilterSlotsAsync wiring.",
+        "CHANGELOG.md: Added a 'Changed' entry under [Unreleased] documenting the named handlers, CTS lifecycle, LoadFilterSlotsAsync wiring, and structured exception handling.",
+        "Reviewer forwarded item reviewed: class-level and constructor xmldoc in MoviesListView.axaml.cs are accurate for their level of abstraction. The class-level summary correctly names the Loaded and SelectionChanged handlers; the Unloaded handler is an implementation detail that does not need to appear in the class summary. No source-code xmldoc changes were needed."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "docs/agents/project-manifest/api-surface.md",
+          "docs/agents/project-manifest/data-flows.md",
+          "docs/agents/project-manifest/file-tree.md",
+          "CHANGELOG.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-13T22:45:39Z",
+          "note": "The class-level xmldoc summary in MoviesListView.axaml.cs does not mention the Unloaded handler or CTS. This is a minor gap — the summary is still accurate and the implementation details are now fully captured in api-surface.md. If the team prefers richer xmldoc in source, the class summary could be extended to note: 'The Unloaded handler cancels and disposes the CancellationTokenSource created on load.'"
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-13T22:45:39Z",
+  "last_updated": "2026-05-13T22:45:39Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-13T22:18:00Z",
+      "notes": [
+        "All four acceptance criteria met. The single changed file is src/VideoIndexer.App/Views/MoviesListView.axaml.cs. The view now owns a CancellationTokenSource lifecycle (created on Loaded, cancelled/disposed on Unloaded) and passes the token to both async startup calls. Exception handling in the Loaded handler propagates errors to the VM's HasLoadError/LoadErrorMessage properties. Build clean, 500 tests pass."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-13T22:34:51Z",
+      "notes": [
+        "WP-001 PASS. Single changed file: src/VideoIndexer.App/Views/MoviesListView.axaml.cs. Build clean (0 errors, 0 warnings). 517 tests pass, 0 failures, 6 environment-conditional skips. All AC met. Two low-priority edge-case notes flagged but neither blocks release."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-13T22:40:47Z",
+      "notes": [
+        "WP-001 code-review PASS. Implementation in src/VideoIndexer.App/Views/MoviesListView.axaml.cs is clean and correct. Two tracked items for future consideration: (1) CTS guard for re-attach edge case in OnLoaded (low priority), (2) LoadFilterSlotsAsync lacks internal error handling debt (medium priority, pre-existing). Documentation agent should review class-level and constructor xmldoc for completeness."
+      ]
+    }
+  ]
+}

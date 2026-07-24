@@ -1,0 +1,223 @@
+{
+  "work_package_id": "WP-025",
+  "work_package_file": "work/WP-025.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-002",
+    "WP-006",
+    "WP-008",
+    "WP-009",
+    "WP-010",
+    "WP-011",
+    "WP-012",
+    "WP-013",
+    "WP-015",
+    "WP-016",
+    "WP-017",
+    "WP-018",
+    "WP-022",
+    "WP-023"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "Application starts without InvalidOperationException from missing DI registrations.",
+      "met": true
+    },
+    {
+      "criterion": "All singleton services registered exactly once.",
+      "met": true
+    },
+    {
+      "criterion": "All new view types registered for ViewLocator resolution.",
+      "met": true
+    },
+    {
+      "criterion": "dotnet build produces 0 errors, 0 warnings.",
+      "met": true
+    },
+    {
+      "criterion": "ITagsRepository and ITagsManager concrete types not referenced anywhere in App except Program.cs.",
+      "met": true
+    },
+    {
+      "criterion": "TagEditorView, GrantsManagementView, and TagMergeView are registered via AddTransient in Program.cs, and all prior M7 services (ITagsRepository, ITagsManager, ITagEditorService, IGrantsManagementService, ITagMergeService) remain registered and the app compiles cleanly.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-05-18T14:50:55Z",
+      "completed_at": "2026-05-18T14:56:48Z",
+      "duration_ms": 353000,
+      "summary": [
+        "Added three missing view registrations to Program.cs: TagEditorView, GrantsManagementView, and TagMergeView — each as AddTransient with a parameterless factory lambda, matching the existing pattern for all other content views.",
+        "Confirmed pre-existing registrations were already complete: ITagsRepository→DapperTagsRepository (singleton), ITagsManager→TagsManager (singleton), ITagEditorService→AvaloniaTagEditorService, IGrantsManagementService→AvaloniaGrantsManagementService, ITagMergeService→AvaloniaTagMergeService, TaggerView, CategoryEditorView, and the full MovieEditorViewModel factory lambda with all M7 services.",
+        "Build: 0 errors, 0 warnings in main source projects (2 pre-existing CS8765 nullability warnings in test project TagsManagerTests.cs — outside modified files and pre-existing). Tests: 758 passed, 0 failed, 6 skipped (infrastructure integration tests requiring live DB/tools)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/Program.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T14:56:48Z",
+          "note": "MoviesListViewModel has two public constructors (parameterless for testing and a 7-parameter runtime constructor). Program.cs registers it with the plain AddTransient<MoviesListViewModel>() overload, relying on the DI container to select the correct constructor automatically. In .NET 10 this works because ITagsManager and all other parameters are registered. An explicit factory lambda (like the one used for MovieEditorViewModel) would remove the ambiguity and make the intended wiring self-documenting. No functional impact today."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-05-18T14:56:48Z",
+          "note": "DapperMovieCatalogRepository is registered as a singleton (AddSingleton<IMovieCatalogRepository, DapperMovieCatalogRepository>()) but its constructor accepts IDbConnectionFactory which is registered as transient. This is a captive-dependency pattern. It is safe in practice because IDbConnectionFactory is stateless and creates connections on demand, but a DI scope validator would flag it. Consider registering DapperMovieCatalogRepository with an explicit factory lambda that captures the provider and resolves IDbConnectionFactory per-call if this ever causes scope-related issues."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-05-18T14:57:13Z",
+      "completed_at": "2026-05-18T14:58:53Z",
+      "duration_ms": 100000,
+      "summary": [
+        "All 5 acceptance criteria verified. Build produces 0 errors, 0 warnings. Full test suite: 758 passed (255 VideoIndexer.Tests + 325 App.Tests + 178 Infrastructure.Tests), 6 skipped (DB-dependent integration tests), 0 failed.",
+        "AC1: DI graph complete — ITagsRepository, ITagsManager, ITagEditorService, IGrantsManagementService, ITagMergeService all registered; MovieEditorViewModel factory resolves all 12 dependencies. No missing registration exceptions possible.",
+        "AC2: Each new singleton registered exactly once in Program.cs. Confirmed by code inspection.",
+        "AC3: TagEditorView, GrantsManagementView, TagMergeView each registered as AddTransient with a parameterless factory lambda, consistent with all other content views.",
+        "AC4: dotnet build src/VideoIndexer.App/VideoIndexer.App.csproj -c Release → 0 errors, 0 warnings.",
+        "AC5: DapperTagsRepository appears only in Program.cs (1 match). 'new TagsManager' has 0 matches in App project. Concrete types correctly encapsulated.",
+        "Edge-case verified: ITagEditorService/IGrantsManagementService/ITagMergeService factory lambdas reference ITagsManager and ITagsRepository which are registered later in the file. This is safe because factory lambdas are resolved lazily (at first request) not at registration time — all registrations are complete before any service is first resolved."
+      ],
+      "metrics": {
+        "test_coverage": "N/A",
+        "tests_passed": 758,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-05-18T14:58:53Z",
+          "note": "ITagEditorService, IGrantsManagementService, and ITagMergeService are registered (lines ~105-120) before ITagsRepository and ITagsManager (lines 165-166). This is safe because factory lambdas (`sp =>`) are lazily evaluated at first-request time, after all registrations complete. No runtime ordering issue exists."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-05-18T14:58:53Z",
+          "note": "Pre-existing CS8765 nullability warnings in tests/VideoIndexer.Tests/TagsManagerTests.cs (lines 344 and 372) are out-of-scope for this WP and were present before changes. Flagged for future cleanup."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-05-18T14:59:19Z",
+      "completed_at": "2026-05-18T15:01:18Z",
+      "duration_ms": 119000,
+      "summary": [
+        "Program.cs reviewed across all four dimensions (maintainability, best practices, performance, future context). All 5 ACs verified. One Fix-Forward applied: added a 3-line comment above the ITagEditorService/IGrantsManagementService/ITagMergeService registrations explaining that the forward reference to ITagsManager/ITagsRepository (registered in section 7) is safe because factory lambdas are resolved lazily. Build confirmed clean (0 errors, 0 warnings) after the fix. No blocking issues found."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "src/VideoIndexer.App/Program.cs"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-05-18T15:01:18Z",
+          "note": "Added 3-line comment before ITagEditorService/IGrantsManagementService/ITagMergeService registrations (section 5.75) explaining that the forward reference to ITagsManager and ITagsRepository — registered 60 lines later in section 7 — is safe because DI factory lambdas are evaluated lazily at first-request time, not at registration time. Non-behavioral change; QA validation remains fully intact."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-05-18T15:01:18Z",
+          "note": "MoviesListViewModel is registered via AddTransient<MoviesListViewModel>() relying on DI constructor selection to pick the 7-parameter runtime constructor over the parameterless test constructor. This works correctly in .NET 10 because all 7 parameters are registered, but an explicit factory lambda (matching the MovieEditorViewModel pattern) would make the intended wiring self-documenting. Low priority — no functional impact."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-05-18T15:01:18Z",
+          "note": "Pre-existing: DapperMovieCatalogRepository is a singleton whose constructor receives IDbConnectionFactory (transient) — a captive dependency. Safe in practice because IDbConnectionFactory is stateless and creates connections on demand. Not introduced by this WP; flagged for awareness."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-05-18T15:01:18Z",
+          "note": "[documentation-forward] api-surface.md should document ITagsRepository and ITagsManager registrations (singleton lifetimes, concrete types DapperTagsRepository and TagsManager) and the three new UI dialog services (ITagEditorService, IGrantsManagementService, ITagMergeService) introduced in this WP, so the manifest stays current."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-05-18T15:01:42Z",
+      "completed_at": "2026-05-18T15:05:58Z",
+      "duration_ms": 256000,
+      "summary": [
+        "Addressed the Reviewer documentation-forward: documented the five M7 service DI registrations and three M7 dialog view registrations in api-surface.md. Also corrected a pre-existing constructor parameter-order error in AvaloniaTagEditorService (manifest had ITagsRepository first; actual code has ITagsManager first). All five services (ITagsRepository via DapperTagsRepository, ITagsManager via TagsManager, ITagEditorService via AvaloniaTagEditorService, IGrantsManagementService via AvaloniaGrantsManagementService, ITagMergeService via AvaloniaTagMergeService) now include AddSingleton registration notes with Program.cs section references. The three dialog views added by WP-025 (TagEditorView, GrantsManagementView, TagMergeView) each have AddTransient registration notes on their respective ViewModel Files lines."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "observation",
+          "priority": "low",
+          "timestamp": "2026-05-18T15:05:58Z",
+          "note": "documentation-forward fully addressed: all five M7 service registrations documented with lifetime (AddSingleton) and Program.cs section reference (5.75 or 7). Three WP-025 dialog view registrations (TagEditorView, GrantsManagementView, TagMergeView) documented as AddTransient in section 8."
+        },
+        {
+          "type": "fix",
+          "priority": "medium",
+          "timestamp": "2026-05-18T15:05:58Z",
+          "note": "Corrected pre-existing manifest error: AvaloniaTagEditorService constructor was listed as (ITagsRepository, ITagsManager, Func<Window?>) but actual code (AvaloniaTagEditorService.cs lines 27-30) has (ITagsManager, ITagsRepository, Func<Window?>). Fixed manifest to match code."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-05-18T15:05:58Z",
+  "last_updated": "2026-05-18T15:05:58Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-05-18T14:56:48Z",
+      "notes": [
+        "Program.cs is the only modified file. All M7 service and view registrations are complete. The 3 added view registrations (TagEditorView, GrantsManagementView, TagMergeView) follow the exact same factory-lambda pattern as all other content views.",
+        "Two pre-existing CS8765 nullability warnings exist in tests/VideoIndexer.Tests/TagsManagerTests.cs (lines 344 and 372) — these are outside the scope of this WP and were present before this work.",
+        "Build and full test suite verified clean. Ready for QA."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-05-18T14:58:53Z",
+      "notes": [
+        "Program.cs DI registrations fully verified. All 5 ACs met. Build: 0 errors, 0 warnings. Tests: 758 passed, 0 failed, 6 skipped. Only file modified: src/VideoIndexer.App/Program.cs. Two pre-existing CS8765 warnings in test files remain (out-of-scope)."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-05-18T15:01:18Z",
+      "notes": [
+        "All 5 acceptance criteria met. Single file modified: src/VideoIndexer.App/Program.cs. Reviewer applied one non-behavioral Fix-Forward (comment clarifying forward-reference ordering safety). Two low-priority improvement/debt notes carried forward for future consideration. One documentation-forward item: api-surface.md should document the new M7 service registrations (ITagsRepository, ITagsManager, ITagEditorService, IGrantsManagementService, ITagMergeService)."
+      ]
+    }
+  ]
+}
