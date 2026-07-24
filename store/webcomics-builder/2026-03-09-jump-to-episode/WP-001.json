@@ -1,0 +1,210 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "ajax_resolvePageNumber() is added to ReaderPage and returns the correct viewURL for a valid 1-based page number",
+      "met": true
+    },
+    {
+      "criterion": "ajax_resolvePageNumber() returns an AJAX error for page numbers < 1 or > total fetched episodes",
+      "met": true
+    },
+    {
+      "criterion": "totalPages and currentPageNumber are emitted as JS variables in the renderImages() script block",
+      "met": true
+    },
+    {
+      "criterion": "ajaxBaseURL (or equivalent) is available to the Viewer instance's AJAX calls",
+      "met": true
+    },
+    {
+      "criterion": "The Bootstrap 5 modal with id jumpToModal exists in the page body",
+      "met": true
+    },
+    {
+      "criterion": "The modal label shows the valid page range (e.g., Page number (1–350))",
+      "met": true
+    },
+    {
+      "criterion": "The number input is pre-filled with the current page number",
+      "met": true
+    },
+    {
+      "criterion": "A 'Jump To' toolbar button exists in the reader toolbar and calls viewer.ShowJumpToModal()",
+      "met": true
+    },
+    {
+      "criterion": "The old commented-out addToolbarHTML() block is removed",
+      "met": true
+    },
+    {
+      "criterion": "The episode header shows 'Page X of N' alongside the episode ID",
+      "met": true
+    },
+    {
+      "criterion": "All new user-visible strings use t() / pt()",
+      "met": true
+    }
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-03-09T18:03:38Z",
+      "completed_at": "2026-03-09T18:11:00Z",
+      "summary": [
+        "Implemented all PHP-side changes for the Jump To Episode feature.",
+        "Added ajax_resolvePageNumber() AJAX handler after ajax_useAsCover() in ReaderPage.",
+        "Computed $fetchedEpisodes, $currentPageNumber (1-based), $totalPages at the top of renderImages().",
+        "Updated episode header paragraph to show 'Episode #X — Page N of M'.",
+        "Emitted totalPages and currentPageNumber as JS constants in the renderImages() <script> block.",
+        "Added Bootstrap 5 #jumpToModal with number input pre-filled with currentPageNumber and labelled with the valid range.",
+        "Added 'Jump to' toolbar button calling viewer.ShowJumpToModal() with the new jumpTo() icon.",
+        "Removed the old commented-out addToolbarHTML() block.",
+        "Added jumpTo() icon method to Icon.php (fa-arrow-right-to-bracket).",
+        "All new user-visible strings use pt(). PHPStan passes with no errors."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "assets/classes/Page/ReaderPage.php",
+          "assets/classes/UI/Icon.php"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-09T18:11:00Z",
+          "note": "The Viewer class already constructs ajaxBaseURL internally from APP_URL + comicID + episodeID, so no PHP-side emission of ajaxBaseURL was needed — AC was satisfied by existing Viewer constructor."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-03-09T18:11:47Z",
+      "completed_at": "2026-03-09T18:14:08Z",
+      "summary": [
+        "QA completed with two JS bugs found and fixed within QA scope.",
+        "BUG 1 — ShowJumpToModal() missing: PHP toolbar button called viewer.ShowJumpToModal() but no such method existed in viewer.js. Added ShowJumpToModal() using Bootstrap 5 Modal API (new bootstrap.Modal(el).show()).",
+        "BUG 2 — JumpTo() broken: used undeclared 'baseURL' variable and passed page number as '&episode=' (not a server-recognised parameter). Fixed to call ajax_resolvePageNumber via ajaxBaseURL + '&ajax=resolvePageNumber&pageNumber=...' and navigate to the returned data.viewURL on success.",
+        "PHPStan: no errors. PHPUnit: 60/60 pass (1 pre-existing deprecation, 1 pre-existing skip — both unrelated to this feature)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "js/viewer.js"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 60,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "bug",
+          "priority": "high",
+          "timestamp": "2026-03-09T18:14:08Z",
+          "note": "js/viewer.js ShowJumpToModal() was missing entirely. The toolbar button onclick called viewer.ShowJumpToModal() which would throw a runtime TypeError in the browser. Fixed by adding the method using Bootstrap 5 Modal API."
+        },
+        {
+          "type": "bug",
+          "priority": "high",
+          "timestamp": "2026-03-09T18:14:08Z",
+          "note": "js/viewer.js JumpTo() navigated using `document.location = baseURL + '&episode=' + episodeNr`. Two problems: (1) 'baseURL' is a page-scoped const not the AJAX URL; (2) &episode= is not a recognised server parameter — the server expects &episodeID= for episode resolution. Additionally, the user types a 1-based page number which is not the same as an episodeID. Fixed: JumpTo() now calls ajax_resolvePageNumber via ajaxBaseURL and navigates to viewURL from the response."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-09T18:14:08Z",
+          "note": "js/viewer.js JumpTo() original used 'failure' as the jQuery AJAX error callback key; the correct key is 'error'. Fixed as part of the rewrite."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-03-09T18:14:43Z",
+      "completed_at": "2026-03-09T18:16:51Z",
+      "summary": [
+        "Code review passed. All three modified files reviewed: ReaderPage.php, Icon.php, viewer.js. Implementation follows project conventions throughout — ajax_ naming, sendAJAXSuccess/Error pattern, pt()/t() for all user-visible strings, Bootstrap 5 modal structure, and fluent Icon builder. AJAX dispatch confirmed wired automatically via BasePage::handleAJAX() using method_exists and the ajax_ prefix naming convention. No security, architecture, or correctness issues found. Two pre-existing JS bug fixes by QA (ShowJumpToModal missing, JumpTo using wrong variable and wrong server param) are correctly implemented. Three low-priority observations noted."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "assets/classes/Page/ReaderPage.php",
+          "assets/classes/UI/Icon.php",
+          "js/viewer.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-09T18:16:51Z",
+          "note": "js/viewer.js ShowJumpToModal(): creates a new bootstrap.Modal instance on every call. The canonical BS5 approach is bootstrap.Modal.getOrCreateInstance(modalEl), which is safe to call repeatedly and avoids attaching duplicate internal event listeners. Functional as-is but could be improved."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-03-09T18:16:51Z",
+          "note": "assets/classes/Page/ReaderPage.php renderImages(): if array_search() returns false (episode not in fetched list), $currentPageNumber falls back to 0. This produces a 'Page 0 of N' header and pre-fills the modal input with 0 (below min=1). HTML5 validation prevents submitting 0, so no crash, but the header text is visually wrong. Extremely rare edge case — the reader guard already requires episodes to exist — but worth hardening."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-03-09T18:16:51Z",
+          "note": "js/viewer.js SavePosition(), ToggleBookmark(), ToggleImageBookmark(), UseAsCover(): pre-existing use of 'failure' as the jQuery AJAX error callback key (should be 'error'). Not introduced by this feature — QA correctly fixed only the new JumpTo() method. Flagged as pre-existing debt for a future cleanup pass."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-03-09T18:17:17Z",
+      "completed_at": "2026-03-09T18:20:31Z",
+      "summary": [
+        "Updated api-surface.md: added jumpTo() method to the Icon class; added a ReaderPage AJAX handlers block documenting ajax_savePosition(), ajax_useAsCover(), and the new ajax_resolvePageNumber() with its parameters and response shape.",
+        "Updated data-flows.md Section 6 (Reading Comics / Viewer): documented the JS constants (totalPages, currentPageNumber) and #jumpToModal emitted by renderImages(), the Jump To toolbar button, and added a new 'Jump To Episode AJAX Flow' subsection covering the full client→server→redirect path."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "docs/agents/project-manifest/api-surface.md",
+          "docs/agents/project-manifest/data-flows.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-03-09T18:20:31Z",
+          "note": "No inline PHPDoc or JSDoc was added for the new methods — ajax_resolvePageNumber() and viewer.js JumpTo()/ShowJumpToModal() are self-describing and consistent with the existing codebase style (no docblocks on other ajax_ handlers or Viewer methods). No doc gap."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-03-09T18:20:31Z",
+  "handoff_notes": [
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-03-09T18:14:08Z",
+      "notes": [
+        "Two high-priority JS bugs were caught and fixed by QA — no rework needed for implementation, bugs originated in viewer.js which was not listed in implementation artifacts.",
+        "All 11 acceptance criteria verified met. PHPStan clean. 60/60 PHPUnit tests pass.",
+        "Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-03-09T18:16:51Z",
+      "notes": [
+        "Code review passed. All 11 acceptance criteria confirmed met. Three low-priority observations logged (ShowJumpToModal instance reuse, currentPageNumber=0 fallback edge case, pre-existing 'failure' callback debt). Ready for Documentation agent."
+      ]
+    }
+  ]
+}
