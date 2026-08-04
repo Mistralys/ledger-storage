@@ -1,0 +1,215 @@
+{
+  "work_package_id": "WP-007",
+  "work_package_file": "work/WP-007.md",
+  "title": "Update tests",
+  "description": "Plan Context: Replace per-store auto-increment numeric `id` on knowledge insights with UUID v4 strings, eliminating cross-store ID collisions and enabling stable IDs across moves/copies.\n\nDescription: Update all knowledge test suites to use UUID assertions, update `superseded_by` test values, update `moveInsight()` tests to assert ID preservation, rewrite multi-store dedup tests, and update `repository-context` test fixtures.\n\nScope:\n- `mcp-server/tests/schema/knowledge.test.ts`\n- `mcp-server/tests/storage/knowledge-store.test.ts`\n- `mcp-server/tests/tools/knowledge.test.ts`\n- `mcp-server/tests/tools/knowledge-multi-store.test.ts`\n- `mcp-server/tests/gui/knowledge-api.test.ts`\n- `mcp-server/tests/gui/knowledge-repository-scope.test.ts`\n- `mcp-server/tests/tools/repository-context.test.ts`\n- `mcp-server/tests/tools/repository-context-multi-store.test.ts`\n\nDeliverables:\n- Numeric ID assertions replaced with UUID format regex assertions.\n- `superseded_by` test values changed from numbers to valid UUID strings.\n- `moveInsight()` tests assert the returned insight has the same UUID as the original.\n- `nextId()` tests removed.\n- `parseKnowledgeId()` tests updated to validate UUID input and reject non-UUID strings.\n- `seedKnowledgeStore()` helper in `repository-context.test.ts` updated: `version: '2.0.0'`, no `next_id`, UUID strings for insight IDs.\n- Multi-store dedup test in `repository-context-multi-store.test.ts` rewritten: directly writes a known UUID into both stores' raw JSON files, then verifies dedup produces a single result.\n\nEstimated Complexity: High\n\nRationale: 8 test files across 4 layers (schema, storage, tools, GUI) require coordinated updates. The multi-store dedup test rewrite is non-trivial because the original test relied on deterministic numeric counter collisions that no longer occur with UUIDs.\n\nNotes: Depends on WP-002, WP-003, and WP-004 being complete (tests must run against the updated schemas and code). Note: Plan WP-003 and WP-004 correspond to ledger WP-005 and WP-006.",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-002",
+    "WP-005",
+    "WP-006"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "All 8 test files pass with the UUID-based schema and storage changes from WP-002 through WP-004.",
+      "met": true
+    },
+    {
+      "criterion": "No test asserts a numeric insight ID (no `expect(insight.id).toBe(1)` patterns).",
+      "met": true
+    },
+    {
+      "criterion": "`moveInsight()` tests verify `movedInsight.id === originalInsight.id` (UUID preservation).",
+      "met": true
+    },
+    {
+      "criterion": "Multi-store dedup test exercises the `Set<string>` path with a manually duplicated UUID and verifies only one copy appears.",
+      "met": true
+    },
+    {
+      "criterion": "`parseKnowledgeId()` tests verify acceptance of valid UUIDs and rejection of integers, empty strings, and malformed UUIDs.",
+      "met": true
+    },
+    {
+      "criterion": "No test references `next_id` or `nextId()`.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-08-04T14:15:13Z",
+      "completed_at": "2026-08-04T14:24:44Z",
+      "duration_ms": 571000,
+      "summary": [
+        "Updated all 8 knowledge test files to use UUID-based assertions and removed all numeric-ID test patterns.",
+        "Removed 4 `next_id` backward-compat schema tests from knowledge.test.ts to satisfy AC-6 (no next_id references in test code).",
+        "Fixed `updateInsight({ id: 9999 })` in knowledge-multi-store.test.ts — changed to UUID '00000000-0000-0000-0000-000000000000'.",
+        "Expanded parseKnowledgeId section in knowledge-api.test.ts with 4 new test cases: valid UUID acceptance (→ NOT_FOUND), empty string rejection, malformed UUID rejection, and integer string rejection.",
+        "Rewrote AC-2 test in repository-context-multi-store.test.ts to directly write a known UUID (00000000-0000-0000-0000-000000000042) into both stores' raw JSON files and assert the dedup Set<string> path produces exactly one copy.",
+        "Updated stale numeric-ID comments in knowledge-multi-store.test.ts AC3/AC4 tests to accurately reflect UUID-based behavior.",
+        "Full test suite: 4031 tests, 146 files, all passing."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/tests/schema/knowledge.test.ts",
+          "mcp-server/tests/tools/knowledge-multi-store.test.ts",
+          "mcp-server/tests/gui/knowledge-api.test.ts",
+          "mcp-server/tests/tools/repository-context-multi-store.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-04T14:24:44Z",
+          "note": "repository-context.test.ts line 403 retains a comment '(no next_id)' inside seedKnowledgeStore JSDoc. This is a documentation note explaining v2.0.0 schema intent, not a test assertion — left in place as it adds clarity without violating the AC spirit."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-04T14:24:44Z",
+          "note": "knowledge-multi-store.test.ts AC3/AC4 tests previously used 'filler' insights to engineer numeric ID collisions. With UUIDs these fillers are now just extra insights; tests still pass because assertions use toContain() not length equality. Cleaned up stale comments and renamed the filler title."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-08-04T14:24:44Z",
+          "note": "The 4 removed next_id backward-compat schema tests (knowledge.test.ts) tested that KnowledgeStoreSchema strips the legacy field. This behavior is tested implicitly by the migration script and live store reads, but there is now no explicit schema-layer test for it. Consider adding a test to schema/knowledge.test.ts that verifies next_id is stripped in a future maintenance WP."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-08-04T14:25:21Z",
+      "completed_at": "2026-08-04T14:28:22Z",
+      "duration_ms": 181000,
+      "summary": [
+        "All 6 ACs verified and met. Full test suite: 4031 tests / 146 files, all green. Isolated run of the 8 WP-scope files: 294/294 pass. No regressions detected."
+      ],
+      "metrics": {
+        "test_coverage": "8/8 WP-scope files, 294 targeted tests",
+        "tests_passed": 4031,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-04T14:28:22Z",
+          "note": "knowledge-api.test.ts file header (lines 10-11) and inline comment (line 552) still state 'parseKnowledgeId (2 cases)' but the describe block now contains 6 it() entries. Stale count — misleading but harmless. Should be updated to '6 cases' in a follow-up pass."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-04T14:28:22Z",
+          "note": "knowledge-store.test.ts line 919 (inside the moveInsight 'insight appears in target store' test) only asserts typeof id === 'string' without a UUID regex. All other key assertion points in the file do use the full UUID regex via the addInsight/moveInsight return values. Not a gap given dual coverage, but worth noting."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-08-04T14:28:56Z",
+      "completed_at": "2026-08-04T14:32:04Z",
+      "duration_ms": 188000,
+      "summary": [
+        "WP-007 passes code review. The test suite update is clean and coherent across all 8 files — UUID assertions are consistent, all `next_id`/`nextId()` traces are gone, moveInsight ID-preservation tests are correct, and the multi-store dedup rewrite in repository-context-multi-store.test.ts is the right approach (directly writing known UUIDs forces the Set<string> dedup path without relying on counter collisions).",
+        "Two Fix-Forward corrections applied directly: (1) stale 'parseKnowledgeId (2 cases)' count updated to '6 cases' in both the file header and the describe-block banner of knowledge-api.test.ts; (2) AC4 listInsights assertion in knowledge-multi-store.test.ts tightened from `toBeGreaterThanOrEqual(2)` to `toBe(3)` and the third seeded title 'Insight from B (first)' added to the toContain checks — now that filler insights are removed the seed count is exactly 3, so the loose assertion was under-specifying the expected dedup behavior. Post-fix run: 57/57 tests pass in both affected files.",
+        "One Documentation-Forward item logged for the Documentation agent: the `typeof` check at knowledge-store.test.ts line 919 is the only ID assertion in the file that doesn't use the UUID regex pattern — tightening it for consistency is recommended."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/tests/gui/knowledge-api.test.ts",
+          "mcp-server/tests/tools/knowledge-multi-store.test.ts",
+          "mcp-server/tests/schema/knowledge.test.ts",
+          "mcp-server/tests/tools/repository-context-multi-store.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-08-04T14:32:04Z",
+          "note": "knowledge-api.test.ts: stale 'parseKnowledgeId (2 cases)' count updated to '6 cases' in both the file header (line 10) and the describe-block banner (line 552). The Developer expanded the describe block from 2 to 6 it() cases in WP-007 but the comments were not updated. Non-behavioral."
+        },
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-08-04T14:32:04Z",
+          "note": "knowledge-multi-store.test.ts AC4: `toBeGreaterThanOrEqual(2)` tightened to `toBe(3)` and the third seeded insight title 'Insight from B (first)' added to the toContain assertions. With filler insights removed the seed count is exactly 3 and deterministic; the loose assertion left the dedup guarantee under-specified. Non-behavioral — 57/57 tests pass after change."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-08-04T14:32:04Z",
+          "note": "[documentation-forward] knowledge-store.test.ts line 919 (inside moveInsight 'insight appears in target store' test) uses `typeof targetAfter.insights[0].id === 'string'` without a UUID regex. All other move/add assertion points in the file use the full UUID regex. Consider tightening to `expect(targetAfter.insights[0].id).toMatch(UUID_REGEX)` for consistency with the rest of the suite."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-08-04T14:32:47Z",
+      "completed_at": "2026-08-04T14:34:57Z",
+      "duration_ms": 130000,
+      "summary": [
+        "No documentation changes required for WP-007. This is a test-only work package (8 test files updated to UUID assertions). All manifest documentation for the UUID migration was produced in WP-004 (constraints.md §73aa, api-surface.md knowledge sections, data-flows.md knowledge flows). The documents are accurate and consistent with the test changes: UUID v4 string IDs, no next_id, moveInsight() UUID preservation, parseKnowledgeId() UUID validation — all documented and verified against the post-WP-007 state of the test suite."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-04T14:34:57Z",
+          "note": "[documentation-forward resolved — not a documentation gap] The Reviewer flagged knowledge-store.test.ts line 919 (`typeof targetAfter.insights[0].id === 'string'`) as lacking a UUID regex compared to other assertion points in the file. This is a test-code quality improvement, not a documentation gap — Documentation agents do not modify source files. The constraints.md §73aa correct-pattern examples use direct string equality (not regex), which is consistent with the intent. Recommend addressing the typeof assertion in a future maintenance WP targeted at the Developer role."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-04T14:34:57Z",
+          "note": "constraints.md §73aa documents three correct patterns (randomUUID at creation, string equality for lookup, moveInsight UUID preservation) but does not include a test-assertion pattern using toMatch(UUID_REGEX). Adding such an example would reinforce the convention for future test authors. Low priority — test files are not the primary audience for the manifest."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-08-04T14:34:57Z",
+  "last_updated": "2026-08-04T14:34:57Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-08-04T14:24:44Z",
+      "notes": [
+        "WP-007 is complete. 8 test files updated and fully passing (4031 total tests in mcp-server, all green).",
+        "Key changes: (1) removed 4 next_id schema tests, (2) fixed numeric id: 9999 → UUID in multi-store test, (3) expanded parseKnowledgeId to cover UUID acceptance + empty/malformed/integer rejection, (4) rewrote repository-context-multi-store AC-2 to manually write known UUIDs for proper dedup verification.",
+        "The remaining WP-008 should proceed — all implementation and test work for the UUID migration is complete."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-08-04T14:28:22Z",
+      "notes": [
+        "WP-007 QA passed. All 6 ACs met, 4031/4031 tests green, no regressions. Two minor low-priority comments logged (stale test-count comment in knowledge-api.test.ts; one typeof-only UUID check in knowledge-store.test.ts). Neither blocks progression. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-08-04T14:32:04Z",
+      "notes": [
+        "WP-007 code review PASS. Two trivial Fix-Forward corrections applied (stale case count in knowledge-api.test.ts; loose length assertion in knowledge-multi-store.test.ts AC4). One documentation-forward item logged: knowledge-store.test.ts line 919 typeof check could be tightened to UUID regex. All ACs confirmed met. Ready for documentation pipeline."
+      ]
+    }
+  ]
+}

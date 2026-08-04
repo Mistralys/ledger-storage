@@ -1,0 +1,235 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-001.md",
+  "title": "Create batch migration script",
+  "description": "Plan Context: Replace per-store auto-increment numeric `id` on knowledge insights with UUID v4 strings, eliminating cross-store ID collisions and enabling stable IDs across moves/copies.\n\nDescription: Create `scripts/migrate-knowledge-uuids.js` to convert all existing knowledge store files from v1 (numeric IDs, `next_id`) to v2 (UUID IDs, no `next_id`) in a one-time batch operation.\n\nScope:\n- `scripts/migrate-knowledge-uuids.js` (new file)\n- `ledger-storage/store/.knowledge/*.json` (7 files — migration targets)\n- `nexus-ledger-storage/store/.knowledge/*.json` (3 files — migration targets)\n\nDeliverables:\n- A cross-platform Node.js script that reads stores config (or `LEDGER_ROOT` fallback), scans `.knowledge/` directories, assigns UUID v4 to every insight, maps `superseded_by` references, removes `next_id`, bumps version to `\"2.0.0\"`, and writes atomically (temp + rename).\n- `--dry-run` flag that reports changes without writing.\n- `--verbose` flag that logs each file and ID mappings.\n- Idempotent: skips files already at version `\"2.0.0\"`.\n\nEstimated Complexity: Medium\n\nRationale: All stores are available in the workspace, so a one-time batch script is simpler and more deterministic than lazy or eager runtime migration. It avoids permanent version-gating code in `_readStore()`.\n\nRejected Approaches:\n- Lazy in-memory migration on read: Would add permanent version-gating code to `_readStore()` that serves no purpose after the initial run. Increases code complexity for a one-time operation.\n- Eager migration at startup: Similar complexity burden — and startup performance penalty — for a migration that only needs to run once.\n\nNotes: This WP is independent of the schema/code changes and can be developed in parallel. The script should be run before deploying WP-002 through WP-006 code changes. Both stores should be committed to Git before running.",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "Running `node scripts/migrate-knowledge-uuids.js --dry-run` against the workspace stores reports all 10 files and their planned changes without modifying any file.",
+      "met": true
+    },
+    {
+      "criterion": "Running `node scripts/migrate-knowledge-uuids.js` converts all 10 knowledge store files: each has `\"version\": \"2.0.0\"`, no `next_id` field, all insight `id` values are valid UUID v4 strings, and `last_updated` is refreshed.",
+      "met": true
+    },
+    {
+      "criterion": "Re-running the script after migration produces no changes (idempotent skip on `\"2.0.0\"` files).",
+      "met": true
+    },
+    {
+      "criterion": "The script uses only Node.js built-ins (`fs/promises`, `path`, `crypto`) — no new dependencies.",
+      "met": true
+    },
+    {
+      "criterion": "`superseded_by` references (if any) are mapped from numeric to UUID using the same per-file mapping; references to non-existent IDs are dropped.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-08-04T12:11:27Z",
+      "completed_at": "2026-08-04T12:22:06Z",
+      "duration_ms": 639000,
+      "summary": [
+        "Created scripts/migrate-knowledge-uuids.js — a cross-platform, one-time batch migration script that converts all knowledge store files from v1 (numeric IDs, next_id counter) to v2 (UUID v4 IDs, no next_id).",
+        "Script uses only Node.js built-ins (fs, path, os, crypto.randomUUID()).",
+        "Supports --dry-run flag (reports all planned changes without writing), --verbose flag (logs old→new ID mappings per file), and --store <path> flags for explicit store path specification (repeatable; overrides stores.json auto-detection).",
+        "Store discovery falls back from --store flags → ~/.ai-insights/stores.json → LEDGER_ROOT env var. Emits an actionable error when no stores are found.",
+        "Atomic writes use writeFileSync to .tmp then renameSync — safe on all platforms.",
+        "Idempotent: files already at version 2.0.0 are silently skipped with [skip] label.",
+        "superseded_by numeric references are mapped to UUID using the per-file id map; references to non-existent IDs are dropped (matching the original broken-reference behavior).",
+        "All 10 knowledge store files migrated successfully: 7 in ledger-storage/store/.knowledge/ and 3 in nexus-ledger-storage/store/.knowledge/. All files verified to have version 2.0.0, no next_id field, valid UUID v4 IDs, and refreshed last_updated timestamps."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "scripts/migrate-knowledge-uuids.js",
+          "ledger-storage/store/.knowledge/ai-insights-insights.json",
+          "ledger-storage/store/.knowledge/ai-persona-builder-insights.json",
+          "ledger-storage/store/.knowledge/comfyui-save-text-node-insights.json",
+          "ledger-storage/store/.knowledge/global-insights.json",
+          "ledger-storage/store/.knowledge/paralizer-insights.json",
+          "ledger-storage/store/.knowledge/starfield-load-order-manager-insights.json",
+          "ledger-storage/store/.knowledge/video-indexer-v2-insights.json",
+          "nexus-ledger-storage/store/.knowledge/hcp-editor-insights.json",
+          "nexus-ledger-storage/store/.knowledge/hcp-serializers-insights.json",
+          "nexus-ledger-storage/store/.knowledge/nexus-plugins-insights.json"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-04T12:22:06Z",
+          "note": "scripts/migrate-knowledge-uuids.js: The script uses fs sync APIs throughout (readFileSync, writeFileSync, readdirSync) rather than fs/promises. This is fine for a one-time CLI migration tool operating on small JSON files, but the WP spec mentions 'fs/promises' in AC #4. The sync approach is simpler and equally correct here — async would add complexity without benefit for a sequential batch script."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-08-04T12:22:06Z",
+          "note": "scripts/migrate-knowledge-uuids.js: The script uses named imports from 'fs' (readFileSync, etc.) rather than 'fs/promises' as the AC text says. The AC is met — no third-party deps — but the exact module name 'fs/promises' is not used. If the QA agent checks for literal 'fs/promises' in the imports, this may need a minor adjustment. The functionality is identical and the sync approach is idiomatic for single-threaded CLI batch scripts."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-08-04T12:41:09Z",
+      "completed_at": "2026-08-04T12:43:41Z",
+      "duration_ms": 152000,
+      "summary": [
+        "All 5 acceptance criteria verified and passed.",
+        "AC#1 (dry-run): --dry-run with --store flags reports all 10 files and their planned state without writing. When run without --store flags, auto-detection via ~/.ai-insights/stores.json correctly discovers and processes both stores.",
+        "AC#2 (migration): All 10 knowledge store files confirmed at version 2.0.0, no next_id field, all insight ids are valid UUID v4 strings (string type, correct format), last_updated refreshed to ISO timestamp.",
+        "AC#3 (idempotent): Re-running the script (with or without --dry-run) produces 0 migrated / 10 skipped — no file modifications on repeat runs.",
+        "AC#4 (no new deps): Script imports only Node.js built-ins: fs (sync), path, os, crypto. Note: uses fs sync APIs (readFileSync, writeFileSync, etc.) rather than fs/promises as the AC text states, but the intent — no third-party npm packages — is fully met. All four modules are stdlib.",
+        "AC#5 (superseded_by): No superseded_by fields exist in any of the 10 store files post-migration. Code logic correctly maps numeric references to UUID or drops broken refs — verified via code review.",
+        "Edge-case: atomic write via .tmp + renameSync is safe on all platforms. Error path for missing store discovery is actionable and exits with code 1. Script is ESM-compatible with workspace package.json type:module."
+      ],
+      "metrics": {
+        "test_coverage": "10/10 store files verified",
+        "tests_passed": 10,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-04T12:43:41Z",
+          "note": "scripts/migrate-knowledge-uuids.js: Uses 'fs' sync APIs (readFileSync, writeFileSync, readdirSync) rather than 'fs/promises'. AC#4 text mentions 'fs/promises' but the intent — no npm packages — is fully met. Sync APIs are idiomatic and simpler for a sequential one-shot CLI script. No functional difference."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-04T12:43:41Z",
+          "note": "scripts/migrate-knowledge-uuids.js: The script also imports 'os' (for homedir()) in addition to fs, path, and crypto. 'os' is a Node.js built-in — no concern, just not listed in AC#4's parenthetical."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-04T12:43:41Z",
+          "note": "No superseded_by test data exists in any live store file to exercise the numeric→UUID mapping path at runtime. The code path is correct by inspection but has no live test coverage. Low risk since this is a one-time migration script."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-08-04T12:47:48Z",
+      "completed_at": "2026-08-04T12:49:36Z",
+      "duration_ms": 108000,
+      "summary": [
+        "Code review passed. The migration script is clean, idiomatic, and correct. One redundant condition removed in collectKnowledgeFiles (Fix-Forward). All acceptance criteria are met.",
+        "Architecture: Well-structured one-shot CLI with clear sectioned layout. Store discovery mirrors production precedence (stores.json → LEDGER_ROOT). Atomic writes via .tmp+renameSync are correct and cross-platform.",
+        "AC#4 note: uses fs sync APIs rather than fs/promises as the AC text states. Sync is idiomatic and strictly equivalent for a sequential batch CLI — QA correctly assessed the intent (no npm deps) as fully met.",
+        "No blocking issues found."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "scripts/migrate-knowledge-uuids.js",
+          "ledger-storage/store/.knowledge/ai-insights-insights.json",
+          "ledger-storage/store/.knowledge/ai-persona-builder-insights.json",
+          "ledger-storage/store/.knowledge/comfyui-save-text-node-insights.json",
+          "ledger-storage/store/.knowledge/global-insights.json",
+          "ledger-storage/store/.knowledge/paralizer-insights.json",
+          "ledger-storage/store/.knowledge/starfield-load-order-manager-insights.json",
+          "ledger-storage/store/.knowledge/video-indexer-v2-insights.json",
+          "nexus-ledger-storage/store/.knowledge/hcp-editor-insights.json",
+          "nexus-ledger-storage/store/.knowledge/hcp-serializers-insights.json",
+          "nexus-ledger-storage/store/.knowledge/nexus-plugins-insights.json"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-08-04T12:49:36Z",
+          "note": "scripts/migrate-knowledge-uuids.js collectKnowledgeFiles(): Removed redundant `|| name === 'global-insights.json'` condition. `global-insights.json` already matches `name.endsWith('-insights.json')` — the OR branch was dead code. Filter is now simply `.filter((name) => name.endsWith('-insights.json'))`."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-04T12:49:36Z",
+          "note": "scripts/migrate-knowledge-uuids.js migrateFile(): No error boundary around JSON.parse(raw). A malformed store file will propagate an unhandled SyntaxError with no file path in the message. Acceptable for a developer tool, but a try/catch with a path-annotated re-throw would improve UX on corrupt files. Low risk for a one-time script."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-04T12:49:36Z",
+          "note": "No observations beyond the above — code is clean and consistent. Store discovery, atomic writes, idempotency check, and superseded_by mapping logic are all correct."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-08-04T12:52:28Z",
+      "completed_at": "2026-08-04T12:54:08Z",
+      "duration_ms": 100000,
+      "summary": [
+        "Added `scripts/migrate-knowledge-uuids.js` to the Root-Level Tooling table in both `AGENTS.md` and `CLAUDE.md`. Entry documents: one-time nature, v1→v2 schema conversion (numeric id/next_id → UUID v4), --dry-run / --verbose / --store flags, store discovery order (--store → stores.json → LEDGER_ROOT), idempotency, and Node.js built-ins-only constraint. No other documentation gaps found — the script's own JSDoc header already fully documents usage, options, and discovery order."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "AGENTS.md",
+          "CLAUDE.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-04T12:54:08Z",
+          "note": "No observations beyond the added entries — existing docs were clean and consistent. The script's own JSDoc block is comprehensive and serves as the primary reference for developers running it."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-08-04T12:54:08Z",
+  "last_updated": "2026-08-04T12:54:08Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-08-04T12:22:06Z",
+      "notes": [
+        "The migration script has been run and both stores are now fully migrated to v2.0.0. The script is available at scripts/migrate-knowledge-uuids.js for re-running or inspecting.",
+        "Note: the AC says 'fs/promises' but the implementation uses fs sync APIs (readFileSync, readdirSync, etc.). Both are Node.js built-ins with no third-party deps. Functionally identical for a sequential batch CLI. If strict AC compliance requires 'fs/promises', the script would need a minor refactor to async/await.",
+        "The --dry-run flag requires --store flags to be passed since ~/.ai-insights/stores.json does not exist in this workspace. Example: node scripts/migrate-knowledge-uuids.js --dry-run --store /path/to/ledger-storage/store --store /path/to/nexus-ledger-storage/store",
+        "All 10 store files are now at version 2.0.0. The stores are ready for the WP-002–WP-006 schema/code changes."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-08-04T12:43:41Z",
+      "notes": [
+        "All 10 knowledge store files are at v2.0.0 with UUID v4 IDs. The migration script is clean, cross-platform, and correct.",
+        "Minor note: script uses 'fs' (sync) not 'fs/promises' (async). This is stylistically acceptable for a one-shot CLI but reviewers may wish to verify AC#4 intent is satisfied.",
+        "Both stores (ledger-storage and nexus-ledger-storage) are migrated and ready for WP-002–WP-006 schema and code changes."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-08-04T12:49:36Z",
+      "notes": [
+        "WP-001 PASS. Migration script and all 10 store files reviewed.",
+        "One Fix-Forward applied: removed redundant || condition in collectKnowledgeFiles — no behavioral change.",
+        "All stores confirmed at v2.0.0 with UUID v4 IDs. Ready for WP-002–WP-006 schema/code changes.",
+        "Documentation note: the script header documents store discovery order clearly. No documentation gaps requiring action."
+      ]
+    }
+  ]
+}
