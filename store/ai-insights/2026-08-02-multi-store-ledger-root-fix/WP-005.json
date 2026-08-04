@@ -1,0 +1,197 @@
+{
+  "work_package_id": "WP-005",
+  "work_package_file": "work/WP-005.md",
+  "title": "Fix standalone-import multi-store routing",
+  "description": "**Plan Context:** Most MCP tool handlers, GUI handlers, auto-archive, and standalone-import construct `LedgerStore` without resolving the correct store in multi-store mode, causing silent failures for projects in non-default stores. This plan extracts a shared utility and applies it uniformly across all affected surfaces.\\n\\n**Description:** Fix the standalone-import tool's two handlers to be multi-store-aware. `importStandalone()` (write operation) uses `resolveStoreForWrite()` to route to the registered store, mirroring `initializeProject()`. `updateSynthesis()` (read-then-write on existing project) uses `resolveMultiStoreLedgerRoot()` from the shared utility. Add integration tests.\\n\\n**Scope:**\\n- `mcp-server/src/tools/standalone-import.ts` (modify)\\n- `mcp-server/tests/tools/standalone-import-multi-store.test.ts` (new)\\n\\n**Estimated Complexity:** Low\\n\\n**Notes:** Depends on WP-001. `importStandalone()` additionally needs direct imports from `store-context.ts` and `ledger-root.ts`.",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "importStandalone() creates the project in the correct non-default store when the repo is registered there — verified by checking the project directory exists in the secondary store path.",
+      "met": true
+    },
+    {
+      "criterion": "importStandalone() returns an error (not a crash) when the repo is not registered in any store in multi-store mode.",
+      "met": true
+    },
+    {
+      "criterion": "updateSynthesis() reads from and writes to the correct non-default store for an existing project.",
+      "met": true
+    },
+    {
+      "criterion": "No phantom directory is created in the default store after standalone import to a non-default store.",
+      "met": true
+    },
+    {
+      "criterion": "Single-store mode behavior is unchanged — both handlers fall through to existing new LedgerStore(planPath) when store context is not initialized or multi-store mode is off.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-08-02T18:39:44Z",
+      "completed_at": "2026-08-02T18:43:31Z",
+      "duration_ms": 227000,
+      "summary": [
+        "Fixed importStandalone() in standalone-import.ts to mirror initializeProject() multi-store routing: added isStoreContextInitialized() + getStoreRouter().isMultiStoreMode() check, calls resolveStoreForWrite(repoName) to get the target store path, returns clear error for unregistered repos, falls through to single-store mode otherwise. Fixed updateSynthesis() to call resolveMultiStoreLedgerRoot(planPath, undefined) before constructing LedgerStore. Added 4 imports (isStoreContextInitialized, getStoreRouter, inferProjectRootFromPlanPath, deriveRepoName, resolveMultiStoreLedgerRoot). Created standalone-import-multi-store.test.ts with 4 integration tests covering correct store routing, unregistered repo rejection, synthesis update in non-default store, and phantom-directory assertion. All 4010 tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/tools/standalone-import.ts",
+          "mcp-server/tests/tools/standalone-import-multi-store.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-02T18:43:31Z",
+          "note": "standalone-import.ts already had an _internal export with both handlers — no additional plumbing needed. The test injection pattern worked cleanly out of the box."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-08-02T18:43:31Z",
+          "note": "updateSynthesis() reads the root index twice (once before the lock for guards, once inside the lock for TOCTOU safety). The pre-lock read now uses the multi-store-resolved store, so both reads go to the same store. The pattern is intentional and documented in source comments — not a regression."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-08-02T18:48:02Z",
+      "completed_at": "2026-08-02T18:49:02Z",
+      "duration_ms": 60000,
+      "summary": [
+        "Build already clean from WP-004 verification (same build). 4 new integration tests (standalone-import-multi-store.test.ts) all pass. 29 existing standalone-import.test.ts tests pass (single-store regression). Full suite: 4010 tests, 145 files.",
+        "AC-1: importStandalone routes to secondary store — verified by test + code (LedgerStore(planPath, targetLedgerRoot) when multi-store mode active).",
+        "AC-2: Unregistered repo returns structured error — verified by test + code inspection (try/catch around resolveStoreForWrite, actionable message).",
+        "AC-3: updateSynthesis uses resolveMultiStoreLedgerRoot(planPath, undefined) — verified by code (L310) + dedicated test.",
+        "AC-4: Phantom-directory assertion (line 180 of test file) — no default store dir after secondary store import.",
+        "AC-5: Single-store fallback confirmed — else branch at L202 uses new LedgerStore(planPath) with no ledgerRoot; 29 pre-existing tests pass without modification."
+      ],
+      "metrics": {
+        "test_coverage": "4/4 new tests + 29 existing single-store tests pass",
+        "tests_passed": 4010,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-02T18:49:02Z",
+          "note": "importStandalone() correctly mirrors initializeProject() pattern: guard checks isStoreContextInitialized() + isMultiStoreMode(), then calls resolveStoreForWrite(repoName). Error messages for unregistered repos are actionable (instructs user to run 'store repo add')."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-08-02T18:49:02Z",
+          "note": "Single-store fallback at standalone-import.ts L202: new LedgerStore(planPath) with no ledgerRoot arg. 29 pre-existing tests all pass against this code path."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-08-02T18:52:54Z",
+      "completed_at": "2026-08-02T18:54:00Z",
+      "duration_ms": 66000,
+      "summary": [
+        "WP-005 code review PASS. importStandalone() correctly mirrors initializeProject(): guards on isStoreContextInitialized() + isMultiStoreMode(), resolves store via resolveStoreForWrite(repoName), returns actionable error for unregistered repos, and falls through to new LedgerStore(planPath) in single-store mode.",
+        "updateSynthesis() correctly uses resolveMultiStoreLedgerRoot(planPath, undefined) at L310, consistent with the WP-004 pattern for read-then-write handlers. The intentional double-read (pre-lock + in-lock) is documented in source comments and matches completeSynthesis() in project-lifecycle.ts.",
+        "4 integration tests cover all multi-store scenarios: correct store routing, unregistered repo rejection, synthesis update in non-default store, and phantom-directory guard. 29 pre-existing single-store tests confirm no regression.",
+        "Error discrimination via string matching on resolveStoreForWrite exceptions is a pre-existing pattern (identical code in project-lifecycle.ts L571) — consistency maintained. Noted as low-priority improvement target for a future typed-error refactor."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/tools/standalone-import.ts",
+          "mcp-server/tests/tools/standalone-import-multi-store.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-02T18:54:00Z",
+          "note": "importStandalone() error discrimination uses string matching on the exception message: !msg.includes('not registered in any store') branches to a generic error, while the 'not registered' case gets an actionable message. This is fragile if the error message in resolveStoreForWrite changes, but it is an exact mirror of the same pattern in initializeProject() (project-lifecycle.ts L571), so consistency is maintained. Low-priority improvement for a future refactor: use a typed error class (e.g. StoreNotRegisteredError) to avoid string matching."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-02T18:54:00Z",
+          "note": "The double-read pattern in updateSynthesis() (pre-lock read for fast-fail guards + in-lock read for TOCTOU safety) is correctly documented in source comments and consistent with the completeSynthesis() pattern in project-lifecycle.ts. No concern here."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-02T18:54:00Z",
+          "note": "Test coverage is appropriately scoped: 4 tests cover the 4 distinct multi-store scenarios (correct routing, unregistered error, synthesis update, phantom-directory guard). Single-store regression is covered by the 29 pre-existing standalone-import.test.ts tests — no duplication."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-08-02T18:56:31Z",
+      "completed_at": "2026-08-02T18:57:03Z",
+      "duration_ms": 32000,
+      "summary": [
+        "No documentation changes required for WP-005. The code review (Reviewer handoff note) explicitly stated there are no documentation-forward items — source comments in standalone-import.ts already explain both the multi-store routing block (importStandalone) and the intentional double-read TOCTOU pattern (updateSynthesis). The migration convention constraint (constraint 86) added during WP-004's documentation pipeline covers this WP as well."
+      ],
+      "artifacts": {
+        "files_modified": []
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-02T18:57:03Z",
+          "note": "No documentation changes required. The code review explicitly confirmed no documentation-forward items. The source comments in standalone-import.ts already document the multi-store routing block and intentional double-read pattern. Constraint 86 added in WP-004's pipeline covers the migration rule that applies here as well."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-08-02T18:57:03Z",
+  "last_updated": "2026-08-02T18:57:03Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-08-02T18:43:31Z",
+      "notes": [
+        "WP-005 fully implemented and tested. importStandalone() uses the resolveStoreForWrite pattern (matching initializeProject), updateSynthesis() uses resolveMultiStoreLedgerRoot. The unused extractLedgerRoot import in work-package.ts was removed as a side effect of WP-004. All 4010 tests pass (145 files)."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-08-02T18:49:02Z",
+      "notes": [
+        "WP-005 QA PASS. All 5 ACs met. 4 new multi-store tests + 29 existing standalone-import tests all pass, build clean.",
+        "Reviewer: importStandalone's multi-store block mirrors initializeProject exactly (the pattern was already established in WP-001). updateSynthesis double-read pattern is intentional (documented in source comments: TOCTOU safety). Both are clean."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-08-02T18:54:00Z",
+      "notes": [
+        "WP-005 code-review PASS. importStandalone() faithfully mirrors initializeProject() multi-store pattern. updateSynthesis() correctly uses resolveMultiStoreLedgerRoot. Both are clean.",
+        "Documentation agent: no documentation-forward items from this WP. The source comments in standalone-import.ts already explain the double-read pattern and multi-store routing block clearly.",
+        "Note for Documentation agent on WP-004 documentation-forward item: add constraint entry to mcp-server/docs/agents/project-manifest/constraints.md — 'any handler using the old extractLedgerRoot(_ledgerRoot) pattern without projectPath must be migrated to resolveMultiStoreLedgerRoot(projectPath, _ledgerRoot)'."
+      ]
+    }
+  ]
+}

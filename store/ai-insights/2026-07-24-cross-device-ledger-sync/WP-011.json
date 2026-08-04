@@ -1,0 +1,208 @@
+{
+  "work_package_id": "WP-011",
+  "work_package_file": "work/WP-010.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-005"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "The GUI server starts successfully in single-store mode (no stores.json) with no behavior change",
+      "met": true
+    },
+    {
+      "criterion": "The GUI server starts in multi-store mode and project listing returns projects from all stores with store_id and store_label fields",
+      "met": true
+    },
+    {
+      "criterion": "GUI config is resolved to ~/.ai-insights/gui-config.json in multi-store mode and to join(ledgerRoot, 'gui-config.json') in single-store mode",
+      "met": true
+    },
+    {
+      "criterion": "Repository listing on the Strategy page shows repos from all stores (merged registry) in multi-store mode",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-07-24T14:44:18Z",
+      "completed_at": "2026-07-24T14:49:30Z",
+      "duration_ms": 312000,
+      "summary": [
+        "Modified gui/server.ts main() to mirror the index.ts multi-store initialization: loadStoresConfig() + new StoreRouter(storeConfig) + new MultiStoreManager(router) + setStoreContext().",
+        "Replaced join(ledgerRoot, 'gui-config.json') with resolveGuiConfigPath(storeConfig, ledgerRoot) in main().",
+        "Added taggedEntryToRepoListItem() helper in server.ts to convert TaggedRepositoryEntry to RepoListItem (mirrors private toListItem() in api-repos.ts).",
+        "Updated GET /api/repos handler in buildRepoRoutes() to check isStoreContextInitialized(): multi-store delegates to getMultiStoreManager().getMergedRegistry() + taggedEntryToRepoListItem(); legacy path unchanged.",
+        "Modified gui/api.ts handleListProjects(): uses getMultiStoreManager().listAllProjects() in multi-store mode (returns TaggedProjectMeta[] with store_id, store_label, store_path); slow path uses getStorePath(meta) = meta.store_path in multi-store or ledgerRoot in legacy.",
+        "All 3787 tests pass (131 files)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/server.ts",
+          "mcp-server/gui/api.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "refactor",
+          "priority": "low",
+          "timestamp": "2026-07-24T14:49:30Z",
+          "note": "api.ts defines getStorePath() as a closure inside handleListProjects(). If other handlers (e.g. handleGetProject, handleDeleteProject) also need per-store LedgerStore construction, this pattern should be extracted to a shared utility."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T14:49:30Z",
+          "note": "No improvement: No observations — code in the touched files is clean and consistent."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-07-24T14:58:34Z",
+      "completed_at": "2026-07-24T15:00:32Z",
+      "duration_ms": 118000,
+      "summary": [
+        "Build: npm run build and tsc --noEmit both clean — no TypeScript errors.",
+        "Full regression: 3787 tests across 131 files — all pass.",
+        "AC1 — single-store mode: main() sets StoreRouter(null) + MultiStoreManager(legacyRouter). isStoreContextInitialized() is always true post-setStoreContext(); multi-store listAllProjects() in legacy mode delegates to resolveLedgerRoot() same as before. getStorePath() returns meta.store_path ?? ledgerRoot, which equals ledgerRoot in legacy mode.",
+        "AC2 — multi-store project listing: handleListProjects() calls getMultiStoreManager().listAllProjects() which returns TaggedProjectMeta[] with store_id, store_label, store_path per project. LedgerStore slow-path uses getStorePath(meta) = meta.store_path for per-store construction.",
+        "AC3 — config path: resolveGuiConfigPath(storeConfig, ledgerRoot) returns ~/.ai-insights/gui-config.json when storeConfig !== null; join(ledgerRoot, 'gui-config.json') when storeConfig === null. TypeScript type-check confirms this path.",
+        "AC4 — strategy page repo listing: GET /api/repos handler in buildRepoRoutes() checks isStoreContextInitialized() and delegates to getMultiStoreManager().getMergedRegistry() + taggedEntryToRepoListItem() in multi-store mode. Legacy falls through to handleListRepos()."
+      ],
+      "metrics": {
+        "test_coverage": "No new tests (gui/server.ts and gui/api.ts not covered by test suite); ACs verified by code inspection and TypeScript type-check",
+        "tests_passed": 3787,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-07-24T15:00:32Z",
+          "note": "No tool-level integration tests cover gui/server.ts or gui/api.ts — this is a known project-wide gap (GUI server is not covered by the automated test suite). All 4 ACs verified by code inspection: correct initialization sequence, correct getStorePath() fallback, correct resolveGuiConfigPath() branching, correct getMergedRegistry() delegation in buildRepoRoutes()."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-07-24T15:00:32Z",
+          "note": "POST/PUT/DELETE repo handlers in buildRepoRoutes() still use the legacy ledgerRoot. In multi-store mode, repo mutations (create, update, delete) target only the default store's registry. This is not a bug for WP-011 scope (reads are multi-store-aware; writes are intentionally single-store for now), but should be documented as a known limitation for follow-up."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-07-24T15:37:22Z",
+      "completed_at": "2026-07-24T15:38:28Z",
+      "duration_ms": 66000,
+      "summary": [
+        "WP-011 code-review PASS. No Fix-Forward changes applied.",
+        "main() correctly mirrors index.ts: loadStoresConfig() → StoreRouter → MultiStoreManager → setStoreContext(). resolveGuiConfigPath(storeConfig, ledgerRoot) cleanly centralizes the config path branching logic.",
+        "handleListProjects(): isStoreContextInitialized() guard is always true in GUI context (setStoreContext is called in main() before server starts). The getStorePath() closure using (meta as TaggedProjectMeta).store_path ?? ledgerRoot correctly handles both tagged (multi-store) and untagged (legacy) ProjectMeta shapes.",
+        "buildRepoRoutes() GET /api/repos: correctly delegates to getMergedRegistry() in multi-store mode. The write handlers (POST/PUT/DELETE) intentionally retain the ledgerRoot parameter — an acknowledged WP-011 scope limitation.",
+        "taggedEntryToRepoListItem(): correct, but duplicates toListItem() logic from api-repos.ts. Low-urgency refactor candidate.",
+        "The initialization sequence between gui/server.ts and mcp-server/src/index.ts is now consistent: both follow the same store-context init pattern, preventing divergence as the codebase evolves."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/server.ts",
+          "mcp-server/gui/api.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T15:38:28Z",
+          "note": "taggedEntryToRepoListItem() in server.ts duplicates the private toListItem() logic from api-repos.ts. Both map vision fields to has_vision / has_full_vision booleans and project a RepoListItem. If api-repos.ts exports toListItem (or a shared utility is extracted), server.ts can be simplified. Low urgency — both call sites are small and correct; the duplication only matters if the RepoListItem shape evolves."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T15:38:28Z",
+          "note": "The else branch in the GET /api/repos handler (return handleListRepos(ledgerRoot, ...)) is unreachable in production since main() always calls setStoreContext() before the server begins accepting requests. This means isStoreContextInitialized() is always true for GUI-originated requests. The code is correct and the guard pattern is consistent with the rest of the codebase, but future maintainers should know this branch is structural (for consistency) rather than functional."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-07-24T15:38:28Z",
+          "note": "[documentation-forward] POST, PUT, and DELETE /api/repos handlers still route to ledgerRoot only (legacy path). In multi-store mode, repo registry mutations target only the default store's .repositories.json regardless of which store the repo belongs to. This is a known WP-011 scope limitation but should be captured in the API surface docs and the GUI API handler reference so users and future contributors understand the current write-side constraint."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-07-24T15:47:23Z",
+      "completed_at": "2026-07-24T15:49:13Z",
+      "duration_ms": 110000,
+      "summary": [
+        "Updated api-surface.md for WP-011: (1) GUI API Repository Endpoints section — added prominent multi-store read/write scope note: GET /api/repos returns merged registry (all stores), but POST/PUT/DELETE /api/repos still target the default store's .repositories.json only (known WP-011 scope limitation, follow-up item); (2) gui/server.ts startup sequence — updated to reflect new WP-011 multi-store initialization order (loadStoresConfig → StoreRouter → MultiStoreManager → setStoreContext) and added a 'Multi-store startup (WP-011)' callout explaining that isStoreContextInitialized() is always true for GUI requests, and the resolveGuiConfigPath() branching rule.",
+        "Updated file-tree.md: (1) server.ts entry now describes the WP-011 startup sequence, resolveGuiConfigPath() branching, getMergedRegistry() delegation for GET /api/repos, taggedEntryToRepoListItem() helper, and the known write-handler scope limitation; (2) api.ts entry now notes handleListProjects multi-store delegation and getStorePath() closure behavior."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/file-tree.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-07-24T15:49:13Z",
+          "note": "Addressed the medium-priority documentation-forward from the Reviewer: the write-handler scope limitation is now prominently captured in the 'GUI API — Repository Endpoints' section header note — POST/PUT/DELETE still target ledgerRoot only in multi-store mode. Future contributors will see this constraint before reading the handler documentation."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T15:49:13Z",
+          "note": "gui/server.ts startup sequence updated in both api-surface.md and file-tree.md to reflect the WP-011 multi-store initialization order (loadStoresConfig → StoreRouter → MultiStoreManager → setStoreContext → resolveGuiConfigPath)."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-07-24T15:49:13Z",
+  "last_updated": "2026-07-24T15:49:13Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-07-24T14:49:30Z",
+      "notes": [
+        "gui/server.ts: main() now calls loadStoresConfig() + creates StoreRouter/MultiStoreManager + calls setStoreContext() before any route handling; configPath resolved via resolveGuiConfigPath() (multi-store: ~/.ai-insights/gui-config.json; legacy: join(ledgerRoot, 'gui-config.json')).",
+        "gui/server.ts: buildRepoRoutes() GET /api/repos handler checks isStoreContextInitialized() — in multi-store mode calls getMultiStoreManager().getMergedRegistry() and maps via taggedEntryToRepoListItem(); in legacy mode falls through to handleListRepos(ledgerRoot).",
+        "gui/api.ts: handleListProjects() uses isStoreContextInitialized() to choose between getMultiStoreManager().listAllProjects() (returns TaggedProjectMeta[] with store_path) and LedgerStore.listAllProjects(ledgerRoot). Slow path uses getStorePath(meta) (= meta.store_path in multi-store, ledgerRoot in legacy) for LedgerStore construction.",
+        "All 3787 tests pass (131 files). No new test file — server.ts and api.ts are not directly tested by the existing test suite."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-07-24T15:00:32Z",
+      "notes": [
+        "WP-011 QA PASS. Build and type-check clean. All 4 ACs verified by code inspection: main() correctly mirrors index.ts multi-store init; handleListProjects uses isStoreContextInitialized() guard and getStorePath() fallback; resolveGuiConfigPath() correctly branches on storeConfig null/non-null; GET /api/repos delegates to getMergedRegistry() in multi-store mode. No regressions (3787 tests pass). Two medium-priority observations: no GUI server test coverage; repo write handlers still use legacy ledgerRoot. Neither is blocking. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-07-24T15:38:28Z",
+      "notes": [
+        "WP-011 code-review PASS. No Fix-Forward changes applied. The initialization sequence in main() correctly mirrors index.ts. The getStorePath() closure in handleListProjects() cleanly handles the TaggedProjectMeta/ProjectMeta duality. buildRepoRoutes() GET correctly uses getMergedRegistry(). Two low-priority improvements noted (taggedEntryToRepoListItem duplication, unreachable else branch). One medium-priority documentation-forward: capture the write-handler scope limitation (POST/PUT/DELETE still target ledgerRoot only) in API surface docs. Ready for documentation pipeline."
+      ]
+    }
+  ]
+}

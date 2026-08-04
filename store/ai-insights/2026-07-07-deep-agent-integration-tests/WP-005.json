@@ -1,0 +1,201 @@
+{
+  "work_package_id": "WP-005",
+  "work_package_file": "work/WP-005.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-003"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "test_post_completion_guard_through_deep_agent passes: ledger_get_next_action mock's original ainvoke is NOT called after ledger_complete_pipeline, and the agent receives a response containing \"WAIT\".",
+      "met": true
+    },
+    {
+      "criterion": "test_error_rollback_cancels_pipeline_through_deep_agent passes: ledger_cancel_pipeline mock records exactly 1 call with auto_cancelled=True after a tool exception.",
+      "met": true
+    },
+    {
+      "criterion": "Both tests are decorated with @pytest.mark.deepagent.",
+      "met": true
+    },
+    {
+      "criterion": "Neither test requires API keys or network access.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-07-08T07:13:14Z",
+      "completed_at": "2026-07-08T07:25:24Z",
+      "duration_ms": 730000,
+      "summary": [
+        "Added two @pytest.mark.deepagent integration tests to tests/test_deep_agent_integration.py:",
+        "test_post_completion_guard_through_deep_agent: 4-step scripted model sequence (begin_work → complete_pipeline → get_next_action → final text); verifies post-completion guard intercepts ledger_get_next_action after completion and returns WAIT without calling the original coroutine (gna_calls==0).",
+        "test_error_rollback_cancels_pipeline_through_deep_agent: 2-step scripted model sequence (begin_work → crash_tool); crash_tool raises RuntimeError which propagates through Deep Agents to create_stage_node's except block; rollback fires and calls ledger_cancel_pipeline with auto_cancelled=True; verified via cp_calls capturing.",
+        "Added _make_cancel_pipeline_tool helper: installs a capture wrapper below the framework wrappers (inject_project_path, restrict_to_wp) to record the raw ainvoke input dict before LangChain schema short-circuits _AnyArgsSchema to **{}, ensuring auto_cancelled=True is verifiable.",
+        "All 6 deepagent integration tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/tests/test_deep_agent_integration.py"
+        ]
+      },
+      "comments": [
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-07-08T07:25:24Z",
+          "note": "test_deep_agent_integration.py: _make_cancel_pipeline_tool uses object.__setattr__ to install a capture wrapper below the framework wrappers. This pattern is consistent with how the production code (_patch_tool, _install_tracker) bypasses Pydantic __setattr__. It is safe and intentional, but worth noting for future readers."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-07-08T07:25:24Z",
+          "note": "test_deep_agent_integration.py: the crash_tool exception propagation behavior (RuntimeError escapes Deep Agents' ToolNode) was empirically confirmed and is not documented in Deep Agents 0.5.2 public docs. If a future Deep Agents release adds handle_tool_errors=True to its ToolNode, test_error_rollback_cancels_pipeline_through_deep_agent could silently break. Consider adding a version pin or a note in the test file if this behavior becomes unstable."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-07-08T07:27:55Z",
+      "completed_at": "2026-07-08T07:28:44Z",
+      "duration_ms": 49000,
+      "summary": [
+        "All 4 WP-005 acceptance criteria verified and met.",
+        "test_post_completion_guard_through_deep_agent: PASS — post-completion guard intercepts ledger_get_next_action after ledger_complete_pipeline, returning synthetic WAIT; gna_calls==0 confirms original coroutine was never invoked; stage_success=True confirms agent completed normally.",
+        "test_error_rollback_cancels_pipeline_through_deep_agent: PASS — crash_tool raises RuntimeError which propagates through Deep Agents to create_stage_node's except block; _handle_rollback fires and calls ledger_cancel_pipeline with auto_cancelled=True (captured via raw ainvoke dict before LangChain schema processing); stage_success=False and cp_calls==1.",
+        "Both tests carry @pytest.mark.deepagent (lines 621, 757) and use ToolCallableFakeChatModel — no API keys or network access needed.",
+        "Full 6-test deepagent suite: 6/6 PASS. Regression suite: 1093 passed, 6 skipped (pre-existing), 0 failures."
+      ],
+      "metrics": {
+        "test_coverage": "2/2 WP-005 ACs exercised directly; full deepagent suite 6/6; regression 1093/1093",
+        "tests_passed": 2,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-07-08T07:28:44Z",
+          "note": "test_error_rollback: crash_tool exception propagation through Deep Agents 0.5.2 ToolNode is empirically confirmed but undocumented. If a future Deep Agents release adds handle_tool_errors=True to its internal ToolNode (absorbing exceptions into ToolMessages rather than propagating them), the rollback test would silently break — the RuntimeError would no longer reach create_stage_node's except block. A version pin comment or a note in the test's docstring would help future maintainers detect this."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-08T07:28:44Z",
+          "note": "_make_cancel_pipeline_tool uses object.__setattr__ to install an ainvoke capture wrapper, bypassing Pydantic's __setattr__. This is consistent with _patch_tool / _install_tracker patterns in production code (src/nodes.py). The technique is intentional and safe here, but the workaround depends on StructuredTool not using __slots__ — worth a brief comment in the helper."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-07-08T07:32:00Z",
+      "completed_at": "2026-07-08T07:32:57Z",
+      "duration_ms": 57000,
+      "summary": [
+        "Code review PASS — both WP-005 tests and the _make_cancel_pipeline_tool helper are sound.",
+        "test_post_completion_guard_through_deep_agent: clean and correct. The gna_calls==0 assertion is the right proof: zero original-coroutine invocations is only possible if the guard intercepted the call and returned the synthetic WAIT response. stage_success=True confirms the agent completed the loop normally after receiving WAIT.",
+        "test_error_rollback_cancels_pipeline_through_deep_agent: correctly captures auto_cancelled=True via _make_cancel_pipeline_tool which installs its ainvoke wrapper BEFORE create_stage_node's own wrappers, placing it innermost in the chain. The flat-dict and ToolCall-structure branches in the capture wrapper are both handled. The empirically-confirmed Deep Agents 0.5.2 exception propagation behavior is documented in the test docstring — this is the key design assumption to preserve.",
+        "Documentation-forward: the Deep Agents version dependency for RuntimeError propagation should be made more explicit with a version pin comment or conftest note to prevent silent breakage if a future release adds handle_tool_errors=True to its ToolNode."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/tests/test_deep_agent_integration.py"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-08T07:32:57Z",
+          "note": "_make_cancel_pipeline_tool correctly sits at the innermost position in the wrapper chain (installed before create_stage_node applies inject_project_path and restrict_to_wp), so it sees the final dict after all outer wrappers. The comment in the helper explains this correctly. One subtlety: the technique works because object.__setattr__ on StructuredTool (a Pydantic BaseModel subclass without __slots__) allows overwriting attribute descriptors. If LangChain migrates StructuredTool to use __slots__ and 'ainvoke' is not in them, this would fail. A brief comment noting the Pydantic/no-slots dependency in the helper would help future maintainers."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-07-08T07:32:57Z",
+          "note": "[documentation-forward] test_error_rollback_cancels_pipeline_through_deep_agent relies on RuntimeError propagating out of Deep Agents 0.5.2's internal ToolNode (exceptions are not wrapped in ToolMessage). This behavior is empirically confirmed but not documented in Deep Agents public docs. The test docstring already mentions this (Empirically confirmed with Deep Agents 0.5.2), but the version reference should be made explicit with a version pin comment alongside the deepagents import or in a conftest note. If a future Deep Agents release adds handle_tool_errors=True to its ToolNode, the RuntimeError would be absorbed into a ToolMessage and the rollback test would silently pass a green result while the production behavior changed."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-08T07:32:57Z",
+          "note": "test_post_completion_guard: gna_calls==0 is a strong guarantee — it proves the guard returned the synthetic WAIT response AND the original coroutine was never invoked. This is the correct assertion for this behavior. No change needed."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-07-08T07:36:44Z",
+      "completed_at": "2026-07-08T07:38:31Z",
+      "duration_ms": 107000,
+      "summary": [
+        "Updated orchestrator/README.md test table: expanded test_deep_agent_integration.py entry to include test_post_completion_guard_through_deep_agent (post-completion guard intercepts ledger_get_next_action, synthetic WAIT returned) and test_error_rollback_cancels_pipeline_through_deep_agent (RuntimeError triggers rollback with auto_cancelled=True). Added a version-dependency callout note.",
+        "Addressed documentation-forward from code-review: added 'Version dependencies' section to test_deep_agent_integration.py module docstring. The section explicitly flags that test_error_rollback relies on RuntimeError propagating uncaught from Deep Agents 0.5.2's ToolNode, documents the false-positive failure mode if a future release adds handle_tool_errors=True, and directs maintainers to check the installed version when the rollback test fails unexpectedly."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/README.md",
+          "orchestrator/tests/test_deep_agent_integration.py"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-07-08T07:38:31Z",
+          "note": "documentation-forward addressed: added 'Version dependencies' section to test_deep_agent_integration.py module docstring explicitly flagging the Deep Agents 0.5.2 exception-propagation assumption for test_error_rollback_cancels_pipeline_through_deep_agent. The note explains the false-positive failure mode if handle_tool_errors=True is added in a future release."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-08T07:38:31Z",
+          "note": "orchestrator/README.md test table entry for test_deep_agent_integration.py updated to include both WP-005 tests (test_post_completion_guard_through_deep_agent, test_error_rollback_cancels_pipeline_through_deep_agent) and a brief version-dependency callout pointing to the module docstring."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-07-08T07:38:31Z",
+  "last_updated": "2026-07-08T07:38:31Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-07-08T07:25:24Z",
+      "notes": [
+        "test_post_completion_guard: verifies guard intercepts via gna_calls==0 (original coroutine never called = WAIT was returned and agent continued normally).",
+        "test_error_rollback: verifies rollback via cp_calls[0]['auto_cancelled']==True; uses _make_cancel_pipeline_tool to capture the raw ainvoke dict before LangChain schema short-circuits it to **{}.",
+        "Empirically confirmed: Deep Agents 0.5.2 propagates StructuredTool ainvoke exceptions through agent.astream() — RuntimeError escapes _accumulate_stream and reaches create_stage_node's except block where rollback fires."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-07-08T07:28:44Z",
+      "notes": [
+        "All 4 ACs met. Both tests deterministic (ToolCallableFakeChatModel, no API keys). Post-completion guard (gna_calls==0) and error rollback (cp_calls[0]['auto_cancelled']==True) verified end-to-end through real create_deep_agent. Empirically confirmed behavior: RuntimeError propagates out of Deep Agents' ToolNode uncaught — this is the mechanism the rollback test relies on. Full regression clean (1093/1093 passing)."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-07-08T07:32:57Z",
+      "notes": [
+        "Code review PASS. No blocking issues. Both new tests and _make_cancel_pipeline_tool helper are well-designed and well-documented. One documentation-forward item: the Deep Agents version dependency for RuntimeError propagation in test_error_rollback should be surfaced more explicitly (version pin comment or conftest note). Ready for documentation pipeline."
+      ]
+    }
+  ]
+}

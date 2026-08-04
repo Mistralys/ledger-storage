@@ -1,0 +1,179 @@
+{
+  "work_package_id": "WP-010",
+  "work_package_file": "work/WP-009.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "In single-store mode, the Strategy page does not fetch getStoreConflicts().",
+      "met": true
+    },
+    {
+      "criterion": "The conflicts tab renders as empty (or hidden) in single-store mode.",
+      "met": true
+    },
+    {
+      "criterion": "In multi-store mode, getStoreConflicts() is fetched as before.",
+      "met": true
+    },
+    {
+      "criterion": "No JavaScript errors in either mode.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-07-24T19:25:48Z",
+      "completed_at": "2026-07-24T19:28:04Z",
+      "duration_ms": 136000,
+      "summary": [
+        "Updated renderStrategyList() initial load: replaced the 3-item Promise.all([listRepos, getStores, getStoreConflicts]) with a 2-item Promise.all([listRepos, getStores]); in single-store mode (stores.length <= 1) calls renderList with an empty conflicts array and skips getStoreConflicts entirely; in multi-store mode chains an additional getStoreConflicts() call.",
+        "Updated refreshConflicts(): replaced Promise.all([getStores, getStoreConflicts]) with a sequential pattern — calls getStores() first, then in single-store mode renders an empty conflicts tab and returns without calling getStoreConflicts(); in multi-store mode chains getStoreConflicts() as before.",
+        "The WP notes explicitly state no automated tests exist for the vanilla JS frontend. All existing backend tests pass (3868 tests, 135 files)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/strategy.js"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 3868,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T19:28:04Z",
+          "note": "strategy.js now has a subtle asymmetry: the initial load uses Promise.all for the first two fetches (listRepos + getStores) then chains getStoreConflicts, while refreshConflicts() is fully sequential (getStores then getStoreConflicts). This is correct behaviour since refreshConflicts only needs stores data, but a future maintainer might be surprised. A short comment in refreshConflicts explaining the sequential guard would improve clarity."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T19:28:04Z",
+          "note": "The vanilla JS frontend has no automated test coverage by design (per WP notes and plan Out of Scope). If the GUI ever gains a test harness, the single-store guard in both renderStrategyList and refreshConflicts should be covered."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-07-24T19:44:09Z",
+      "completed_at": "2026-07-24T19:48:50Z",
+      "duration_ms": 281000,
+      "summary": [
+        "All 4 acceptance criteria verified via browser and code inspection. AC-1: Playwright network interception confirmed conflictsFetched=false when stores.length=1 (guard in renderStrategyList hits the early-return path before calling getStoreConflicts). AC-2: Code at line 490-499 shows isMultiStore=false emits empty string instead of the conflicts tab div. AC-3: Multi-store Strategy page rendered Repositories+Conflicts tabs with correct content, getStoreConflicts() returned successfully. AC-4: Zero console errors in both modes. All 3,873 tests pass."
+      ],
+      "metrics": {
+        "tests_passed": 3873,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T19:48:50Z",
+          "note": "Browser verification performed using Playwright network interception on port 3421 (DEV GUI, separate from STABLE on 3420). AC-1: route interceptor returned stores.length=1 response; after page.goto and 2s wait, conflictsFetched was false — confirms the guard is exercised at page load time, not just tab click. AC-2: code inspection confirmed isMultiStore=false omits the strategy-tab-conflicts div entirely from the DOM (ternary returns empty string). AC-3: multi-store rendering confirmed by DOM presence of Repositories/Conflicts tabs and conflict badge element. AC-4: zero console.error() calls in both modes."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-07-24T20:01:30Z",
+      "completed_at": "2026-07-24T20:02:17Z",
+      "duration_ms": 47000,
+      "summary": [
+        "Code review PASS. All 4 acceptance criteria met.",
+        "The guard pattern stores.length <= 1 is used consistently in both renderStrategyList() and refreshConflicts(). The <= 1 threshold (not === 1) correctly handles the zero-stores edge case.",
+        "The Promise.all vs sequential asymmetry is now documented with a brief comment in refreshConflicts(). One Fix-Forward applied."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/strategy.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-07-24T20:02:17Z",
+          "note": "Added the explanatory comment in refreshConflicts() that the Developer flagged as missing: 'Sequential (not Promise.all): only the store count determines whether getStoreConflicts() is called, so we need stores first to guard the call.' This clarifies the deliberate asymmetry vs the Promise.all pattern in renderStrategyList()."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T20:02:17Z",
+          "note": "The guard pattern is consistent: stores.length <= 1 used in both renderStrategyList() and refreshConflicts(). 'Single store' is <= 1 (not === 1) which correctly handles the zero-stores edge case (empty config, before any store is added)."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-07-24T20:02:17Z",
+          "note": "[documentation-forward] The GUI Strategy page has no automated test coverage by design. If a test harness is ever added for the vanilla JS frontend, the single-store guard in both renderStrategyList() and refreshConflicts() should be covered (network call suppression in single-store mode, tab DOM presence in multi-store mode)."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-07-24T20:12:53Z",
+      "completed_at": "2026-07-24T20:14:32Z",
+      "duration_ms": 99000,
+      "summary": [
+        "Updated api-surface.md: renderStrategyList() description updated — now documents the 2-item Promise.all(listRepos, getStores) pattern with conditional getStoreConflicts() in multi-store mode only (single-store mode skips it); refreshConflicts() description updated — sequential getStores-first pattern with single-store guard documented; views/strategy.js table entry updated to note the WP-010 rework-1 fetch pattern."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T20:14:32Z",
+          "note": "No documentation-forward from reviewer. Updated three locations in api-surface.md: views/strategy.js table entry, renderStrategyList() description (now reflects 2-item Promise.all + conditional getStoreConflicts), and refreshConflicts() description (sequential pattern with single-store guard was already updated in the first pass)."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-07-24T20:14:32Z",
+  "last_updated": "2026-07-24T20:14:32Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-07-24T19:28:04Z",
+      "notes": [
+        "WP-010 is a frontend-only change in strategy.js with no automated tests. QA should manually verify: (1) with a single store configured, opening the Strategy page makes no call to GET /api/store-conflicts; (2) with multiple stores, the Conflicts tab still loads and displays conflicts as expected; (3) no console errors in either mode. The changes are in renderStrategyList (initial load guard) and refreshConflicts (sequential guard)."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-07-24T19:48:50Z",
+      "notes": [
+        "WP-010 fully verified via browser and code inspection. Single-store guard prevents getStoreConflicts() call and omits conflicts tab from DOM. Multi-store mode retains Conflicts tab with correct rendering. No JS errors. All 3,873 backend tests still pass. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-07-24T20:02:17Z",
+      "notes": [
+        "WP-010 PASS. Frontend-only change in strategy.js with correct single-store guard in both renderStrategyList() and refreshConflicts(). One Fix-Forward: added the explanatory comment flagged by the Developer. Ready for documentation pipeline."
+      ]
+    }
+  ]
+}

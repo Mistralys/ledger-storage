@@ -1,0 +1,198 @@
+{
+  "work_package_id": "WP-005",
+  "work_package_file": "work/WP-005.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-003",
+    "WP-004"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "With no stores.json present, index.ts starts successfully in single-store mode and getStoreRouter().isMultiStoreMode() returns false",
+      "met": true
+    },
+    {
+      "criterion": "With a valid stores.json, index.ts starts in multi-store mode and getStoreRouter().isMultiStoreMode() returns true",
+      "met": true
+    },
+    {
+      "criterion": "All configured store directories that do not exist are created during startup",
+      "met": true
+    },
+    {
+      "criterion": "migrateToNamespacedLayout() is called for each configured store path",
+      "met": true
+    },
+    {
+      "criterion": "getStoreRouter() throws a descriptive error if called before setStoreContext()",
+      "met": true
+    },
+    {
+      "criterion": "The entire existing test suite continues to pass without modification (no stores.json = legacy mode)",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-07-24T13:30:14Z",
+      "completed_at": "2026-07-24T13:40:36Z",
+      "duration_ms": 622000,
+      "summary": [
+        "Created mcp-server/src/storage/store-context.ts — shared singleton accessor following the client-info.ts pattern. Exports setStoreContext(), getStoreRouter(), and getMultiStoreManager(). Both getters throw a descriptive error if called before initialization.",
+        "Modified mcp-server/src/index.ts startup sequence: loads stores.json via loadStoresConfig() after resolveLedgerRoot(); constructs StoreRouter (legacy mode on null, multi-store mode on config); constructs MultiStoreManager; calls setStoreContext(); runs migrateToNamespacedLayout() on all configured store paths; resolves gui-config.json path via resolveGuiConfigPath(storeConfig, ledgerRoot).",
+        "Created mcp-server/tests/storage/store-context.test.ts with 8 tests covering: throw before init (both getters), singleton returns correct instances, legacy mode isMultiStoreMode()=false, multi-store mode isMultiStoreMode()=true, idempotent re-initialization, and store directory auto-creation.",
+        "Full test suite: 129 files / 3764 tests — all passing. TypeScript type check: clean."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/storage/store-context.ts",
+          "mcp-server/src/index.ts",
+          "mcp-server/tests/storage/store-context.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T13:40:36Z",
+          "note": "index.ts startup sequence is now async-heavier (loadStoresConfig adds an async file read before tool registration). In the current architecture this is fine since no tools are invoked until after main() resolves, but if startup latency ever becomes a concern the stores.json read could be parallelized with other async startup steps (e.g. discoverAgents, readConfigFromDisk) using Promise.all."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-07-24T13:40:36Z",
+          "note": "The store-context.ts module exposes module-level let state analogous to client-info.ts. Both modules follow the same pattern: set-once singletons reset between tests via setStoreContext(). The pattern is well-established and consistent across the codebase."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-07-24T13:49:27Z",
+      "completed_at": "2026-07-24T13:51:50Z",
+      "duration_ms": 143000,
+      "summary": [
+        "All 6 acceptance criteria verified. 8 targeted store-context tests pass. Full regression suite: 129 files / 3764 tests — all green. TypeScript type-check clean. store-context.ts singleton pattern is correct and consistent with client-info.ts. index.ts startup sequence correctly branches on storeConfig null/non-null, calls setStoreContext() before migration, and runs migrateToNamespacedLayout() for every store path."
+      ],
+      "metrics": {
+        "test_coverage": "8 new tests added; full suite 3764/3764",
+        "tests_passed": 3764,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T13:51:50Z",
+          "note": "The 'before setStoreContext()' describe block relies on test ordering: the singleton is undefined only because those two tests run before any setStoreContext() call in the file. Vitest runs describe blocks sequentially so this is safe, but it would be more robust to use vi.resetModules() in a beforeEach to truly isolate the singleton state. Not a blocker — tests pass correctly and the ordering is documented."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T13:51:50Z",
+          "note": "No observations beyond the low-pri ordering note above — code is clean and consistent with the client-info.ts singleton pattern."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-07-24T13:54:03Z",
+      "completed_at": "2026-07-24T13:56:27Z",
+      "duration_ms": 144000,
+      "summary": [
+        "Code review PASS. store-context.ts is a clean, well-documented implementation that follows the client-info.ts singleton pattern precisely. The two-process architecture rationale (STDIO MCP server vs HTTP GUI server) is correctly captured in the module JSDoc. index.ts startup sequence is correct: loadStoresConfig() → storePaths derivation → StoreRouter (auto-creates dirs) → MultiStoreManager → setStoreContext() → per-path migration loop → GUI config path resolution. One Fix-Forward applied: afterEach import added to store-context.test.ts for consistency with all other storage test files (non-behavioral — globals:true means the test worked either way). No blocking issues found."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/storage/store-context.ts",
+          "mcp-server/src/index.ts",
+          "mcp-server/tests/storage/store-context.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-07-24T13:56:27Z",
+          "note": "store-context.test.ts line 1: added 'afterEach' to the explicit vitest import. The function was used via the globals:true fallback but every other storage test file in the project (14 files checked) imports it explicitly. Change is non-behavioral — all 8 tests continue to pass."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T13:56:27Z",
+          "note": "Test ordering fragility (already noted by QA): the 'before setStoreContext()' describe block relies on running before any setStoreContext() call in the file. This is safe because Vitest runs describe blocks sequentially and the ordering is documented in a comment. If the test suite grows significantly, exporting a test-only resetStoreContext() from store-context.ts (following the teardown pattern in other singletons) would provide true isolation without relying on ordering."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T13:56:27Z",
+          "note": "No observations beyond the above — implementation is clean, follows established patterns, and all acceptance criteria are verifiably met."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-07-24T14:07:09Z",
+      "completed_at": "2026-07-24T14:10:52Z",
+      "duration_ms": 223000,
+      "summary": [
+        "Updated mcp-server/docs/agents/project-manifest/file-tree.md: added store-context.ts entry to the storage/ source section (between repository-registry.ts and store-registry.ts) documenting all three exported functions, the set-once singleton pattern, the two-process architecture rationale, and the circular-import constraint. Added store-context.test.ts entry to the tests/storage/ section documenting all 8 tests and the test-ordering constraint (the 'before setStoreContext()' describe block must remain first in the file).",
+        "Updated mcp-server/docs/agents/project-manifest/api-surface.md: added new '### Store Context Singleton — src/storage/store-context.ts' section between the Multi-Store Manager section and migrateToNamespacedLayout(). Section documents setStoreContext(), getStoreRouter(), and getMultiStoreManager() signatures and semantics, the two-process architecture rationale, and the startup wiring in src/index.ts (loadStoresConfig → StoreRouter → MultiStoreManager → setStoreContext → migration → GUI config path resolution). Addressed both Reviewer-forwarded documentation items."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/file-tree.md",
+          "mcp-server/docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T14:10:52Z",
+          "note": "The test-ordering constraint (the 'before setStoreContext()' block must remain first) is already documented inline in store-context.test.ts with a detailed comment. The file-tree.md entry now surfaces this constraint at the manifest level so future agents encountering the file know the ordering requirement without reading the source."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-07-24T14:10:52Z",
+  "last_updated": "2026-07-24T14:10:52Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-07-24T13:40:36Z",
+      "notes": [
+        "WP-005 is complete. store-context.ts follows client-info.ts pattern exactly. index.ts startup integrates multi-store initialization: loads stores.json → constructs StoreRouter + MultiStoreManager → calls setStoreContext() → migrates all store paths → resolves gui-config path. All 3764 tests pass. The QA agent should verify: (1) legacy-mode path (no stores.json) passes through unchanged, (2) multi-store-mode path creates directories and runs migration on each store path, (3) getStoreRouter()/getMultiStoreManager() throw before init. Test file: mcp-server/tests/storage/store-context.test.ts (8 tests)."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-07-24T13:51:50Z",
+      "notes": [
+        "WP-005 QA PASS. store-context.ts singleton is well-structured and consistent with existing patterns. index.ts startup correctly handles both legacy and multi-store paths. All 3764 tests pass. TypeScript clean. No code-review blockers anticipated."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-07-24T13:56:27Z",
+      "notes": [
+        "WP-005 code-review PASS. Implementation is clean and follows established patterns exactly. One Fix-Forward applied: afterEach imported explicitly in store-context.test.ts (was used as global, now consistent with all other storage test files). All 8 unit tests pass. Documentation agent should document: (1) store-context.ts public API (setStoreContext, getStoreRouter, getMultiStoreManager) including the two-process architecture rationale, (2) the test ordering constraint in store-context.test.ts and why the 'before setStoreContext()' block must remain first."
+      ]
+    }
+  ]
+}

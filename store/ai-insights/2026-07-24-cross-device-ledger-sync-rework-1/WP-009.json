@@ -1,0 +1,178 @@
+{
+  "work_package_id": "WP-009",
+  "work_package_file": "work/WP-005.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "Cross-store knowledge queries with limit/offset apply pagination to the merged result set, not per-store.",
+      "met": true
+    },
+    {
+      "criterion": "Per-store calls still receive scope, repository_name, category, and tags filters for efficient filtering.",
+      "met": true
+    },
+    {
+      "criterion": "When limit is 5 and store A has 3 matching insights and store B has 4, the result contains 5 insights (not 3 + 4 = 7, not min(3,5) + min(4,5)).",
+      "met": true
+    },
+    {
+      "criterion": "offset correctly skips across the merged set.",
+      "met": true
+    },
+    {
+      "criterion": "Tests verify merged pagination semantics.",
+      "met": true
+    },
+    {
+      "criterion": "All existing tests pass.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-07-24T19:18:13Z",
+      "completed_at": "2026-07-24T19:25:41Z",
+      "duration_ms": 448000,
+      "summary": [
+        "Updated MultiStoreManager.searchKnowledge() and listKnowledge() to destructure limit/offset out of options before per-store calls and apply pagination after merging the deduplicated result set.",
+        "Added comprehensive WP-009 test suite in multi-store-manager.test.ts: AC-3 (limit=5 with 3+4 split returns exactly 5), AC-4 (offset skips across merged set), limit+offset window test, filter passthrough test (category filters reach per-store calls but limit/offset do not), and no-pagination baseline.",
+        "All 3868 tests pass (135 test files)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/storage/multi-store-manager.ts",
+          "mcp-server/tests/storage/multi-store-manager.test.ts"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 3868,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T19:25:41Z",
+          "note": "No observations — the implementation in multi-store-manager.ts (lines 254-340) is clean and consistent. The destructure pattern `{ limit, offset, ...storeOptions }` is idiomatic and the merged-slice pattern is correct. Tests cover the primary edge cases (AC-3 split, AC-4 offset, window, filter passthrough, no-pagination baseline)."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-07-24T19:43:19Z",
+      "completed_at": "2026-07-24T19:44:01Z",
+      "duration_ms": 42000,
+      "summary": [
+        "All 6 acceptance criteria verified. Implementation: { limit, offset, ...storeOptions } destructuring strips pagination before per-store calls; merged.slice(start, start+limit) applies pagination after full dedup. AC-3: 3+4 split with limit=5 returns exactly 5 (verified). AC-4: offset=3 skips to correct page with no ID overlap (verified). Filter passthrough verified via category:'nonexistent' vs 'testing'. Both searchKnowledge() and listKnowledge() covered. 3,873 tests, 136 files, all pass."
+      ],
+      "metrics": {
+        "tests_passed": 3873,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T19:44:01Z",
+          "note": "Tests use non-overlapping idStart ranges (A: 1-N, B: 101-M) to eliminate ID collision — clean approach that correctly exercises merged pagination semantics. The 'per-store calls receive filters but not limit/offset' test verifies filter passthrough by using category:'nonexistent' (returns 0) vs category:'testing' with limit=4 (returns 4 from 6 total). Both searchKnowledge() and listKnowledge() verified."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-07-24T20:00:32Z",
+      "completed_at": "2026-07-24T20:01:17Z",
+      "duration_ms": 45000,
+      "summary": [
+        "Code review PASS. All 6 acceptance criteria met. The pagination fix is architecturally correct.",
+        "The { limit, offset, ...storeOptions } destructure + post-merge slice is the canonical pattern for 'apply filters per-store, apply pagination to the merged result'. Both searchKnowledge() and listKnowledge() are now consistent.",
+        "The test suite uses non-overlapping idStart ranges (A: 1-N, B: 101-M) to eliminate ID collision concerns — this cleanly exercises merged pagination semantics without workarounds.",
+        "Note: knowledge.ts's direct-iteration path (needed for formatted_id) still applies limit/offset per-store. That asymmetry was flagged in WP-002 review and is a separate tracked follow-up."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/storage/multi-store-manager.ts",
+          "mcp-server/tests/storage/multi-store-manager.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T20:01:17Z",
+          "note": "The { limit, offset, ...storeOptions } destructure is idiomatic TypeScript and correctly strips pagination from per-store options in a single expression. The post-merge slice handles both limit-only (slice(0, limit)), offset-only (slice(offset)), and limit+offset (slice(start, start+limit)) cases correctly. offset>merged.length returns [] — correct."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-07-24T20:01:17Z",
+          "note": "WP-009 fixes MultiStoreManager.searchKnowledge() and listKnowledge(). The knowledge.ts direct-iteration path (introduced in WP-002 to capture per-insight storeId for formatted_id) still applies limit/offset per-store and has no global post-merge slice. These are two different code paths — the MultiStoreManager fix is complete; the knowledge.ts direct-iteration asymmetry remains a separate follow-up item (flagged in WP-002 review)."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-07-24T20:12:04Z",
+      "completed_at": "2026-07-24T20:12:44Z",
+      "duration_ms": 40000,
+      "summary": [
+        "Updated api-surface.md: MultiStoreManager.searchKnowledge() and listKnowledge() JSDoc updated to reflect WP-009 — limit/offset are now withheld from per-store calls and applied globally after the full deduplicated merge; filter parameters (scope, repository_name, category, tags) continue to be forwarded per-store for efficient pre-filtering."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T20:12:44Z",
+          "note": "No documentation-forward from reviewer. Updated MultiStoreManager.searchKnowledge() and listKnowledge() JSDoc comments in api-surface.md: removed the stale 'limit/offset forwarded before cross-store merge' notes and replaced with the corrected 'applied globally after full deduplicated merge' description. Also noted filter passthrough contract (scope, repository_name, category, tags still per-store)."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-07-24T20:12:44Z",
+  "last_updated": "2026-07-24T20:12:44Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-07-24T19:25:41Z",
+      "notes": [
+        "WP-009 is a pure logic fix with comprehensive tests. The key behavior: searchKnowledge() and listKnowledge() pass all filters (scope, repository_name, category, tags) to per-store calls but withhold limit/offset, then apply limit/offset after merging and deduplicating. QA should verify that the pagination tests in the WP-009 describe block in multi-store-manager.test.ts correctly test merged semantics (not per-store)."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-07-24T19:44:01Z",
+      "notes": [
+        "WP-009 fully verified. MultiStoreManager.searchKnowledge() and listKnowledge() now apply limit/offset after merged deduplication. 6 new pagination tests in multi-store-manager.test.ts. All 3,873 tests (136 files) pass. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-07-24T20:01:17Z",
+      "notes": [
+        "WP-009 PASS. The MultiStoreManager pagination fix is correct and comprehensive. The { limit, offset, ...storeOptions } pattern is idiomatic and the post-merge slice is correct. Tests with non-overlapping id ranges cleanly exercise merged semantics. The knowledge.ts direct-iteration asymmetry is a separate tracked follow-up. Ready for documentation pipeline."
+      ]
+    }
+  ]
+}

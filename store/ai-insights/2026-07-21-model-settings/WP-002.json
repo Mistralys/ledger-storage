@@ -1,0 +1,412 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-002.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "`ModelEntrySchema` validates entries with UUID `id`, non-empty `name`, slug matching `/^[a-z0-9]+(-[a-z0-9]+)*$/`, and `cc_model` defaulting to `\"inherit\"`",
+      "met": true
+    },
+    {
+      "criterion": "`readModels()` auto-initializes `local.json` from `default.json` when `local.json` does not exist, and returns the 4 default entries",
+      "met": true
+    },
+    {
+      "criterion": "`readModels()` reads existing `local.json` without touching `default.json`",
+      "met": true
+    },
+    {
+      "criterion": "`writeModels()` rejects duplicate slugs with a validation error",
+      "met": true
+    },
+    {
+      "criterion": "`writeModels()` rejects the reserved slug `\"inherit\"` on non-sentinel entries (entries whose UUID is not `00000000-0000-0000-0000-000000000000`)",
+      "met": true
+    },
+    {
+      "criterion": "`writeModels()` rejects deletion of models whose UUID is referenced in `assignments.json`, returning usage details",
+      "met": true
+    },
+    {
+      "criterion": "`writeModels()` succeeds when removing unreferenced models",
+      "met": true
+    },
+    {
+      "criterion": "Slug renames via `writeModels()` leave `assignments.json` unchanged — assignment values are stable UUIDs, unaffected by slug changes",
+      "met": true
+    },
+    {
+      "criterion": "`loadDefaults()` adds entries from `default.json` whose `id` is not already in `local.json` and preserves existing entries",
+      "met": true
+    },
+    {
+      "criterion": "`loadDefaults()` detects slug collisions between default and local entries and returns them as `conflicts`",
+      "met": true
+    },
+    {
+      "criterion": "`readAssignments()` returns a default structure (`{ default_model_uuid: undefined, persona_models: {} }`) when `assignments.json` does not exist",
+      "met": true
+    },
+    {
+      "criterion": "`getResolvedAssignments()` resolves UUID values to slugs using `local.json` and omits persona entries with unresolvable UUIDs (graceful degradation)",
+      "met": true
+    },
+    {
+      "criterion": "All unit tests pass",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-07-21T13:25:52Z",
+      "completed_at": "2026-07-21T13:31:05Z",
+      "duration_ms": 313000,
+      "summary": [
+        "Implemented `mcp-server/src/gui/model-registry.ts` with all required public functions and schemas, and `mcp-server/tests/gui/model-registry.test.ts` covering all 13 acceptance criteria. All 47 unit tests pass; no regressions in adjacent test files."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/gui/model-registry.ts",
+          "mcp-server/tests/gui/model-registry.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T13:31:05Z",
+          "note": "model-registry.ts internally calls readModels() inside writeModels() to build the 'existing models' set for deletion detection. This incurs a second filesystem read on every write. A future optimization could accept an optional `previousModels` parameter to allow callers that already hold the registry in memory to skip the re-read. For the current usage pattern (API handler reads then writes in the same request) this is negligible but worth noting."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-07-21T13:31:05Z",
+          "note": "The _initializeLocalFromDefault() helper is prefixed with a single underscore to signal 'internal only'. The codebase has no established convention for internal helpers (config.ts uses `isNodeError` unprefixed). Aligning to a consistent convention across modules would help new contributors. Since the function is unexported, the underscore is purely documentary."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-07-21T13:31:05Z",
+          "note": "loadDefaults() currently returns the full merged array including pre-existing local entries as `models`, but only writes to disk when toAdd.length > 0. If the caller re-renders the registry from the returned models array while the disk write is in flight (async), there's a theoretical TOCTOU window. In practice this is fine since the GUI operates sequentially, but a comment noting the write condition would clarify intent."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-07-21T13:31:33Z",
+      "completed_at": "2026-07-21T13:34:47Z",
+      "duration_ms": 194000,
+      "summary": [
+        "All 47 developer unit tests pass (vitest run tests/gui/model-registry.test.ts).",
+        "Full gui regression suite passes — 1518 tests across 53 files, zero regressions.",
+        "14 additional QA edge-case tests written and executed: empty writeModels, slug boundary conditions, corrupt JSON handling, graceful degradation paths, sentinel entry guards, and isModelReferenced with sentinel UUID — all pass.",
+        "All 13 AC verified through code inspection and test execution."
+      ],
+      "metrics": {
+        "test_coverage": "13/13 AC covered",
+        "tests_passed": 47,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T13:34:47Z",
+          "note": "AC-1 slug regex /^[a-z0-9]+(-[a-z0-9]+)*$/ — verified boundary conditions: trailing hyphen, leading hyphen, consecutive hyphens (all rejected), single alphanumeric (accepted). Implementation is correct."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T13:34:47Z",
+          "note": "loadDefaults() early-return path: when toAdd.length === 0 AND conflicts.length === 0, returns { models: locals, conflicts: [] } without a disk write. Correct behavior — idempotent re-invocation is safe."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T13:34:47Z",
+          "note": "getResolvedAssignments() — gracefully handles both missing assignments.json AND missing/unreadable local.json, returning { default_model_slug: null, persona_models: {} } in both cases. Edge-case verified with QA test."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-07-21T13:34:47Z",
+          "note": "writeModels() calls readModels() internally during the deletion guard phase (step 4). If local.json does not exist at all, the code catches all errors and treats existingModels as []. However, if local.json exists but has a schema validation error, the error is silently swallowed too (empty catch in writeModels). This means a corrupted local.json would allow a write to proceed as if it were empty, potentially bypassing the deletion guard. Consider narrowing the catch to ENOENT-only errors, similar to how readModels() handles it. Not a blocker for current AC, but a latent risk."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T13:34:47Z",
+          "note": "No issues with the vi.mock scoping — the mock redirects WORKSPACE_ROOT to a per-test temp directory and is properly cleaned up in afterEach. No test-isolation leakage observed."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "FAIL",
+      "started_at": "2026-07-21T13:35:09Z",
+      "completed_at": "2026-07-21T13:37:18Z",
+      "duration_ms": 129000,
+      "summary": [
+        "Code review FAIL — one blocking issue: writeModels() uses a bare `catch {}` (lines 202–207) that swallows ALL errors from readModels() during the deletion guard phase. A corrupted local.json (PARSE_ERROR or VALIDATION_ERROR from readModels) silently falls through to existingModels=[], making deletedModels empty and bypassing the deletion guard entirely. The module's documented guarantee — 'rejects deletion of models whose UUID is referenced in assignments.json' — is violated when local.json is corrupted. Fix: narrow the catch to ENOENT-only by re-throwing ApiError exceptions, analogous to the readModels() pattern at line 113–116. One fix-forward comment applied to loadDefaults() clarifying the dead-code path in its readModels catch block."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/gui/model-registry.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "high",
+          "timestamp": "2026-07-21T13:37:18Z",
+          "note": "[BLOCKING] writeModels() deletion guard catch (lines 202–207): the bare `catch {}` swallows ALL errors thrown by readModels() — including ApiError PARSE_ERROR and VALIDATION_ERROR — treating them identically to ENOENT. With existingModels=[], deletedModels is always empty, so the deletion guard never fires. A caller that submits a new model list while local.json is corrupt will silently succeed even when it is deleting models referenced in assignments.json. FIX: replace the bare catch with a targeted re-throw for ApiError, keeping only the ENOENT-equivalent silent path. Pattern to follow (same file, readModels line 113): `if (isNodeError(err) && err.code === 'ENOENT') { ... } else { throw err; }`. For readModels(), the ENOENT case comes back as the ApiError wrapping is done after the catch — in writeModels(), readModels() is called directly, so throw any ApiError through: `try { existingModels = await readModels(); } catch (err) { if (!(err instanceof ApiError && err.code === 'READ_ERROR') && !(isNodeError(err) && err.code === 'ENOENT')) throw err; }`"
+        },
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-07-21T13:37:18Z",
+          "note": "[Fix-Forward applied] loadDefaults() readModels catch block (line 346–353): the comment said 'local.json doesn\\'t exist — treat as empty' but this is misleading — the ENOENT case is handled inside readModels() via auto-init and never reaches this catch as READ_ERROR. The block is actually handling non-ENOENT OS errors (e.g. permission denied) on local.json. Also, VALIDATION_ERROR and PARSE_ERROR were not explicitly re-thrown here (the `else { throw err; }` branch handles it, but no comment clarified why). Updated the comment to accurately describe what each error code path means and why READ_ERROR is silently absorbed while other ApiErrors are re-thrown. No behavioral change."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T13:37:18Z",
+          "note": "The _initializeLocalFromDefault() function uses a single-underscore prefix to signal 'internal only'. config.ts uses `isNodeError` without any prefix. Consider aligning to a single convention across the gui/ module (e.g. fully private via module closure, or a consistent `_` prefix). Since the function is unexported this is cosmetic, but worth standardizing for new contributors."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-07-21T13:37:18Z",
+          "note": "[documentation-forward] writeModels() JSDoc (lines 143–158) documents the deletion guard behavior but does not mention what happens when local.json does not yet exist (guard is skipped, write proceeds). Once the ENOENT narrowing fix is applied, also document what happens when local.json exists but is corrupt (write is now rejected with ApiError). Updating the `@throws` block and guard description in the JSDoc would make the function contract explicit for future API handler authors."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T13:37:18Z",
+          "note": "loadDefaults() writes to disk only when toAdd.length > 0, but returns the merged array regardless. If the caller re-renders the UI from the returned models before the disk write completes (async), there is a brief TOCTOU window. A comment noting 'disk write is conditional on toAdd.length > 0; the returned models array always reflects the full merge' would clarify intent. (Developer noted this; confirming it warrants a comment rather than a structural change.)"
+        }
+      ]
+    },
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-07-21T13:38:07Z",
+      "completed_at": "2026-07-21T13:40:10Z",
+      "duration_ms": 123000,
+      "summary": [
+        "Rework: narrowed the bare catch {} in writeModels() deletion guard phase to re-throw ApiError instances (PARSE_ERROR, VALIDATION_ERROR) while silently absorbing only OS-level read failures (READ_ERROR, ENOENT). A corrupted local.json now causes writeModels() to throw rather than bypass the deletion guard silently. Updated writeModels() JSDoc to document both the file-not-found (guard skipped) and corruption (write rejected) behaviors explicitly. Added two regression tests covering PARSE_ERROR and VALIDATION_ERROR re-throw paths; all tests pass with zero regressions across the full gui suite."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/gui/model-registry.ts",
+          "mcp-server/tests/gui/model-registry.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T13:40:10Z",
+          "note": "No new observations beyond the fix itself — the narrowed catch pattern in writeModels() now aligns with the established pattern in loadDefaults() and readModels(). Code in the touched files is consistent and clean after the rework."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-07-21T13:40:57Z",
+      "completed_at": "2026-07-21T13:42:53Z",
+      "duration_ms": 116000,
+      "summary": [
+        "Rework QA PASS. The single blocking issue from the previous code-review FAIL has been fully resolved: writeModels() deletion guard catch block (lines 213–223) now correctly re-throws ApiError instances with code PARSE_ERROR or VALIDATION_ERROR, only silently absorbing READ_ERROR and raw ENOENT. A corrupted local.json no longer bypasses the deletion guard.",
+        "Two new regression tests verified: (1) 'rejects write when local.json is corrupt JSON (PARSE_ERROR bypasses deletion guard)' — confirms PARSE_ERROR is re-thrown; (2) 'rejects write when local.json fails schema validation (VALIDATION_ERROR bypasses deletion guard)' — confirms VALIDATION_ERROR is re-thrown.",
+        "Full module test suite: 49 tests pass (47 original + 2 new). Full GUI regression suite: 53 test files, 1520 tests, 0 failures.",
+        "JSDoc for writeModels() updated with explicit @throws entries documenting both the file-not-found path (guard skipped, write proceeds) and the corruption path (write rejected with ApiError). Contract is now unambiguous for future API handler authors.",
+        "All 13 acceptance criteria remain met — confirmed via both code inspection and test execution. No regressions introduced."
+      ],
+      "metrics": {
+        "test_coverage": "13/13 AC covered",
+        "tests_passed": 1520,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T13:42:53Z",
+          "note": "Rework fix is clean and minimal — the catch block in writeModels() lines 213–223 precisely mirrors the established pattern in loadDefaults() (line 372–376). The condition `!(err instanceof ApiError && err.code === 'READ_ERROR') && !(isNodeError(err) && err.code === 'ENOENT')` is correct and exhaustive for the intent."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T13:42:53Z",
+          "note": "The two new tests (PARSE_ERROR and VALIDATION_ERROR re-throw) are placed in the existing 'writeModels — deletion guard (AC-6)' describe block, which is the appropriate location. They use the established seedLocalJson/writeFile helper pattern and are consistent with the surrounding test style."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T13:42:53Z",
+          "note": "No new risks or concerns identified. The previously-noted medium priority TOCTOU window in loadDefaults() remains cosmetic and has an explanatory comment added by the Reviewer. Not a blocker."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-07-21T13:43:17Z",
+      "completed_at": "2026-07-21T13:45:00Z",
+      "duration_ms": 103000,
+      "summary": [
+        "Code review PASS. The single blocking issue from the previous cycle (bare catch {} in writeModels() deletion guard swallowing PARSE_ERROR/VALIDATION_ERROR) has been correctly resolved — lines 213–223 now precisely mirror the established re-throw pattern in loadDefaults(). All error-handling paths are consistent and intentional: isModelReferenced() and getResolvedAssignments() retain their bare catch {} blocks by design (graceful degradation contracts where swallowing all errors is correct behavior). One Fix-Forward applied: added a clarifying comment in loadDefaults() at the conditional atomicWriteJson call, documenting that the returned models array always reflects the full post-merge view regardless of whether a write occurred. All 49 tests pass, all 13 AC met."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/gui/model-registry.ts",
+          "mcp-server/tests/gui/model-registry.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T13:45:00Z",
+          "note": "writeModels() deletion guard catch (lines 213–223) correctly re-throws ApiError PARSE_ERROR and VALIDATION_ERROR while silently absorbing READ_ERROR and raw ENOENT. The condition `!(err instanceof ApiError && err.code === 'READ_ERROR') && !(isNodeError(err) && err.code === 'ENOENT')` is exhaustive and mirrors the established pattern in loadDefaults() (lines 372–376). Clean resolution of the prior blocking issue."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T13:45:00Z",
+          "note": "isModelReferenced() and getResolvedAssignments() retain their bare catch {} blocks — this is architecturally correct. Both functions have defined graceful-degradation contracts where the inability to read any supporting file should return a safe empty/false result rather than propagate an error. The swallowing is intentional and not a risk."
+        },
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-07-21T13:45:00Z",
+          "note": "[Fix-Forward applied] loadDefaults() conditional write block (lines 405–407): added a 4-line comment clarifying that the disk write is conditional on toAdd.length > 0, and that the returned `models` array always reflects the full post-merge view regardless of whether a write occurred. This resolves the TOCTOU documentation gap noted in both the Developer and Reviewer pipelines. No behavioral change. 49/49 tests confirmed passing after edit."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-07-21T13:45:00Z",
+          "note": "[documentation-forward] writeModels() JSDoc @throws block (lines 164–168) is well-formed and documents PARSE_ERROR/VALIDATION_ERROR for corrupt local.json. Verify the API handler documentation (WP-003 scope) surfaces this contract to callers — specifically that a 400/500 response is returned when local.json is corrupt, so the GUI can display a meaningful error rather than a silent failure."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T13:45:00Z",
+          "note": "The _initializeLocalFromDefault() underscore prefix convention remains inconsistent with config.ts (isNodeError is unprefixed). Since the function is unexported this is purely cosmetic. Worth standardising across the gui/ module in a future cleanup pass, but not a blocker here."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-07-21T13:45:30Z",
+      "completed_at": "2026-07-21T13:49:22Z",
+      "duration_ms": 232000,
+      "summary": [
+        "Updated mcp-server/docs/agents/project-manifest/file-tree.md: added model-registry.ts entry to the src/gui/ section with a comprehensive annotation covering all public exports, key behaviors, and the WP reference.",
+        "Added a new 'GUI API — Model Registry Module' section to mcp-server/docs/agents/project-manifest/api-surface.md, covering: file layout table, design invariants, all Zod schemas and TypeScript types (ModelEntrySchema, ModelRegistrySchema, ModelAssignmentsSchema, WriteModelsResult, ReferencedModel, ConflictEntry, LoadDefaultsResult, ResolvedAssignments), and all public functions (getModelRegistryPath, readModels, writeModels, readAssignments, writeAssignments, loadDefaults, isModelReferenced, getResolvedAssignments) with full @throws documentation.",
+        "Addressed the documentation-forward from the code-review pipeline: the writeModels() section explicitly documents the corruption guard error contract — local.json not found (guard skipped, write proceeds), local.json corrupt PARSE_ERROR/VALIDATION_ERROR (write rejected, must be resolved before any modifications), and referenced-model deletion (returns { saved: false, referencedModels }, surface as HTTP 409). This surfaces the error contract to future API handler authors (WP-003 scope) before they implement the HTTP layer.",
+        "No changes were required to README.md — the root README covers high-level features and does not catalogue internal modules. The personas/model-registry/README.md (documenting default.json schema, sentinel, UUID convention, and how-to) was already written correctly by the Implementation pipeline and required no updates."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/file-tree.md",
+          "mcp-server/docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T13:49:22Z",
+          "note": "personas/model-registry/README.md was created by the Implementation pipeline and is accurate and complete. No documentation gaps found there. The context file .context/personas/model-registry.md already references this README correctly."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T13:49:22Z",
+          "note": "The documentation-forward item (writeModels() corrupt-local.json error contract for GUI callers) is now documented in api-surface.md under the GUI API — Model Registry Module section. WP-003 API handler authors can use this as their reference when implementing the HTTP 409/500 response logic."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T13:49:22Z",
+          "note": "No stale counts were embedded in any documentation. The file-tree entry and api-surface sections use structural description only."
+        }
+      ]
+    }
+  ],
+  "rework_counts": {
+    "implementation": 1,
+    "qa": 1,
+    "code-review": 1
+  },
+  "status_changed_at": "2026-07-21T13:49:22Z",
+  "last_updated": "2026-07-21T13:49:22Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-07-21T13:31:05Z",
+      "notes": [
+        "The module is self-contained with no external dependencies beyond what already existed in the codebase (zod, atomicWriteJson, WORKSPACE_ROOT, ApiError). All tests use vi.mock to redirect WORKSPACE_ROOT to a temp directory — the mock is scoped to the test file and does not affect other test files. The module exposes all types and schemas needed by the API handler layer (WP-003)."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-07-21T13:34:47Z",
+      "notes": [
+        "WP-002 (model-registry.ts) QA complete — PASS. All 13 AC met, 47 unit tests pass, 1518 regression tests pass. One medium-priority latent risk noted: writeModels() silently swallows ALL errors from the readModels() call inside the deletion guard, not just ENOENT. A corrupted local.json would allow writes to proceed as if no existing models exist, bypassing the deletion guard. Not a blocker — flag for Reviewer consideration."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Developer",
+      "timestamp": "2026-07-21T13:37:18Z",
+      "notes": [
+        "WP-002 code-review FAIL — single blocking issue in writeModels() at lines 202–207. The bare catch {} swallows ALL readModels() errors (PARSE_ERROR, VALIDATION_ERROR) during the deletion guard phase, not just ENOENT. A corrupted local.json allows the deletion guard to be bypassed silently, violating the module's documented contract. Required fix: narrow the catch to re-throw ApiError exceptions, keeping only the file-not-found path silent. Pattern is already established in readModels() (line 113). One fix-forward comment was applied to loadDefaults() — no behavioral change, safe to keep. See blocking comment for exact replacement code."
+      ]
+    },
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-07-21T13:40:10Z",
+      "notes": [
+        "Rework complete. Single blocking issue from code-review FAIL has been addressed: writeModels() deletion guard catch block (lines 202–207) now re-throws ApiError (PARSE_ERROR, VALIDATION_ERROR) and only silently absorbs READ_ERROR and raw ENOENT — preventing a corrupted local.json from bypassing the deletion guard. JSDoc updated with explicit @throws entries for the corruption path. Two new tests verify both error codes are re-thrown correctly. The Reviewer's fix-forward comment on loadDefaults() was already present in the code (applied during the code-review pipeline) — no further action needed there. Full suite: 1530 tests, 0 failures."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-07-21T13:42:53Z",
+      "notes": [
+        "WP-002 rework QA complete — PASS. The blocking issue (bare catch {} in writeModels() deletion guard) has been fully addressed. writeModels() now re-throws ApiError (PARSE_ERROR, VALIDATION_ERROR) for corrupt local.json, only absorbing READ_ERROR/ENOENT silently. JSDoc updated with explicit @throws documentation. Two new tests confirm both error codes. 49 module tests + 1520 regression tests all pass. All 13 AC met. Code is clean and ready for code-review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-07-21T13:45:00Z",
+      "notes": [
+        "WP-002 code-review PASS. All 13 AC met. One Fix-Forward applied to loadDefaults() (non-behavioral comment clarifying conditional write logic — 49/49 tests pass). One documentation-forward tagged for the Documentation agent: verify WP-003 API handler docs surface the writeModels() corrupt-local.json error contract to GUI callers. No blocking issues remain. Ready for documentation pipeline."
+      ]
+    }
+  ]
+}

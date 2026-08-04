@@ -1,0 +1,163 @@
+{
+  "work_package_id": "WP-003",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Reviewer",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "csRenderReorderView() output includes a <div id=\"cs-reorder-error\"></div> element",
+      "met": true
+    },
+    {
+      "criterion": "csShowTableError() displays the error message in whichever error target element exists in the DOM (#cs-table-error or #cs-reorder-error)",
+      "met": true
+    },
+    {
+      "criterion": "When csMoveStore() fails, the user stays in reorder mode with the error visible — csRefreshTab() is not called",
+      "met": true
+    },
+    {
+      "criterion": "The catch block calls csShowTableError() after the re-render (ordering invariant: the re-render creates the #cs-reorder-error target before the error is injected into it)",
+      "met": true
+    },
+    {
+      "criterion": "The optimistic array swap is reverted on failure so the reorder view reflects the pre-move order",
+      "met": true
+    },
+    {
+      "criterion": "The csReorderMode comment at L14–L18 no longer states that csShowTableError() is a no-op during reorder mode or that the catch block calls csRefreshTab()",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-08-01T16:42:49Z",
+      "completed_at": "2026-08-01T16:44:32Z",
+      "duration_ms": 103000,
+      "summary": [
+        "Added `<div id=\"cs-reorder-error\"></div>` to csRenderReorderView() between the reorder list and the action bar.",
+        "Updated csShowTableError() to target `#cs-table-error || #cs-reorder-error`, making it functional in both view states.",
+        "Revised the csMoveStore() catch block: reverts the optimistic swap, re-renders the reorder view (creating the error target), then calls csShowTableError() — csRefreshTab() removed.",
+        "Updated the csReorderMode state variable comment to accurately describe the dual-target error behavior and correct catch-block behavior.",
+        "3944 tests pass with zero regressions."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/config-stores.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-01T16:44:32Z",
+          "note": "The move buttons remain enabled after the error is shown (no re-disable after revert re-render). This is a minor DX gap — the user can immediately retry which is acceptable behavior, but the in-flight disable-all-buttons pattern from the optimistic path is not mirrored in the error recovery path."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-08-01T16:57:15Z",
+      "completed_at": "2026-08-01T16:58:03Z",
+      "duration_ms": 48000,
+      "summary": [
+        "AC1: <div id='cs-reorder-error'></div> confirmed at config-stores.js:194 inside csRenderReorderView() output.",
+        "AC2: csShowTableError() uses getElementById('cs-table-error') || getElementById('cs-reorder-error') at L744 — dual-target OR-fallback correct.",
+        "AC3: Catch block calls csRenderReorderView() + csShowTableError(); csRefreshTab() is absent from error path.",
+        "AC4: Ordering invariant confirmed — re-render at L733–737 precedes csShowTableError() at L738; L733 comment documents intent.",
+        "AC5: Swap revert (tmp2 pattern at ~L729) is the inverse of the original swap — array restored to pre-move state.",
+        "AC6: Comment block L14–18 describes dual-target error and correct catch behavior; no mention of no-op or csRefreshTab()."
+      ],
+      "metrics": {
+        "tests_passed": 3947,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-08-01T16:58:03Z",
+          "note": "Pre-existing edge case (not introduced by this WP): if contentEl is null in the catch block, the re-render is skipped but csShowTableError() is still called — getElementById finds no error div, so showError() is a silent no-op. No AC concern."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-08-01T16:58:03Z",
+          "note": "No automated tests cover csMoveStore() failure paths (frontend-only JS). A future task could add JSDOM tests simulating API failures in the reorder flow."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-08-01T17:04:48Z",
+      "completed_at": "2026-08-01T17:05:35Z",
+      "duration_ms": 47000,
+      "summary": [
+        "All six acceptance criteria verified by code inspection. The error div placement, OR-fallback in csShowTableError(), revert swap, catch-block ordering, and csReorderMode comment update are all correct.",
+        "The ordering comment inside the catch block ('Re-render first so #cs-reorder-error exists before csShowTableError() writes to it.') is a valuable explicit documentation of a non-obvious DOM-dependency invariant.",
+        "The OR-fallback pattern (getElementById('cs-table-error') || getElementById('cs-reorder-error')) is clean, view-agnostic, and forward-compatible with any future view state that needs error reporting.",
+        "csShowTableError() called outside the contentEl guard is a minor consistency gap (safe no-op path), logged as a low-priority improvement. No blocking issues. 3947/3947 tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/config-stores.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-01T17:05:35Z",
+          "note": "The explicit ordering comment inside the catch block ('Re-render first so #cs-reorder-error exists before csShowTableError() writes to it.') is exactly right for this kind of subtle DOM-dependency constraint. Without it, a future refactor could silently break the invariant by reordering the two calls. This is the correct documentation approach."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-01T17:05:35Z",
+          "note": "csShowTableError() is called unconditionally outside the `if (contentEl)` guard in the catch block, while the re-render is inside the guard. If contentEl is null, the error div is never created, so csShowTableError() silently no-ops (getElementById returns null, showError is not called). The behavior is safe but slightly inconsistent with the surrounding guard pattern. For strict symmetry, csShowTableError() could also live inside the contentEl guard. Not blocking — the no-op path is acceptable."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-08-01T17:05:35Z",
+  "last_updated": "2026-08-01T17:05:35Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-08-01T16:44:32Z",
+      "notes": [
+        "All six acceptance criteria met. The ordering invariant (re-render before showError) is correctly satisfied: the catch block reverts the swap, calls csRenderReorderView() to insert #cs-reorder-error into the DOM, then calls csShowTableError() which writes to that newly-created target.",
+        "csShowTableError() now uses OR fallback: getElementById('cs-table-error') || getElementById('cs-reorder-error'), so it works in both view states transparently.",
+        "3944 tests pass with zero regressions."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-08-01T16:58:03Z",
+      "notes": [
+        "All 6 ACs confirmed by code inspection. The ordering invariant is explicitly commented in the catch block (L733). Revert swap is correct inverse operation. csShowTableError() correctly uses OR-fallback for both view states. csRefreshTab() is absent from the catch block. Comment at L14–18 accurately describes the new behavior. 3947/3947 tests pass. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-08-01T17:05:35Z",
+      "notes": [
+        "Clean PASS on all 6 ACs. The ordering invariant is correctly implemented and documented. OR-fallback in csShowTableError() is durable. No blocking issues. Documentation agent: no open documentation-forward items from this WP."
+      ]
+    }
+  ]
+}

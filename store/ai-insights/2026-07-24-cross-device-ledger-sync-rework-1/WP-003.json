@@ -1,0 +1,211 @@
+{
+  "work_package_id": "WP-003",
+  "work_package_file": "work/WP-002.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "resolveProjectPath() detects projects in non-default stores when multi-store mode is active.",
+      "met": true
+    },
+    {
+      "criterion": "resolveProjectPath() throws with a MULTI_STORE_AMBIGUOUS error listing store-tagged candidates when the same cwd matches projects in multiple stores.",
+      "met": true
+    },
+    {
+      "criterion": "The manual multi-store bypass in getProjectStatus() is removed; the handler uses resolveProjectPath() like all other tools.",
+      "met": true
+    },
+    {
+      "criterion": "Single-store fallback behavior is unchanged — LedgerStore.detectProjectByCwd() is used when store context is not initialized.",
+      "met": true
+    },
+    {
+      "criterion": "getProjectStatus() behavior in multi-store mode matches the previous bypass behavior (same error messages, same resolution logic).",
+      "met": true
+    },
+    {
+      "criterion": "Tests verify multi-store detection, MULTI_STORE_AMBIGUOUS error message format, and single-store fallback.",
+      "met": true
+    },
+    {
+      "criterion": "All existing tests pass.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-07-24T18:58:17Z",
+      "completed_at": "2026-07-24T19:09:39Z",
+      "duration_ms": 682000,
+      "summary": [
+        "Extended resolveProjectPath() in project-resolver.ts with a multi-store branch: when isStoreContextInitialized() && getStoreRouter().isMultiStoreMode(), delegates to getMultiStoreManager().detectProjectByCwd() and handles FOUND, MULTI_STORE_AMBIGUOUS, AMBIGUOUS, and NOT_FOUND statuses.",
+        "Removed the manual multi-store bypass block from getProjectStatus() in project-lifecycle.ts (lines ~347–400); the handler now calls resolveProjectPath() like all other tools.",
+        "The store-root resolution block (resolveStoreForRepo) is preserved unchanged in getProjectStatus().",
+        "Added 6 multi-store tests to tests/utils/project-resolver.test.ts covering FOUND in non-default store, FOUND in default store, MULTI_STORE_AMBIGUOUS (error message format, store IDs), NOT_FOUND, and single-store fallback.",
+        "Added 2 tests to tests/tools/project-lifecycle-multi-store.test.ts verifying getProjectStatus MULTI_STORE_AMBIGUOUS error content and format match the removed bypass behavior.",
+        "All 3857 tests pass (135 test files, no regressions)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/utils/project-resolver.ts",
+          "mcp-server/src/tools/project-lifecycle.ts",
+          "mcp-server/tests/utils/project-resolver.test.ts",
+          "mcp-server/tests/tools/project-lifecycle-multi-store.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T19:09:39Z",
+          "note": "project-resolver.ts now has a ~40-line cwd_path branch with duplicated error-construction for AMBIGUOUS and NOT_FOUND between the multi-store and single-store paths. A private helper formatCwdNotFoundError(cwdPath) and formatAmbiguousError(best, unlikely) would reduce duplication if a third branch is ever added."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-07-24T19:09:39Z",
+          "note": "restoreLegacyContext() in test helpers (project-lifecycle-multi-store.test.ts, project-resolver.test.ts) sets _storeRouter to StoreRouter(null) which makes isStoreContextInitialized() return true — this is not semantically equivalent to 'never initialized'. The condition isStoreContextInitialized() && isMultiStoreMode() works around this, but it means any tool that guards only on isStoreContextInitialized() will behave differently in tests vs. production when using restoreLegacyContext(). Consider adding a resetStoreContext() export (sets _storeRouter = undefined) for test use only."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-07-24T19:32:21Z",
+      "completed_at": "2026-07-24T19:33:18Z",
+      "duration_ms": 57000,
+      "summary": [
+        "All 7 acceptance criteria verified. TypeScript clean. resolveProjectPath() multi-store branch confirmed: FOUND in non-default store returns plan_path; MULTI_STORE_AMBIGUOUS produces '[store_id: X] slug1, [store_id: Y] slug2' format; AMBIGUOUS uses existing formatCandidateList(); NOT_FOUND gives clear error. getProjectStatus() bypass block is gone — handler calls resolveProjectPath() at line ~348 like all other tools. Store-root resolution block preserved for correct store lookup. 34 tests pass across project-resolver.test.ts (6 new multi-store) and project-lifecycle-multi-store.test.ts (2 new WP-003). Full regression: 3,868 tests all pass."
+      ],
+      "metrics": {
+        "tests_passed": 3868,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T19:33:18Z",
+          "note": "The MULTI_STORE_AMBIGUOUS error message format is constructed by string-joining the candidates list. If `result.candidates` is empty (a hypothetical edge case), the error would read 'Candidates: ' with nothing after it. Defensively guard against this with a fallback like 'none returned'."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T19:33:18Z",
+          "note": "The store-root resolution block after resolveProjectPath() in getProjectStatus() performs resolveStoreForRepo() only in multi-store mode. In edge cases where the project exists in a store but the repo isn't registered, the code falls through to the default ledger root — this is deliberate ('read-only, should not throw') but could silently return data from the wrong store if a same-slug project exists in two stores."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-07-24T19:53:49Z",
+      "completed_at": "2026-07-24T19:55:44Z",
+      "duration_ms": 115000,
+      "summary": [
+        "Code review PASS. All 7 acceptance criteria met. The multi-store extension and bypass removal are architecturally correct.",
+        "resolveProjectPath() correctly uses the compound guard isStoreContextInitialized() && isMultiStoreMode() rather than just isStoreContextInitialized(). This is a meaningful design decision: after test teardown via restoreLegacyContext() (StoreRouter(null)), the context is 'initialized' but not in multi-store mode — the compound guard ensures single-store fallback is used correctly.",
+        "The removal of the ~55-line manual bypass from getProjectStatus() reduces a well-known DRY violation (the bypass duplicated the same resolution logic that every other tool was getting for free). The handler is now consistent with all other tool handlers.",
+        "The MULTI_STORE_AMBIGUOUS error format is carefully verified by two dedicated tests in project-lifecycle-multi-store.test.ts to exactly match the removed bypass behavior — good regression safety net for this refactoring.",
+        "Test organization is clear: the multi-store tests are in a clearly delimited block (// WP-003 comment header) in both test files, making it easy to trace the test coverage back to the spec.",
+        "Two Fix-Forward changes applied: (1) empty-candidates fallback in the MULTI_STORE_AMBIGUOUS error, (2) corrected misleading test comment about isStoreContextInitialized() behavior after restoreLegacyContext()."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/utils/project-resolver.ts",
+          "mcp-server/src/tools/project-lifecycle.ts",
+          "mcp-server/tests/utils/project-resolver.test.ts",
+          "mcp-server/tests/tools/project-lifecycle-multi-store.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-07-24T19:55:44Z",
+          "note": "Added '(none returned)' fallback to the MULTI_STORE_AMBIGUOUS error message in project-resolver.ts: '`Candidates: ${candidateList || '(none returned)'}`'. If MultiStoreManager.detectProjectByCwd() ever returns MULTI_STORE_AMBIGUOUS with an empty candidates array (a bug in that function), the error message is still parseable and informative rather than ending with 'Candidates: '. No behavioral change for the normal code path."
+        },
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-07-24T19:55:44Z",
+          "note": "Fixed a misleading comment in the project-resolver.test.ts single-store fallback test. The comment said 'isStoreContextInitialized() returns false' but restoreLegacyContext() actually calls setStoreContext() (so the flag is true). The corrected comment explains that isMultiStoreMode() is false after restoreLegacyContext(), which makes the combined guard (isStoreContextInitialized() && isMultiStoreMode()) evaluate to false — correctly routing to the single-store path."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-07-24T19:55:44Z",
+          "note": "The compound guard 'isStoreContextInitialized() && getStoreRouter().isMultiStoreMode()' in resolveProjectPath() is a deliberate choice to handle the restoreLegacyContext() test-teardown pattern (StoreRouter(null) sets context initialized but single-store). This is correct behavior documented by the Developer. The risk is that other tools guarding only on isStoreContextInitialized() will behave unexpectedly in tests — a resetStoreContext() export (sets _storeRouter = undefined) would be cleaner for test teardown but is out of scope for this WP."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-07-24T19:55:44Z",
+          "note": "[documentation-forward] The resolveProjectPath() module-level JSDoc lists only four resolution rules (project_path, cwd_path, both, neither) and mentions 'AMBIGUOUS' but does not document the MULTI_STORE_AMBIGUOUS case or the multi-store guard condition. Update the JSDoc to mention the multi-store detection path so callers understand the full resolution contract."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-07-24T20:08:04Z",
+      "completed_at": "2026-07-24T20:09:04Z",
+      "duration_ms": 60000,
+      "summary": [
+        "Updated api-surface.md: resolveProjectPath() JSDoc expanded to document the multi-store branch (compound guard, four status handlers, MULTI_STORE_AMBIGUOUS format) alongside the existing single-store/legacy path; the 'Multi-store cwd detection coverage' overview paragraph updated to reflect WP-003 rework-1 — all tools now have full multi-store cwd_path support via resolveProjectPath()."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-07-24T20:09:04Z",
+          "note": "Reviewer's documentation-forward item addressed: resolveProjectPath() JSDoc updated with the full multi-store resolution path including MULTI_STORE_AMBIGUOUS status handling and the compound guard explanation. The 'Multi-store cwd detection coverage' paragraph updated to reflect that WP-003 extended multi-store detection to all tools via resolveProjectPath()."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-07-24T20:09:04Z",
+  "last_updated": "2026-07-24T20:09:04Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-07-24T19:09:39Z",
+      "notes": [
+        "WP-003 modifies src/utils/project-resolver.ts (new multi-store detection branch) and src/tools/project-lifecycle.ts (removed ~55-line bypass block). The MULTI_STORE_AMBIGUOUS error message format must match: 'Error: Project found in multiple stores. Provide an explicit project_path to disambiguate. Candidates: [store_id: X] slug1, [store_id: Y] slug2'. QA should verify that getProjectStatus with cwd_path works end-to-end in both single-store and multi-store configs."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-07-24T19:33:18Z",
+      "notes": [
+        "WP-003 fully verified. resolveProjectPath() correctly handles multi-store detection, MULTI_STORE_AMBIGUOUS error with store-tagged candidates, and single-store fallback. getProjectStatus() bypass block confirmed removed. 34 new/updated tests all pass. Full suite 3,868 tests green. TypeScript clean. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-07-24T19:55:44Z",
+      "notes": [
+        "WP-003 PASS. resolveProjectPath() multi-store extension is clean — correct guard (isStoreContextInitialized() && isMultiStoreMode()), all four FOUND/MULTI_STORE_AMBIGUOUS/AMBIGUOUS/NOT_FOUND statuses handled. getProjectStatus() bypass removal is correct; the store-root resolution block is correctly preserved post-resolveProjectPath(). Tests are thorough with exact format verification. Two Fix-Forward applied: empty-candidates fallback + misleading test comment fix. Ready for documentation pipeline."
+      ]
+    }
+  ]
+}

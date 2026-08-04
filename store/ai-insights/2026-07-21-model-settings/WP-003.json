@@ -1,0 +1,223 @@
+{
+  "work_package_id": "WP-003",
+  "work_package_file": "work/WP-004.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "`name-mapping.json` includes `model`, `model_slug`, `cc_model`, and `suite` fields in each entry after a build",
+      "met": true
+    },
+    {
+      "criterion": "`name-mapping.json` covers all three persona suites — not just ledger",
+      "met": true
+    },
+    {
+      "criterion": "Standalone and ledger-support entries have `number: null` and `suite` set to `\"standalone\"` or `\"ledger-support\"` respectively",
+      "met": true
+    },
+    {
+      "criterion": "`role` for non-ledger personas is derived by stripping the suite suffix from the persona `name` field (e.g., `\"Developer (Standalone)\"` → `\"Developer\"`)",
+      "met": true
+    },
+    {
+      "criterion": "For standalone and ledger-support suites, when no model override exists, the entry resolves to `model: \"Inherit / Auto\"`, `model_slug: \"inherit\"`, `cc_model: \"inherit\"`",
+      "met": true
+    },
+    {
+      "criterion": "The `AGENT_NAMES` constant in `constants.ts` only includes ledger entries — standalone entries with colliding role names (e.g., `\"Developer\"`) do not overwrite ledger entries",
+      "met": true
+    },
+    {
+      "criterion": "The model resolution in `build-personas.js` follows the same priority chain as the build plugin: `assignments.json` > per-persona YAML > `_shared.yaml` default",
+      "met": true
+    },
+    {
+      "criterion": "The `NameMappingEntry` interface accommodates the new fields and widened types without breaking existing consumers",
+      "met": true
+    },
+    {
+      "criterion": "Model resolution tests pass",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-07-21T13:49:55Z",
+      "completed_at": "2026-07-21T13:58:17Z",
+      "duration_ms": 502000,
+      "summary": [
+        "Implemented multi-suite name-mapping generation and model resolution in build-personas.js, updated NameMappingEntry interface in constants.ts, and created comprehensive model resolution tests. Key changes: (1) Extracted model resolution logic into scripts/lib/persona-model-resolution.js as a standalone importable module with loadModelRegistry() and resolveModel(); (2) Extended build-personas.js name-mapping pass to cover all three suites (ledger, standalone, ledger-support) with model/model_slug/cc_model/suite fields; (3) Added deriveRole() to strip suite suffixes from persona names; (4) Updated NameMappingEntry interface with widened number/role types and new optional fields; (5) Added .filter(e => !e.suite || e.suite === 'ledger') to AGENT_NAMES construction; (6) Fixed a pre-existing parseYamlScalars bug where quoted values followed by inline comments were not properly unquoted; (7) Wrote 17 passing unit tests covering all priority chain cases, inherit skip behavior, partial assignments, and loadModelRegistry file-loading scenarios."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "scripts/build-personas.js",
+          "mcp-server/src/utils/constants.ts",
+          "scripts/lib/persona-model-resolution.js",
+          "scripts/tests/build-personas-model-resolution.test.js",
+          "personas/name-mapping.json"
+        ]
+      },
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-07-21T13:50:00Z",
+          "note": "parseYamlScalars() in build-personas.js had a pre-existing bug: quoted scalar values followed by an inline YAML comment (e.g., `key: \"value\"  # comment`) were not correctly unquoted because the endsWith('\"') check failed when the trailing comment followed the closing quote. The fix changes the strategy to detect the opening quote first, find the matching closing quote, and extract the content — rather than relying on startsWith/endsWith symmetry. This was latent for the original 7 scalar fields but surfaced immediately with default_model and default_model_slug from _shared.yaml."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T13:50:00Z",
+          "note": "The model resolution helper (scripts/lib/persona-model-resolution.js) is now a standalone ESM module importable by both build-personas.js and tests. The same resolution logic was previously duplicated inline inside the if (!CHECK) block — extracting it to a module improves testability and eliminates the duplication."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-07-21T13:50:00Z",
+          "note": "The non-ledger entries in name-mapping.json are sorted alphabetically by suite then role. This ensures stable diff output across builds, but the ledger entries sort by number (as before). A future reader of the file will notice mixed sort strategies — a comment in build-personas.js documents this intent."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-07-21T13:58:47Z",
+      "completed_at": "2026-07-21T14:02:53Z",
+      "duration_ms": 246000,
+      "summary": [
+        "All 9 acceptance criteria verified. Build compiles cleanly (tsc --noEmit PASS). All 107 tests pass including the 17 model resolution unit tests. name-mapping.json contains 40 entries: 9 ledger + 10 ledger-support + 21 standalone. Every entry carries model, model_slug, cc_model, suite fields (AC-1). All three suites present (AC-2). Non-ledger entries have number: null (AC-3). Role derivation strips suffixes correctly — no '(Standalone)' or '(Ledger Support)' in any role field (AC-4). All non-ledger entries resolve to Inherit / Auto sentinel (AC-5, expected since no assignments.json or per-YAML model in dev environment). AGENT_NAMES filter correctly excludes the 'Developer (Standalone)' entry and 30 other non-ledger entries — AGENT_NAMES contains exactly 9 ledger entries (AC-6). Priority chain integration tested with a live assignments.json: per-persona assignment wins, inherit skip falls through to YAML, default_model_uuid applies to unspecified personas (AC-7). NameMappingEntry widened types compile without errors and downstream consumers (workflow-handoff.ts) only access target sub-fields unaffected by the type widening (AC-8). parseYamlScalars bug fix for quoted+commented YAML scalars verified correct — Claude Sonnet 4.6 correctly parsed from _shared.yaml."
+      ],
+      "metrics": {
+        "test_coverage": "17 model resolution unit tests + 90 regression tests",
+        "tests_passed": 107,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T14:02:53Z",
+          "note": "scripts/lib/persona-model-resolution.js loadModelRegistry(): when local.json (or default.json) parses successfully but contains a non-array JSON value (e.g., {}), the code silently skips it without emitting a warning. The try/catch only catches parse errors. A warn() call when !Array.isArray(parsed) would improve diagnosability for misconfigured registry files. This is low risk since the graceful degradation is correct — no crash, no bad data."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T14:02:53Z",
+          "note": "No coverage gap for the case where a persona's YAML model_slug is a valid slug but has no entry in the registry (slugToEntry miss). The resolveModel() code falls back to using the slug itself as the model name and 'inherit' as cc_model — correct behavior, verified via Edge Case in this QA pass. A test for this path would improve completeness."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-07-21T14:03:18Z",
+      "completed_at": "2026-07-21T14:04:50Z",
+      "duration_ms": 92000,
+      "summary": [
+        "[PASS] Code review completed across all 5 modified files. The implementation is clean, well-factored, and architecturally sound. Key strengths: (1) `persona-model-resolution.js` is a well-extracted pure module with injected warn() for testability — an excellent pattern for build tooling; (2) the parseYamlScalars fix uses a correct quote-finding strategy (finding closeIdx rather than endsWith) and handles the unclosed-quote edge case gracefully; (3) AGENT_NAMES filter `!entry.suite || entry.suite === 'ledger'` is backward-compatible for legacy entries missing the suite field; (4) test coverage covers all 5 priority chain steps, both inherit-skip branches, and graceful degradation paths. Two documentation-forward items tagged for the Documentation agent. One low-priority improvement observation recorded (slugToEntry rebuild per call)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "scripts/build-personas.js",
+          "mcp-server/src/utils/constants.ts",
+          "scripts/lib/persona-model-resolution.js",
+          "scripts/tests/build-personas-model-resolution.test.js",
+          "personas/name-mapping.json"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T14:04:50Z",
+          "note": "resolveModel() rebuilds the slugToEntry Map on every invocation (lines 116–121 of persona-model-resolution.js). At build time this is called once per persona (~40 calls), so there is no measurable performance impact today. However, if this function is ever called in a tighter loop (e.g., a watch-mode rebuild or incremental update), the repeated construction from the same registryEntries array will be unnecessary overhead. The clean fix would be to accept a pre-built slugToEntry Map as a parameter (parallel to uuidToSlug), or have loadModelRegistry() return it alongside uuidToSlug. Not a blocker — just a long-term callout."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T14:04:50Z",
+          "note": "In build-personas.js (line 385), the non-ledger resolveModel() call passes `data.model_slug || suiteDefaultModelSlug` as the yamlModelSlug argument. This collapses two distinct priority levels — (a) per-persona YAML model_slug and (b) suite-level _shared.yaml default_model_slug — into one parameter with a JS `||` fallback. This is semantically correct since both levels should fall before assignments.json default_model_uuid in the final priority order, but it means the suite-level default is treated identically to a per-persona YAML override rather than as a separate fallback tier. A comment at line 385 clarifying this intentional collapsing would help future readers who may expect a separate tier for suite-level defaults."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-07-21T14:04:50Z",
+          "note": "[documentation-forward] scripts/lib/persona-model-resolution.js is a new public module with no external documentation. The README or a build scripts guide should document: (1) the module's role in the build pipeline, (2) the priority chain for resolveModel() (5 levels), (3) the loadModelRegistry() function's inputs (registryDir path, optional warn override) and its graceful-degradation behavior when files are absent. Consumers who need to extend model resolution or debug mismatches will otherwise need to reverse-engineer the JSDoc."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-07-21T14:04:50Z",
+          "note": "[documentation-forward] The NameMappingEntry interface in constants.ts (lines 147–173) now has `suite`, `model`, `model_slug`, and `cc_model` documented as optional fields. A note in the interface JSDoc (or an adjacent code comment) explaining why these are optional (`?`) rather than required would help consumers — specifically, the intent is that pre-existing ledger entries built before this WP would lack these fields if the JSON were not regenerated. Clarifying that these are only absent if name-mapping.json is from an old build would prevent future confusion."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-07-21T14:05:11Z",
+      "completed_at": "2026-07-21T14:11:25Z",
+      "duration_ms": 374000,
+      "summary": [
+        "Addressed both reviewer-forwarded documentation items. (1) Added two new sections to personas/docs/persona-build-system.md — 'Name-Mapping Generation' (covers all three suites, field table, AGENT_NAMES filter, role derivation for non-ledger suites) and 'Model Resolution' (documents scripts/lib/persona-model-resolution.js: loadModelRegistry() parameters/returns/graceful-degradation, resolveModel() 5-level priority chain and parameter reference). Also added two Quick Reference rows for these topics. (2) Expanded the NameMappingEntry interface JSDoc in mcp-server/src/utils/constants.ts with a block-level note explaining that suite/model/model_slug/cc_model are typed as optional only for backward compatibility with pre-WP-003 builds, and that all current builds always produce them — with a recommended guard pattern for stale-file consumers. CTX context updated: personas/module-context.yaml gained a new 'Personas - Build System Guide' document; ctx generate ran cleanly."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "personas/docs/persona-build-system.md",
+          "mcp-server/src/utils/constants.ts",
+          "personas/module-context.yaml",
+          ".context/personas/build-system-guide.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T14:11:25Z",
+          "note": "The 'Model Resolution' section in persona-build-system.md references scripts/lib/persona-model-resolution.js with full function signatures. If the module's API changes in future (e.g. the resolveModel() parameter order), this section should be updated alongside the code — consider adding a note in the module's file header pointing readers to this doc page."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-07-21T14:11:25Z",
+  "last_updated": "2026-07-21T14:11:25Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-07-21T13:58:17Z",
+      "notes": [
+        "All 9 acceptance criteria met. Key test surface: scripts/tests/build-personas-model-resolution.test.js covers all 5 priority chain levels, inherit-skip behavior at levels 1 and 3, partial assignments, and loadModelRegistry file loading/graceful degradation (17 tests). The build emits 40 entries (9 ledger + 31 non-ledger). TypeScript compiles cleanly (tsc --noEmit). A pre-existing parseYamlScalars bug was fixed as part of this implementation (quoted+commented YAML scalars weren't unquoted correctly). QA should verify: (1) that the AGENT_NAMES filter correctly excludes non-ledger entries from the constants map, (2) that a build with a present assignments.json correctly overrides model fields in the generated name-mapping.json, and (3) that the TypeScript widened types (number | null, string for role) do not create type errors in downstream consumers of NameMappingEntry."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-07-21T14:02:53Z",
+      "notes": [
+        "All 9 ACs met and verified through code review, runtime execution, integration tests, and edge-case analysis. 107/107 tests pass with zero regressions. Key verified behaviors: (1) AGENT_NAMES filter is .filter(e => !e.suite || e.suite === 'ledger') — correctly excludes 31 non-ledger entries including the 'Developer (Standalone)' collision; (2) priority chain integration-tested with a live assignments.json against the real model-registry/default.json; (3) parseYamlScalars quoted+comment fix confirmed working for both default_model and default_model_slug from _shared.yaml. Two low-priority observations recorded as comments — neither is a blocker."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-07-21T14:04:50Z",
+      "notes": [
+        "All 9 ACs confirmed met via code review. PASS — no blocking issues found. Two documentation-forward items tagged: (1) persona-model-resolution.js module needs documentation in README/build guide covering priority chain, inputs, and graceful-degradation behavior; (2) NameMappingEntry optional fields (suite, model, model_slug, cc_model) need a JSDoc note clarifying they are optional only for pre-WP-003 builds. One low-priority improvement observation recorded (slugToEntry map rebuild per resolveModel() call — not a blocker, but worth addressing if this becomes a hot path). No behavioral changes were made during review."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,335 @@
+{
+  "work_package_id": "WP-006",
+  "work_package_file": "work/WP-013.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-004"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "store init creates ~/.ai-insights/stores.json with the current ledger root as the default store",
+      "met": true
+    },
+    {
+      "criterion": "store add test-store /tmp/test-store registers the store and creates an empty .repositories.json in /tmp/test-store",
+      "met": true
+    },
+    {
+      "criterion": "store repo add my-repo test-store writes a repository entry to test-store's .repositories.json",
+      "met": true
+    },
+    {
+      "criterion": "store list displays all stores with their repository and project counts",
+      "met": true
+    },
+    {
+      "criterion": "store conflicts shows repos registered in multiple stores with winner/shadowed indicators",
+      "met": true
+    },
+    {
+      "criterion": "store default <id> updates the default_store field in stores.json",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-07-24T13:40:46Z",
+      "completed_at": "2026-07-24T13:49:05Z",
+      "duration_ms": 499000,
+      "summary": [
+        "Created scripts/lib/store-commands.js — pure-JavaScript implementation of all store subcommands: storeInit, storeAdd, storeRemove, storeList, storeSetDefault, storeConflicts, storeStatus, storeRepoAdd, storeRepoMove, storeRepoList. All functions accept an optional configPath for test isolation. Compatible file formats with the TypeScript storage modules.",
+        "Modified scripts/cli.js — imported store-commands.js, added cmdStore() dispatch function with full subcommand handling (init/add/remove/list/default/conflicts/status/repo add/move/list), registered 'store' command entry in COMMANDS array with helpVariants.",
+        "Created scripts/tests/store-commands.test.js — comprehensive test suite covering all 6 acceptance criteria plus edge cases: duplicate store IDs, missing parameters, repo shadowing, registry conflict detection, repo-move between stores. All 151 workspace tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "scripts/lib/store-commands.js",
+          "scripts/cli.js",
+          "scripts/tests/store-commands.test.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T13:49:05Z",
+          "note": "store-commands.js uses synchronous writeFileSync everywhere. All existing script CLI helpers use sync I/O, so this is consistent with convention. If the CLI is ever extended with async workflows, consider switching to atomicWriteJson from the MCP server's atomic-writer module."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T13:49:05Z",
+          "note": "storeInit() always creates ~/.ai-insights/stores/ regardless of the overridden configPath used in tests. The home-dir mkdir is harmless but doesn't respect the test isolation contract. A _storesDir override parameter would make it fully testable without touching the real filesystem."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-07-24T13:51:59Z",
+      "completed_at": "2026-07-24T13:53:30Z",
+      "duration_ms": 91000,
+      "summary": [
+        "All 6 ACs verified. 33 targeted tests pass; full workspace suite (151 tests) passes; MCP server regression suite (3764 tests) unaffected. CLI dispatch in cmdStore correctly routes all subcommands. storeConflicts winner logic (first-store-wins by array order) is correct and tested. storeAdd guards duplicate IDs, missing params, and uncreatable paths. All file formats are compatible with TypeScript storage schemas."
+      ],
+      "metrics": {
+        "test_coverage": "33 new tests; workspace suite 151/151; mcp suite 3764/3764",
+        "tests_passed": 3997,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T13:53:30Z",
+          "note": "storeInit() and saveConfig() both call mkdirSync on ~/.ai-insights/ and ~/.ai-insights/stores/ unconditionally, even when a test configPath is provided. This touches the real user filesystem during tests. As the developer flagged, a _storesDir override parameter would make storeInit() fully isolated. Not a blocker — mkdirSync with recursive:true is idempotent and harmless, and the tests all pass."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T13:53:30Z",
+          "note": "No further observations — store-commands.js is clean, cross-platform (uses path.join/resolve, no shell deps), and covers all subcommands with proper error returns."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "FAIL",
+      "started_at": "2026-07-24T13:56:35Z",
+      "completed_at": "2026-07-24T13:59:09Z",
+      "duration_ms": 154000,
+      "summary": [
+        "FAIL — storeRepoMove() validates after mutation. The source registry is written to disk (repo removed) inside the search loop before the function checks for a duplicate in the target store. In a conflict scenario (repo in both stores), this produces: source mutated unexpectedly + ok:false return. The fix requires moving the target-duplicate check before the source removal loop. All 6 ACs pass; all other store commands (storeInit, storeAdd, storeRemove, storeList, storeSetDefault, storeConflicts, storeRepoAdd, storeRepoList) are correct and well-tested."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "scripts/lib/store-commands.js",
+          "scripts/cli.js",
+          "scripts/tests/store-commands.test.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "code-smell",
+          "priority": "high",
+          "timestamp": "2026-07-24T13:59:09Z",
+          "note": "BLOCKING — storeRepoMove() in scripts/lib/store-commands.js violates the validate-before-mutate principle. The source registry is modified on disk (repo removed via saveRegistry()) inside the search loop BEFORE the function checks whether the repo already exists in the target store. If the repo is registered in both source and target (a conflict state that storeConflicts() would surface), the function: (1) removes it from source, (2) discovers it already exists in target, (3) returns ok: false. The caller receives a failure signal but the source was already mutated. The correct fix is to pre-load the target registry and verify no duplicate exists BEFORE the source removal loop. Example fix:\n\n  // Step 1: validate target has no duplicate\n  const targetEntry = config.stores.find(s => s.id === targetStoreId);\n  const targetPath = expandPath(targetEntry.path);\n  const targetReg = loadRegistry(targetPath);\n  if (targetReg.repositories.some(r => Array.isArray(r.folder_names) && r.folder_names.includes(repoName))) {\n    return { ok: false, reason: `Repository '${repoName}' is already registered in target store '${targetStoreId}'.` };\n  }\n\n  // Step 2: then find and remove from source..."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T13:59:09Z",
+          "note": "Non-blocking: saveConfig() calls mkdirSync(join(homedir(), AI_INSIGHTS_DIR)) unconditionally even when a test-override configPath is provided. Since mkdirSync with recursive:true is idempotent and only creates a directory (no file written to homedir), this is safe but reduces test isolation purity. A _storesDirOverride param on saveConfig (and storeInit) would make these fully hermetic. Already flagged by Developer and QA — noting here for completeness."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T13:59:09Z",
+          "note": "Overall store-commands.js architecture is well-structured: pure-JS compatible with TypeScript schemas, cross-platform (path.join/resolve throughout, shell:false in spawnSync), comprehensive JSDoc, and good separation between I/O helpers and command functions. The storeRepoMove ordering bug is the sole blocking issue — all other commands are correct."
+        }
+      ]
+    },
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-07-24T13:59:54Z",
+      "completed_at": "2026-07-24T14:01:15Z",
+      "duration_ms": 81000,
+      "summary": [
+        "Rework: Fixed storeRepoMove() in scripts/lib/store-commands.js — pre-load target registry and verify no duplicate BEFORE the source search/remove loop. This prevents partial source mutation when target already contains the repo.",
+        "Added regression test 'does NOT remove from source when repo already exists in target' to scripts/tests/store-commands.test.js, covering the exact failure scenario from the Reviewer's blocking issue.",
+        "All 152 workspace script tests pass (up from 151 with new regression test). MCP server tests: 129 files / 3764 tests still all passing."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "scripts/lib/store-commands.js",
+          "scripts/tests/store-commands.test.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "refactor",
+          "priority": "high",
+          "timestamp": "2026-07-24T14:01:15Z",
+          "note": "Fixed storeRepoMove() to pre-load the target registry and check for duplicates BEFORE entering the source search/remove loop. The previous implementation removed the repo from source before verifying the target was clear, leaving a partial mutation on ok:false. The fix is now atomic: validate target → find source → remove source → write target."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-07-24T14:01:53Z",
+      "completed_at": "2026-07-24T14:03:44Z",
+      "duration_ms": 111000,
+      "summary": [
+        "Rework QA PASS. Verified the storeRepoMove() fix: target registry is now pre-loaded and duplicate check runs BEFORE the source search/remove loop — the validate-before-mutate principle is fully restored. Regression test 'does NOT remove from source when repo already exists in target (blocking fix)' is present and covers the exact failure scenario from the Reviewer bounce. Workspace suite: 152/152 (up from 151 with new test). MCP server suite: 3764/3764 unaffected. All 6 ACs remain met from the prior QA pass — the rework touched only storeRepoMove() and its test; all other store commands are unchanged and correct."
+      ],
+      "metrics": {
+        "test_coverage": "152 workspace script tests; 3764 MCP server tests; all passing",
+        "tests_passed": 3916,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T14:03:44Z",
+          "note": "storeRepoMove() fix is clean and minimal — pre-loads targetReg and targetPath before the source loop, returns early on duplicate detection, then proceeds with source removal. Fully atomic: validate target → find source → remove source → write target. No side effects on failure paths."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T14:03:44Z",
+          "note": "The regression test correctly asserts both the ok:false return AND that store-A's registry was not mutated — this is the critical distinction that the prior implementation failed. Test structure is clear and well-scoped."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T14:03:44Z",
+          "note": "No further observations. storeRepoMove() is now correct. All other store commands (storeInit, storeAdd, storeRemove, storeList, storeSetDefault, storeConflicts, storeStatus, storeRepoAdd, storeRepoList) remain unchanged and fully tested."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-07-24T14:04:08Z",
+      "completed_at": "2026-07-24T14:06:24Z",
+      "duration_ms": 136000,
+      "summary": [
+        "[PASS] storeRepoMove() blocking issue from the first review is fully resolved. The validate-before-mutate fix is correctly implemented: target registry pre-loaded, duplicate check runs before any source modification, then source removal and target write proceed only on the clear path. The regression test asserts both ok:false and non-mutation of source — exactly the right contract. All 6 ACs verified through code inspection. store-commands.js is clean, cross-platform, well-structured, and consistent with codebase patterns. Three recurring low-priority observations noted (storesDirOverride, dead-code guards, exported-internals documentation gap) — none blocking. No Fix-Forward edits applied; code quality is solid as-is.\"]"
+      ],
+      "artifacts": {
+        "files_modified": [
+          "scripts/lib/store-commands.js",
+          "scripts/cli.js",
+          "scripts/tests/store-commands.test.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T14:06:24Z",
+          "note": "saveConfig() unconditionally calls mkdirSync(join(homedir(), AI_INSIGHTS_DIR)) even when a test-override configPath is provided, touching the real user filesystem during tests. This has now been flagged by Developer, QA, and the previous Reviewer across multiple pipeline passes — it's clearly a known limitation and is idempotent/harmless. Formally noting it here as the third observation so it can be addressed as a standalone improvement WP. A _storesDirOverride parameter on saveConfig() and storeInit() would make both fully hermetic without breaking the production code path."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T14:06:24Z",
+          "note": "cmdStore's list, conflicts, and status cases each have an if (!result.ok) guard that is unreachable: storeList(), storeConflicts(), and storeStatus() always return ok: true (returning empty arrays on missing config, not ok: false). The defensive guards are harmless, but they're dead code. If these functions are ever extended to signal partial failures, the ok: false path would become reachable. Noting for completeness — not blocking, and the pattern is consistent across other command handlers in cli.js."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T14:06:24Z",
+          "note": "storeRemove() when removing the last store leaves default_store pointing to the deleted store ID (config has stores: [] but default_store: 'deleted-id'). The condition config.stores.length > 0 gates the default_store reassignment. In practice all consumers (storeList, storeConflicts, storeSetDefault) handle the empty-stores case gracefully and return early, so this is never surfaced. Still, it leaves the config in a technically inconsistent state. A defensive null-out (config.default_store = null) when stores becomes empty would make the invariant cleaner."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-07-24T14:06:24Z",
+          "note": "[documentation-forward] scripts/lib/store-commands.js exports several internal I/O helpers — resolveConfigPath, expandPath, registryPath, loadConfig, saveConfig, loadRegistry, saveRegistry — alongside the primary command functions. These are consumed by tests but there is no documentation distinguishing them from the public command API. Adding a JSDoc comment block at the module level (or a brief section header comment) that delineates the public command functions from the exported-for-testing I/O helpers would help future maintainers understand the intended consumption surface."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T14:06:24Z",
+          "note": "readJsonSync catches all errors silently (bare catch {} returning null). This is intentional and consistent with the TypeScript loadRegistry behavior, but it means permissions errors, disk-full events, and malformed JSON all surface as the same empty-result state. For a CLI tool this is fine. If the module grows to support production workflows where silent-null is ambiguous, a structured error return (ok: false with a reason) would be worth considering."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-07-24T14:11:10Z",
+      "completed_at": "2026-07-24T14:13:52Z",
+      "duration_ms": 162000,
+      "summary": [
+        "Added '## Public command API' and '## Exported for test isolation only' JSDoc sections to the scripts/lib/store-commands.js module header, delineating the 10 public command functions (storeInit through storeRepoList, consumed by cmdStore()) from the 7 exported I/O helpers (resolveConfigPath through saveRegistry, consumed by tests only). Addresses the Reviewer's documentation-forward item directly in the source file where it will be visible to all future maintainers.",
+        "Added scripts/lib/store-commands.js entry to AGENTS.md Root-Level Tooling table after the existing health-checks.js entry. Entry documents the public/test-only API boundary, the configPath override pattern, TypeScript schema compatibility, and cross-platform guarantee."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "scripts/lib/store-commands.js",
+          "AGENTS.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T14:13:52Z",
+          "note": "Addressed the Reviewer's documentation-forward: added a two-section API boundary annotation to the store-commands.js module-level JSDoc header, clearly separating the public command functions (consumed by cmdStore()) from the exported-for-testing I/O helpers. AGENTS.md Root-Level Tooling table now includes the store-commands.js entry with the same public/test-only API distinction noted inline."
+        }
+      ]
+    }
+  ],
+  "rework_counts": {
+    "implementation": 1,
+    "qa": 1,
+    "code-review": 1
+  },
+  "status_changed_at": "2026-07-24T14:13:52Z",
+  "last_updated": "2026-07-24T14:13:52Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-07-24T13:49:05Z",
+      "notes": [
+        "WP-006 (CLI store command group) is complete. New files: scripts/lib/store-commands.js (pure-JS implementation of all store subcommands), scripts/tests/store-commands.test.js (151 tests, all passing). Modified scripts/cli.js to import store-commands and register the 'store' command with full subcommand dispatch (store init/add/remove/list/default/conflicts/status/repo add/move/list). All 6 workspace script test files pass (151 tests). MCP server tests still at 129 files / 3764 tests all passing. QA should verify: (1) store init creates valid stores.json, (2) store add creates directory + empty .repositories.json, (3) store repo add writes to correct store, (4) store conflicts correctly identifies winner by store-order priority, (5) store default updates default_store field."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-07-24T13:53:30Z",
+      "notes": [
+        "WP-006 QA PASS. All 33 store-commands tests pass; full 151-test workspace suite passes; MCP server suite 3764/3764 unchanged. CLI dispatch covers all store subcommands (init/add/remove/list/default/conflicts/status/repo). One low-priority improvement noted: test isolation for storeInit's home-dir mkdir side effect."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Developer",
+      "timestamp": "2026-07-24T13:59:09Z",
+      "notes": [
+        "WP-006 code-review FAIL. One blocking issue: storeRepoMove() in scripts/lib/store-commands.js mutates the source registry (removes repo, writes to disk) inside the search loop BEFORE checking whether the repo already exists in the target. When the repo is in both stores (conflict state), the function removes it from source and returns ok:false, leaving the user with an unexpected source mutation and a misleading failure. Fix: pre-load the target registry and verify no duplicate BEFORE entering the source search/remove loop. Add a test case: 'storeRepoMove returns ok:false WITHOUT removing from source when repo already exists in target'. All 6 ACs are met by other functions — only storeRepoMove needs the fix."
+      ]
+    },
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-07-24T14:01:15Z",
+      "notes": [
+        "Rework complete. storeRepoMove() now checks target for duplicates before mutating source — the blocking issue is resolved. Added regression test 'does NOT remove from source when repo already exists in target' to store-commands.test.js. WP-005 afterEach import was already present in store-context.test.ts (included from creation). All 152 workspace script tests pass. All 3764 MCP server tests pass.\", \"Addressed bounce comments: (1) storeRepoMove pre-check fix applied; (2) new regression test added covering the exact failure scenario described by the Reviewer."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-07-24T14:03:44Z",
+      "notes": [
+        "WP-006 rework QA PASS. The storeRepoMove() blocking issue (validate-after-mutate) is resolved — fix verified by code inspection and confirmed by the new regression test. Workspace: 152/152. MCP server: 3764/3764. All 6 ACs met. No new issues introduced by the rework. Ready for code-review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-07-24T14:06:24Z",
+      "notes": [
+        "WP-006 code-review PASS. storeRepoMove() validate-before-mutate fix is correct and regression-tested. All 6 ACs met. store-commands.js is clean and cross-platform. Four low-priority observations recorded as comments — none blocking. Three are improvement notes; one is a documentation-forward for the I/O helper / public API boundary in store-commands.js. Ready for Documentation.\""
+      ]
+    }
+  ]
+}

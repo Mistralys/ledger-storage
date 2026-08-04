@@ -1,0 +1,193 @@
+{
+  "work_package_id": "WP-003",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "reloadStoreContext() re-reads stores.json and updates the module-level StoreRouter and MultiStoreManager singletons.",
+      "met": true
+    },
+    {
+      "criterion": "After calling reloadStoreContext(), getStoreRouter() returns the newly created router.",
+      "met": true
+    },
+    {
+      "criterion": "When stores.json is absent or schema-invalid, reloadStoreContext() returns null and sets legacy-mode context.",
+      "met": true
+    },
+    {
+      "criterion": "The StoreRouter is constructed with skipDirCreate: true during reload.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-08-01T13:16:12Z",
+      "completed_at": "2026-08-01T13:18:44Z",
+      "duration_ms": 152000,
+      "summary": [
+        "Added reloadStoreContext() to store-context.ts — re-reads stores.json via loadStoresConfig(), constructs a fresh StoreRouter with skipDirCreate:true and a new MultiStoreManager, then calls setStoreContext() to update the module-level singletons. Returns the parsed StoresConfig or null for missing/malformed/schema-invalid config (restoring legacy mode). Added an optional configPath parameter to support test isolation without filesystem side-effects.",
+        "Changed the two type-only imports (StoreRouter, MultiStoreManager) to value imports to allow instantiation within the new function. Added imports for loadStoresConfig and the StoresConfig type.",
+        "Created tests/storage/store-context-reload.test.ts with 7 test cases covering: valid config reload (router switches to multi-store mode), getStoreRouter() reflecting the new instance, missing stores.json → null + legacy mode, malformed JSON → null + legacy mode, schema-invalid JSON → null + legacy mode, skipDirCreate verification (non-existent store directory is NOT auto-created). All 358 storage-layer tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/storage/store-context.ts",
+          "mcp-server/tests/storage/store-context-reload.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-01T13:18:44Z",
+          "note": "store-context.ts: The module-level JSDoc block at the top describes setStoreContext() as 'called exactly once per process startup', but reloadStoreContext() deliberately allows repeated calls. A brief note in the module-level comment to mention this is now intentional would avoid future confusion."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-01T13:18:44Z",
+          "note": "The configPath override parameter on reloadStoreContext() exists purely for test isolation. If this function is later exposed via a GUI API endpoint, callers must not be allowed to pass arbitrary paths — the parameter should be omitted from the public API surface and kept as an internal test hook only."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-08-01T13:19:08Z",
+      "completed_at": "2026-08-01T13:20:18Z",
+      "duration_ms": 70000,
+      "summary": [
+        "All 4 ACs verified. 7 dedicated tests pass (store-context-reload.test.ts). Full storage regression suite: 358/358 tests pass across 15 files. TypeScript build: no errors. All edge cases (missing config, malformed JSON, schema-invalid JSON, skipDirCreate) covered by tests and behave correctly."
+      ],
+      "metrics": {
+        "test_coverage": "7 dedicated + 358 regression",
+        "tests_passed": 7,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-01T13:20:18Z",
+          "note": "No issues found. Code is clean and consistent. The configPath override is correctly scoped to tests and not exposed via any public API surface."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-08-01T13:20:41Z",
+      "completed_at": "2026-08-01T13:21:46Z",
+      "duration_ms": 65000,
+      "summary": [
+        "Implementation is clean and correct. reloadStoreContext() is minimal, fail-safe (StoreRouter/MultiStoreManager constructors throw before setStoreContext() is called, leaving prior state intact), and fully satisfies all four ACs. Two stale JSDoc blocks describing single-startup semantics were corrected in-place (Fix-Forward). No blocking issues found."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/storage/store-context.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-08-01T13:21:46Z",
+          "note": "store-context.ts: Updated the module-level JSDoc block — replaced 'Set once per process startup via setStoreContext()' with language that reflects the hot-reload capability added by reloadStoreContext(). Purely a documentation correction; no behavioral change."
+        },
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-08-01T13:21:46Z",
+          "note": "store-context.ts: Updated the setStoreContext() JSDoc — removed 'Must be called exactly once per process startup' which is now misleading. Replaced with 'Called once at process startup and again by reloadStoreContext() whenever stores.json changes at runtime.' Purely a documentation correction; no behavioral change."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-08-01T13:21:46Z",
+          "note": "[documentation-forward] The reloadStoreContext() @param configPath note says 'used in tests to inject a temporary config file' but does not explicitly warn callers that this parameter must NOT be exposed via any GUI API endpoint. Add a one-line warning to the JSDoc: 'Internal test hook — must not be forwarded from HTTP handlers or public API surfaces.' This makes the contract unambiguous for future contributors working on WP-004 store CRUD handlers."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-01T13:21:46Z",
+          "note": "No concurrency guard on reloadStoreContext(): two overlapping calls will race and the last writer wins. Acceptable for the GUI use case (user-triggered sequential config changes) but worth noting for any future high-frequency reload path."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-08-01T13:22:16Z",
+      "completed_at": "2026-08-01T13:23:43Z",
+      "duration_ms": 87000,
+      "summary": [
+        "Addressed the documentation-forward from the Reviewer: added a one-line 'Internal test hook — must not be forwarded from HTTP handlers or public API surfaces.' warning to the @param configPath JSDoc in store-context.ts.",
+        "Updated api-surface.md: corrected the reloadStoreContext() function signature to include the optional configPath parameter, and expanded the description prose to document the test-hook constraint and the requirement that GUI callers invoke the function with no arguments.",
+        "No other documentation gaps found — the module-level JSDoc and setStoreContext() JSDoc were already corrected by the Reviewer's Fix-Forward during the code-review pipeline. TypeScript build remains clean after the JSDoc update.",
+        "CTX context docs (.context/mcp-server/manifest-api-surface.md) will be stale until the next `node scripts/cli.js ctx-generate` run."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/storage/store-context.ts",
+          "mcp-server/docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-08-01T13:23:43Z",
+          "note": "api-surface.md: reloadStoreContext() signature was missing the configPath?: string parameter — corrected. The prose description now explicitly states that GUI/HTTP callers must invoke with no arguments, making the test-hook constraint unambiguous for WP-004 contributors."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-01T13:23:43Z",
+          "note": "CTX context doc .context/mcp-server/manifest-api-surface.md mirrors api-surface.md and will be stale after this update. Regenerate with `node scripts/cli.js ctx-generate` before the next release."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-08-01T13:23:43Z",
+  "last_updated": "2026-08-01T13:23:43Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-08-01T13:18:44Z",
+      "notes": [
+        "reloadStoreContext() is fully implemented and exported from store-context.ts. All four acceptance criteria met. WP-004 (CRUD store handlers) can import and call this function after any saveStoresConfig() write to hot-reload the context without a server restart. The function signature is: `reloadStoreContext(configPath?: string): Promise<StoresConfig | null>` — the configPath parameter is a test-only escape hatch and should not be surfaced to GUI callers."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-08-01T13:20:18Z",
+      "notes": [
+        "All ACs met and tests pass. reloadStoreContext() is safe for Reviewer to assess. Note for Reviewer: the module JSDoc still says 'called exactly once per process startup' — this is now inaccurate since reloadStoreContext() allows repeated calls by design. Minor doc clarity improvement only, not a functional issue."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-08-01T13:21:46Z",
+      "notes": [
+        "PASS. Two Fix-Forward JSDoc corrections applied to store-context.ts (stale single-startup wording). One documentation-forward tagged for the Documentation agent: the @param configPath JSDoc on reloadStoreContext() needs a hard 'must not be exposed via HTTP handlers' warning. No functional changes made — QA validation remains intact."
+      ]
+    }
+  ]
+}

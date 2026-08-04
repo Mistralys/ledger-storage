@@ -1,0 +1,202 @@
+{
+  "work_package_id": "WP-008",
+  "work_package_file": "work/WP-009.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-005"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "ledger_get_repository_context returns projects from all configured stores, not just the default store",
+      "met": true
+    },
+    {
+      "criterion": "Repository metadata (vision, label) is sourced from the merged registry with store-order priority",
+      "met": true
+    },
+    {
+      "criterion": "In single-store mode, behavior is identical to the current implementation",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-07-24T14:31:48Z",
+      "completed_at": "2026-07-24T14:36:09Z",
+      "duration_ms": 261000,
+      "summary": [
+        "Modified repository-context.ts to use multi-store-aware registry and project lookups.",
+        "Registry lookup: replaced loadRegistry(resolveLedgerRoot()) with getMultiStoreManager().getMergedRegistry() in multi-store mode — uses store-order priority for deduplication consistent with StoreRouter.",
+        "Project scanning: replaced LedgerStore.listProjectsByFolderNames(folders, ledgerRoot) (single store) with a loop over getStoreRouter().getAllStorePaths() scanning each store, with plan_path deduplication across stores.",
+        "Insight querying: replaced single KnowledgeStoreManager(ledgerRoot) with getMultiStoreManager().listKnowledge() for cross-store collation with deduplication by insight id.",
+        "Added safeListAllStoreRepositoryInsights() helper mirroring the existing single-store variant.",
+        "All branches guarded by isStoreContextInitialized() so legacy tests (which use vi.mock for ledger-root.js) continue to work via the else path or implicitly via the multi-store path (since getMergedRegistry in legacy mode reads from the same mocked resolveLedgerRoot()).",
+        "All 3777 tests pass (130 files)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/tools/repository-context.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "refactor",
+          "priority": "low",
+          "timestamp": "2026-07-24T14:36:09Z",
+          "note": "repository-context.ts now has two parallel code branches (multi-store and legacy) for registry lookup, project scanning, and insight querying. When project-resolver.ts is eventually updated to use MultiStoreManager, a similar deduplication pattern could be extracted into a shared utility to reduce branching across tool files."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T14:36:09Z",
+          "note": "safeListAllStoreRepositoryInsights() and safeListRepositoryInsights() are very similar. If MultiStoreManager.listKnowledge() is made the sole code path (dropping the legacy else branch), the single-store helper can be removed and only one function is needed."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-07-24T14:53:58Z",
+      "completed_at": "2026-07-24T14:56:19Z",
+      "duration_ms": 141000,
+      "summary": [
+        "Build check: TypeScript compilation clean.",
+        "Regression: 3787 tests across 131 files — all pass.",
+        "AC1 — code inspection confirms getRepositoryContext() calls getStoreRouter().getAllStorePaths() and iterates each store via LedgerStore.listProjectsByFolderNames(), deduplicating by plan_path. getAllStorePaths() returns all configured store paths in config order (verified at storage layer).",
+        "AC2 — code inspection confirms registry lookup uses getMultiStoreManager().getMergedRegistry() which applies store-order priority deduplication by repository id. getMergedRegistry() is tested in multi-store-conflicts.test.ts with 4+ tests.",
+        "AC3 — 28 existing tests in repository-context.test.ts exercise the legacy (single-store) path and all pass, confirming behavior unchanged.",
+        "Insight querying uses getMultiStoreManager().listKnowledge() in multi-store mode with id-based deduplication. safeListAllStoreRepositoryInsights() correctly suppresses SlugValidationError while re-throwing I/O errors — consistent with single-store safeListRepositoryInsights() semantics.",
+        "No tool-level integration tests for multi-store code paths (excluded from WP-008 scope) — flagged as medium-priority improvement for a follow-up pass."
+      ],
+      "metrics": {
+        "test_coverage": "28 existing repository-context tests verify legacy path (AC3); getMergedRegistry and getAllStorePaths tested at storage level for AC1/AC2",
+        "tests_passed": 3787,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-07-24T14:56:19Z",
+          "note": "AC1 and AC2 have no tool-level integration tests — the multi-store code paths in repository-context.ts are exercised by underlying storage-layer tests (multi-store-conflicts.test.ts covers getMergedRegistry(); store-router.test.ts covers getAllStorePaths()) but not by end-to-end _internal handler tests. The delegation logic is straightforward and correct by inspection, but a future test for getRepositoryContext() exercising the isStoreContextInitialized() branch would harden these ACs."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T14:56:19Z",
+          "note": "AC3 (single-store mode) is comprehensively covered by the 28 existing repository-context.test.ts tests, all of which use vi.mock to redirect resolveLedgerRoot() and exercise the legacy path. All 28 pass. Full regression: 3787 tests across 131 files pass, including all 30 tool-level test files."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-07-24T15:34:21Z",
+      "completed_at": "2026-07-24T15:36:03Z",
+      "duration_ms": 102000,
+      "summary": [
+        "WP-008 code-review PASS with one Fix-Forward applied.",
+        "Step 2 (registry): getMergedRegistry() with .find(e => e.folder_names.includes(repositoryName)) is correct. Store-order priority deduplication is consistent with StoreRouter.resolveStoreForWrite() — both use the same first-match-wins rule.",
+        "Step 4 (project scanning): Iterating getAllStorePaths() and deduplicating by plan_path is correct and sufficient. plan_path is the stable identifier for a project regardless of which store holds it.",
+        "Step 8 (insights): Delegating both global and repository scopes to MultiStoreManager.listKnowledge() is correct. safeListAllStoreRepositoryInsights() correctly mirrors the single-store variant's SlugValidationError suppression with I/O error re-throw.",
+        "Fix-Forward: replaced three independent isStoreContextInitialized() calls with a single const isMultiStore captured once at the top of the try block. No behavioral change — the singleton check always returns the same value within a single function call.",
+        "The parallel dual-helper pattern (safeListRepositoryInsights / safeListAllStoreRepositoryInsights) is a known trade-off of the guard-based branching approach. Developer noted this in their implementation comments. No action needed now; worth tracking for when the legacy path is eventually retired."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/tools/repository-context.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-07-24T15:36:03Z",
+          "note": "Extracted a single const isMultiStore = isStoreContextInitialized() at the start of the try block, replacing three independent calls across steps 2, 4, and 8. Non-behavioral — the guard evaluates the same singleton check each time; caching it makes the invariant explicit: the function operates in either multi-store or legacy mode for its entire duration, not independently per step."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-07-24T15:36:03Z",
+          "note": "AC1/AC2 have no tool-level integration tests — the multi-store branches in repository-context.ts are covered only by inspection and storage-layer tests. The delegation logic is correct and minimal, but _internal tests equivalent to those added in WP-007 for project-lifecycle.ts would harden these ACs and match the test strategy established by WP-007."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-07-24T15:36:03Z",
+          "note": "[documentation-forward] The two safeListRepositoryInsights / safeListAllStoreRepositoryInsights helper functions share identical semantics (suppress SlugValidationError, re-throw all others). The API surface docs should note both helpers and their error-handling contract so future contributors don't inadvertently add a third variant without the SlugValidationError guard."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-07-24T15:43:04Z",
+      "completed_at": "2026-07-24T15:44:54Z",
+      "duration_ms": 110000,
+      "summary": [
+        "Updated api-surface.md for WP-008: (1) ledger_get_repository_context — added 'Multi-store behavior (WP-008)' section documenting the three multi-store read paths (registry via getMergedRegistry with store-order priority, projects via getAllStorePaths loop with plan_path deduplication, insights via safeListAllStoreRepositoryInsights / MultiStoreManager.listKnowledge) and their single-store legacy fallbacks; updated 'Insight sourcing' paragraph to name both safe-insight helpers and document their shared error-handling contract; (2) _internal exports — added safeListAllStoreRepositoryInsights signature with semantics and WP-008 attribution; added invariant note warning that any future helper must preserve slug-validation suppression and I/O re-throw behavior.",
+        "Updated file-tree.md repository-context.ts entry: added safeListAllStoreRepositoryInsights to exports list, expanded handler description to cover both multi-store and legacy code paths, added WP-008 attribution."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/file-tree.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T15:44:54Z",
+          "note": "Addressed the documentation-forward from the Reviewer: api-surface.md now documents both safeListRepositoryInsights (legacy) and safeListAllStoreRepositoryInsights (multi-store) with their shared error-handling contract (suppress SlugValidationError, re-throw I/O errors). The invariant note in the _internal exports block explicitly warns that any future helper of this type must preserve both invariants, preventing silent I/O swallowing."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T15:44:54Z",
+          "note": "ledger_get_repository_context now has a dedicated 'Multi-store behavior (WP-008)' callout documenting all three multi-store read paths (registry via getMergedRegistry, projects via getAllStorePaths loop with plan_path dedup, insights via MultiStoreManager.listKnowledge) and their single-store fallbacks. The isMultiStore const pattern introduced by the Reviewer Fix-Forward is implied by the 'modes operate for entire function duration' wording."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-07-24T15:44:54Z",
+  "last_updated": "2026-07-24T15:44:54Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-07-24T14:36:09Z",
+      "notes": [
+        "WP-008 modifies repository-context.ts to use isStoreContextInitialized() guards throughout: (1) registry lookup delegates to getMultiStoreManager().getMergedRegistry() in multi-store mode; (2) project scanning iterates all store paths via getStoreRouter().getAllStorePaths() with plan_path deduplication; (3) insight querying delegates to getMultiStoreManager().listKnowledge() for cross-store collation; (4) a new safeListAllStoreRepositoryInsights() helper mirrors the existing single-store variant.",
+        "All 3777 tests pass (130 files). No new test file was added per WP-008 scope."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-07-24T14:56:19Z",
+      "notes": [
+        "WP-008 QA PASS. AC3 verified by 28 existing tests; AC1/AC2 verified by code inspection + underlying storage-layer tests. No regressions. One medium-priority observation logged: no tool-level integration test for the multi-store repository-context code path (acceptable given the WP scope excluded a new test file, but worth a follow-up). Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-07-24T15:36:03Z",
+      "notes": [
+        "WP-008 code-review PASS. One Fix-Forward applied: cached isStoreContextInitialized() into a local const to make the mode decision explicit for all three branching points within getRepositoryContext(). Architecture is sound — getMergedRegistry() deduplicates by repo id (store-order priority), project scanning deduplicates by plan_path, and insight querying deduplicates by insight id. Medium-priority improvement noted: add _internal integration tests for AC1/AC2 multi-store paths (follow-up, not blocking). Ready for documentation pipeline.\""
+      ]
+    }
+  ]
+}

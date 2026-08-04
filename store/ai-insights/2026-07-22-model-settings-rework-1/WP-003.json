@@ -1,0 +1,201 @@
+{
+  "work_package_id": "WP-003",
+  "work_package_file": "work/WP-005.md",
+  "status": "COMPLETE",
+  "assigned_to": "Reviewer",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "The handleUpdateAssignments() error message for invalid persona keys no longer enumerates persona IDs — it provides only a count or generic message",
+      "met": true
+    },
+    {
+      "criterion": "The existing api-models.test.ts tests continue to pass without assertion changes (tests check { code: 'VALIDATION_ERROR' }, not message text)",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-07-22T10:05:26Z",
+      "completed_at": "2026-07-22T10:07:42Z",
+      "duration_ms": 136000,
+      "summary": [
+        "Fixed the info-disclosure error message in handleUpdateAssignments() in mcp-server/gui/api-models.ts. The previous message reflected the submitted personaKey value back to the caller (e.g. `Persona key \"${personaKey}\" does not exist...`), which is an info-disclosure pattern — it confirms that a submitted key was indeed tested against the mapping. Replaced with a generic message that provides only a count of valid persona IDs without echoing the input: `One or more persona keys in persona_models are not valid. Found N valid persona IDs in name-mapping.json.`. All 3,549 tests pass across 117 test files, including all 5 handleUpdateAssignments tests in api-models.test.ts which only assert { code: 'VALIDATION_ERROR' }, not message text."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/api-models.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-07-22T10:07:42Z",
+          "note": "In api-models.ts handleUpdateAssignments(), the loop breaks early on the first invalid persona key but iterates all keys — a caller submitting multiple invalid keys only gets an error for the first one found. Consider collecting all invalid keys and reporting the count of violations (not the keys themselves) in a single error, which would be more actionable without adding info-disclosure risk."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-07-22T10:07:42Z",
+          "note": "In api-models.ts handleUpdateAssignments(), the model UUID validation loop at lines 371–377 still reflects back user-submitted UUIDs in the error message (e.g. `Model UUID \"${uuid}\" assigned to persona \"${personaKey}\" does not exist`). This is the same info-disclosure pattern fixed in this WP, applied to UUIDs instead of persona keys. Should be addressed under a follow-on hardening pass if the security posture requires suppressing all reflected input."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-07-22T10:08:06Z",
+      "completed_at": "2026-07-22T10:10:14Z",
+      "duration_ms": 128000,
+      "summary": [
+        "All acceptance criteria verified. AC1 confirmed by code inspection: the old enumeration pattern (`Valid IDs are: ${[...validPersonaIds].join(', ')}`) is completely absent — grep confirms zero matches. The new message at lines 355-358 of api-models.ts provides only a count (`Found N valid persona ID(s) in name-mapping.json`) without echoing the submitted key or enumerating valid IDs. AC2 confirmed by running api-models.test.ts: all 36 tests pass, including all 5 handleUpdateAssignments tests which assert only `{ code: 'VALIDATION_ERROR' }` — no message text. Full regression suite: 3,549 tests across 117 test files, all pass. Edge-case analysis: empty validPersonaIds set (0 entries in name-mapping.json) handled correctly — message reads 'Found 0 valid persona IDs' which is safe and grammatically correct. Multi-invalid-key scenario still fails-fast on first invalid key — pre-existing behavior, not a regression from this WP."
+      ],
+      "metrics": {
+        "test_coverage": "36/36 targeted tests pass; 3549/3549 full suite",
+        "tests_passed": 3549,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-22T10:10:14Z",
+          "note": "Edge case: if name-mapping.json exists but contains zero entries with a string 'id' field, validPersonaIds.size is 0 and the error message reads 'Found 0 valid persona IDs in name-mapping.json.' — grammatically correct and safe. No action required."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-22T10:10:14Z",
+          "note": "The persona key validation loop (lines 353-360) still fails-fast on the first invalid key — a caller submitting N invalid keys requires N round-trips to discover all violations. Pre-existing behavior, not introduced by this WP. The Developer's improvement note in the implementation pipeline already flags this pattern for potential follow-on work."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-07-22T10:10:38Z",
+      "completed_at": "2026-07-22T10:11:26Z",
+      "duration_ms": 48000,
+      "summary": [
+        "Reviewed mcp-server/gui/api-models.ts (627 lines, the sole modified file). 0 Critical, 0 High findings. 2 Medium observations recorded. Primary fix (lines 355–358) correctly eliminates the info-disclosure pattern: persona key is no longer reflected in the error message, and the enumeration of valid persona IDs is fully removed — only a count is returned. Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-22T10:11:26Z",
+          "note": "A01/A05 — Review scope confirmed PASS. The fix at lines 355–358 in handleUpdateAssignments() replaces the prior enumeration pattern (which echoed the submitted personaKey and listed all valid persona IDs) with a count-only message. No OWASP Top 10 Critical or High category violations found in the modified or surrounding code."
+        },
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-07-22T10:11:26Z",
+          "note": "A05 (Security Misconfiguration / Information Disclosure) — handleUpdateAssignments() lines 371–377: the model UUID validation error still reflects back the user-submitted UUID and the persona key verbatim: `Model UUID \"${uuid}\" assigned to persona \"${personaKey}\" does not exist in the model registry.` This is the same class of info-disclosure as was fixed for persona keys in this WP. The UUIDs are v4 format (validated by schema, line 138) so they cannot be crafted to probe arbitrary strings, and the reflected data is input the caller already possesses, reducing practical risk. Severity: Medium. Recommendation: apply the same count-or-generic message pattern in a follow-on hardening pass."
+        },
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-07-22T10:11:26Z",
+          "note": "A05 (Security Misconfiguration / Information Disclosure) — handleReplaceAssignedModel() lines 432–442: `old_model_id` and `new_model_id` values are reflected verbatim in validation error messages. Same pattern as the above (caller-supplied UUIDs echoed back). Schema enforces UUID v4 format (line 392–396), limiting injection surface. Severity: Medium. Recommendation: consolidate in the same hardening pass as the model-UUID error in handleUpdateAssignments()."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-22T10:11:26Z",
+          "note": "A08 (Software & Data Integrity) — handleRebuildPersonas() constructs the script path via join(workspaceRoot, 'scripts', 'build-personas.js') and spawns it with spawn('node', [scriptPath]). workspaceRoot is sourced from WORKSPACE_ROOT (ledger-root.js), a server-side constant not influenced by API input, so path traversal via caller-controlled input is not possible. The spawn() call passes no shell:true, avoiding shell injection. No issue."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-22T10:11:26Z",
+          "note": "A06 (Vulnerable & Outdated Components) — No new third-party dependencies were introduced by this WP. The single change is in application logic (string interpolation replaced). No CVE check required."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-07-22T10:11:48Z",
+      "completed_at": "2026-07-22T10:12:55Z",
+      "duration_ms": 67000,
+      "summary": [
+        "Code review PASS. The fix is a minimal, surgical change — 3 lines in handleUpdateAssignments() (lines 354–358 of api-models.ts). The old message interpolated the caller-submitted personaKey and enumerated all valid IDs from name-mapping.json. The new message is generic: it provides only a count of valid persona IDs using a correct singular/plural ternary, and does not echo any caller input. The change is precise, proportionate to scope, and does not introduce any new coupling or side effects. No Fix-Forward or Documentation-Forward items identified. All prior pipeline stages (implementation, QA, security-audit) passed cleanly with 3,549/3,549 tests green."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/api-models.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-22T10:12:55Z",
+          "note": "The singular/plural ternary on line 357 (`validPersonaIds.size === 1 ? 'ID' : 'IDs'`) is a nice defensive touch that maintains grammatical correctness for the edge case of exactly one valid persona ID. Clean and intentional."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-07-22T10:12:55Z",
+          "note": "The persona key validation loop (lines 353–360) breaks on the first invalid key, meaning a caller submitting multiple invalid keys must make N round-trips to discover all violations. This is pre-existing behaviour flagged by both the Developer and QA — not introduced by this WP. Recommend addressing in a follow-on pass alongside the fail-fast model UUID loop at lines 372–378, which has the same pattern."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-22T10:12:55Z",
+          "note": "No Fix-Forward edits applied. The file as committed is clean, readable, and consistent with surrounding code style. All identifiers, comments, and structure are appropriately descriptive."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-07-22T10:13:25Z",
+  "last_updated": "2026-07-22T10:13:25Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-07-22T10:07:42Z",
+      "notes": [
+        "Single-line change in mcp-server/gui/api-models.ts (line ~355-357). The persona key validation error message no longer reflects back the submitted key. All tests green. The model UUID error message at lines 371-377 (same function) still reflects back submitted UUIDs — flagged as a debt observation but out of scope for this WP."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-07-22T10:10:14Z",
+      "notes": [
+        "Single-line fix in mcp-server/gui/api-models.ts (lines 355-358) verified. Both ACs met: error message no longer enumerates persona IDs, all 3,549 tests pass. Change is minimal and low-risk. No security concerns introduced — the fix reduces disclosure surface. Ready for security-audit."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-07-22T10:11:26Z",
+      "notes": [
+        "Security audit PASS. No Critical or High findings. Two Medium observations recorded (UUID reflection in model-UUID and replace-model error messages) — pre-existing patterns, out of scope for this WP, flagged for a follow-on hardening pass. The primary fix (persona key enumeration) is clean and correct. Ready for code-review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-07-22T10:12:55Z",
+      "notes": [
+        "Code review PASS. Both acceptance criteria met and confirmed. The fix is clean, minimal, and non-breaking — no rework required. One pre-existing architectural observation for the Documentation agent: the `[documentation-forward]` item below flags a potential doc note, but no blocking gaps exist. The WP is ready for the Documentation pipeline stage."
+      ]
+    }
+  ]
+}

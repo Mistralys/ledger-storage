@@ -1,0 +1,196 @@
+{
+  "work_package_id": "WP-004",
+  "work_package_file": "work/WP-004.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "GET /api/projects/:repo/:slug/chunks/:filename/rendered?format=structured returns { blocks: [...] } as JSON.",
+      "met": true
+    },
+    {
+      "criterion": "GET /api/projects/:repo/:slug/chunks/:filename/rendered (no param) returns { content: \"...\" } as before.",
+      "met": true
+    },
+    {
+      "criterion": "The deprecated non-namespaced route also supports ?format=structured.",
+      "met": true
+    },
+    {
+      "criterion": "The query parameter is parsed from the raw url parameter already available in matchRoute().",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-07-15T13:31:45Z",
+      "completed_at": "2026-07-15T13:34:19Z",
+      "duration_ms": 154000,
+      "summary": [
+        "Added renderChunksToStructured to the import in gui/server.ts.",
+        "Updated the deprecated non-namespaced /rendered handler to parse ?format=structured from the url variable and return { blocks } instead of { content } when present.",
+        "Updated the namespaced /api/projects/:repo/:slug/chunks/:filename/rendered handler identically.",
+        "Both handlers remain fully backward-compatible: absent or non-'structured' format values return { content } as before.",
+        "TypeScript compiles clean; all 3381 tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/server.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "refactor",
+          "priority": "low",
+          "timestamp": "2026-07-15T13:34:19Z",
+          "note": "The query-string parsing pattern (url.indexOf('?') + URLSearchParams) is now used in three places in matchRoute(): the existing ?wp= handler, and the two new ?format= handlers. Could be DRY'd into a small helper (e.g. parseQS(url)) if more query params are needed in future routes."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-07-15T13:37:18Z",
+      "completed_at": "2026-07-15T13:38:37Z",
+      "duration_ms": 79000,
+      "summary": [
+        "All 4 AC verified by code inspection of gui/server.ts and full test suite execution.",
+        "Both namespaced (/api/projects/:repo/:slug/chunks/:filename/rendered) and deprecated (/api/projects/:slug/chunks/:filename/rendered) handlers correctly parse ?format=structured from the raw url via URLSearchParams.",
+        "When format=structured: returns { blocks: DialogueBlock[] }; otherwise returns { content: string } — backward compatible.",
+        "TypeScript compiles clean; full suite 3381/3381 pass with no regressions.",
+        "Coverage gap noted: no unit tests for the structured-format branch path."
+      ],
+      "metrics": {
+        "test_coverage": "3381/3381 full suite",
+        "tests_passed": 3381,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "coverage-gap",
+          "priority": "medium",
+          "timestamp": "2026-07-15T13:38:37Z",
+          "note": "No unit tests exist for the new ?format=structured branch in the /rendered route handlers. Existing tests (dialogue-qa.test.ts) mock the /rendered endpoint with { content: ... } confirming backward compatibility, but the structured-format path is only verified by code inspection. A dedicated route-integration test file or an addition to the dialogue-qa.test.ts mocks covering format=structured would close this gap."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-07-15T13:38:37Z",
+          "note": "Case-sensitivity: `format === 'structured'` is an exact lowercase match. ?format=STRUCTURED (uppercase) would fall through to the legacy content handler. This is correct standard query-param behavior but worth noting if client code is generated dynamically."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-07-15T13:41:22Z",
+      "completed_at": "2026-07-15T13:42:31Z",
+      "duration_ms": 69000,
+      "summary": [
+        "WP-004 passes review on all four dimensions. Implementation is minimal, surgical, and exactly matches the WP specification.",
+        "Both route handlers (namespaced and deprecated) follow the same correct pattern: parse qStr from raw url via url.indexOf('?'), construct URLSearchParams, gate on format === 'structured'.",
+        "Security: the namespaced handler correctly runs SAFE_SLUG_REGEX validation before the format branch executes, so validation is never bypassed.",
+        "No blocking issues. One documentation-forward and a test coverage gap note recorded."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/server.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-15T13:42:31Z",
+          "note": "In the namespaced handler, `new URLSearchParams(qStr).get('format')` allocates and immediately discards a URLSearchParams object. The existing convention in this file is `const sp = new URLSearchParams(qStr)` (named variable, reused). The WP-004 handlers are consistent with each other but diverge from the named-variable convention used at lines 382, 538, 557, 775, 805, etc. Not a correctness issue — pure style."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-07-15T13:42:31Z",
+          "note": "No unit or integration tests cover the ?format=structured route branch introduced by this WP. The QA agent verified by code inspection only. Future work should add route-level tests (e.g. mocking handleGetChunkFile in a server.ts test) for the structured-format path of both the namespaced and deprecated /rendered handlers."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-07-15T13:42:31Z",
+          "note": "[documentation-forward] Document the ?format=structured query parameter on both the namespaced (/api/projects/:repo/:slug/chunks/:filename/rendered) and deprecated (/api/projects/:slug/chunks/:filename/rendered) route handlers. Include the response shape distinction: { blocks: DialogueBlock[] } when format=structured, { content: string } otherwise. Add to the GUI API reference or route documentation."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-07-15T13:45:08Z",
+      "completed_at": "2026-07-15T13:46:49Z",
+      "duration_ms": 101000,
+      "summary": [
+        "Addressed documentation-forward from code-review: document the ?format=structured query parameter on both /rendered route handlers.",
+        "api-surface.md route description updated: replaced the single-mode { content } description with a full dual-mode entry. Documents the optional ?format=structured param, both response shapes ({ content: string } vs { blocks: DialogueBlock[] }), case-sensitivity of the value, and that both the namespaced and deprecated routes support both modes.",
+        "Route table entry updated: now lists renderChunksToDialogue or renderChunksToStructured as the handler, with notes on both response shapes.",
+        "No changes required to file-tree.md (server.ts entry already notes the rendered routes via the routing table)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-15T13:46:49Z",
+          "note": "api-surface.md route description for the /rendered endpoint was outdated — it only described the legacy { content: string } return. Updated to document both response modes, the ?format=structured query param, case-sensitivity of the format value, and the backward-compat guarantee. Also updated the route table entry to show both render functions and both response shapes."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-07-15T13:46:49Z",
+  "last_updated": "2026-07-15T13:46:49Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-07-15T13:34:19Z",
+      "notes": [
+        "Both /rendered route handlers (namespaced and deprecated) now branch on ?format=structured.",
+        "When format=structured: returns { blocks: DialogueBlock[] }; otherwise unchanged { content: string } (dialogue Markdown).",
+        "renderChunksToStructured imported from chunk-renderer.ts.",
+        "TypeScript compiles clean; all 3381 tests pass."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-07-15T13:38:37Z",
+      "notes": [
+        "Both /rendered route handlers (namespaced + deprecated) verified to branch correctly on ?format=structured.",
+        "Backward compatibility confirmed: no ?format or any other format value returns { content } as before.",
+        "Coverage gap flagged: no unit tests for the structured branch — code review may want to track this.",
+        "TypeScript compiles clean; full suite 3381/3381. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-07-15T13:42:31Z",
+      "notes": [
+        "All 4 AC confirmed: both handlers correctly branch on format=structured, backward-compatible, parse from raw url via URLSearchParams.",
+        "Documentation-forward tagged: document the ?format=structured query param and both response schemas on the /rendered endpoints.",
+        "Test coverage gap noted: no automated tests for the structured-format branch path — flagged for future work, not blocking."
+      ]
+    }
+  ]
+}

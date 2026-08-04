@@ -1,0 +1,384 @@
+{
+  "work_package_id": "WP-004",
+  "work_package_file": "work/WP-004.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-003"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "listAllProjects() returns projects from two stores with correct store_id and store_label fields on each project",
+      "met": true
+    },
+    {
+      "criterion": "detectProjectByCwd() returns MULTI_STORE_AMBIGUOUS with tagged candidates when the same cwd matches projects in different stores",
+      "met": true
+    },
+    {
+      "criterion": "getMergedRegistry() returns entries with store-order priority — the first store's entry for a duplicate repo name is returned, the second store's is suppressed",
+      "met": true
+    },
+    {
+      "criterion": "getRegistryConflicts() correctly identifies repos registered in multiple stores and designates the winner by store-order priority; returns empty when no overlaps exist",
+      "met": true
+    },
+    {
+      "criterion": "searchKnowledge() returns merged results from all stores, deduplicated by insight id (first-seen wins)",
+      "met": true
+    },
+    {
+      "criterion": "Adding a new store directory (with its own .repositories.json and projects) to the StoreRouter immediately makes its repositories and projects visible via listAllProjects() and getMergedRegistry() without any additional registration step",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-07-24T12:52:43Z",
+      "completed_at": "2026-07-24T12:59:43Z",
+      "duration_ms": 420000,
+      "summary": [
+        "Implemented MultiStoreManager class in mcp-server/src/storage/multi-store-manager.ts providing cross-store read operations: listAllProjects() (with store_id/store_label/store_path tagging), detectProjectByCwd() (with MULTI_STORE_AMBIGUOUS for cross-store collisions), getMergedRegistry() (store-order priority, tagged entries), getRegistryConflicts() (winner by store order), searchKnowledge() and listKnowledge() (dedup by numeric insight id, first-seen wins).",
+        "Extended StoreRouter with label? on StoreRef and the new getAllStores() method that returns [{id, path, label}] — used by MultiStoreManager internally to iterate stores with metadata.",
+        "Created three test suites: multi-store-manager.test.ts (listing/detection AC 1–2), multi-store-conflicts.test.ts (registry AC 3–4), cross-device-portability.test.ts (knowledge dedup AC 5, portability AC 6). All 24 new tests pass; full suite of 3755 tests passes with zero regressions."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/storage/store-router.ts",
+          "mcp-server/src/storage/multi-store-manager.ts",
+          "mcp-server/tests/storage/multi-store-manager.test.ts",
+          "mcp-server/tests/storage/multi-store-conflicts.test.ts",
+          "mcp-server/tests/storage/cross-device-portability.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T12:59:43Z",
+          "note": "StoreRouter.getAllStores() returns store metadata used by MultiStoreManager, but the StoreRef internal interface now carries label? even though it was not previously needed. A minor refactor to keep label only in getAllStores() (reading from config directly) would reduce the internal surface, but the current approach is clean enough for this stage."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-07-24T12:59:43Z",
+          "note": "KnowledgeStoreManager.searchInsights() applies pagination (limit/offset) per store before cross-store merge in MultiStoreManager.searchKnowledge(). Passing limit/offset to per-store calls truncates results before dedup, so the final merged list may return fewer items than the requested limit when dedup removes duplicates. A future improvement could collect all results then apply pagination — but that changes the semantics agreed to in WP-004 scope, so it is noted here for QA awareness."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-07-24T12:59:43Z",
+          "note": "Both stores independently start their next_id counter at 1, creating structural id collisions across stores (insight id=1 in store-1 and insight id=1 in store-2 are different insights). The dedup-by-id rule suppresses the second store's entry. This is documented and tested, but the test fixture in cross-device-portability.test.ts 'returns results from both stores' had to add a 'Duplicate placeholder' insight to bump store-2's counter past the collision. A future scoped-id scheme (e.g. prefixed by store) would eliminate this ambiguity entirely."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-07-24T13:00:08Z",
+      "completed_at": "2026-07-24T13:02:47Z",
+      "duration_ms": 159000,
+      "summary": [
+        "TypeScript build passes with zero compiler errors (tsc --noEmit).",
+        "All 24 new tests pass: multi-store-manager.test.ts (10 tests, AC 1–2), multi-store-conflicts.test.ts (8 tests, AC 3–4), cross-device-portability.test.ts (6 tests, AC 5–6).",
+        "Full regression suite: 3755/3755 tests pass, 128 test files — zero regressions.",
+        "All 6 acceptance criteria verified through direct test assertions.",
+        "One medium edge-case gap identified in detectProjectByCwd(): FOUND in store-1 is silently discarded when store-2 returns AMBIGUOUS, contradicting the JSDoc comment. No AC covers this scenario; flagged for future hardening."
+      ],
+      "metrics": {
+        "test_coverage": "24/24 WP-004 tests pass; 3755 total",
+        "tests_passed": 3755,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "edge-case",
+          "priority": "medium",
+          "timestamp": "2026-07-24T13:02:47Z",
+          "note": "detectProjectByCwd() — FOUND + AMBIGUOUS mixed result: When store-1 returns FOUND (foundProjects.length===1) and store-2 returns AMBIGUOUS (intraStoreAmbiguous!==null), the guard `foundProjects.length===1 && intraStoreAmbiguous===null` fails, and the code falls through to return the store-2 AMBIGUOUS — silently discarding the valid store-1 FOUND. The JSDoc documents the intended behaviour as 'Intra-store AMBIGUOUS (no FOUND in any store): forward as-is' but the implementation does not enforce the 'no FOUND' guard. No test covers this path. Requires a data state where two projects in the same store share the same project root (already a data-integrity problem), so practical exposure is low. Recommend adding a guard: if foundProjects.length === 1 return FOUND unconditionally, and document that intra-store AMBIGUOUS is only forwarded when foundProjects is empty."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-07-24T13:02:47Z",
+          "note": "The 'forwards intra-store AMBIGUOUS' test only asserts `result.status !== 'MULTI_STORE_AMBIGUOUS'` — it accepts both FOUND and AMBIGUOUS as valid outcomes. Adding an explicit `expect(result.status).toBe('AMBIGUOUS')` assertion would make the test more precise and would also immediately catch the FOUND+AMBIGUOUS edge case above."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T13:02:47Z",
+          "note": "Pagination pre-truncation in searchKnowledge()/listKnowledge(): limit/offset options are forwarded to each per-store call before the cross-store merge, so the caller may receive fewer than `limit` items when dedup removes cross-store duplicates. Documented by Developer and accepted as out-of-WP-004 scope. Should be addressed in a follow-on work package if the GUI surfaces knowledge views with paginated cursors."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "FAIL",
+      "started_at": "2026-07-24T13:03:25Z",
+      "completed_at": "2026-07-24T13:05:55Z",
+      "duration_ms": 150000,
+      "summary": [
+        "Reviewed mcp-server/src/storage/multi-store-manager.ts and mcp-server/src/storage/store-router.ts.",
+        "Overall architecture is sound: MultiStoreManager is a clean read-only layer with correct type design, clear separation from write routing, and accurate JSDoc coverage.",
+        "One Blocking logic bug found in detectProjectByCwd(): the guard `foundProjects.length === 1 && intraStoreAmbiguous === null` silently discards a valid store-1 FOUND when any store returns an intra-store AMBIGUOUS — contradicting the JSDoc which states FOUND must win unconditionally. Fix: remove `&& intraStoreAmbiguous === null` from the guard condition.",
+        "Two Documentation-Forward items identified. No Fix-Forward changes applied (blocking bug prevented PASS)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/storage/multi-store-manager.ts",
+          "mcp-server/tests/storage/multi-store-manager.test.ts",
+          "mcp-server/tests/storage/multi-store-conflicts.test.ts",
+          "mcp-server/tests/storage/cross-device-portability.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "blocking",
+          "priority": "high",
+          "timestamp": "2026-07-24T13:05:55Z",
+          "note": "BLOCKING — detectProjectByCwd() guard bug in multi-store-manager.ts (line ~157): `if (foundProjects.length === 1 && intraStoreAmbiguous === null)` must be changed to `if (foundProjects.length === 1)`. The extra `&& intraStoreAmbiguous === null` condition means that when store-1 returns FOUND and store-2 returns an intra-store AMBIGUOUS, the code falls through to `return intraStoreAmbiguous` — silently discarding the valid FOUND. The JSDoc explicitly states the contract: 'Intra-store AMBIGUOUS (no FOUND in any store): forward as-is.' The fix is one character: remove `&& intraStoreAmbiguous === null`. After the fix, add a test: seed store-1 with one project (projectRoot A), seed store-2 with two projects sharing the same projectRoot A (to produce intra-store AMBIGUOUS in store-2), call detectProjectByCwd(A), and assert result.status === 'FOUND'."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-07-24T13:05:55Z",
+          "note": "[documentation-forward] detectProjectByCwd() FOUND branch returns `{ status: 'FOUND', meta: foundProjects[0]! }` where foundProjects[0] is a TaggedProjectMeta (with store_id, store_label, store_path on the runtime object). The JSDoc says 'The meta does not carry store tags' — this is correct from the declared type perspective (DetectProjectResult.meta is typed as ProjectMeta) but could mislead consumers who inspect the runtime shape. Add a clarifying sentence: the runtime object is a TaggedProjectMeta but callers should rely only on the ProjectMeta shape via the declared type."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-07-24T13:05:55Z",
+          "note": "[documentation-forward] The 'forwards intra-store AMBIGUOUS' test in multi-store-manager.test.ts uses `expect(result.status).not.toBe('MULTI_STORE_AMBIGUOUS')` — intentionally loose because LedgerStore.detectProjectByCwd may return FOUND or AMBIGUOUS depending on the gap-threshold logic. Add a comment in the test explaining why the assertion is loose, so future contributors don't tighten it without understanding the underlying ambiguity."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T13:05:55Z",
+          "note": "Pre-pagination semantics in searchKnowledge()/listKnowledge(): limit/offset are forwarded to each per-store KnowledgeStoreManager call before the cross-store dedup merge, so the caller may receive fewer items than `limit` when dedup removes cross-store duplicates. This is the same debt already documented by the Developer and QA. Acknowledged as deferred — worth tracking in a follow-on WP before the GUI surfaces paginated cross-store knowledge views."
+        }
+      ]
+    },
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-07-24T13:06:36Z",
+      "completed_at": "2026-07-24T13:08:36Z",
+      "duration_ms": 120000,
+      "summary": [
+        "Rework: fixed detectProjectByCwd() guard in multi-store-manager.ts — changed `foundProjects.length === 1 && intraStoreAmbiguous === null` to `foundProjects.length === 1` so a concrete FOUND result from one store is never discarded by an intra-store AMBIGUOUS from another store.",
+        "Added regression test 'returns FOUND when store-1 has a unique FOUND and store-2 has an intra-store AMBIGUOUS for the same cwd' to tests/storage/multi-store-manager.test.ts. Test seeds store-1 with one project (FOUND), store-2 with two close-timestamped projects sharing the same root (AMBIGUOUS), asserts result.status === 'FOUND'.",
+        "All 10 targeted multi-store-manager tests pass; full regression suite: 3756/3756 tests pass across 128 test files — zero regressions."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/storage/multi-store-manager.ts",
+          "mcp-server/tests/storage/multi-store-manager.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-07-24T13:08:36Z",
+          "note": "multi-store-manager.ts detectProjectByCwd(): the original guard `foundProjects.length === 1 && intraStoreAmbiguous === null` was logically incorrect — the intraStoreAmbiguous sentinel is orthogonal to whether a definitive FOUND exists. The fix `foundProjects.length === 1` matches the JSDoc contract ('Intra-store AMBIGUOUS (no FOUND in any store): forward as-is') because the AMBIGUOUS forward path is now only reached when foundProjects is empty. The scenario that triggered the bug (two projects in the same store sharing the same projectRoot) is itself a data-integrity anomaly, so real-world exposure was low, but the code contract is now correctly enforced regardless of store state."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T13:08:36Z",
+          "note": "No other code smells observed in the files touched during rework. The MultiStoreManager implementation remains clean and consistent with surrounding patterns."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-07-24T13:09:04Z",
+      "completed_at": "2026-07-24T13:11:45Z",
+      "duration_ms": 161000,
+      "summary": [
+        "TypeScript build passes with zero compiler errors (tsc --noEmit).",
+        "Rework fix verified: detectProjectByCwd() guard in multi-store-manager.ts (line ~157) is now `if (foundProjects.length === 1)` — the erroneous `&& intraStoreAmbiguous === null` clause has been removed. FOUND now wins unconditionally over any intra-store AMBIGUOUS from another store.",
+        "New regression test 'returns FOUND when store-1 has a unique FOUND and store-2 has an intra-store AMBIGUOUS for the same cwd' added to multi-store-manager.test.ts. Seeds store-2 with two projects sharing the same projectRoot to provoke an intra-store AMBIGUOUS, then asserts result.status === 'FOUND' — directly catching the original bug.",
+        "WP-004 test suites: 25/25 pass across 3 files (multi-store-manager.test.ts, multi-store-conflicts.test.ts, cross-device-portability.test.ts). +1 vs. pre-rework (24→25).",
+        "Full regression suite: 3756/3756 tests pass across 128 test files — zero regressions.",
+        "All 6 acceptance criteria remain met (no AC were touched by the rework; all were already marked met)."
+      ],
+      "metrics": {
+        "test_coverage": "25/25 WP-004 tests; 3756 total",
+        "tests_passed": 3756,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T13:11:45Z",
+          "note": "detectProjectByCwd() JSDoc FOUND branch still reads 'The meta does not carry store tags' without the clarifying sentence requested by the code-reviewer: 'the runtime object is a TaggedProjectMeta but callers should rely only on the ProjectMeta shape via the declared type.' This documentation-forward item was low-priority and is not blocking. Recommend the Documentation agent adds this in the documentation pipeline."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T13:11:45Z",
+          "note": "Pagination pre-truncation in searchKnowledge()/listKnowledge(): limit/offset options forwarded to per-store calls before cross-store merge may return fewer than `limit` results when dedup removes duplicates. Accepted as out-of-WP-004 scope; carried forward from prior QA pass."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-07-24T13:12:07Z",
+      "completed_at": "2026-07-24T13:14:45Z",
+      "duration_ms": 158000,
+      "summary": [
+        "Reviewed mcp-server/src/storage/multi-store-manager.ts (reworked) and mcp-server/tests/storage/multi-store-manager.test.ts (new regression test).",
+        "Rework fix confirmed: detectProjectByCwd() guard is now `foundProjects.length === 1` (previously `foundProjects.length === 1 && intraStoreAmbiguous === null`). The fix is correct, minimal, and exactly matches the documented contract in the JSDoc.",
+        "The new regression test 'returns FOUND when store-1 has a unique FOUND and store-2 has an intra-store AMBIGUOUS for the same cwd' is well-designed: two projects with close timestamps ensure store-2 returns AMBIGUOUS, the assertion is precise (`expect(result.status).toBe('FOUND')`), and the comment explains the original bug clearly.",
+        "One Fix-Forward applied: added a clarifying sentence to the detectProjectByCwd() FOUND-branch JSDoc explaining that the runtime object is a TaggedProjectMeta but callers should rely only on the declared ProjectMeta shape.",
+        "All 6 ACs remain met. Architecture is clean — MultiStoreManager is a correct read-only collation layer with no write contamination. No blocking issues found."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/storage/multi-store-manager.ts",
+          "mcp-server/tests/storage/multi-store-manager.test.ts",
+          "mcp-server/tests/storage/multi-store-conflicts.test.ts",
+          "mcp-server/tests/storage/cross-device-portability.test.ts",
+          "mcp-server/src/storage/store-router.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-07-24T13:14:45Z",
+          "note": "Fix-Forward applied to detectProjectByCwd() JSDoc (multi-store-manager.ts): added a clarifying sentence to the FOUND branch — 'Note: the runtime object is a TaggedProjectMeta (it carries store_id, store_label, and store_path), but callers should rely only on the declared ProjectMeta shape via the return type.' This resolves the documentation-forward item raised in the previous review cycle. Non-behavioral change; QA's validation remains intact."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-07-24T13:14:45Z",
+          "note": "[documentation-forward] The pre-pagination semantics for searchKnowledge()/listKnowledge() — limit/offset forwarded to each per-store call before cross-store dedup merge, which can produce fewer than `limit` results — are documented in pipeline comments but not in the API surface documentation (mcp-server/docs/agents/project-manifest/api-surface.md). When the GUI surfaces cross-store knowledge views with paginated cursors, this semantic deviation should be documented at the API surface level so consumers can reason about the behaviour."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T13:14:45Z",
+          "note": "No blocking issues. Architecture is clean: MultiStoreManager is a pure read-only collation layer with correct type design, store-order priority enforced consistently across all operations (getMergedRegistry, getRegistryConflicts, searchKnowledge, listKnowledge), and full legacy-mode transparency. The FOUND+AMBIGUOUS fix aligns the implementation precisely with the documented contract."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-07-24T13:15:10Z",
+      "completed_at": "2026-07-24T13:21:24Z",
+      "duration_ms": 374000,
+      "summary": [
+        "Updated mcp-server/docs/agents/project-manifest/file-tree.md: added multi-store-manager.ts entry to src/storage/ with full annotation; updated store-router.ts annotation to include getAllStores() (WP-004); added cross-device-portability.test.ts, multi-store-conflicts.test.ts, and multi-store-manager.test.ts entries to tests/storage/ with AC coverage descriptions.",
+        "Updated mcp-server/docs/agents/project-manifest/api-surface.md: added getAllStores() method to StoreRouter class signature with legacy-mode and multi-store-mode behaviour; added complete MultiStoreManager section documenting all exported types (TaggedProjectMeta, TaggedRepositoryEntry, RegistryConflict, MultiStoreDetectResult) and all six public methods (listAllProjects, detectProjectByCwd, getMergedRegistry, getRegistryConflicts, searchKnowledge, listKnowledge) including the detectProjectByCwd resolution rules, the FOUND-branch runtime/declared-type clarification (code-review Fix-Forward), and the pre-pagination semantics note for searchKnowledge/listKnowledge (documentation-forward from code review).",
+        "All six acceptance criteria were already met by the implementation pipeline; no documentation gaps remain."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/file-tree.md",
+          "mcp-server/docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T13:21:24Z",
+          "note": "api-surface.md MultiStoreManager.searchKnowledge() and listKnowledge() now document the pre-pagination semantics (limit/offset forwarded per-store before cross-store dedup) as accepted WP-004 behaviour with a note to revisit in a follow-on WP before the GUI exposes paginated cross-store knowledge views. This directly addresses the documentation-forward from the code-review pipeline."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T13:21:24Z",
+          "note": "api-surface.md detectProjectByCwd() documents the FOUND-branch clarification (runtime object is TaggedProjectMeta but callers rely on declared ProjectMeta shape), confirming the code-review Fix-Forward is reflected in the API surface doc."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T13:21:24Z",
+          "note": "No stale counts were embedded in the documentation. Test descriptions reference AC numbers and describe what is tested rather than absolute counts."
+        }
+      ]
+    }
+  ],
+  "rework_counts": {
+    "implementation": 1,
+    "qa": 1,
+    "code-review": 1
+  },
+  "status_changed_at": "2026-07-24T13:21:24Z",
+  "last_updated": "2026-07-24T13:21:24Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-07-24T12:59:43Z",
+      "notes": [
+        "MultiStoreManager is a pure read layer — no writes. StoreRouter.getAllStores() is the single enumeration point for store iteration.",
+        "TaggedProjectMeta includes store_path — required by the GUI handleListProjects slow path to construct a LedgerStore with the correct ledgerRoot.",
+        "Insight dedup uses the numeric id field (not the KN-NNNN display string). Same numeric id from different stores is a known collision: first store in config order wins. QA should verify this edge case if the GUI later surfaces cross-store knowledge views.",
+        "The MultiStoreDetectResult type extends DetectProjectResult as a union addition — no modification of the existing type. Consumers that handle DetectProjectResult must be extended to handle the new MULTI_STORE_AMBIGUOUS status."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-07-24T13:02:47Z",
+      "notes": [
+        "All 6 ACs verified via automated tests (24 WP-004-specific tests + 3755-test regression suite). Code is clean. One medium edge-case gap: detectProjectByCwd() discards a valid FOUND when an intra-store AMBIGUOUS is also present — see qa pipeline comments for the exact fix recommendation. Pagination pre-truncation in searchKnowledge() is documented and deferred."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Developer",
+      "timestamp": "2026-07-24T13:05:55Z",
+      "notes": [
+        "FAIL — single blocking bug in detectProjectByCwd(). Fix: change `foundProjects.length === 1 && intraStoreAmbiguous === null` to `foundProjects.length === 1` in multi-store-manager.ts. Then add a regression test that seeds store-1 FOUND + store-2 intra-store AMBIGUOUS (two projects sharing the same projectRoot) and asserts FOUND is returned. All other code is clean — no additional rework needed."
+      ]
+    },
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-07-24T13:08:36Z",
+      "notes": [
+        "Rework complete. Fix: detectProjectByCwd() in multi-store-manager.ts now returns FOUND unconditionally when exactly one store finds a match, regardless of intra-store AMBIGUOUS in other stores. Regression test added. Full suite 3756/3756 passes. All 6 ACs remain met."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-07-24T13:11:45Z",
+      "notes": [
+        "Rework fix confirmed: detectProjectByCwd() returns FOUND unconditionally when foundProjects.length === 1, regardless of intra-store AMBIGUOUS in other stores. Regression test added and passing.",
+        "All 6 ACs met. 3756/3756 tests pass across 128 files. Zero regressions.",
+        "One low-priority documentation gap: the JSDoc for detectProjectByCwd() FOUND branch is missing the clarifying sentence about runtime TaggedProjectMeta shape vs declared ProjectMeta type. The Documentation agent should address this.",
+        "Known accepted deviations (out of scope): pagination pre-truncation in searchKnowledge(), numeric id collision across stores (first-seen wins, documented and tested)."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-07-24T13:14:45Z",
+      "notes": [
+        "All 6 ACs met. 3756/3756 tests pass. PASS verdict.",
+        "One Fix-Forward applied: detectProjectByCwd() FOUND-branch JSDoc now clarifies that the runtime object is a TaggedProjectMeta but callers should use the declared ProjectMeta shape.",
+        "Documentation-Forward for Documentation agent: pre-pagination semantics of searchKnowledge()/listKnowledge() (limit/offset forwarded before cross-store dedup) are not captured in the API surface documentation — add when the GUI exposes paginated cross-store knowledge views.",
+        "Known accepted deferred items (out of scope): numeric id collision across independent store counters (documented, tested, first-seen wins); pagination pre-truncation in knowledge search/list (out of WP-004 scope)."
+      ]
+    }
+  ]
+}

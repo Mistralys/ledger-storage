@@ -1,0 +1,259 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-002.md",
+  "title": "Fix GUI API and auto-archive multi-store resolution",
+  "description": "**Plan Context:** Most MCP tool handlers, GUI handlers, auto-archive, and standalone-import construct `LedgerStore` without resolving the correct store in multi-store mode, causing silent failures for projects in non-default stores. This plan extracts a shared utility and applies it uniformly across all affected surfaces.\\n\\n**Description:** Make the GUI HTTP layer and auto-archive service multi-store-aware. Fix `resolveProjectStore()` in `gui/api.ts` to iterate all store paths when the slug is not found in the default store. Fix `resolveRepoName()` in `gui/server.ts` to search across stores. Fix run-log route path construction in `gui/server.ts`. Fix `auto-archive.ts` to scan all stores via `MultiStoreManager.listAllProjects()`. Add integration tests for both surfaces.\\n\\n**Scope:**\\n- `mcp-server/gui/api.ts` (modify)\\n- `mcp-server/gui/server.ts` (modify)\\n- `mcp-server/src/gui/auto-archive.ts` (modify)\\n- `mcp-server/tests/gui/multi-store-api.test.ts` (new)\\n- `mcp-server/tests/gui/auto-archive-multi-store.test.ts` (new)\\n\\n**Estimated Complexity:** Medium\\n\\n**Notes:** The ~20 GUI handlers that call `resolveProjectStore()` are all fixed by fixing this single function — no per-handler changes needed. The deprecated run-log routes (~L1149 and ~L1184) are explicitly out of scope per the plan.",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "resolveProjectStore() returns a valid LedgerStore for projects in non-default stores — verified by handleGetProject returning data for a non-default-store project.",
+      "met": true
+    },
+    {
+      "criterion": "resolveRepoName() finds .meta.json for projects in non-default stores.",
+      "met": true
+    },
+    {
+      "criterion": "Run-log routes construct paths against the correct store for non-default-store projects.",
+      "met": true
+    },
+    {
+      "criterion": "Auto-archive scans all stores — an eligible project in a non-default store is archived.",
+      "met": true
+    },
+    {
+      "criterion": "Auto-archive does not skip non-default-store projects when only non-default stores contain eligible projects.",
+      "met": true
+    },
+    {
+      "criterion": "No phantom directories are created in the default store by any GUI operation on a non-default-store project.",
+      "met": true
+    },
+    {
+      "criterion": "Single-store mode behavior is unchanged — resolveProjectStore() and auto-archive fall back to existing logic when isStoreContextInitialized() is false or isMultiStoreMode() is false.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-08-02T17:42:55Z",
+      "completed_at": "2026-08-02T17:52:48Z",
+      "duration_ms": 593000,
+      "summary": [
+        "Fixed resolveProjectStore() in gui/api.ts to iterate all store paths in multi-store mode. For each store path, calls resolveProjectDir() then reads .meta.json; ENOENT triggers continue (not 404) so the loop falls through to the next store.",
+        "Fixed resolveRepoName() in gui/server.ts to search all store paths for .meta.json when in multi-store mode, throwing ApiError NOT_FOUND only after exhausting all stores.",
+        "Fixed run-log LIST and GET routes in gui/server.ts to resolve the correct store path via getStoreRouter().resolveStoreForRepo(repo) before constructing logsDir.",
+        "Added isStoreContextInitialized and getStoreRouter to the gui/server.ts import from store-context.js.",
+        "Fixed auto-archive.ts to call getMultiStoreManager().listAllProjects() when store context is initialized (covering all stores), using (meta as TaggedProjectMeta).store_path as the per-project ledger root when constructing LedgerStore.",
+        "Created tests/gui/multi-store-api.test.ts with 5 integration tests covering resolveProjectStore and dependent handlers in multi-store mode.",
+        "Created tests/gui/auto-archive-multi-store.test.ts with 2 tests verifying multi-store archive scanning.",
+        "All 3988 tests pass (143 test files), TypeScript: no errors."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/api.ts",
+          "mcp-server/gui/server.ts",
+          "mcp-server/src/gui/auto-archive.ts",
+          "mcp-server/tests/gui/multi-store-api.test.ts",
+          "mcp-server/tests/gui/auto-archive-multi-store.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-08-02T17:52:48Z",
+          "note": "resolveProjectDir() in src/utils/ledger-root.ts does not verify path existence for qualified slugs ('repo/slug') — it simply constructs join(ledgerRoot, repo, slug) and returns without checking that the directory exists. This caused a subtle multi-store bug: the function never threw NOT_FOUND for a missing qualified slug, so the caller had to check ENOENT from the subsequent .meta.json read. The fix works correctly but the root cause is a leaky abstraction. Consider adding an existence check inside resolveProjectDir() for the qualified-slug path."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-02T17:52:48Z",
+          "note": "gui/server.ts run-log routes use an inline async store-resolution block (3 lines repeated twice, once for LIST and once for GET). A small private helper like resolveStorePathForRepo(repo, ledgerRoot) would eliminate this repetition and make future updates safer."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-08-02T17:52:48Z",
+          "note": "gui/api.ts resolveProjectStore() previously called notFound() from inside the .meta.json catch block without distinguishing between ENOENT (project not in this store) and corrupt JSON (genuine error). The bug was harmless in single-store mode but broke multi-store resolution. The fix separates the two cases cleanly, but the original pre-existing conflation is worth noting as technical debt."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-08-02T18:02:26Z",
+      "completed_at": "2026-08-02T18:04:30Z",
+      "duration_ms": 124000,
+      "summary": [
+        "All 7 acceptance criteria verified against actual source code and test output.",
+        "Build check: tsc --noEmit exits clean.",
+        "AC1: resolveProjectStore() iterates all store paths via getAllStorePaths() in multi-store mode; ENOENT triggers continue, corrupt JSON triggers notFound(). Verified by multi-store-api test 'finds a project in a non-default store'.",
+        "AC2: resolveRepoName() iterates all store paths searching for .meta.json; throws NOT_FOUND only after exhausting all stores.",
+        "AC3: Run-log LIST and GET routes call getStoreRouter().resolveStoreForRepo(repo) to construct logsDir against the correct store.",
+        "AC4+AC5: auto-archive.ts calls getMultiStoreManager().listAllProjects() in multi-store mode; both auto-archive tests pass including the 'does not skip non-default-store projects' scenario.",
+        "AC6: 'no phantom directories' test passes — handleArchiveProject on a non-default-store project creates no directories in the default store.",
+        "AC7: Both resolveProjectStore() and resolveRepoName() fall back to [ledgerRoot] when isMultiStoreMode() is false; auto-archive falls back to LedgerStore.listAllProjects(ledgerRoot). Single-store behavior unchanged.",
+        "Full regression: 3988 tests pass across 143 test files, no regressions."
+      ],
+      "metrics": {
+        "test_coverage": "7/7 new tests + 3981 pre-existing",
+        "tests_passed": 3988,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-08-02T18:04:30Z",
+          "note": "gui/api.ts resolveProjectStore(): The ENOENT-vs-corrupt-JSON distinction is correctly implemented — ENOENT triggers continue (try next store); corrupt JSON logs to stderr and calls notFound(). This is the critical correctness invariant for multi-store resolution."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-02T18:04:30Z",
+          "note": "gui/server.ts resolveRepoName(): Falls back gracefully to the URL param when .meta.json is malformed (logs to stderr). Good defensive behavior."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-08-02T18:04:30Z",
+          "note": "resolveProjectStore(): If getAllStorePaths() returns an empty array (degenerate config), the for loop exhausts immediately and notFound() is called. Correct behavior."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-02T18:04:30Z",
+          "note": "No observations — code is clean and consistent. The 7 integration tests comprehensively cover the non-default store scenarios, phantom directory prevention, and NOT_FOUND paths."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-08-02T18:09:28Z",
+      "completed_at": "2026-08-02T18:12:16Z",
+      "duration_ms": 168000,
+      "summary": [
+        "WP-002 code-review PASS. All three surfaces (GUI API, GUI server, auto-archive) correctly resolve multi-store paths. resolveProjectStore() ENOENT/AMBIGUOUS/corrupt-JSON semantics are sound. Auto-archive guard is functionally correct but inconsistent with the other two guards (medium-priority observation, not blocking). Integration tests are well-structured with good helpers. All 7 ACs verified."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/api.ts",
+          "mcp-server/gui/server.ts",
+          "mcp-server/src/gui/auto-archive.ts",
+          "mcp-server/tests/gui/multi-store-api.test.ts",
+          "mcp-server/tests/gui/auto-archive-multi-store.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-02T18:12:16Z",
+          "note": "gui/api.ts resolveProjectStore(): The ENOENT-vs-AMBIGUOUS-vs-corrupt-JSON distinction is architecturally correct. ENOENT and AMBIGUOUS both trigger 'continue' (try next store); corrupt JSON triggers a logged 404. This is the right semantic — corrupt metadata is a genuine storage error, not a 'not in this store' signal. The security note (AMBIGUOUS downgraded to NOT_FOUND to prevent cross-namespace leaks) is well-documented."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-08-02T18:12:16Z",
+          "note": "auto-archive.ts: Guard uses `isStoreContextInitialized()` alone, while resolveProjectStore() and resolveRepoName() both use `isStoreContextInitialized() && getStoreRouter().isMultiStoreMode()`. Functionally equivalent because StoreRouter.getAllStores() in null-config (legacy) mode returns a single-element array with resolveLedgerRoot() — but the inconsistency will confuse future contributors. Consider aligning to `isStoreContextInitialized() && getStoreRouter().isMultiStoreMode()` for consistency."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-08-02T18:12:16Z",
+          "note": "gui/server.ts run-log routes: The 3-line multi-store resolution block is duplicated for LIST and GET routes (already noted by Developer). The justification for NOT using resolveRepoName here (log files must be readable for active runs before .meta.json exists) is sound and well-commented. The duplication is low-risk."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-02T18:12:16Z",
+          "note": "tests/gui/multi-store-api.test.ts: The phantom-directory test correctly uses access() to assert absence after a read-only handler call. Clean and unambiguous. The beforeEach fixture structure (REPO/SLUG as module-level constants) makes all tests highly readable."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-02T18:12:16Z",
+          "note": "tests/gui/auto-archive-multi-store.test.ts: backdateProject() helper is elegant — it surgically patches last_updated in .meta.json without going through any store API, ensuring the auto-archive threshold logic is exercised independently of clock-dependent test fixtures."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-08-02T18:12:16Z",
+          "note": "[documentation-forward] mcp-server/docs/agents/project-manifest/api-surface.md: Update resolveProjectStore() and resolveRepoName() descriptions to reflect multi-store iteration semantics (iterates getAllStorePaths() in multi-store mode, falls back to [ledgerRoot] in single-store mode). Also note the ENOENT/AMBIGUOUS/corrupt-JSON error semantics for resolveProjectStore."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-08-02T18:12:16Z",
+          "note": "[documentation-forward] mcp-server/docs/agents/project-manifest/file-tree.md: Add tests/gui/multi-store-api.test.ts and tests/gui/auto-archive-multi-store.test.ts to the tests/gui/ section."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-08-02T18:17:41Z",
+      "completed_at": "2026-08-02T18:20:39Z",
+      "duration_ms": 178000,
+      "summary": [
+        "Addressed all documentation-forward items from code review plus the Reviewer-requested constraints.md note. Updated resolveProjectStore() description in api-surface.md to document multi-store iteration semantics (getAllStorePaths() loop, ENOENT/AMBIGUOUS/corrupt-JSON semantics, single-store fallback). Updated resolveRepoName() description to reflect multi-store search behavior. Added auto-archive-multi-store.test.ts and multi-store-api.test.ts to the tests/gui/ listing in file-tree.md. Added KL-4 to constraints.md documenting the auto-archive guard inconsistency as a known divergence with rationale and follow-on WP recommendation."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/file-tree.md",
+          "mcp-server/docs/agents/project-manifest/constraints.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-02T18:20:39Z",
+          "note": "Addressed both documentation-forward items from the Reviewer: updated resolveProjectStore() in api-surface.md to document multi-store iteration semantics (getAllStorePaths() loop, ENOENT/AMBIGUOUS/corrupt-JSON error handling); updated resolveRepoName() to describe multi-store search behavior. Added two test files to file-tree.md tests/gui/ listing. Added KL-4 to constraints.md documenting the auto-archive guard inconsistency (isStoreContextInitialized() alone vs compound guard), explaining why it is functionally equivalent, and recommending a follow-on cleanup WP."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-08-02T18:20:39Z",
+  "last_updated": "2026-08-02T18:20:39Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-08-02T17:52:48Z",
+      "notes": [
+        "WP-002 complete. The ENOENT-vs-corrupt-JSON distinction in resolveProjectStore() is critical: ENOENT means 'try next store', other errors mean 'log and 404'. Test fixtures use real temp dirs + setStoreContext(router, manager) pattern consistent with other multi-store tests in the suite. WP-004 and WP-005 are now both READY (WP-004 was unblocked by WP-001, WP-005 same); WP-003 (orchestrator Python) has no dependencies and is independently READY."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-08-02T18:04:30Z",
+      "notes": [
+        "WP-002 QA PASS. All 7 AC verified: resolveProjectStore() iterates all stores with proper ENOENT/corrupt-JSON distinction, resolveRepoName() searches all stores, run-log routes use resolveStoreForRepo(), auto-archive calls listAllProjects() across all stores, no phantom directories, single-store fallback preserved. 7 new integration tests all pass, 3988 total tests pass, TypeScript clean."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-08-02T18:12:16Z",
+      "notes": [
+        "WP-002 code-review PASS. resolveProjectStore(), resolveRepoName(), run-log routes, and auto-archive all correctly iterate stores in multi-store mode. All 7 ACs verified. One medium-priority inconsistency: auto-archive.ts uses isStoreContextInitialized() alone while the other two guards use isStoreContextInitialized() && isMultiStoreMode(). Functionally equivalent but inconsistent — Documentation agent should note this in constraints.md as a known divergence or suggest aligning in a future WP. Two documentation-forward items flagged for api-surface.md and file-tree.md."
+      ]
+    }
+  ]
+}

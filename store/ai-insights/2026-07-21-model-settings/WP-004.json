@@ -1,0 +1,237 @@
+{
+  "work_package_id": "WP-004",
+  "work_package_file": "work/WP-005.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "The orchestrator resolves models using the priority chain: assignments > per-persona YAML > shared YAML default",
+      "met": true
+    },
+    {
+      "criterion": "When a persona's resolved assignment slug is `\"inherit\"`, the orchestrator skips the assignment and falls back to YAML-based resolution",
+      "met": true
+    },
+    {
+      "criterion": "When `assignments.json` is absent, the orchestrator continues with YAML-only behavior (identical to current behavior)",
+      "met": true
+    },
+    {
+      "criterion": "Partial assignments override only the specified personas — unspecified personas fall back to YAML",
+      "met": true
+    },
+    {
+      "criterion": "All pytest tests pass",
+      "met": true
+    },
+    {
+      "criterion": "When a persona's resolved assignment slug is \"inherit\", the orchestrator skips the assignment and falls back to YAML-based resolution",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-07-21T14:12:07Z",
+      "completed_at": "2026-07-21T14:16:42Z",
+      "duration_ms": 275000,
+      "summary": [
+        "Extended extract_persona_model_slugs() in orchestrator/src/utils/persona_models.py with a four-layer model resolution priority chain: per-persona assignment UUID > per-persona YAML model_slug > default_model_uuid assignment > _shared.yaml default_model_slug.",
+        "Added two new module-level helpers: _read_uuid_to_slug_map() reads personas/model-registry/local.json and returns a UUID→slug dict (empty on missing/invalid file); _read_assignments() reads assignments.json and returns the parsed dict (None on missing/invalid file). Both degrade gracefully.",
+        "The 'inherit' sentinel slug is detected after UUID resolution and causes the orchestrator to skip that assignment layer and fall through to the next — ensuring the orchestrator always resolves to a concrete model slug for API calls.",
+        "Created orchestrator/tests/test_persona_models_assignments.py with 22 pytest tests covering: assignments absent (YAML-only fallback), full override, partial assignments, inherit slug skipping, default_model_uuid override, graceful degradation on corrupt/missing files, and the full four-layer priority chain.",
+        "All 22 new tests pass. All 1132 pre-existing orchestrator tests continue to pass with no regressions."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/utils/persona_models.py",
+          "orchestrator/tests/test_persona_models_assignments.py"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T14:16:42Z",
+          "note": "persona_models.py module docstring says 'returns the API-compatible model identifier for each orchestrator stage' but doesn't mention the new assignments layer. Consider updating it to document the full priority chain when the module docstring is next edited."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-07-21T14:16:42Z",
+          "note": "The glob pattern '[1-9]-*.yaml' in find_ledger_yaml_for_stage() (and the same pattern in extract_persona_model_slugs() via find_ledger_yaml_for_stage) only matches single-digit role numbers. A pre-existing comment in the file already flags this. The WP-004 implementation doesn't change this limitation, but it is worth revisiting if the number of ledger personas ever exceeds 9."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-07-21T14:17:10Z",
+      "completed_at": "2026-07-21T14:19:28Z",
+      "duration_ms": 138000,
+      "summary": [
+        "All 22 new tests in test_persona_models_assignments.py pass (22/22).",
+        "Full orchestrator regression suite passes: 1132 passed, 6 skipped, 0 failures.",
+        "All 5 acceptance criteria verified against the implementation in orchestrator/src/utils/persona_models.py.",
+        "7 additional edge-case scenarios exercised manually: extra keys in assignments.json, malformed local.json entries (missing 'id'), non-dict persona_models value (list and null), duplicate UUIDs in local.json, empty-string UUID, and non-string default_model_uuid — all degrade gracefully.",
+        "Build check: module imports cleanly, no syntax errors or runtime issues."
+      ],
+      "metrics": {
+        "test_coverage": "22 new tests + 1132 pre-existing + 7 manual edge cases",
+        "tests_passed": 1154,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T14:19:28Z",
+          "note": "Edge case: duplicate UUIDs in local.json produce last-write-wins behavior via dict comprehension. This is benign in practice (local.json is machine-generated) but worth documenting in _read_uuid_to_slug_map if the file ever becomes hand-editable."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T14:19:28Z",
+          "note": "The module docstring (line 5) still reads 'returns the API-compatible model identifier for each orchestrator stage' without mentioning the four-layer priority chain. Developer already flagged this; low priority but would improve discoverability."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T14:19:28Z",
+          "note": "No test covers the case where local.json is a valid JSON array but all entries lack both 'id' and 'slug' fields (empty UUID map). The code handles it correctly (falls to YAML), but explicit test coverage would close the gap."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-07-21T14:19:50Z",
+      "completed_at": "2026-07-21T14:21:38Z",
+      "duration_ms": 108000,
+      "summary": [
+        "Code review PASS. Implementation is clean, well-structured, and architecturally sound. Two Fix-Forward docstring improvements applied directly (module-level docstring updated to document the four-layer priority chain; _read_uuid_to_slug_map docstring updated to note last-write-wins behavior for duplicate UUIDs). All 22 tests verified passing after changes.",
+        "No blocking issues found across all four review dimensions: maintainability, best practices, performance, and future context.",
+        "One documentation-forward item tagged for the Documentation agent: module docstring is now correct but extract_persona_model_slugs() docstring's 'Returns / Raises / Notes' section could be augmented with a cross-reference note to the module-level docstring for the full priority-chain narrative."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/utils/persona_models.py"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-07-21T14:21:38Z",
+          "note": "Module docstring (lines 1–26) updated to document the full four-layer model resolution priority chain and note the graceful-fallback behavior when assignments.json/local.json are absent. Previously only mentioned YAML resolution — the new text makes the assignments layer discoverable from the module entry point."
+        },
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-07-21T14:21:38Z",
+          "note": "_read_uuid_to_slug_map() docstring updated to explicitly note the last-write-wins behavior for duplicate UUIDs in local.json. QA flagged this as an undocumented edge case; the note includes the rationale (machine-generated file) and a flag for when hand-editability might change the risk profile."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T14:21:38Z",
+          "note": "find_ledger_yaml_for_stage() re-reads workflow-manifest.json from disk on every call. extract_persona_model_slugs() calls it in a per-stage loop, causing N manifest reads per invocation. This is pre-existing behavior and not introduced by WP-004, but as the number of personas grows this will accumulate I/O. A cached manifest (read once and passed as a parameter or closure) would eliminate the redundancy — worth considering when the function is next refactored."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-07-21T14:21:38Z",
+          "note": "[documentation-forward] extract_persona_model_slugs() has a detailed docstring with its own priority chain description. Now that the module docstring also carries the authoritative narrative, the function-level docstring should cross-reference it (e.g. 'See module docstring for the full priority-chain description') rather than maintain a parallel copy. Keeping both in sync over time is a maintenance risk."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T14:21:38Z",
+          "note": "Priority chain line 380: `model_slug = assignment_slug or yaml_slug or effective_default` relies on Python truthiness — an empty string from any layer is silently skipped. This is correct behavior (empty slug is never valid) but is implicit. A future contributor who sees a YAML file with `model_slug: ''` might expect it to take effect. A comment on that line explaining the intentional empty-string skip would make this contract explicit."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-07-21T14:22:06Z",
+      "completed_at": "2026-07-21T14:25:13Z",
+      "duration_ms": 187000,
+      "summary": [
+        "Updated orchestrator/README.md Configuration section to describe the full four-layer model resolution priority chain (assignments.json per-persona → per-persona YAML → assignments.json default → _shared.yaml default). Previously the section only mentioned the two YAML layers.",
+        "Updated the extract_persona_model_slugs() entry in orchestrator/docs/public-api.md to enumerate all four resolution layers, including the UUID-resolution steps for assignments.json/local.json and the 'inherit' sentinel skip behavior.",
+        "Addressed the [documentation-forward] item from the Reviewer: added a cross-reference note to the extract_persona_model_slugs() function docstring directing readers to the module docstring for the authoritative priority-chain narrative, eliminating the dual-maintenance risk.",
+        "Triggered CTX context regeneration via ctx generate (exit code 0). orchestrator/overview.md and orchestrator/documentation.md were regenerated and now reflect the updated README.md and public-api.md content."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/README.md",
+          "orchestrator/docs/public-api.md",
+          "orchestrator/src/utils/persona_models.py",
+          ".context/orchestrator/overview.md",
+          ".context/orchestrator/documentation.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T14:25:13Z",
+          "note": "orchestrator/README.md Configuration section previously said 'The LLM model for each stage is read from the persona YAML metadata' — this was accurate before WP-004 but incomplete after. The rewrite now opens with 'read at startup by load_config(), which calls extract_persona_model_slugs()' and expands each of the four layers as a numbered list, matching the structure of the module docstring."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T14:25:13Z",
+          "note": "The [documentation-forward] item from the Reviewer's code-review pipeline was fully addressed: the extract_persona_model_slugs() Notes section now opens with an explicit pointer to the module docstring before the existing glob-pattern caveat. The function docstring retains its own summary of the four layers (useful for IDE hover) but clearly defers to the module docstring as the authoritative source."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-07-21T14:25:13Z",
+  "last_updated": "2026-07-21T14:25:13Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-07-21T14:16:42Z",
+      "notes": [
+        "The implementation is self-contained in orchestrator/src/utils/persona_models.py. Two new private helpers (_read_uuid_to_slug_map, _read_assignments) handle file I/O with graceful degradation.",
+        "Key invariant: the orchestrator always produces a concrete (non-'inherit') model slug from extract_persona_model_slugs(). The 'inherit' sentinel is silently skipped so downstream API calls are never broken.",
+        "The full priority chain is: per-persona assignment UUID (skip if 'inherit') > per-persona YAML model_slug > default_model_uuid assignment (skip if 'inherit') > _shared.yaml default_model_slug.",
+        "Test coverage includes corrupt JSON, missing files, unknown UUIDs, and the inherit sentinel — all verified to degrade gracefully."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-07-21T14:19:28Z",
+      "notes": [
+        "All 5 AC confirmed met. 22 new tests + 1132 regression tests pass. Code is clean — no blocking issues found.",
+        "Three low-priority improvement notes recorded (duplicate UUID documentation, module docstring update, minor test coverage gap) — none are blockers.",
+        "Implementation in orchestrator/src/utils/persona_models.py is well-structured with appropriate isinstance guards and graceful degradation on all I/O failure paths."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-07-21T14:21:38Z",
+      "notes": [
+        "PASS — no rework required. Two Fix-Forward docstring improvements were applied directly to orchestrator/src/utils/persona_models.py (module docstring + _read_uuid_to_slug_map Note block). All 22 tests verified passing after changes.",
+        "One [documentation-forward] item for the Documentation agent: extract_persona_model_slugs() function-level docstring and the module docstring now both carry the priority-chain description — the function docstring should cross-reference the module docstring to avoid dual-maintenance risk.",
+        "One low-priority improvement noted: manifest is re-read N times per invocation of extract_persona_model_slugs() (pre-existing pattern, not introduced by WP-004). Flag for future refactor if persona count grows significantly."
+      ]
+    }
+  ]
+}

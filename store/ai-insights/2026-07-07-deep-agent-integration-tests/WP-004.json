@@ -1,0 +1,196 @@
+{
+  "work_package_id": "WP-004",
+  "work_package_file": "work/WP-004.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-003"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "test_project_path_injected_through_deep_agent passes: mock ledger_get_project_status tool receives project_path matching the state's project_path value, even though the fake model's tool call omitted it.",
+      "met": true
+    },
+    {
+      "criterion": "test_restrict_to_wp_blocks_cross_wp_through_deep_agent passes: mock ledger_begin_work tool is NOT called when the fake model attempts work_package_id=\"WP-999\" against a stage configured with current_wp_id=\"WP-001\".",
+      "met": true
+    },
+    {
+      "criterion": "Both tests are decorated with @pytest.mark.deepagent.",
+      "met": true
+    },
+    {
+      "criterion": "Neither test requires API keys or network access.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-07-08T07:09:10Z",
+      "completed_at": "2026-07-08T07:13:04Z",
+      "duration_ms": 234000,
+      "summary": [
+        "Added two @pytest.mark.deepagent integration tests to tests/test_deep_agent_integration.py:",
+        "test_project_path_injected_through_deep_agent: uses create_stage_node with a scripted model that calls ledger_get_project_status WITHOUT project_path; verifies inject_project_path wrapper injects the state project_path before the mock coroutine receives it. Uses _make_project_status_tool helper (explicit project_path: str schema field) to allow LangChain to forward the injected value correctly.",
+        "test_restrict_to_wp_blocks_cross_wp_through_deep_agent: uses create_stage_node with current_wp_id=WP-001 and a scripted model that attempts ledger_begin_work with work_package_id=WP-999; verifies restrict_to_wp intercepts the call so bw_calls remains empty.",
+        "Added _make_project_status_tool helper alongside existing helpers — declares project_path: str explicitly so LangChain infers a proper schema (unlike _AnyArgsSchema which short-circuits to **{}).",
+        "All 4 deepagent integration tests pass; 125 tool_wrappers unit tests unaffected."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/tests/test_deep_agent_integration.py"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-08T07:13:04Z",
+          "note": "test_deep_agent_integration.py: the _make_project_status_tool helper follows the existing _make_read_file_tool pattern precisely. A future refactor could generalize both into a single _make_tool_with_schema factory, but the current duplication is minimal and the clarity outweighs the DRY benefit at this scale."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-07-08T07:13:04Z",
+          "note": "test_deep_agent_integration.py: the 46+ DeprecationWarning lines from langchain_core/callbacks/manager.py (asyncio.iscoroutinefunction) are pre-existing and affect the entire test suite. They are outside the scope of this WP but worth noting for future upstream resolution."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-07-08T07:26:03Z",
+      "completed_at": "2026-07-08T07:27:42Z",
+      "duration_ms": 99000,
+      "summary": [
+        "All 4 WP-004 acceptance criteria verified and met.",
+        "test_project_path_injected_through_deep_agent: PASS — inject_project_path correctly injects project_path into the ledger_get_project_status call even when the fake model omits it. Assertion on gps_calls[0]['project_path'] == '/test/inject-project' confirmed.",
+        "test_restrict_to_wp_blocks_cross_wp_through_deep_agent: PASS — restrict_to_wp soft-fail blocks the WP-999 ledger_begin_work call; bw_calls remains empty (0 invocations of the underlying coroutine) as required.",
+        "Both tests carry @pytest.mark.deepagent (lines 439, 527) and use ToolCallableFakeChatModel — no API keys or network access needed.",
+        "Full 6-test deepagent suite: 6/6 PASS. Regression suite: 1093 passed, 6 skipped (pre-existing), 0 failures."
+      ],
+      "metrics": {
+        "test_coverage": "2/2 WP-004 ACs exercised directly; full deepagent suite 6/6; regression 1093/1093",
+        "tests_passed": 2,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-08T07:27:42Z",
+          "note": "test_deep_agent_integration.py: _make_project_status_tool uses 'project_path: str = \"\"' (default empty string) in its coroutine signature. The test asserts gps_calls[0]['project_path'] == '/test/inject-project', which verifies inject_project_path did inject the non-empty value. Minor: the default empty string means a missing inject would silently pass if the assertion were checking for non-empty — but the test checks for the exact injected path value, so the guard is solid."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-08T07:27:42Z",
+          "note": "176 DeprecationWarning entries from langchain_core/callbacks/manager.py (asyncio.iscoroutinefunction) are pre-existing across the entire integration test suite and are outside WP-004 scope. No action needed here."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-07-08T07:29:25Z",
+      "completed_at": "2026-07-08T07:31:45Z",
+      "duration_ms": 140000,
+      "summary": [
+        "Code review PASS — both WP-004 tests and the _make_project_status_tool helper are clean, well-documented, and architecturally sound.",
+        "test_project_path_injected_through_deep_agent correctly exercises the inject_project_path middleware end-to-end. The _make_project_status_tool helper correctly mirrors the _make_read_file_tool pattern: by declaring `project_path: str` explicitly in the coroutine signature, LangChain infers a proper one-field schema and forwards the injected value — enabling a value assertion rather than just a call-count check.",
+        "test_restrict_to_wp_blocks_cross_wp_through_deep_agent correctly uses ledger_begin_work (a write tool subject to the cross-WP guard) rather than a read-only tool. The test docstring explicitly calls this out — an informed design choice that avoids a false-positive test.",
+        "No blocking issues. No Fix-Forward changes applied. One low-priority improvement observation recorded."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/tests/test_deep_agent_integration.py"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-08T07:31:45Z",
+          "note": "test_deep_agent_integration.py: _make_project_status_tool declares `project_path: str = \"\"` with a default empty string. If the assert were checking for a truthy/non-empty value rather than the exact injected path, a missing injection would silently pass. The current assertion (`gps_calls[0]['project_path'] == '/test/inject-project'`) already guards against this, but a future maintainer changing the assertion to `assert gps_calls[0]['project_path']` would lose that protection. Low-risk at this scale, but worth noting."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-08T07:31:45Z",
+          "note": "test_deep_agent_integration.py: Test 4 correctly selects ledger_begin_work (a write tool) to verify restrict_to_wp. The docstring explains the rationale ('ledger_get_work_package is in _READ_ONLY_TOOLS and is exempt from the cross-WP guard'). This is sound design — testing with a read-only tool would produce a vacuous green test. The explicit documentation of this design decision is a best-practice worth preserving in future test additions."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-07-08T07:33:44Z",
+      "completed_at": "2026-07-08T07:36:29Z",
+      "duration_ms": 165000,
+      "summary": [
+        "Updated orchestrator/README.md test table: expanded test_deep_agent_integration.py description to include the two WP-004 tests (test_project_path_injected_through_deep_agent and test_restrict_to_wp_blocks_cross_wp_through_deep_agent); removed hard count 'Two' per documentation convention.",
+        "Added missing test_deep_agent_integration.py entry to orchestrator/docs/agents/project-manifest/file-tree.md (between test_config.py and test_dialogue_writer.py, alphabetical order). The file had been absent from the annotated tree.",
+        "No code-review documentation-forwards to address. No changes to tests/README.md required: the two-pattern helper guide (count-only vs value assertions) remains accurate — _make_project_status_tool follows the same explicit-parameter pattern already documented for _make_read_file_tool."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/README.md",
+          "orchestrator/docs/agents/project-manifest/file-tree.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-08T07:36:29Z",
+          "note": "orchestrator/tests/README.md line 48 says 'provides two ready-made helper patterns' — still accurate (count-only vs value-assertion). The _make_project_status_tool added in WP-004 is a second instance of the value-assertion pattern, not a third pattern. No update needed."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-08T07:36:29Z",
+          "note": "The .context/ generated docs (particularly .context/orchestrator/documentation.md and .context/orchestrator/manifest.md) will be stale after these README and file-tree changes. CTX regeneration via `node scripts/cli.js ctx-generate` should be run before the next release to keep the generated context bundle in sync."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-07-08T07:36:29Z",
+  "last_updated": "2026-07-08T07:36:29Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-07-08T07:13:04Z",
+      "notes": [
+        "Both new tests run deterministically with ToolCallableFakeChatModel — no API keys or network access.",
+        "The _make_project_status_tool helper added at the module level declares project_path: str explicitly; this is critical for LangChain to forward injected values (unlike _AnyArgsSchema which short-circuits to **{}). The pattern mirrors the existing _make_read_file_tool.",
+        "The restrict_to_wp test uses the soft-fail path (first violation returns an error string to the agent, not ValueError). The agent receives the error, then returns the terminal AIMessage — the test only verifies bw_calls is empty."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-07-08T07:27:42Z",
+      "notes": [
+        "All 4 ACs met. Both tests deterministic (ToolCallableFakeChatModel, no API keys). inject_project_path and restrict_to_wp middleware verified end-to-end through real create_deep_agent pipeline. Full regression clean (1093/1093 passing)."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-07-08T07:31:45Z",
+      "notes": [
+        "Code review PASS. No blocking issues. Both new tests (test_project_path_injected_through_deep_agent, test_restrict_to_wp_blocks_cross_wp_through_deep_agent) and the _make_project_status_tool helper are clean and well-documented. All 4 ACs verified by QA and confirmed by review. Ready for documentation pipeline."
+      ]
+    }
+  ]
+}

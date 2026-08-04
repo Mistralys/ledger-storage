@@ -1,0 +1,251 @@
+{
+  "work_package_id": "WP-005",
+  "work_package_file": "work/WP-005.md",
+  "title": "Implement `renderRepoModal()` shared modal function",
+  "description": "Plan Context: Replace the inline add form and full-page detail editor with a single shared modal dialog that supports moving repositories between stores via a dropdown integrated into the save flow.\n\nDescription: Add a new `renderRepoModal(mode, repo, stores, onSaved, prefill)` function to `strategy.js` that renders a WCAG-compliant add/edit modal following the `csRenderStoreModal` pattern, with mode-dependent field visibility and move-on-save logic.\n\nScope:\n- `mcp-server/gui/public/views/strategy.js` — new `renderRepoModal()` function\n\nDeliverables:\n- `renderRepoModal()` function using `.cs-modal-*` CSS classes with `repo-modal-` element ID prefix.\n- Add mode: editable ID, Label, Folder Names (add/remove widget), Store dropdown (multi-store only).\n- Edit mode: read-only ID, editable Label, Folder Names, Vision textareas (short/mid/long-term), Store dropdown (multi-store, pre-selected to `repo.store_id`).\n- Save logic — add mode: validate, build payload, call `API.createRepo()`, close + invoke `onSaved()`.\n- Save logic — edit mode: validate, call `API.updateRepo()` first, then `API.moveRepo()` if store changed, close + invoke `onSaved()`. Error display in `#repo-modal-error` on failure.\n- Modal lifecycle: focus trap, close-on-Escape, close-on-overlay-click, WCAG focus restoration, Enter-key submit in non-textarea inputs, overlay removal on close.\n- `prefill` parameter support for pre-populating add-mode fields.\n- Folder name queries scoped to modal container (not `document.querySelectorAll`).\n- ES5-only, all dynamic values escaped via `escapeHtml()`.\n\nEstimated Complexity: High\n\nRationale: A single modal centralizes add/edit validation in one place, eliminating duplicate validation between the inline form and detail page. The modal approach is consistent with the config-stores pattern.\n\nRejected Approaches:\n- Keep the detail page and add a modal for add only — rejected because the user confirmed modal-replaces-detail. Eliminates a route, reduces code, and aligns with the config-stores pattern.\n\nNotes: This is the largest WP in the plan. The high complexity is justified because the modal is a single cohesive UI component — splitting the add and edit modes into separate WPs would create artificial seams (the function signature, DOM structure, and lifecycle logic are shared). The `csRenderStoreModal` in `config-stores.js` serves as a direct reference implementation (207–420).\n\nCode Observations: `config-stores.js` `csRenderStoreModal()` (line 207) is ~210 lines covering modal rendering, focus trap, close handlers, validation, and save logic. The repo modal will be comparable in size but larger due to additional fields (vision textareas, folder-names widget). The folder-name add/remove widget pattern already exists in `renderStrategyDetail()` (lines 580–610) — the `buildFolderListHtml()` and `collectFolderNamesFromDOM()` helpers can be adapted for the modal. The update-then-move ordering is specified in the plan: field update first so partial failure preserves typed values.",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001",
+    "WP-003"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "In add mode, the modal shows editable ID, Label, and Folder Names fields. In multi-store mode it also shows a Store dropdown.",
+      "met": true
+    },
+    {
+      "criterion": "In edit mode, the modal shows read-only ID, editable Label, Folder Names, three Vision textareas, and (in multi-store mode) a Store dropdown pre-selected to the current store.",
+      "met": true
+    },
+    {
+      "criterion": "Add-mode save validates ID required and at least one folder name, calls `API.createRepo()`, and invokes `onSaved()` on success.",
+      "met": true
+    },
+    {
+      "criterion": "Edit-mode save calls `API.updateRepo()` first, then `API.moveRepo()` if the store changed, and invokes `onSaved()` on success.",
+      "met": true
+    },
+    {
+      "criterion": "API errors are displayed in the `#repo-modal-error` element without closing the modal.",
+      "met": true
+    },
+    {
+      "criterion": "The modal implements focus trap (Tab/Shift+Tab cycling), close-on-Escape, close-on-overlay-click, and WCAG focus restoration.",
+      "met": true
+    },
+    {
+      "criterion": "The `prefill` parameter pre-populates add-mode fields when provided.",
+      "met": true
+    },
+    {
+      "criterion": "All `.folder-name-input` queries are scoped to the modal container.",
+      "met": true
+    },
+    {
+      "criterion": "All element IDs use the `repo-modal-` prefix, distinct from `cs-modal-*` IDs.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-08-03T18:04:22Z",
+      "completed_at": "2026-08-03T18:11:18Z",
+      "duration_ms": 416000,
+      "summary": [
+        "Implemented renderRepoModal(mode, repo, stores, onSaved, prefill) in mcp-server/gui/public/views/strategy.js (lines 570–901).",
+        "Add mode: editable ID (with slug placeholder), Label, Folder Names add/remove widget, and Store dropdown in multi-store mode. ID and folder names are validated on save.",
+        "Edit mode: read-only ID, editable Label and Folder Names, three vision textareas (short/mid/long-term), and Store dropdown pre-selected to repo.store_id in multi-store mode.",
+        "Save logic: add mode calls API.createRepo(); edit mode calls API.updateRepo() first then API.moveRepo() only when the store changed, matching the plan's update-then-move ordering.",
+        "Modal lifecycle: focus trap (Tab/Shift+Tab), close-on-Escape, close-on-overlay-click, WCAG focus restoration via triggerElement, Enter-to-submit scoped to non-textarea non-button inputs.",
+        "Add-folder input uses e.stopPropagation() on Enter to prevent the modal-level submit handler from also firing.",
+        "All .folder-name-input queries are scoped to the modal container (modal.querySelectorAll). All element IDs use the repo-modal- prefix. CSS classes follow the .cs-modal-* stylesheet pattern.",
+        "prefill parameter (id, label, folder_names) initialises add-mode fields when provided.",
+        "Error display: API failures are shown in #repo-modal-error via showError() without closing the modal; save button is re-enabled on error."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/strategy.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-03T18:11:18Z",
+          "note": "renderStrategyDetail (line 933) uses document.querySelectorAll('.folder-name-input') rather than scoping to its own container. This is benign now because the detail page and the new modal are never simultaneously in the DOM, but if future navigation changes allow both, it could misread inputs. Worth updating in a follow-up when the detail route is removed (WP-007)."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-08-03T18:11:18Z",
+          "note": "The existing Add Repository form in renderStrategyList uses a flat comma-separated text input for folder names (id='new-repo-folders'), while the new modal uses the full add/remove widget. WP-006 will replace the form with the modal, which will unify the UX. No action needed before WP-006 is complete."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-08-03T18:11:18Z",
+          "note": "The doAddFolder function is declared inside an if-block (lines 779-791). In sloppy-mode ES5, block-scoped function declarations have implementation-defined hoisting semantics. Both event listeners that use doAddFolder are inside the same if-block, so behaviour is consistent in practice, but a future strict-mode migration would need this refactored to a var function expression."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-08-03T18:11:51Z",
+      "completed_at": "2026-08-03T18:14:28Z",
+      "duration_ms": 157000,
+      "summary": [
+        "Reviewed renderRepoModal() implementation in mcp-server/gui/public/views/strategy.js (lines 570–901).",
+        "All 9 acceptance criteria verified by direct code inspection.",
+        "Regression check: 4031 MCP server tests pass (145 test files), 0 failures.",
+        "ES5 compliance confirmed — no const/let/arrow functions in the new function block.",
+        "Security: all dynamic values escaped via escapeHtml() before DOM insertion.",
+        "Edge cases verified: null prefill, null/empty stores array, single-store no-move guard (isMultiStore &&), double-submit prevention (saveBtn disabled on click), Enter-key stopPropagation on folder input."
+      ],
+      "metrics": {
+        "test_coverage": "N/A — frontend JS, no unit tests; server-side suite clean",
+        "tests_passed": 4031,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-03T18:14:28Z",
+          "note": "No defects found. The implementation is clean, consistent with the csRenderStoreModal pattern, and correctly handles all specified edge cases."
+        },
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-08-03T18:14:28Z",
+          "note": "No automated unit tests exist for renderRepoModal() (frontend JS without a test harness). Manual review substitutes, but a future jsdom-based test suite for GUI views would improve confidence during refactors."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-08-03T18:14:28Z",
+          "note": "The doAddFolder function is declared inside an if-block (lines 779–791) — noted by Developer as a future strict-mode concern. This is safe under current sloppy-mode ES5 execution and not a QA blocker."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-08-03T18:14:53Z",
+      "completed_at": "2026-08-03T18:16:48Z",
+      "duration_ms": 115000,
+      "summary": [
+        "Code review of renderRepoModal() in mcp-server/gui/public/views/strategy.js (lines 570–901). Implementation is well-structured, follows the csRenderStoreModal pattern, passes all 9 ACs, and contains no blocking issues.",
+        "Fix-Forward applied: both error-path catch handlers were resetting the save button's textContent to hardcoded string literals ('Add Repository', 'Save') instead of the already-in-scope `saveTxt` variable. Changed both to `saveTxt` — no behavioral change, one source of truth.",
+        "Architecture is clean: inner helpers (closeModal, collectModalFolderNames, wireRemoveFolderButtons, rebuildFolderSection, doAddFolder) are well-scoped, folder-name reconciliation pattern correctly captures user edits before add/remove rebuilds, focus trap and WCAG focus restoration are correctly implemented.",
+        "The doAddFolder block-scoped function declaration inside an if-block is safe under current sloppy-mode ES5 (both consumers are in the same if-block). No action required until a strict-mode migration is planned.",
+        "No security findings (all dynamic values escaped via escapeHtml, no innerHTML from unescaped user input)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/strategy.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-08-03T18:16:48Z",
+          "note": "Fix-Forward: both catch handlers reset the save button with hardcoded string literals ('Add Repository' and 'Save') rather than the `saveTxt` variable already in scope. Replaced both with `saveTxt` — non-behavioral, purely a DRY improvement. If the label text ever changes, there is now one place to update."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-03T18:16:48Z",
+          "note": "The folder-name reconciliation pattern (collectModalFolderNames() before every add/remove) is a clean design decision: it captures any user edits to existing inputs before rebuilding the list. The pattern is not immediately obvious at first read; a brief inline comment explaining why collectModalFolderNames() is called before splicing/pushing would aid future maintainers."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-08-03T18:16:48Z",
+          "note": "doAddFolder is declared as a function statement inside an if-block (lines ~779–791). This is safe under current sloppy-mode ES5. When/if the file migrates to strict mode, this must be refactored to a var function expression (var doAddFolder = function() {...}). Already flagged by Developer and QA — no new action required."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-08-03T18:16:48Z",
+          "note": "[documentation-forward] The renderRepoModal() function signature (mode, repo, stores, onSaved, prefill) lacks any JSDoc or inline parameter contract comments. The 'prefill' parameter shape ({id, label, folder_names}) and the 'stores' element shape ({id, label}) are not documented anywhere in the file. Add a brief comment block before the function describing the expected shapes of all parameters, especially prefill and the stores array, to help WP-006 and WP-007 developers wire call sites correctly."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-08-03T18:17:17Z",
+      "completed_at": "2026-08-03T18:20:12Z",
+      "duration_ms": 175000,
+      "summary": [
+        "Addressed all documentation-forward items from the code-review pipeline.",
+        "Updated the renderRepoModal() comment block in strategy.js: expanded 'repo' shape to enumerate all consumed fields (id, label, folder_names, store_id, vision?:{short_term,mid_term,long_term}); updated 'stores' to document the element shape Array of {id, label}.",
+        "Added inline reconciliation comments explaining why collectModalFolderNames() is called before splice (wireRemoveFolderButtons) and before push (doAddFolder) — pattern captures user edits to existing inputs before the list is rebuilt.",
+        "Added a strict-mode migration note above the doAddFolder block-scoped function declaration, per the handoff-note request to note this concern in the module documentation."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/strategy.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-03T18:20:12Z",
+          "note": "The documentation-forward from code-review noted that prefill and stores shapes were undocumented. In fact, prefill ({id, label, folder_names}) was already present in the comment block from the implementation pass; only the stores element shape ({id, label}) was missing. Both are now complete."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-03T18:20:12Z",
+          "note": "No separate README or api-surface.md changes are needed: strategy.js GUI frontend functions are not tracked in mcp-server/docs/agents/project-manifest/api-surface.md (which covers MCP tools only). All documentation lives inline in the source file."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-08-03T18:20:12Z",
+  "last_updated": "2026-08-03T18:20:12Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-08-03T18:11:18Z",
+      "notes": [
+        "renderRepoModal() is fully implemented and self-contained in strategy.js. It is not yet called from anywhere — WP-006 (refactor list) and WP-007 (remove detail route) will wire up the call sites. No regressions introduced: renderStrategyList and renderStrategyDetail are untouched.",
+        "API contracts relied upon: API.createRepo(payload), API.updateRepo(repoId, data), API.moveRepo(repoId, targetStoreId) — all available from WP-001 and WP-003.",
+        "The function follows the csRenderStoreModal pattern from config-stores.js (lines 207-420) for CSS class names and modal lifecycle, making visual consistency with existing modals automatic."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-08-03T18:14:28Z",
+      "notes": [
+        "WP-005 renderRepoModal() is fully implemented and passes all 9 ACs. The function is self-contained and not yet wired to any call sites — that is intentional per the plan (WP-006 wires the list view, WP-007 removes the detail route). No regressions in the 4031-test server suite. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-08-03T18:16:48Z",
+      "notes": [
+        "WP-005 renderRepoModal() is PASS. One Fix-Forward applied: both catch handlers now use `saveTxt` instead of hardcoded label strings (non-behavioral, no QA re-run needed).",
+        "One documentation-forward noted: renderRepoModal() lacks a parameter contract comment describing the shapes of `prefill` ({id, label, folder_names}) and the `stores` array ({id, label}). The Documentation agent should add this before WP-006 and WP-007 developers wire the call sites.",
+        "The doAddFolder block-scoped function declaration is safe under current ES5 sloppy mode — it is not a blocker, but should be noted in the module-level documentation as a future strict-mode migration concern."
+      ]
+    }
+  ]
+}

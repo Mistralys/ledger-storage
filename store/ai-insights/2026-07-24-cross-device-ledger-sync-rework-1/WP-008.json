@@ -1,0 +1,178 @@
+{
+  "work_package_id": "WP-008",
+  "work_package_file": "work/WP-006.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "saveConfig() and storeInit() accept a _storesDirOverride parameter.",
+      "met": true
+    },
+    {
+      "criterion": "Tests that call saveConfig() or storeInit() pass a temp-directory override and never touch ~/.ai-insights/.",
+      "met": true
+    },
+    {
+      "criterion": "storeRemove() sets default_store to null when config.stores.length === 0 after removal.",
+      "met": true
+    },
+    {
+      "criterion": "A test verifies the default_store clearing behavior.",
+      "met": true
+    },
+    {
+      "criterion": "All existing tests pass.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-07-24T19:15:01Z",
+      "completed_at": "2026-07-24T19:18:05Z",
+      "duration_ms": 184000,
+      "summary": [
+        "Added _storesDirOverride parameter to saveConfig(): uses it instead of join(homedir(), AI_INSIGHTS_DIR) for the mkdirSync call.",
+        "Added _storesDirOverride parameter to storeInit(): computes baseDir from override when provided; passes it through to saveConfig() and uses it for storesDir creation.",
+        "Fixed storeRemove(): sets default_store to null when config.stores.length === 0 (was previously only reassigning when stores.length > 0, leaving a dangling reference).",
+        "Updated all three storeInit() tests to pass _storesDirOverride: tempDir.",
+        "Third storeInit test now directly asserts the stores/ directory was created inside tempDir.",
+        "Added 'clears default_store to null when the last store is removed' test under storeRemove.",
+        "All 153 root-level tests and 3862 mcp-server tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "scripts/lib/store-commands.js",
+          "scripts/tests/store-commands.test.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T19:18:05Z",
+          "note": "The storeInit() test previously titled 'creates the ~/.ai-insights/stores/ directory' acknowledged it could not verify the directory creation because the homedir override didn't exist. With _storesDirOverride, the test now directly asserts fs.existsSync(path.join(tempDir, 'stores')). This is a clean improvement from the workaround comment that was there before."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T19:18:05Z",
+          "note": "No observations — code in the touched files is clean and consistent after the three targeted changes."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-07-24T19:42:26Z",
+      "completed_at": "2026-07-24T19:43:10Z",
+      "duration_ms": 44000,
+      "summary": [
+        "All 5 acceptance criteria verified. saveConfig() line 129 uses _storesDirOverride when provided. storeInit() line 181 uses _storesDirOverride for baseDir computation and passes it through to saveConfig(). storeRemove() line 265 sets default_store=null when stores is empty. 'creates the stores/ sub-directory under _storesDirOverride' test verifies directory creation. 'clears default_store to null when the last store is removed' test verifies the fix. Root-level suite: 153 tests, 6 files, all pass. MCP server suite: 3,873 tests, 136 files, all pass. TypeScript clean."
+      ],
+      "metrics": {
+        "tests_passed": 3873,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T19:43:10Z",
+          "note": "No observations — _storesDirOverride parameter is cleanly applied in both saveConfig() and storeInit(). storeRemove() null-clearing fix is minimal and correct. All tests are hermetic (no ~/.ai-insights/ writes)."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-07-24T19:59:02Z",
+      "completed_at": "2026-07-24T20:00:20Z",
+      "duration_ms": 78000,
+      "summary": [
+        "Code review PASS. All 5 acceptance criteria met.",
+        "_storesDirOverride follows the established test-isolation convention from the TypeScript layer. The JSDoc is clear about its test-only intent. storeInit() correctly threads the override through to saveConfig(), and the third test now directly asserts directory creation.",
+        "storeRemove() null-clearing is correctly ordered: empty-stores check (sets null) before same-default check (promotes first remaining). This prevents an array[0] access on an empty array.",
+        "One medium-priority design note: leaving { stores: [], default_store: null } triggers a TypeScript schema validation warning on next server load. The server correctly falls to legacy mode, but the warning is noisy. Deleting stores.json when all stores are removed would be a cleaner state transition — out of scope for WP-008."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "scripts/lib/store-commands.js",
+          "scripts/tests/store-commands.test.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T20:00:20Z",
+          "note": "_storesDirOverride follows the established test-isolation convention from the TypeScript layer (configPath override). The JSDoc is clear about its test-only intent. No issues."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-07-24T20:00:20Z",
+          "note": "When storeRemove() removes the last store and writes { stores: [], default_store: null }, the TypeScript StoresConfigSchema will reject this on next server load (stores must have min(1) and default_store is z.string()). loadStoresConfig() returns null on validation failure (with a stderr warning), so the server falls to legacy single-store mode. This is the intended degraded-state behavior per the WP spec. However, the stderr warning is undesirable and could confuse users. A clean-up option: delete stores.json when stores becomes empty, instead of leaving an invalid file. Medium-priority follow-up."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T20:00:20Z",
+          "note": "The storeRemove() null-clearing fix is correctly ordered: empty-stores check (null) before same-default check (first remaining). The else-if ordering prevents a store[0] access on an empty array."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-07-24T20:10:59Z",
+      "completed_at": "2026-07-24T20:11:52Z",
+      "duration_ms": 53000,
+      "summary": [
+        "Updated AGENTS.md: store-commands.js table entry updated to document _storesDirOverride parameter on saveConfig() and storeInit(), and storeRemove() behavior when the last store is removed (sets default_store: null, server falls back to legacy mode on next load)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "AGENTS.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T20:11:52Z",
+          "note": "No documentation-forward from reviewer. Updated the store-commands.js entry in AGENTS.md to document the _storesDirOverride parameter on saveConfig()/storeInit() and the storeRemove() null-clearing behavior (with the degraded-state note about legacy mode fallback on next server load)."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-07-24T20:11:52Z",
+  "last_updated": "2026-07-24T20:11:52Z",
+  "handoff_notes": [
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-07-24T19:43:10Z",
+      "notes": [
+        "WP-008 fully verified. saveConfig() and storeInit() accept _storesDirOverride. storeRemove() clears default_store to null on last removal. 35/35 store-commands tests pass. 153/153 root-level tests pass. 3,873 mcp-server tests green. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-07-24T20:00:20Z",
+      "notes": [
+        "WP-008 PASS. _storesDirOverride is cleanly applied, test isolation is correct, and storeRemove() last-store fix is ordered correctly. One medium-priority follow-up noted: leaving { stores: [], default_store: null } in stores.json causes a TypeScript validation warning on next server load — deleting the file instead would be cleaner. Ready for documentation pipeline."
+      ]
+    }
+  ]
+}

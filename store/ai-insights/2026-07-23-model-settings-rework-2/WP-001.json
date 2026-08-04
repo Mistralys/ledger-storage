@@ -1,0 +1,224 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "The `BodyRoute` interface no longer exists in `server.ts`; a `Route` interface with the `query?: URLSearchParams` handler parameter is exported instead.",
+      "met": true
+    },
+    {
+      "criterion": "No occurrence of `buildBodyRoutes` or `dispatchBodyRoute` remains in `server.ts` — all references use `buildRoutes` and `dispatchRoute`.",
+      "met": true
+    },
+    {
+      "criterion": "Existing body-route handlers that do not use query params continue to work unchanged (the `query` parameter is optional and ignored by existing handlers).",
+      "met": true
+    },
+    {
+      "criterion": "The dispatcher passes a valid `URLSearchParams` object to handlers; a handler accessing `query?.get('page')` receives the correct value from the request URL.",
+      "met": true
+    },
+    {
+      "criterion": "All existing tests that exercise routes via `handleRequest()` pass without modification.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-07-23T15:28:23Z",
+      "completed_at": "2026-07-23T15:34:33Z",
+      "duration_ms": 370000,
+      "summary": [
+        "Renamed `BodyRoute` interface to `Route` and added optional `query?: URLSearchParams` third parameter to the handler signature in `mcp-server/gui/server.ts`.",
+        "Renamed `buildBodyRoutes()` to `buildRoutes()` with updated return type `Route[]`.",
+        "Renamed `dispatchBodyRoute()` to `dispatchRoute()`: changed the `path` parameter to `url` (full URL string), added `parseQueryString(url)` call to extract a `URLSearchParams` object, and passed it as the third argument to every matched handler.",
+        "Updated `handleRequest()` call site to call `dispatchRoute()` with `url` instead of `path`, ensuring the dispatcher receives the full URL including any query string.",
+        "Updated all JSDoc comments, section headers, and inline code comments throughout `server.ts` to use the new names — no occurrence of `BodyRoute`, `buildBodyRoutes`, or `dispatchBodyRoute` remains.",
+        "TypeScript check (`tsc --noEmit`) passes with zero errors. All 118 test files (3593 tests) pass without modification."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/server.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-23T15:34:33Z",
+          "note": "The `dispatchRoute()` error log on line 1672 still uses the local `path` variable (derived from `url.split('?')[0]`) in the error message — this is correct and intentional, as logging the path without the query string is cleaner and avoids leaking sensitive query param values into stderr logs."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-23T15:34:33Z",
+          "note": "The `handleRequest()` function already had `const [path] = url.split('?')` for its own use by `matchRoute()`. Now that `dispatchRoute()` also does the same split internally, the local `path` constant in `handleRequest()` is only needed for the `matchRoute()` call — this is fine and not duplicated in a harmful way, but a future refactor could centralize the split once at the top of `handleRequest()` and pass both `path` and `query` to both dispatchers if the `matchRoute()` pattern is ever unified with the body-route table."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-07-23T15:34:33Z",
+          "note": "The route map summary block (lines ~1384–1454 in `matchRoute()`) is a manually maintained comment that duplicates structural information already encoded in the `buildRoutes()` table and `matchRoute()` conditionals. It will drift over time. A machine-readable route registry would eliminate this maintenance burden, but is clearly out of scope for this WP."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-07-23T15:35:24Z",
+      "completed_at": "2026-07-23T15:37:39Z",
+      "duration_ms": 135000,
+      "summary": [
+        "Full Verification Stack executed against mcp-server/gui/server.ts.",
+        "AC1: `BodyRoute` is fully absent from server.ts (grep: 0 hits). `Route` interface exported at line 290 with `handler: (body: unknown, groups?: Record<string, string>, query?: URLSearchParams) => Promise<unknown>` signature. ✓",
+        "AC2: Zero occurrences of `buildBodyRoutes` or `dispatchBodyRoute` anywhere in the mcp-server/**/*.ts tree. `buildRoutes` (L1509) and `dispatchRoute` (L1636) are the sole implementations. ✓",
+        "AC3: All existing route handlers in `buildRoutes()` use only `(body)` or `(body, groups)` signatures — the optional `query` parameter is never referenced, confirming full backward compatibility. ✓",
+        "AC4: `dispatchRoute()` calls `parseQueryString(url)` on the full URL (line 1645) and passes the resulting `URLSearchParams` as the third argument to every matched handler (line 1658). `parseQueryString` correctly handles no-query URLs (returns `new URLSearchParams('')`), URLs with query strings, and empty-query URLs (`?` with nothing after). ✓",
+        "AC5: TypeScript compiler (`tsc --noEmit`) exits 0. All 118 test files / 3593 tests pass in 17.5s. No regressions. ✓",
+        "Edge-case audit: `parseQueryString` uses `indexOf('?')` guard, returning `new URLSearchParams('')` for no-query URLs — safe, no exceptions. Handler error path logs `path` (not raw `url`) to stderr on line 1672 — intentional and correct (avoids leaking query param values). `handleRequest` correctly passes the full `url` (not `path`) to `dispatchRoute` at line 1716, ensuring query params reach the dispatcher."
+      ],
+      "metrics": {
+        "test_coverage": "118 test files",
+        "tests_passed": 3593,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-23T15:37:39Z",
+          "note": "No dedicated unit test exercises the `query` parameter injection path through `dispatchRoute()`. The current test suite verifies routes through `handleRequest()` integration-style, but there is no test that asserts a handler receives a correctly-populated `URLSearchParams` when the URL contains a query string. This is low-priority because the feature is a plumbing change and the implementation is simple and correct, but a targeted test would lock in the regression boundary when future route handlers begin consuming `query`."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-07-23T15:38:06Z",
+      "completed_at": "2026-07-23T15:39:49Z",
+      "duration_ms": 103000,
+      "summary": [
+        "Reviewed mcp-server/gui/server.ts — the sole modified file.",
+        "Interface rename: `BodyRoute` → `Route` with `query?: URLSearchParams` third handler parameter is clean and correct. The old name was misleading (the table handles GET routes without bodies); the new name is accurate. JSDoc on the interface is complete and accurate.",
+        "`parseQueryString(url)` (L370–373): minimal, defensive, correct. Uses `indexOf('?')` guard correctly — returns empty URLSearchParams for no-query URLs, never throws. Does not use `new URL()` (which would require an absolute base) — the right choice for server-side path strings.",
+        "`dispatchRoute()` refactor (L1636–1680): calls `parseQueryString(url)` once at the function top (L1645) and passes the result to every matched handler (L1658). Route matching still uses the split `path` (L1644). Error log at L1672 correctly logs `path` (not `url`) to avoid leaking query param values in stderr. All correct.",
+        "`buildRoutes()`: all existing handlers remain at (body) or (body, groups) signatures — backward compat fully preserved. Infrastructure is ready for future handlers that consume `query`.",
+        "`handleRequest()` at L1716 correctly passes the full `url` (not `path`) to `dispatchRoute`, ensuring query params reach the dispatcher.",
+        "Dual URL split (once in `handleRequest` at L1697, once in `dispatchRoute` at L1644) is a mild DRY observation but not a problem: fixing it would require restructuring the function signature in a way that is out of scope and adds no correctness value.",
+        "All 5 acceptance criteria confirmed met. No blocking issues found. One documentation-forward item recorded."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/server.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-23T15:39:49Z",
+          "note": "Dual URL-split observation: both `handleRequest` (L1697) and `dispatchRoute` (L1644) independently split `url` on '?' to extract `path`. This is a minor DRY note — a future refactor could compute `path` once in `handleRequest` and pass both `path` and `url` to `dispatchRoute`. Not a blocker: the split is O(n) on a short string and correctness is unaffected. Noted for long-term maintainability awareness."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-23T15:39:49Z",
+          "note": "No blocking issues found — code is clean, minimal, and well-documented. The interface rename from `BodyRoute` to `Route` is a genuine improvement: the old name was misleading since the route table includes GET routes with `noBody: true`."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-07-23T15:39:49Z",
+          "note": "[documentation-forward] `parseQueryString` JSDoc (L366–373) documents the happy path and the no-query case, but does not mention edge cases: (1) a bare `?` with no trailing string (returns empty URLSearchParams — fine), (2) percent-encoded query strings (URLSearchParams decodes them — fine), (3) hash/fragment characters (passed through to URLSearchParams as literal chars — may or may not be intended). Adding a note about these edge-case behaviors would help future contributors who extend query-param handling."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-07-23T15:40:08Z",
+      "completed_at": "2026-07-23T15:43:57Z",
+      "duration_ms": 229000,
+      "summary": [
+        "Confirmed no stale references to BodyRoute, buildBodyRoutes, or dispatchBodyRoute exist in any markdown documentation file.",
+        "Updated data-flows.md §2 (Request Lifecycle): replaced the outdated two-branch diagram (Body-parsing routes / Body-free routes) with the accurate current architecture — dispatchRoute() dispatching the declarative Route[] table built by buildRoutes(), with parseQueryString() query-param injection, and the matchRoute() fallback for body-free GET/DELETE routes.",
+        "Updated api-surface.md §1.4 (Model Registry): fixed stale description that said 'Body-parsing routes live inline in server.ts handleRequest()' — now correctly reflects that PUT/POST routes are registered in buildRoutes() and dispatched by dispatchRoute().",
+        "Extended parseQueryString() JSDoc in server.ts with edge-case documentation (Reviewer documentation-forward item): bare '?' returns empty URLSearchParams; percent-encoded values are decoded by URLSearchParams transparently; fragment/hash characters pass through as literals (no practical impact since browsers strip fragments before sending requests).",
+        "TypeScript compiler (tsc --noEmit) confirms zero errors after JSDoc extension.",
+        "CTX context regenerated: .context/mcp-server/manifest-data-flows.md, .context/mcp-server/manifest-api-surface.md, and .context/mcp-server/source-gui-api-handlers.md updated — all 39 documents regenerated cleanly."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/docs/agents/project-manifest/data-flows.md",
+          "mcp-server/gui/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/gui/server.ts",
+          ".context/mcp-server/manifest-data-flows.md",
+          ".context/mcp-server/manifest-api-surface.md",
+          ".context/mcp-server/source-gui-api-handlers.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-23T15:43:57Z",
+          "note": "The data-flows.md Request Lifecycle diagram (§2) had not been updated when the BodyRoute/buildBodyRoutes/dispatchBodyRoute rename was introduced in model-settings-rework-1. The diagram still described the old architecture with two separate branches. This pass corrects that gap."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-23T15:43:57Z",
+          "note": "Reviewer documentation-forward addressed: parseQueryString JSDoc now documents all three edge cases (bare '?', percent-encoding, hash/fragment). The fragment note explicitly explains why it has no practical impact on server-received URLs."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-23T15:43:57Z",
+          "note": "No documentation changes needed to README.md, constraints.md, tech-stack.md, file-tree.md, or ui-components.md — the rename from BodyRoute/buildBodyRoutes/dispatchBodyRoute to Route/buildRoutes/dispatchRoute is an internal implementation detail not surfaced in those documents."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-07-23T15:43:57Z",
+  "last_updated": "2026-07-23T15:43:57Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-07-23T15:34:33Z",
+      "notes": [
+        "All five acceptance criteria are met. The `Route` interface is exported from `server.ts` with the `query?: URLSearchParams` third handler parameter. No trace of the old names (`BodyRoute`, `buildBodyRoutes`, `dispatchBodyRoute`) remains anywhere in the file — confirmed via grep. TypeScript compiles cleanly and all 3593 tests pass. The change is fully backward-compatible: no existing handler was modified."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-07-23T15:37:39Z",
+      "notes": [
+        "All 5 ACs verified and met. TypeScript compiles clean, 3593/3593 tests pass.",
+        "One low-priority gap noted: no unit test specifically asserts the `query` parameter injection path in `dispatchRoute()`. Consider adding a test that calls `dispatchRoute` with a URL containing a query string and verifies the handler receives the correct `URLSearchParams`. Not a blocker for code review.",
+        "Implementation is clean — `parseQueryString` is robust for all URL shapes, backward compatibility is complete, and the error logging deliberately strips query params from stderr output."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-07-23T15:39:49Z",
+      "notes": [
+        "All 5 ACs confirmed met. Implementation is clean — no blocking issues found. One low-priority documentation-forward item: `parseQueryString` JSDoc edge-case behaviors (bare `?`, percent-encoding, fragment chars) worth documenting for future contributors. No code changes were made by the Reviewer — all observed issues are non-behavioral and at most documentation-grade."
+      ]
+    }
+  ]
+}

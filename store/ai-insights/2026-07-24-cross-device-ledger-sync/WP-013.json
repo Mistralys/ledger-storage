@@ -1,0 +1,240 @@
+{
+  "work_package_id": "WP-013",
+  "work_package_file": "work/WP-013.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-011"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "Creating a repository with store_id: \"personal\" writes the entry to the \"personal\" store's .repositories.json",
+      "met": true
+    },
+    {
+      "criterion": "Creating a repository with an invalid store_id returns a validation error",
+      "met": true
+    },
+    {
+      "criterion": "handleListRepos returns all repos from all stores (merged view) in multi-store mode, each tagged with store_id",
+      "met": true
+    },
+    {
+      "criterion": "In single-store mode, store_id is optional and the single store is used implicitly",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-07-24T16:05:31Z",
+      "completed_at": "2026-07-24T16:14:01Z",
+      "duration_ms": 510000,
+      "summary": [
+        "Updated mcp-server/gui/api-repos.ts for multi-store awareness: added store-context imports, extended RepoCreateBodySchema/RepoUpdateBodySchema with optional store_id, updated RepoListItem interface, rewrote all CRUD handlers to route I/O to the correct store via StoreRouter and a new findEntryInStores() helper.",
+        "handleListRepos delegates to MultiStoreManager.getMergedRegistry() in multi-store mode and tags each entry with store_id; falls back to single-store ledgerRoot path in legacy mode.",
+        "handleCreateRepo validates store_id against getAllStores() (VALIDATION_ERROR on mismatch), resolves default store when omitted, and writes to the target store's .repositories.json.",
+        "handleGetRepo, handleUpdateRepo, handleDeleteRepo all use findEntryInStores() to locate the owning store before performing their respective operations.",
+        "Created mcp-server/tests/gui/api-repos-store.test.ts covering all 4 ACs with real temp dirs for file I/O and vi.mock for store-context.",
+        "All 134 test files / 3838 tests pass; TypeScript strict-mode typecheck clean."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/api-repos.ts",
+          "mcp-server/tests/gui/api-repos-store.test.ts"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 3838,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-07-24T16:14:01Z",
+          "note": "Pre-existing bug in the original handleDeleteRepo in mcp-server/gui/api-repos.ts: the NOT_FOUND guard used `findIndex((e) => e.id !== repoId)` (inverted predicate), which returns -1 when all entries match the target ID — effectively making the guard fire incorrectly when the repo is the only entry in the registry. The new findEntryInStores()-based implementation corrects this implicitly, but the root cause of the inversion should be reviewed in case similar inverted predicates exist elsewhere in the file."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T16:14:01Z",
+          "note": "In mcp-server/gui/api-repos.ts, findEntryInStores() iterates all stores sequentially, loading each .repositories.json in turn. For large multi-store deployments this could be slow. A future optimization would short-circuit after the first match or use a cached index. Acceptable for the current usage scale."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-07-24T16:14:01Z",
+          "note": "The RepoUpdateBodySchema in mcp-server/gui/api-repos.ts accepts store_id but ignores it (comment documents this). Consider whether other update fields that affect routing (none currently) should follow the same accepted-but-ignored pattern or be rejected explicitly. Current approach is consistent and safe; just worth documenting in the API spec."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-07-24T16:17:47Z",
+      "completed_at": "2026-07-24T16:18:39Z",
+      "duration_ms": 52000,
+      "summary": [
+        "All 4 acceptance criteria verified and passing. 22 dedicated tests across api-repos-store.test.ts; 3,838 total tests pass, TypeScript typecheck clean. AC-1: handleCreateRepo() resolves store from store_id (validated against getAllStores()), uses default store when omitted, writes to target store's .repositories.json — 5 tests. AC-2: invalid store_id triggers VALIDATION_ERROR with message naming the bad id and listing valid ids — 5 tests. AC-3: handleListRepos() in multi-store mode delegates to getMergedRegistry() and tags each entry with store_id — 4 tests. AC-4: single-store mode accepts store_id in body (ignored), always writes to ledgerRoot, does not call getStoreRouter() — 4 tests. GET/UPDATE/DELETE handlers use findEntryInStores() for cross-store lookup — 4 additional integration tests."
+      ],
+      "metrics": {
+        "test_coverage": "22 dedicated WP-013 tests in api-repos-store.test.ts; also covered by existing api-repos.test.ts regression tests",
+        "tests_passed": 3838,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "edge-case",
+          "priority": "medium",
+          "timestamp": "2026-07-24T16:18:39Z",
+          "note": "gui/api-repos.ts handleCreateRepo(): cross-store uniqueness is not enforced — a repo id that exists in storeA can be created again in storeB without triggering a VALIDATION_ERROR. Only the target store's .repositories.json is consulted for the uniqueness check. This is a deliberate design choice (conflicts are surfaced via GET /api/stores/conflicts). No AC requires cross-store duplicate prevention, but this should be documented as a known limitation in the API surface doc."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T16:18:39Z",
+          "note": "findEntryInStores() iterates stores sequentially loading each .repositories.json. For multi-store configs with many stores this is O(n) disk reads per repo operation. Developer noted this — acceptable for current scale."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T16:18:39Z",
+          "note": "RepoUpdateBodySchema accepts store_id but the handler ignores it (owning store is located via findEntryInStores). Field is documented with a comment — no functional issue, but the API surface doc should reflect this accept-but-ignore behavior."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-07-24T16:19:03Z",
+      "completed_at": "2026-07-24T16:24:45Z",
+      "duration_ms": 342000,
+      "summary": [
+        "WP-013 code review PASS. All 4 ACs verified at the function level with 22 dedicated tests.",
+        "Implementation is correct: findEntryInStores() correctly routes CRUD operations to the owning store, handleCreateRepo() validates store_id and falls back to the default store, handleListRepos() returns a merged multi-store view tagged with store_id, and single-store mode passes through to ledgerRoot.",
+        "Key architectural observation (non-blocking): buildRepoRoutes() in server.ts has a pre-existing inline multi-store list implementation that bypasses handleListRepos() and omits store_id from the response. The multi-store branch added to handleListRepos() in this WP is therefore dead code from the HTTP route perspective. Flagged as documentation-forward and medium-priority refactor for a follow-up WP."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/api-repos.ts",
+          "mcp-server/tests/gui/api-repos-store.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T16:24:45Z",
+          "note": "api-repos.ts findEntryInStores(): correct store-routing logic — iterates stores in config order and returns the owning store path alongside the entry. The O(n stores × disk reads) sequential scan is acknowledged as acceptable for current scale. The return type `{ storePath: string; entry: RepositoryEntry } | null` is well-structured and used consistently by all CRUD handlers."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T16:24:45Z",
+          "note": "api-repos.ts handleCreateRepo(): store_id validation fires the correct VALIDATION_ERROR with a helpful message listing valid IDs. The fallback to resolveDefaultStore() when store_id is omitted is the correct behavior. Single-store path correctly falls through to ledgerRoot."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T16:24:45Z",
+          "note": "api-repos.ts handleDeleteRepo(): the pre-existing inverted-predicate bug (findIndex with `id !== repoId`) is implicitly fixed by the new findEntryInStores()-based implementation. Good implicit correction, though a comment on the fix would aid future readers doing archaeology."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-07-24T16:24:45Z",
+          "note": "[documentation-forward] The RepoListItem.store_id field is documented as 'Present only in multi-store mode — absent in single-store / legacy mode', but the actual HTTP route handler in buildRepoRoutes() (server.ts) bypasses handleListRepos() in multi-store mode and calls getMergedRegistry() via taggedEntryToRepoListItem() which does NOT include store_id. As a result, store_id is never returned by GET /api/repos via the HTTP route. The multi-store branch added to handleListRepos() is dead code from the HTTP perspective. The API surface doc and the RepoListItem JSDoc should document this known limitation, and a follow-up ticket should consolidate the two parallel implementations (handleListRepos multi-store branch vs. server.ts inline handler) to eliminate the split-brain."
+        },
+        {
+          "type": "refactor",
+          "priority": "medium",
+          "timestamp": "2026-07-24T16:24:45Z",
+          "note": "server.ts buildRepoRoutes() contains taggedEntryToRepoListItem() — a private duplicate of toListItem() from api-repos.ts — and calls getMergedRegistry() directly instead of delegating to handleListRepos(). This pre-existing split-brain architecture means the multi-store branch added to handleListRepos() in WP-013 is unused by the HTTP route. The two implementations should be consolidated in a follow-up: either (a) update buildRepoRoutes() to call handleListRepos() in both modes, or (b) remove the multi-store branch from handleListRepos() and keep the logic exclusively in server.ts."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-07-24T16:24:45Z",
+          "note": "[documentation-forward] RepoUpdateBodySchema accepts store_id but the handler ignores it (owning store is located via findEntryInStores). The JSDoc comment on the field is correct, but the API surface doc should explicitly state that PUT /api/repos/:repoId ignores store_id in the request body — the owning store cannot be changed via an update."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-07-24T16:40:38Z",
+      "completed_at": "2026-07-24T16:44:09Z",
+      "duration_ms": 211000,
+      "summary": [
+        "Updated mcp-server/docs/agents/project-manifest/api-surface.md for WP-013:",
+        "1. Replaced the WP-011 multi-store note with a WP-013 note documenting full write-side multi-store routing via findEntryInStores() and a prominent 'known split-brain' callout: GET /api/repos bypasses handleListRepos() in multi-store mode (using taggedEntryToRepoListItem() which omits store_id) — a follow-up WP should consolidate the two parallel implementations.",
+        "2. Updated HTTP route table: POST /api/repos body now shows store_id? (validated, defaults to default store); PUT /api/repos/:repoId body shows store_id? (accepted but ignored).",
+        "3. Updated RepoListItem interface: added store_id?: string with a warning that it is never returned by the HTTP route, plus declared?: boolean for undeclared entries.",
+        "4. Updated RepoCreateBodySchema: added store_id? with multi-store routing semantics.",
+        "5. Updated RepoUpdateBodySchema: added store_id? noting it is accepted but ignored.",
+        "6. Added findEntryInStores() as a documented internal helper before handleListRepos().",
+        "7. Updated handleListRepos() signature to include includeUndeclared param and dead-code warning.",
+        "8. Updated handleCreateRepo() to document multi-store store routing, store_id validation, and cross-store uniqueness limitation.",
+        "9. Updated handleGetRepo(), handleUpdateRepo(), handleDeleteRepo() to document findEntryInStores() cross-store lookup behavior.",
+        "All three documentation-forward items from the code-review pipeline were addressed. All four acceptance criteria confirmed met."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-07-24T16:44:09Z",
+          "note": "api-surface.md: Documented the known split-brain on GET /api/repos — the multi-store branch of handleListRepos() is dead code from the HTTP route perspective because buildRepoRoutes() in server.ts bypasses it with an inline taggedEntryToRepoListItem() mapping that omits store_id. This is prominently noted in both the intro callout and the handleListRepos() handler signature. A follow-up WP to consolidate the two parallel implementations is recommended."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-07-24T16:44:09Z",
+          "note": "api-surface.md: The findEntryInStores() helper is now documented as a named internal helper (not exported from the public API). This is consistent with how toListItem() and similar helpers are treated in this document."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-07-24T16:44:09Z",
+  "last_updated": "2026-07-24T16:44:09Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-07-24T16:14:01Z",
+      "notes": [
+        "WP-013 is fully implemented. api-repos.ts extended with store-aware routing for all CRUD operations. Tests in tests/gui/api-repos-store.test.ts cover all 4 ACs (CREATE with valid store_id, CREATE with invalid store_id, LIST merged view, single-store fallback). 3838 tests pass, typecheck clean.",
+        "Key integration point: findEntryInStores() searches all configured stores by repo ID. QA should verify cross-store uniqueness is enforced (a repo id that exists in storeA cannot be duplicated in storeB via the create handler — this is NOT currently enforced as each store's loadRegistry is consulted independently for uniqueness checks only within that store)."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-07-24T16:18:39Z",
+      "notes": [
+        "WP-013 PASS. All 4 ACs met. 22 dedicated tests pass, 3,838 total tests pass, typecheck clean. Notable known limitation: handleCreateRepo() checks uniqueness only within the target store — cross-store duplicate IDs are possible and resolved by GET /api/stores/conflicts (WP-012). No AC requires cross-store prevention. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-07-24T16:24:45Z",
+      "notes": [
+        "WP-013 PASS. All 4 ACs met. No Fix-Forward edits needed. Key documentation gap flagged: the RepoListItem.store_id field documented as available in multi-store mode is in fact never returned by the HTTP route (buildRepoRoutes in server.ts bypasses handleListRepos in multi-store mode using a parallel implementation that omits store_id). Documentation agent should (1) update the API surface doc to reflect this known limitation and (2) recommend consolidating the two parallel implementations in a follow-up WP."
+      ]
+    }
+  ]
+}

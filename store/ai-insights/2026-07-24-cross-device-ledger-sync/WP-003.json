@@ -1,0 +1,218 @@
+{
+  "work_package_id": "WP-003",
+  "work_package_file": "work/WP-003.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001",
+    "WP-002"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "In legacy mode (null config), resolveStoreForWrite() delegates to resolveLedgerRoot() and isMultiStoreMode() returns false",
+      "met": true
+    },
+    {
+      "criterion": "With a repo registered in the first store, resolveStoreForWrite() returns the first store's path",
+      "met": true
+    },
+    {
+      "criterion": "With a repo registered in the second store only, resolveStoreForWrite() returns the second store's path",
+      "met": true
+    },
+    {
+      "criterion": "With the same repo registered in both stores, resolveStoreForWrite() returns the first store's path (store-order priority)",
+      "met": true
+    },
+    {
+      "criterion": "With an unregistered repo in multi-store mode, resolveStoreForWrite() throws an error containing \"not registered in any store\"",
+      "met": true
+    },
+    {
+      "criterion": "On construction, each configured store path that does not exist on disk is created via mkdirSync with { recursive: true }",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-07-24T12:39:37Z",
+      "completed_at": "2026-07-24T12:43:53Z",
+      "duration_ms": 256000,
+      "summary": [
+        "Implemented StoreRouter class in mcp-server/src/storage/store-router.ts",
+        "Provides resolveStoreForWrite(), resolveStoreForRepo(), resolveDefaultStore(), getAllStorePaths(), isMultiStoreMode()",
+        "Legacy-mode fallback delegates to resolveLedgerRoot() throughout",
+        "Store paths expanded via expandStorePath() at construction time; missing directories auto-created via mkdirSync({ recursive: true })",
+        "Written test suite in mcp-server/tests/storage/store-router.test.ts covering all 6 ACs plus resolveStoreForRepo, resolveDefaultStore, getAllStorePaths edge cases (21 tests total)",
+        "Full test suite passes (3731 tests, 125 files); TypeScript type check clean"
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/storage/store-router.ts",
+          "mcp-server/tests/storage/store-router.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T12:43:53Z",
+          "note": "store-router.ts: The stores array is re-iterated in resolveStoreForRepo() on every call — for the expected store counts (1–10 typically) this is fine, but if store counts grow large, caching a Map<repoName, storeRef> after the first lookup would avoid repeated registry I/O."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-07-24T12:43:53Z",
+          "note": "store-registry.ts: expandStorePath() is a utility that conceptually belongs in a path-utils module rather than the store-registry I/O module; it is already imported in store-router.ts directly from store-registry.js which is slightly surprising for consumers — a future refactor could extract it to utils/path-utils.ts."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-07-24T12:45:56Z",
+      "completed_at": "2026-07-24T12:47:27Z",
+      "duration_ms": 91000,
+      "summary": [
+        "All 6 Acceptance Criteria verified by code inspection and test execution.",
+        "store-router.test.ts: 21/21 tests pass in isolation.",
+        "Full mcp-server suite: 3731/3731 tests pass across 125 files — no regressions.",
+        "TypeScript type-check: clean (tsc --noEmit exits 0).",
+        "Edge-case analysis: getAllStorePaths() defensive copy confirmed; resolveStoreForRepo() null-safe; error message substring match exact; mkdirSync called unconditionally in constructor loop; no unsafe non-null assertions beyond guarded scope."
+      ],
+      "metrics": {
+        "test_coverage": "21 tests covering all 6 ACs plus resolveStoreForRepo, resolveDefaultStore, getAllStorePaths variants",
+        "tests_passed": 21,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T12:47:27Z",
+          "note": "store-router.ts resolveStoreForRepo(): the stores array is re-iterated and loadRegistry() is called on each invocation. For the expected store counts (1–10), this is perfectly fine. If store counts grow large or the method is called in tight loops, a lazy-populated Map cache would eliminate repeated I/O."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-07-24T12:48:12Z",
+      "completed_at": "2026-07-24T12:49:37Z",
+      "duration_ms": 85000,
+      "summary": [
+        "StoreRouter implementation is clean, well-structured, and follows all project conventions.",
+        "All 6 ACs confirmed met. No blocking issues found across architecture, maintainability, performance, or future-context dimensions.",
+        "No Fix-Forward changes applied — code is already correct and clean.",
+        "Two Documentation-Forward items raised for the Documentation agent."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/storage/store-router.ts",
+          "mcp-server/tests/storage/store-router.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T12:49:37Z",
+          "note": "store-router.ts resolveDefaultStore(): The non-null assertion on `defaultStore!.path` relies on the StoresConfigSchema invariant that default_store always references a valid id. The inline comment documents this contract well. However, a future-proof defensive check (`if (!defaultStore) throw new Error(...)`) would surface misconfiguration earlier with a clearer message than a raw TypeError. Not blocking — the schema validation makes this safe today."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T12:49:37Z",
+          "note": "store-router.ts: The DRY delegation from resolveStoreForWrite() → resolveStoreForRepo() is a good separation of concerns — the throwing vs null-returning variants are cleanly separated. This pattern is worth preserving as new store operations are added."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-07-24T12:49:37Z",
+          "note": "store-router.ts: Import of expandStorePath() from store-registry.js is slightly surprising — a consumer reading imports would expect this to come from a path-utils module. This is a pre-existing organizational issue noted by the Developer. The current grouping works because expandStorePath is only used at construction time. Flagged for tracking; not blocking."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-07-24T12:49:37Z",
+          "note": "[documentation-forward] api-surface.md should include a StoreRouter class entry documenting all five public methods (isMultiStoreMode, resolveDefaultStore, getAllStorePaths, resolveStoreForRepo, resolveStoreForWrite) with their signatures, return types, and legacy-vs-multi-store mode behavior. The constructor's mkdirSync side effect and the priority-ordering contract should also be documented in the API surface."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-07-24T12:49:37Z",
+          "note": "[documentation-forward] file-tree.md should add an entry for mcp-server/src/storage/store-router.ts with a brief annotation (e.g. 'Routes read/write operations to the correct store by iterating per-store repository registries; provides legacy-mode fallback'). New files added by this WP are not yet reflected in the manifest file tree."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-07-24T12:50:29Z",
+      "completed_at": "2026-07-24T12:52:20Z",
+      "duration_ms": 111000,
+      "summary": [
+        "Addressed both documentation-forward items from the code review.",
+        "api-surface.md: Added a 'Store Router — src/storage/store-router.ts' section between the Store Registry and migrateToNamespacedLayout sections. Documents all five public methods (isMultiStoreMode, resolveDefaultStore, getAllStorePaths, resolveStoreForRepo, resolveStoreForWrite) with their full signatures, return types, and legacy-vs-multi-store mode behaviour. Documents the constructor mkdirSync side effect, store-order priority contract, and the 'not registered in any store' error message invariant.",
+        "file-tree.md: Fixed tree structure in src/storage/ (repository-registry.ts and store-registry.ts were both incorrectly marked └──). Added store-router.ts as the new final entry with a concise annotation. Added store-router.test.ts to tests/storage/ between store-registry.test.ts and slug-resolution.test.ts, promoting slug-resolution.test.ts to └── correctly."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/file-tree.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T12:52:20Z",
+          "note": "file-tree.md had a pre-existing structural issue: both repository-registry.ts and store-registry.ts were annotated with └── (both appearing as the final entry in the storage/ block), which is malformed ASCII tree syntax. This was corrected incidentally as part of adding store-router.ts as the true final entry."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-07-24T12:52:20Z",
+  "last_updated": "2026-07-24T12:52:20Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-07-24T12:43:53Z",
+      "notes": [
+        "StoreRouter is a self-contained class — no external state, no singletons. All store paths are expanded at construction time.",
+        "resolveStoreForRepo() is the non-throwing sibling of resolveStoreForWrite() — returns null instead of throwing on an unregistered repo.",
+        "The 'not registered in any store' error message is hardcoded and tested verbatim — changing it will break AC 5.",
+        "mkdirSync is called synchronously in the constructor for each configured store path, matching the spec requirement exactly."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-07-24T12:47:27Z",
+      "notes": [
+        "All 6 ACs pass; 21 dedicated tests + full 3731-test suite green. No regressions. TypeScript clean.",
+        "StoreRouter is self-contained — no singletons, no side effects beyond construction-time mkdirSync.",
+        "The 'not registered in any store' error message is hardcoded in resolveStoreForWrite() — do not change without updating tests.",
+        "getAllStorePaths() returns a new array on each call (Array#map) — the 'defensive copy' test confirms this contract."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-07-24T12:49:37Z",
+      "notes": [
+        "All 6 ACs confirmed met. No blocking issues. Two documentation-forward items: (1) add StoreRouter to api-surface.md with all 5 public method signatures and mode-behavior docs, (2) add store-router.ts entry to file-tree.md. The expandStorePath import from store-registry.js is a pre-existing organizational note — do not change without a separate refactor WP."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,188 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-001.md",
+  "title": "Enrich `handleGetRepo()` to return `store_id`",
+  "description": "Plan Context: Replace the inline add form and full-page detail editor with a single shared modal dialog that supports moving repositories between stores via a dropdown integrated into the save flow.\n\nDescription: Modify `handleGetRepo()` in `api-repos.ts` to return the owning `store_id` alongside the entry fields when in multi-store mode, so the frontend modal can pre-select the current store.\n\nScope:\n- `mcp-server/gui/api-repos.ts` — `handleGetRepo()` function\n\nDeliverables:\n- `handleGetRepo()` resolves the `storePath` returned by `findEntryInStores()` to a `store_id` using `getStoreRouter().getAllStores()` and includes it in the response when multi-store mode is active.\n- Return type widened to `RepositoryEntry & { store_id?: string }` without modifying `RepositoryEntrySchema`.\n\nEstimated Complexity: Low\n\nRationale: The modal needs to pre-select the current store in the dropdown. The `findEntryInStores()` call already returns `storePath` but the handler discards it — this enrichment surfaces it as an ID without changing the storage schema.\n\nCode Observations: `handleGetRepo()` at line 362 of `api-repos.ts` calls `findEntryInStores()` which returns `{ storePath, entry }`. The `storePath` is currently discarded (`return found.entry`). `getStoreRouter().getAllStores()` returns an array of `{ id, path, label }` objects that can be matched against `storePath` to resolve the ID. `isStoreContextInitialized()` is already imported in the file.",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "In multi-store mode, `handleGetRepo()` returns an object containing `store_id` matching the store that owns the entry.",
+      "met": true
+    },
+    {
+      "criterion": "In single-store mode (or when store context is not initialized), the response does not contain a `store_id` field.",
+      "met": true
+    },
+    {
+      "criterion": "Existing behavior (NOT_FOUND for unknown repoId) is preserved.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-08-03T16:54:24Z",
+      "completed_at": "2026-08-03T17:15:04Z",
+      "duration_ms": 1240000,
+      "summary": [
+        "Widened handleGetRepo() return type to Promise<RepositoryEntry & { store_id?: string }>.",
+        "In multi-store mode, resolves storePath from findEntryInStores() against getStoreRouter().getAllStores() to find the matching store id and spreads it onto the returned entry.",
+        "In single-store / uninitialized mode, returns found.entry unchanged — no store_id field present.",
+        "NOT_FOUND path unchanged.",
+        "TypeScript compiles clean; all 4019 tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/api-repos.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-03T17:15:04Z",
+          "note": "No observations — code in the touched files is clean and consistent."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-08-03T17:20:12Z",
+      "completed_at": "2026-08-03T17:24:09Z",
+      "duration_ms": 237000,
+      "summary": [
+        "Build check: TypeScript compiles cleanly (4019 tests run without type errors).",
+        "AC-1 (multi-store returns store_id): Implementation correct — findEntryInStores() returns storePath matching a known store; handleGetRepo() resolves it via getAllStores().find() and spreads store_id. Path exercised by existing multi-store test.",
+        "AC-2 (single-store, no store_id): isStoreContextInitialized() guard correctly bypasses enrichment block; returned found.entry has no store_id. Implicit coverage via toEqual(created) assertion.",
+        "AC-3 (NOT_FOUND preserved): Explicit tests in both api-repos.test.ts and api-repos-store.test.ts; 404 path unchanged.",
+        "Regression: Full test suite — 4019/4019 tests pass, 0 failures."
+      ],
+      "metrics": {
+        "tests_passed": 4019,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "coverage-gap",
+          "priority": "medium",
+          "timestamp": "2026-08-03T17:24:09Z",
+          "note": "api-repos-store.test.ts 'handleGetRepo finds an entry created in storeB' only asserts result.id — it never asserts result.store_id === 'store-b'. Since returning store_id is the core deliverable of WP-001, an explicit assertion is missing. The code path is correct and exercised, but the new behavior is not guarded by a test assertion."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-08-03T17:24:09Z",
+          "note": "Silent fallback in handleGetRepo: if getAllStores().find() yields undefined (e.g., store removed between the two calls), the function silently returns the entry without store_id instead of surfacing an error. Acceptable for now, but worth noting if multi-store consistency bugs appear later."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-08-03T17:29:29Z",
+      "completed_at": "2026-08-03T17:30:40Z",
+      "duration_ms": 71000,
+      "summary": [
+        "Code review PASS. Implementation is minimal, correct, and architecturally clean.",
+        "Return type widened to RepositoryEntry & { store_id?: string } — correct approach: enriches the API response layer without touching RepositoryEntrySchema or storage schema.",
+        "Multi-store guard pattern (isStoreContextInitialized() && getStoreRouter().isMultiStoreMode()) is consistent with other handlers in api-repos.ts.",
+        "Fix-Forward applied: added expect(result.store_id).toBe('store-b') to 'handleGetRepo finds an entry created in storeB' in api-repos-store.test.ts — the core deliverable was not guarded by an assertion.",
+        "All 22 tests in api-repos-store.test.ts pass after the fix-forward edit.",
+        "Silent fallback (getAllStores().find() → undefined) is acceptable and consistent with the codebase's defensive patterns."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/tests/gui/api-repos-store.test.ts",
+          "mcp-server/gui/api-repos.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "medium",
+          "timestamp": "2026-08-03T17:30:40Z",
+          "note": "Added `expect(result.store_id).toBe('store-b')` to the 'handleGetRepo finds an entry created in storeB' test in api-repos-store.test.ts. The test exercised the correct code path but never asserted the new store_id field — the core WP-001 deliverable was unguarded. Non-behavioral change; all 22 tests pass."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-03T17:30:40Z",
+          "note": "Silent fallback: when getAllStores().find() returns undefined (e.g. store removed between calls), handleGetRepo() silently omits store_id instead of surfacing an error. Acceptable for now given the low likelihood and consistent with the codebase's defensive style."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-08-03T17:30:40Z",
+          "note": "[documentation-forward] The JSDoc on handleGetRepo() does not mention the store_id enrichment. Add a note that in multi-store mode the returned object includes store_id resolved from the owning store, and that it is absent in single-store or uninitialized mode."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-08-03T17:31:26Z",
+      "completed_at": "2026-08-03T17:32:44Z",
+      "duration_ms": 78000,
+      "summary": [
+        "Updated JSDoc on handleGetRepo() in mcp-server/gui/api-repos.ts to document the store_id enrichment: multi-store mode returns store_id resolved from the owning store via storePath→getAllStores() match; absent in single-store or uninitialized mode; silently omitted if the match yields no result.",
+        "Updated the handleGetRepo() signature and inline comments in mcp-server/docs/agents/project-manifest/api-surface.md: return type corrected from Promise<RepositoryEntry> to Promise<RepositoryEntry & { store_id?: string }>, and the multi-store/single-store behavior notes expanded to cover the new enrichment.",
+        "Addressed the documentation-forward item from code review: JSDoc now accurately describes all three behavioral cases (multi-store with match, multi-store without match, single-store/uninitialized)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/api-repos.ts",
+          "mcp-server/docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-03T17:32:44Z",
+          "note": "No documentation gaps remain. All three behavioral paths (multi-store enriched, multi-store silent-fallback, single-store absent) are now covered in both the source JSDoc and the manifest api-surface.md."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-08-03T17:32:44Z",
+  "last_updated": "2026-08-03T17:32:44Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-08-03T17:15:04Z",
+      "notes": [
+        "handleGetRepo() now returns { ...entry, store_id } when in multi-store mode. The store_id is resolved by matching storePath (from findEntryInStores) against getStoreRouter().getAllStores(). Single-store mode returns the entry unmodified.",
+        "WP-002 (handleMoveRepo) can now proceed — it depends on WP-001 being complete."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-08-03T17:24:09Z",
+      "notes": [
+        "All 3 ACs met. Medium-priority observation: the multi-store handleGetRepo test should add `expect(result.store_id).toBe('store-b')` to guard the WP-001 deliverable explicitly. Not a blocker — code is correct. Low-priority: silent store_id omission on getAllStores miss."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-08-03T17:30:40Z",
+      "notes": [
+        "PASS with one fix-forward applied: api-repos-store.test.ts now asserts result.store_id === 'store-b' in the multi-store handleGetRepo test.",
+        "Documentation agent: handleGetRepo() JSDoc needs a note about store_id enrichment in multi-store mode (tagged as documentation-forward, low priority)."
+      ]
+    }
+  ]
+}

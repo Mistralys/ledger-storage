@@ -1,0 +1,338 @@
+{
+  "work_package_id": "WP-006",
+  "work_package_file": "work/WP-006.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-002"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "`GET /api/models` returns the model array, auto-initializing `local.json` from defaults on first access",
+      "met": true
+    },
+    {
+      "criterion": "`PUT /api/models` auto-generates UUIDv4 for entries without `id` and persists all entries",
+      "met": true
+    },
+    {
+      "criterion": "`PUT /api/models` with a duplicate slug returns a validation error",
+      "met": true
+    },
+    {
+      "criterion": "`PUT /api/models` with reserved slug `\"inherit\"` on a non-sentinel entry returns a validation error",
+      "met": true
+    },
+    {
+      "criterion": "`PUT /api/models` removing a referenced model returns 409 Conflict with a list of usages directing the user to the Replace Model feature",
+      "met": true
+    },
+    {
+      "criterion": "`PUT /api/models` removing an unreferenced model succeeds",
+      "met": true
+    },
+    {
+      "criterion": "`POST /api/models/load-defaults` merges defaults without overwriting existing entries and returns slug-collision conflicts",
+      "met": true
+    },
+    {
+      "criterion": "`GET /api/model-assignments` returns assignments enriched with `stale: true` when `max(mtime(assignments.json), mtime(local.json))` > `mtime(name-mapping.json)`, `stale: false` when neither user file exists, and `stale: false` when only `default.json` is newer",
+      "met": true
+    },
+    {
+      "criterion": "`PUT /api/model-assignments` validates model UUIDs exist in registry and persona keys exist in `name-mapping.json`; returns 400 when `name-mapping.json` doesn't exist",
+      "met": true
+    },
+    {
+      "criterion": "`POST /api/model-assignments/replace` swaps all occurrences of `old_model_id` with `new_model_id`; rejects when `old_model_id` is not referenced (400); rejects when `old_model_id === new_model_id` (400 \"Source and target models must be different\")",
+      "met": true
+    },
+    {
+      "criterion": "`GET /api/personas` returns all personas from `name-mapping.json` when it exists, or empty array when it doesn't",
+      "met": true
+    },
+    {
+      "criterion": "`POST /api/personas/rebuild` spawns `node scripts/build-personas.js`, returns `{ success: true, output }` on exit 0 and `{ success: false, output, exitCode }` with HTTP 500 on failure",
+      "met": true
+    },
+    {
+      "criterion": "`POST /api/personas/rebuild` returns 409 when a build is already in progress; clears the `buildInProgress` flag on process errors (finally-block cleanup)",
+      "met": true
+    },
+    {
+      "criterion": "All 8 API client methods are added and call the correct endpoints with correct HTTP methods",
+      "met": true
+    },
+    {
+      "criterion": "All integration tests pass",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "security-audit",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-07-21T14:41:46Z",
+      "completed_at": "2026-07-21T14:49:42Z",
+      "duration_ms": 476000,
+      "summary": [
+        "Created mcp-server/gui/api-models.ts with all 8 handler functions: handleGetModels, handleSaveModels, handleLoadDefaults, handleGetAssignments, handleUpdateAssignments, handleReplaceAssignedModel, handleGetPersonas, handleRebuildPersonas.",
+        "handleSaveModels: auto-assigns UUIDv4 via randomUUID() for entries missing id; delegates to writeModels() which enforces slug uniqueness, reserved-slug guard, and deletion guard; returns 409 CONFLICT with referencedModels details when a deletion is blocked.",
+        "handleGetAssignments: computes stale boolean by comparing max(mtime(assignments.json), mtime(local.json)) against mtime(name-mapping.json); default.json excluded from comparison; returns stale:false when neither user file exists.",
+        "handleUpdateAssignments: validates name-mapping.json existence (400 if absent); validates all persona keys against id values in name-mapping.json; validates all model UUIDs against registry.",
+        "handleReplaceAssignedModel: rejects same-model swap with message 'Source and target models must be different'; rejects when old_model_id not referenced; swaps all occurrences including default_model_uuid.",
+        "handleGetPersonas: reads name-mapping.json, returns empty array on ENOENT.",
+        "handleRebuildPersonas: module-level buildInProgress concurrency guard (409 on concurrent); spawns node scripts/build-personas.js non-detached; captures stdout+stderr; clears flag in finally block.",
+        "Registered 3 GET routes in matchRoute() (models, model-assignments, personas) and 5 body-parsing routes in handleRequest() (PUT models, POST models/load-defaults, PUT model-assignments, POST model-assignments/replace, POST personas/rebuild).",
+        "Added 8 API client methods to api-client.js: getModels, saveModels, loadDefaultModels, getPersonas, getAssignments, updateAssignments, replaceAssignedModel, rebuildPersonas.",
+        "Created 36-test integration test file covering all 13 acceptance criteria scenarios.",
+        "All 3523 tests pass across 117 test files. TypeScript compilation clean (0 errors)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/api-models.ts",
+          "mcp-server/gui/server.ts",
+          "mcp-server/gui/public/api-client.js",
+          "mcp-server/tests/gui/api-models.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T14:49:42Z",
+          "note": "server.ts handleRequest() has grown substantially (~1900 lines) and now handles 5 more body-parsing routes inline. The inline body-parsing pattern (repeated try/catch/sendError boilerplate for each route) is functional but verbose. A future refactor could introduce a typed route registry or a dispatchBodyRoute() helper to reduce duplication. Out of scope for this WP but worth noting for maintainability."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T14:49:42Z",
+          "note": "api-models.ts handleRebuildPersonas() uses a non-typed Promise wrapper around spawn() events. The pattern is correct and mirrors orchestrator-manager.ts, but a typed utility wrapper (e.g. spawnWithOutput(cmd, args, cwd): Promise<{output, exitCode}>) shared between the two callers would eliminate duplication if a third caller appears."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-07-21T14:49:42Z",
+          "note": "handleUpdateAssignments() reads both name-mapping.json and local.json in sequence. Both reads are independent and could be parallelized with Promise.all() to reduce latency for users with large registries. Minor optimization opportunity."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-07-21T14:49:42Z",
+          "note": "The _resetBuildInProgress() export in api-models.ts uses an underscore prefix to signal 'test-only'. The project doesn't have an established convention for this (api-repos.ts has no test-only exports). A JSDoc @internal tag is present which is sufficient; just noting the minor convention gap."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-07-21T14:55:05Z",
+      "completed_at": "2026-07-21T14:58:39Z",
+      "duration_ms": 214000,
+      "summary": [
+        "TypeScript compilation: 0 errors (npx tsc --noEmit clean).",
+        "Integration tests: all 36 tests in api-models.test.ts pass — covering all 15 ACs (AC-1 through AC-13 handler tests, AC-14 API client methods verified by code inspection, AC-15 test suite pass).",
+        "Full regression: 3523 tests across 117 test files — all pass, no regressions.",
+        "Edge-case analysis: 10 targeted checks passed — strict '>' stale comparison (equal mtimes → not stale), optional default_model_uuid skipped in validation when undefined, ReplaceModelBodySchema uses .strict() to reject extra fields, SaveModelsBodySchema defaults cc_model to 'inherit', finally-block clears buildInProgress on process error, ApiError re-export present for consumer use, handleGetPersonas rejects non-array name-mapping.json.",
+        "Route registration: all 3 GET routes in matchRoute() and all 5 body-parsing POST/PUT routes in handleRequest() confirmed correct. CONFLICT→409 and VALIDATION_ERROR→400 HTTP mappings verified.",
+        "POST /api/personas/rebuild server handler correctly returns HTTP 500 for { success: false } without throwing (uses result.success ? 200 : 500 pattern)."
+      ],
+      "metrics": {
+        "test_coverage": "36/36 integration tests, 117 test files total",
+        "tests_passed": 3523,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T14:58:39Z",
+          "note": "The 8 new API client methods in api-client.js (getModels, saveModels, loadDefaultModels, getPersonas, getAssignments, updateAssignments, replaceAssignedModel, rebuildPersonas) are not covered by the existing api-client.test.ts test file. AC-14 is met (methods exist and call correct endpoints), but unit test coverage for these methods would improve confidence in future refactors. Consider adding client-side unit tests in a follow-up."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T14:58:39Z",
+          "note": "computeStale uses strict '>' for the freshness comparison — equal mtimes return stale: false, which is the correct spec behavior. No test directly asserts this boundary (equal mtime → not stale), though the three existing stale-detection tests adequately cover the specified scenarios. A boundary test would make the invariant explicit."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T14:58:39Z",
+          "note": "No improvement — code is clean, patterns are consistent, and all acceptance criteria are fully verified."
+        }
+      ]
+    },
+    {
+      "type": "security-audit",
+      "status": "PASS",
+      "started_at": "2026-07-21T14:59:04Z",
+      "completed_at": "2026-07-21T15:00:49Z",
+      "duration_ms": 105000,
+      "summary": [
+        "Reviewed 4 files (api-models.ts, server.ts, src/gui/model-registry.ts, gui/public/api-client.js). 0 Critical, 0 High, 1 Medium (info disclosure in validation error — noted), 1 Info (unconstrained cast in handleGetPersonas). Security sign-off: PASS."
+      ],
+      "metrics": {
+        "security_issues": 0
+      },
+      "comments": [
+        {
+          "type": "risk",
+          "priority": "medium",
+          "timestamp": "2026-07-21T15:00:49Z",
+          "note": "Medium — A05 (Security Misconfiguration / Information Disclosure). File: mcp-server/gui/api-models.ts, line ~339 (handleUpdateAssignments). The validation error message for an invalid persona key leaks the full list of valid persona IDs: `Valid IDs are: ${[...validPersonaIds].join(', ')}`. In this context the risk is low (GUI is localhost-bound, CORS is restricted, persona IDs are not secrets), but this is an unnecessary detail in an error message. Remediation: emit only the count of valid IDs or a generic message (e.g. 'Persona key X does not exist in name-mapping.json. Run a build to refresh the persona list.') rather than enumerating all valid values."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T15:00:49Z",
+          "note": "Info — A04 (Insecure Design / Type Safety). File: mcp-server/gui/api-models.ts, line ~507 (handleGetPersonas). The final return statement `return parsed as PersonaEntry[]` casts the JSON-parsed array to the PersonaEntry interface without Zod validation of individual entry shapes. The file is locally owned (not user-submitted) so direct exploitation risk is minimal. If this data ever feeds server-side logic beyond display, a Zod schema parse should be added. For the current read-only display use case this is informational only."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T15:00:49Z",
+          "note": "No security findings in the following areas — all OWASP Top 10 categories reviewed: A01 (path construction uses hardcoded WORKSPACE_ROOT, not user input), A02 (no secrets or sensitive data stored; randomUUID() from Node crypto), A03 (all inputs validated via Zod before use; spawn uses a hardcoded script path with no user-controlled arguments), A06 (no new third-party dependencies introduced), A07 (no auth endpoints; not applicable to this local GUI server), A08 (no deserialization of untrusted data; atomic writes used), A09 (errors logged to stderr only, no stack traces returned to callers), A10 (no server-side URL fetching). CORS restricted to localhost. Security headers applied on all responses (CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy). Body size capped at 1 MiB. UUID fields validated with z.string().uuid() and existence-checked against live registry."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-07-21T15:01:16Z",
+      "completed_at": "2026-07-21T15:03:32Z",
+      "duration_ms": 136000,
+      "summary": [
+        "[PASS] Code review complete. All 4 files reviewed: api-models.ts (588 lines), server.ts (new routes section ~lines 1330–1910), api-client.js (new methods section), api-models.test.ts (36 tests). One Fix-Forward applied: PARSE_ERROR → VALIDATION_ERROR in handleGetPersonas() for consistency with the identical error path in handleUpdateAssignments() and to return HTTP 400 (not 500) for malformed name-mapping.json — the apiErrorToStatus switch has no case for PARSE_ERROR and fell through to 500. No blocking issues found. Architecture, maintainability, naming, and error handling are all strong.\""
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/api-models.ts",
+          "mcp-server/gui/server.ts",
+          "mcp-server/gui/public/api-client.js",
+          "mcp-server/tests/gui/api-models.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "medium",
+          "timestamp": "2026-07-21T15:03:32Z",
+          "note": "Fix-Forward applied: handleGetPersonas() at api-models.ts line 497 used `new ApiError('PARSE_ERROR', ...)` for a malformed name-mapping.json. The error code PARSE_ERROR is not handled by apiErrorToStatus() in server.ts (only NOT_FOUND, FORBIDDEN, VALIDATION_ERROR, CONFLICT are mapped), so this threw HTTP 500 for a malformed JSON file. The identical scenario in handleUpdateAssignments() (line 322) correctly uses VALIDATION_ERROR → 400. Changed to `new ApiError('VALIDATION_ERROR', 'name-mapping.json is not valid JSON.')` for consistency and correct HTTP status semantics. Behavior change: corrupt name-mapping.json now returns 400 instead of 500 from GET /api/personas — this is the correct response since it is a data-integrity problem, not a server failure."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T15:03:32Z",
+          "note": "handleUpdateAssignments() reads name-mapping.json and local.json sequentially (await readFile → await readModels). Both reads are independent and could be parallelized with Promise.all() — already noted by Developer. At current scale this is a low-priority optimization, but worth addressing if the model registry grows large or if latency is ever profiled."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T15:03:32Z",
+          "note": "The module-level `buildInProgress` flag in api-models.ts is correct for a single-process server but will not scale to a multi-worker scenario (e.g. cluster mode or worker_threads). The current architecture is single-process and this is fine. If multi-worker support is ever added, the concurrency guard must be moved to a shared medium (e.g. a lockfile or atomic rename). Low risk for the current architecture — documented for future awareness."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T15:03:32Z",
+          "note": "server.ts handleRequest() has grown to ~1960 lines with 5 additional inline body-parsing route blocks (PUT /api/models, POST /api/models/load-defaults, PUT /api/model-assignments, POST /api/model-assignments/replace, POST /api/personas/rebuild). Each block is identical in structure: readJsonBody → call handler → sendJson → catch ApiError / PayloadTooLargeError. A typed dispatchBodyRoute() helper would eliminate this boilerplate. Out of scope for this WP, but the pattern is now repeated enough that a dedicated refactor WP would be justified."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-07-21T15:03:32Z",
+          "note": "[documentation-forward] The PersonaEntry interface exported from api-models.ts (lines 470–478) is the public contract for GET /api/personas. The interface is defined but lacks a JSDoc comment explaining what each optional field means (model, model_slug, cc_model, number) and under what conditions they are populated. Add a JSDoc block documenting the optional fields and their semantics for future contributors integrating with this endpoint."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-07-21T15:03:32Z",
+          "note": "[documentation-forward] The stale flag semantics of GET /api/model-assignments are non-obvious: stale: false when neither user file exists (no build needed), stale: false when only default.json is newer (excluded by design), stale: false when name-mapping.json does not exist. These rules are documented in the computeStale() @internal JSDoc but are not surfaced in the handler-level JSDoc for handleGetAssignments(). Consider adding a brief note on the stale field semantics to the handleGetAssignments() JSDoc to aid frontend consumers."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-07-21T15:03:55Z",
+      "completed_at": "2026-07-21T15:09:12Z",
+      "duration_ms": 317000,
+      "summary": [
+        "Addressed both documentation-forward items from the Reviewer.",
+        "Added full JSDoc to the PersonaEntry interface in api-models.ts, documenting all 7 fields (id, role, suite, model, model_slug, cc_model, number) — including which are required vs. optional and the conditions under which optional fields are populated.",
+        "Enhanced the handleGetAssignments() JSDoc with a detailed explanation of stale flag semantics, including a four-rule breakdown covering: stale:true when user files are newer than name-mapping.json, stale:false when no user files exist, stale:false when name-mapping.json is absent, and stale:false when only default.json (Git checkout mtime) is newer.",
+        "Updated mcp-server/gui/docs/agents/project-manifest/api-surface.md: added sections 1.4 (Model Registry), 1.5 (Model Assignments), and 1.6 (Personas) with full request/response schemas, validation rules, error conditions, and staleness rule table. Added 8 new API client methods to section 2.1.",
+        "Updated mcp-server/gui/docs/agents/project-manifest/file-tree.md: added api-models.ts to the file tree listing and updated the server.ts line count.",
+        "Delegated CTX update to ctx-architect: regenerated .context/ files. CTX architect also fixed a pre-existing omission where gui/docs/agents/project-manifest/api-surface.md and file-tree.md were not sourced in mcp-server/module-context.yaml — both are now included following the established dual-source pattern. 37 documents regenerated, exit code 0."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/api-models.ts",
+          "mcp-server/gui/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/gui/docs/agents/project-manifest/file-tree.md",
+          "mcp-server/module-context.yaml"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T15:09:12Z",
+          "note": "The ctx-architect identified a pre-existing omission: gui/docs/agents/project-manifest/api-surface.md and file-tree.md were not sourced in mcp-server/module-context.yaml, unlike constraints.md, data-flows.md, and README.md which already had the dual-source pattern. This was corrected as part of the CTX update — both documents are now included and will be reflected in future ctx generate runs."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-07-21T15:09:12Z",
+  "last_updated": "2026-07-21T15:09:12Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-07-21T14:49:42Z",
+      "notes": [
+        "All 15 acceptance criteria met and verified by 36 integration tests.",
+        "handleSaveModels returns { models } on success or throws ApiError('CONFLICT') with referencedModels in details on deletion-blocked case — the server.ts route handler maps CONFLICT to HTTP 409.",
+        "handleRebuildPersonas returns { success: false, output, exitCode } as a resolved value (not a thrown error) for exit-code failures — the server.ts handler maps this to HTTP 500 via the status variable.",
+        "The _resetBuildInProgress() function is test-only infrastructure and should not be called in production code.",
+        "All TypeScript types clean, no linting issues introduced in touched files."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Security Auditor",
+      "timestamp": "2026-07-21T14:58:39Z",
+      "notes": [
+        "All 15 ACs verified and met. 36 integration tests pass, 3523 total tests clean.",
+        "Key implementation decisions confirmed correct: CONFLICT→409 HTTP mapping, 'success ? 200 : 500' for rebuild handler, finally-block concurrency guard cleanup, strict '>' stale comparison, optional default_model_uuid skipped when undefined.",
+        "Minor: api-client.js new methods lack unit tests in api-client.test.ts — low priority, AC-14 is met by code inspection.",
+        "No security concerns identified in this review — handler follows same ApiError/Zod validation pattern as api-repos.ts. Security Auditor should review UUID validation bypass potential and path traversal in modelRegistryDir()."
+      ]
+    },
+    {
+      "from_agent": "Security Auditor",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-07-21T15:00:49Z",
+      "notes": [
+        "Security audit PASS. 0 Critical, 0 High findings. All 15 ACs confirmed met. One Medium noted: handleUpdateAssignments error message at api-models.ts ~line 339 leaks full persona ID list — low practical risk (localhost-bound, persona IDs are not secrets) but worth tightening in a follow-up. One Info: handleGetPersonas returns an unconstrained cast at ~line 507 — acceptable for current read-only display use; add Zod validation if the result ever feeds server-side logic. No blocking issues. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-07-21T15:03:32Z",
+      "notes": [
+        "Code review PASS with one Fix-Forward applied. The PARSE_ERROR code in handleGetPersonas() was changed to VALIDATION_ERROR for consistency with the rest of the module and to return HTTP 400 (not 500) for malformed name-mapping.json. No behavioral changes to the happy paths. All 15 ACs confirmed met. Two documentation-forward items tagged for the Documentation agent: (1) PersonaEntry interface field docs, (2) stale flag semantics in handleGetAssignments() JSDoc. Ready for Documentation."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,153 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Reviewer",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "csCloseModal() calls .focus() on the element that was active when the modal was opened",
+      "met": true
+    },
+    {
+      "criterion": "Focus restoration is safe when csTriggerElement is document.body or a detached element (no error thrown)",
+      "met": true
+    },
+    {
+      "criterion": "csTriggerElement is nulled after focus restoration to avoid stale references",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-08-01T16:39:22Z",
+      "completed_at": "2026-08-01T16:40:52Z",
+      "duration_ms": 90000,
+      "summary": [
+        "Added `var csTriggerElement = null;` to the module-level state block in config-stores.js, alongside the existing csClickHandler and other state variables.",
+        "Captured `csTriggerElement = document.activeElement;` as the first statement in `csRenderStoreModal()` before any DOM manipulation, covering both Add and Edit flows.",
+        "Modified `csCloseModal()` to restore focus to csTriggerElement (guarded with `typeof .focus === 'function'`) after overlay removal and before state nulling; nulls csTriggerElement afterward to prevent stale references.",
+        "Verified 3944 existing tests pass with zero regressions."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/config-stores.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-01T16:40:52Z",
+          "note": "The comment block for the state variables (config-stores.js L11–L22) does not document csTriggerElement. A follow-up or the QA agent could add a line describing the variable's purpose alongside the other entries. The implementation intentionally omits this to keep scope minimal."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-08-01T16:54:44Z",
+      "completed_at": "2026-08-01T16:56:28Z",
+      "duration_ms": 104000,
+      "summary": [
+        "Verified AC1: csRenderStoreModal() captures document.activeElement as its first statement (config-stores.js:205, before any DOM manipulation). csCloseModal() calls csTriggerElement.focus() at lines 299–301.",
+        "Verified AC2: Guard `if (csTriggerElement && typeof csTriggerElement.focus === 'function')` is safe for document.body (focus() exists, no throw) and detached elements (focus() still on HTMLElement.prototype, calling it silently no-ops in all browsers — no throw).",
+        "Verified AC3: csTriggerElement = null on line 302 is unconditional (outside the if-block), executes regardless of whether focus was restored.",
+        "Edge-case checks: csCloseModal() without prior modal open (csTriggerElement null → guard short-circuits, no crash); document.activeElement null at open time (null stored, guard short-circuits); 3947 tests pass, zero regressions (3944 at implementation time + 3 new unrelated GUI tests)."
+      ],
+      "metrics": {
+        "tests_passed": 3947,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-08-01T16:56:28Z",
+          "note": "config-stores.js has no automated tests (it is browser-only frontend JS). All three ACs were verified by code inspection and manual reasoning. A future task could add JSDOM-based unit tests for csRenderStoreModal/csCloseModal focus behaviour."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-08-01T16:56:28Z",
+          "note": "If csRenderStoreModal() is called while a modal is already open (re-render path), the existing overlay is removed without calling csCloseModal(), so csTriggerElement is overwritten with document.activeElement at re-render time (likely a modal input). This is a pre-existing architectural choice, not a regression from this WP, and no AC is affected."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-08-01T17:02:33Z",
+      "completed_at": "2026-08-01T17:03:52Z",
+      "duration_ms": 79000,
+      "summary": [
+        "All three acceptance criteria verified by code inspection. Implementation is minimal, correct, and follows established ES5 module-level state patterns precisely.",
+        "Fix-Forward applied: added csTriggerElement description to the module-level state comment block (L11-22), which previously documented 7 of 9 variables and was missing an entry for this new variable.",
+        "Focus restoration ordering in csCloseModal() is architecturally correct: overlay removed → focus restored (guarded) → csTriggerElement nulled unconditionally → other state nulled. The unconditional null placement (outside the if-guard) is the right choice — nulling runs regardless of whether focus() was called.",
+        "No blocking issues found. No new dependencies, no new patterns, no regressions (3947/3947 tests pass)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/config-stores.js"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-08-01T17:03:52Z",
+          "note": "Added csTriggerElement entry to the state comment block (L11-22). The block documented csStores, csOriginal, csReorderMode, csModalMode, csModalStoreId, and csModalCreateDir but omitted the two lifecycle-management variables csClickHandler and csTriggerElement. The new entry describes the variable's purpose and its WCAG 2.1 SC 3.2.2 relationship, consistent with the verbosity level of neighboring entries. Non-behavioral — comment only."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-08-01T17:03:52Z",
+          "note": "[documentation-forward] csClickHandler is also absent from the module-level state comment block (L11-22) — this gap predates this WP. Add a brief description (e.g. 'csClickHandler: click-outside listener attached while modal is open; removed on csCloseModal()') alongside the other variable descriptions."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-01T17:03:52Z",
+          "note": "QA correctly identified that csRenderStoreModal() called while a modal is already open overwrites csTriggerElement with document.activeElement at re-render time (likely a modal input). This is a pre-existing architectural choice — no AC is violated. If focus management is hardened in future WPs, this re-render path should either: (a) preserve the original csTriggerElement if csTriggerElement is already non-null, or (b) call csCloseModal() before re-rendering. Not a blocker here."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-08-01T17:03:52Z",
+  "last_updated": "2026-08-01T17:03:52Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-08-01T16:40:52Z",
+      "notes": [
+        "All three acceptance criteria are met. The implementation follows the established ES5 module-level state pattern exactly. The `typeof .focus === 'function'` guard covers both document.body and detached DOM elements as specified in the WP. No new dependencies, no new patterns introduced.",
+        "The only touch point is config-stores.js — three minimal, surgical edits. 3944 tests pass with zero regressions."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-08-01T16:56:28Z",
+      "notes": [
+        "All 3 ACs confirmed by code inspection and full test-suite run (3947/3947). The implementation is minimal and correct — single file, three surgical edits, no new dependencies. The csTriggerElement null-guard covers all documented safe-failure cases. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-08-01T17:03:52Z",
+      "notes": [
+        "All 3 ACs met. PASS with one Fix-Forward (comment addition, non-behavioral). One documentation-forward logged for csClickHandler (predates this WP). Documentation agent: primary gap is the missing csClickHandler entry in the state comment block."
+      ]
+    }
+  ]
+}

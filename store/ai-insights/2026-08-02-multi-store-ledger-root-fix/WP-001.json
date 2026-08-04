@@ -1,0 +1,226 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-001.md",
+  "title": "Extract shared store-resolution utility",
+  "description": "**Plan Context:** Most MCP tool handlers, GUI handlers, auto-archive, and standalone-import construct `LedgerStore` without resolving the correct store in multi-store mode, causing silent failures for projects in non-default stores. This plan extracts a shared utility and applies it uniformly across all affected surfaces.\\n\\n**Description:** Extract the existing `extractLedgerRoot()` and `resolveMultiStoreLedgerRoot()` functions from `work-package.ts` into a new shared utility module at `src/utils/store-resolution.ts`, update `work-package.ts` to import from the new module, and add unit tests for the extracted functions.\\n\\n**Scope:**\\n- `mcp-server/src/utils/store-resolution.ts` (new)\\n- `mcp-server/src/tools/work-package.ts` (modify — remove local definitions, import from new module)\\n- `mcp-server/tests/utils/store-resolution.test.ts` (new)\\n\\n**Deliverables:**\\n- New module `src/utils/store-resolution.ts` exporting `extractLedgerRoot` and `resolveMultiStoreLedgerRoot` with identical signatures and behavior to the originals in `work-package.ts`\\n- `work-package.ts` imports both functions from the new module instead of defining them locally\\n- Unit test file covering all code paths: string/non-string input for `extractLedgerRoot`, test override short-circuit, store-context-not-initialized fallback, single-store-mode fallback, multi-store resolution, unregistered repo fallback, and null project root handling\\n\\n**Estimated Complexity:** Low\\n\\n**Rationale:** A dedicated shared module follows the `project-resolver.ts` extraction pattern already established in this codebase. Inline duplication across 6+ handler files would be unmaintainable. Keeping the functions in `work-package.ts` couples an unrelated utility to one specific tool file.\\n\\n**Rejected Approaches:**\\n- Inline in each handler — would require duplicating the 7-step resolution logic in 6+ files, violating DRY and creating drift risk.\\n- Centralize in LedgerStore constructor (Option A) — would make the constructor async and introduce a dependency on store-context.ts in the storage layer.\\n- Middleware wrapper (Option C) — more complex than needed.\\n\\n**Notes:** This WP is foundational — WP-002 and WP-004 depend on it.\\n\\n**Code Observations:** `work-package.ts` defines `extractLedgerRoot` at line 37 as a module-private function. The implementing agent should verify the current state and extract whatever multi-store resolution logic exists.",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "src/utils/store-resolution.ts exports extractLedgerRoot and resolveMultiStoreLedgerRoot with the same function signatures as the originals in work-package.ts.",
+      "met": true
+    },
+    {
+      "criterion": "work-package.ts no longer contains local definitions of extractLedgerRoot or resolveMultiStoreLedgerRoot — both are imported from ../utils/store-resolution.js.",
+      "met": true
+    },
+    {
+      "criterion": "The extractLedgerRoot guard against RequestHandlerExtra injection (constraint 58) is preserved in the extracted function.",
+      "met": true
+    },
+    {
+      "criterion": "All 11 unit tests in tests/utils/store-resolution.test.ts pass, covering: string input, object input, null input, undefined input, RequestHandlerExtra-shaped object, test override, store-context-not-initialized, single-store mode, registered repo resolution, unregistered repo fallback, and null project root.",
+      "met": true
+    },
+    {
+      "criterion": "All existing tests pass without modification (backward compatibility).",
+      "met": true
+    },
+    {
+      "criterion": "No circular import is introduced — store-resolution.ts imports only from store-context.ts and ledger-root.ts.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-08-02T17:35:42Z",
+      "completed_at": "2026-08-02T17:42:41Z",
+      "duration_ms": 419000,
+      "summary": [
+        "Created src/utils/store-resolution.ts exporting extractLedgerRoot and resolveMultiStoreLedgerRoot. Removed the local extractLedgerRoot definition from work-package.ts and imported both functions from the new module. Fixed 6 handlers in work-package.ts: listWorkPackages (added resolveMultiStoreLedgerRoot call), claimWorkPackage, updateWorkPackageStatus, resetReworkCount, reopenCancelledWp, and updateAcceptanceCriteria (replaced extractLedgerRoot with resolveMultiStoreLedgerRoot). Created 11 unit tests in tests/utils/store-resolution.test.ts covering all code paths. TypeScript compiles clean; all 3981 tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/utils/store-resolution.ts",
+          "mcp-server/src/tools/work-package.ts",
+          "mcp-server/tests/utils/store-resolution.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-02T17:42:41Z",
+          "note": "store-resolution.ts imports only store-context.ts and ledger-root.ts — no circular imports and no new dependencies. The resolveMultiStoreLedgerRoot 5-step resolution chain is clear and matches the established getProjectStatus pattern in project-lifecycle.ts, making it easy for readers to verify correctness."
+        },
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-08-02T17:42:41Z",
+          "note": "work-package.ts: createWorkPackage at line ~276 still uses extractLedgerRoot(_ledgerRoot) rather than resolveMultiStoreLedgerRoot. This means creating a WP when a project lives in a non-default store will silently write to the default store. This was intentionally excluded from WP-001 scope (write routing requires resolveStoreForWrite, not resolveMultiStoreLedgerRoot). A follow-on WP should address it."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-08-02T18:00:24Z",
+      "completed_at": "2026-08-02T18:02:13Z",
+      "duration_ms": 109000,
+      "summary": [
+        "All 6 acceptance criteria verified against actual source code and test output.",
+        "Build check: `tsc --noEmit` exits clean — no TypeScript errors.",
+        "AC1: store-resolution.ts exports extractLedgerRoot and resolveMultiStoreLedgerRoot with identical signatures to the originals.",
+        "AC2: work-package.ts line 28 imports both functions; grep confirms zero local function definitions remain.",
+        "AC3: Constraint-58 guard (typeof val === 'string') is present in extractLedgerRoot and covered by the RequestHandlerExtra regression test.",
+        "AC4: All 11 unit tests in tests/utils/store-resolution.test.ts pass (5 extractLedgerRoot + 6 resolveMultiStoreLedgerRoot).",
+        "AC5: Full regression — 3988 tests pass across 143 test files; no regressions.",
+        "AC6: store-resolution.ts imports only store-context.ts and ledger-root.ts — no circular imports."
+      ],
+      "metrics": {
+        "test_coverage": "11/11 new tests + 3977 pre-existing",
+        "tests_passed": 3988,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-02T18:02:13Z",
+          "note": "store-resolution.ts: The 5-step resolution chain in resolveMultiStoreLedgerRoot is well-documented via JSDoc and aligns with the established getProjectStatus pattern in project-lifecycle.ts. Readable and maintainable."
+        },
+        {
+          "type": "edge-case",
+          "priority": "low",
+          "timestamp": "2026-08-02T18:02:13Z",
+          "note": "store-resolution.ts: Empty string projectPath is gracefully handled — inferProjectRootFromPlanPath returns null, triggering the undefined fallback. No additional test needed for this path."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-02T18:02:13Z",
+          "note": "No observations — code is clean and consistent. The debt note from the Developer about createWorkPackage still using extractLedgerRoot directly is valid and correctly scoped to a follow-on WP (write routing requires resolveStoreForWrite, not resolveMultiStoreLedgerRoot)."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-08-02T18:06:57Z",
+      "completed_at": "2026-08-02T18:09:15Z",
+      "duration_ms": 138000,
+      "summary": [
+        "WP-001 code-review PASS. store-resolution.ts is a clean, minimal, well-documented utility module following established project conventions. All 6 ACs verified against source. Two documentation-forward items flagged for the manifest (api-surface.md + file-tree.md). No blocking issues found."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/utils/store-resolution.ts",
+          "mcp-server/src/tools/work-package.ts",
+          "mcp-server/tests/utils/store-resolution.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-02T18:09:15Z",
+          "note": "store-resolution.ts: The module correctly follows the plain-function pattern (KN-0005) for stateless storage helpers — no class, no lifecycle. The JSDoc on resolveMultiStoreLedgerRoot is a model for the codebase: numbered resolution steps, explicit fallback semantics, and a clear statement of what 'undefined' means to callers."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-02T18:09:15Z",
+          "note": "store-resolution.ts: The testOverride parameter is typed as 'unknown' and flows through extractLedgerRoot before use — this is the correct defensive approach given constraint-58. The type prevents callers from accidentally passing a typed object and assuming it will be used."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-02T18:09:15Z",
+          "note": "work-package.ts: listWorkPackages correctly passes 'undefined' as testOverride since the schema has no _ledgerRoot parameter. This is an acceptable asymmetry with other handlers (which do expose _ledgerRoot) because the list operation is read-only and low-risk. Documenting the asymmetry here for future contributors who wonder why the pattern differs."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-02T18:09:15Z",
+          "note": "tests/utils/store-resolution.test.ts: Tests 2 and 3 ('not initialized' and 'isMultiStoreMode() is false') both set up a StoreRouter(null) and produce the same result. The comment in test 2 honestly explains the limitation (truly-uninitialized state cannot be observed after restoreLegacyContext runs). The duplication is benign — both code paths converge on the same guard expression — but a follow-on contributor should be aware these are not independent branches."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-08-02T18:09:15Z",
+          "note": "[documentation-forward] mcp-server/docs/agents/project-manifest/api-surface.md: add a new entry for src/utils/store-resolution.ts documenting the two exported functions — extractLedgerRoot(val: unknown): string | undefined and resolveMultiStoreLedgerRoot(projectPath: string, testOverride?: unknown): Promise<string | undefined> — with their resolution-order semantics."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-08-02T18:09:15Z",
+          "note": "[documentation-forward] mcp-server/docs/agents/project-manifest/file-tree.md: add store-resolution.ts to the src/utils/ directory listing and tests/utils/store-resolution.test.ts to the tests/utils/ listing. Per AGENTS.md: 'Add new file/directory → file-tree.md'."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-08-02T18:14:35Z",
+      "completed_at": "2026-08-02T18:17:29Z",
+      "duration_ms": 174000,
+      "summary": [
+        "Addressed both documentation-forward items from code review. Added new named section '### Store Resolution — src/utils/store-resolution.ts' to api-surface.md after Synthesis Parser, documenting both exported function signatures (extractLedgerRoot and resolveMultiStoreLedgerRoot) with their full 5-step resolution-order semantics. Added store-resolution.ts to the src/utils/ listing in file-tree.md (between server-version.ts and synthesis-parser.ts) and store-resolution.test.ts to the tests/utils/ listing (between runner.test.ts and synthesis-parser.test.ts) with accurate coverage annotations."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/file-tree.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-02T18:17:29Z",
+          "note": "Both documentation-forward items from the Reviewer were addressed verbatim: api-surface.md now documents both function signatures with resolution semantics; file-tree.md lists both the source file and its test counterpart. No additional gaps found."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-08-02T18:17:29Z",
+  "last_updated": "2026-08-02T18:17:29Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-08-02T17:42:41Z",
+      "notes": [
+        "WP-001 is complete. store-resolution.ts is the shared utility that WP-004 and WP-005 depend on. The resolveMultiStoreLedgerRoot function follows the same pattern as getProjectStatus in project-lifecycle.ts (inferProjectRootFromPlanPath → deriveRepoName → resolveStoreForRepo). The extractLedgerRoot function is exported so handlers that accept _ledgerRoot parameters can preserve test-override behaviour while delegating to resolveMultiStoreLedgerRoot for production multi-store routing.",
+        "createWorkPackage in work-package.ts still uses extractLedgerRoot directly (not changed) — it is a write operation; the plan explicitly excluded it from WP-001.",
+        "WP-004 can now import resolveMultiStoreLedgerRoot from ../utils/store-resolution.js to fix the remaining pipeline.ts, begin-work.ts, observations.ts, workflow-handoff.ts, workflow-next-action.ts, and project-lifecycle.ts (completeSynthesis) handlers."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-08-02T18:02:13Z",
+      "notes": [
+        "WP-001 QA PASS. All 6 AC verified: store-resolution.ts exports are correct, work-package.ts imports cleanly, constraint-58 guard preserved, 11 unit tests pass, 3988 total tests pass, no circular imports. The module is ready for use by WP-004 and WP-005 which depend on it."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-08-02T18:09:15Z",
+      "notes": [
+        "WP-001 code-review PASS. store-resolution.ts follows the plain-function module pattern (KN-0005), has clean JSDoc, correct constraint-58 guard, and no circular imports. All 6 ACs verified against source. Two documentation-forward items are flagged: (1) add store-resolution.ts to api-surface.md with both function signatures and resolution semantics, (2) add store-resolution.ts and its test file to file-tree.md. No behavioral gaps. WP-004 and WP-005 can safely import resolveMultiStoreLedgerRoot from ../utils/store-resolution.js."
+      ]
+    }
+  ]
+}

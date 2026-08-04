@@ -1,0 +1,332 @@
+{
+  "work_package_id": "WP-009",
+  "work_package_file": "work/WP-009.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-006",
+    "WP-007",
+    "WP-008"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "The Persona Models tab shows all personas from all three suites, grouped by suite with collapsible headers",
+      "met": true
+    },
+    {
+      "criterion": "Each persona row shows the current resolved model from `name-mapping.json` as static text with an edit icon; clicking reveals a model dropdown",
+      "met": true
+    },
+    {
+      "criterion": "The default model is displayed as static text with click-to-edit behavior; a dropdown shows all registered models",
+      "met": true
+    },
+    {
+      "criterion": "Changed but unsaved assignments display dirty indicators (colored dot)",
+      "met": true
+    },
+    {
+      "criterion": "The \"Replace Model\" feature opens an inline form, shows a confirmation dialog (\"Replace all assignments of {old_model} with {new_model}?\"), and calls the replace API with UUIDs",
+      "met": true
+    },
+    {
+      "criterion": "The stale personas banner appears when `stale: true` and includes a \"Rebuild Personas\" button",
+      "met": true
+    },
+    {
+      "criterion": "The rebuild button shows a spinner during build; on success clears the banner and refreshes; on failure shows error output inline in a `<pre>` block",
+      "met": true
+    },
+    {
+      "criterion": "The pre-build state message (\"No persona data available.\") with rebuild button appears when no personas exist",
+      "met": true
+    },
+    {
+      "criterion": "The fixed \"Rebuild Personas\" button is always visible next to Save; disabled during build; shows tooltip about saving when dirty changes exist",
+      "met": true
+    },
+    {
+      "criterion": "When no models are registered, a message directs users to the Model Registry tab",
+      "met": true
+    },
+    {
+      "criterion": "Saving assignments causes the stale banner to appear (since assignments are now newer than the last build)",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-07-21T15:45:06Z",
+      "completed_at": "2026-07-21T15:52:50Z",
+      "duration_ms": 464000,
+      "summary": [
+        "Replaced the renderPersonaModelsTab() placeholder stub with a full implementation in mcp-server/gui/public/views/config.js.",
+        "Added module-level state variables (pmModels, pmPersonas, pmAssignments, pmOriginal, pmIsBuilding, pmCollapsed, pmReplaceOpen) following the existing mrModels pattern from the Model Registry tab.",
+        "Implemented pmBuildTabHtml() covering: empty-registry edge case with go-to-registry link, pre-build state with Rebuild button, stale personas banner with inline Rebuild button, default model click-to-edit, collapsible suite-grouped persona rows with click-to-edit and dirty indicators, Replace Model inline form with confirmation dialog, and fixed action bar with Save + Rebuild buttons.",
+        "Implemented pmWireEvents() wiring all interactive elements: tab navigation for go-to-registry, suite collapsible headers, default model edit/done/cancel, persona model edit/done/cancel (event delegation), Replace Model toggle/execute/cancel, banner rebuild, fixed rebuild, and save.",
+        "Implemented pmDoSave() and pmDoRebuild() API action functions. pmDoSave sets stale flag from server response causing the banner to appear. pmDoRebuild re-fetches personas and assignments on success to refresh the displayed data.",
+        "Updated renderConfigTabContent() to call pmWireEvents() after rendering the personaModels tab.",
+        "Updated the tab-switch unsaved-changes guard to reset pm* state when discarding changes on the personaModels tab.",
+        "Updated renderConfigPage() to reset all pm* state variables on page entry.",
+        "Added CSS for Persona Models tab to styles.css: pm-empty-registry, pm-prebuild-state, pm-stale-banner, pm-build-error-pre, pm-suite-header (collapsible), pm-personas-table, pm-default-row/edit, pm-persona-display/edit, pm-replace-form, pm-action-bar, .btn-icon, .btn-link, .pm-model-select.",
+        "Added .spinner CSS class for inline button spinners (used during rebuild state).",
+        "All 3523 existing tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/config.js",
+          "mcp-server/gui/public/styles.css"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T15:52:50Z",
+          "note": "The pmRefreshTab function fully re-renders the tab content on every interaction (edit, done, cancel, collapse). For the current scale (20+ personas across 3 suites) this is acceptable and consistent with the mrRefreshTab pattern in the Model Registry tab. If performance becomes an issue with larger persona sets, targeted DOM updates (toggle display:none on individual edit/display elements) could replace the full re-render for the common edit/cancel path."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T15:52:50Z",
+          "note": "The pmDoRebuild function passes the initial page-load 'assignments' parameter through the entire callback chain. After a successful rebuild, re-fetched data is stored in pmAssignments (module-level) and pmPersonas, so rendering is correct. However the closure chain becomes slightly confusing because the 'assignments' param from the outer scope is never the fresh data — it's always the initial page load value. A minor clarity improvement would be to eliminate the 'assignments' parameter from the pm* functions entirely and rely solely on module-level state."
+        },
+        {
+          "type": "debt",
+          "priority": "medium",
+          "timestamp": "2026-07-21T15:52:50Z",
+          "note": "config.js now has three parallel tab implementations (General, Persona Models, Model Registry) each with their own module-level state variables and refresh pattern. The General tab uses a simpler stateless pattern, while the two new tabs follow a mrModels/pmModels local-state pattern. As the file grows, extracting each tab into its own file (views/config-general.js, views/config-persona-models.js, views/config-model-registry.js) with a thin dispatcher in config.js would significantly improve maintainability."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "FAIL",
+      "started_at": "2026-07-21T15:53:18Z",
+      "completed_at": "2026-07-21T15:58:09Z",
+      "duration_ms": 291000,
+      "summary": [
+        "QA FAIL — AC #7 violated: rebuild failure output is not shown in the <pre> block. Build passes (TypeScript compiles), all 3523 existing tests pass (no regressions), but a server/client contract mismatch causes the rebuild error message to display 'HTTP 500' instead of actual build output. 10 of 11 ACs are confirmed implemented correctly via code review. One AC is unmet."
+      ],
+      "metrics": {
+        "test_coverage": "n/a — frontend-only WP",
+        "tests_passed": 3523,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "bug",
+          "priority": "high",
+          "timestamp": "2026-07-21T15:58:09Z",
+          "note": "AC #7 FAIL — Rebuild error output not shown in <pre> block. Root cause: server.ts sends `sendJson(res, 500, { success: false, output: '...', exitCode: N })` for a failed rebuild (exit code != 0). The api-client.js `request()` function handles non-2xx responses by reading `errData.error.message`, but the rebuild failure response body is `{ success: false, output: '...', exitCode: N }` — it lacks the `error.message` field. So `errMsg` falls back to `'HTTP 500'`. The `pmDoRebuild` catch block then puts `err.message` (= `'HTTP 500'`) into the `<pre class=\"pm-build-error-pre\">` block instead of the actual script output. Fix options: (A) Change `server.ts` line ~1895 to `sendError(res, 500, 'BUILD_FAILED', result.output, port)` so the output is in the standard `error.message` field; or (B) in `pmDoRebuild` catch, additionally try parsing the raw response body for `output` field. Option A is cleanest and consistent with all other error handling."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T15:58:09Z",
+          "note": "pmDirtyDot() reuses the Model Registry's `.mr-dirty-dot` CSS class instead of a dedicated `.pm-dirty-dot`. This works but is a mild coupling concern — if mr-dirty-dot styles change they affect the Persona Models tab too. Low risk since both tabs want the same visual style."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T15:58:09Z",
+          "note": "pmDoRebuild() after success updates `pmAssignments.stale` from freshAssignments but does not merge `freshAssignments.persona_models` or `freshAssignments.default_model_uuid` back into `pmAssignments`. This is by design (rebuild doesn't alter assignments), but worth documenting explicitly in the function comment to avoid future confusion."
+        }
+      ]
+    },
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-07-21T15:58:38Z",
+      "completed_at": "2026-07-21T16:00:07Z",
+      "duration_ms": 89000,
+      "summary": [
+        "Rework: fixed server/client contract mismatch in POST /api/personas/rebuild error path. Changed server.ts lines 1895–1896 from `sendJson(res, 500, result, port)` to `sendError(res, 500, 'BUILD_FAILED', result.output, port)`. The rebuild failure response now uses the standard error envelope `{ error: { code, message } }` that api-client.js already parses — so `err.message` in pmDoRebuild's catch block now carries the actual build script output, which is displayed in the `<pre class=\\\"pm-build-error-pre\\\">` block. TypeScript build passes, all 3523 regression tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/server.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T16:00:07Z",
+          "note": "The fix is minimal and correct. No new observations beyond those already recorded in the first implementation pipeline. The server.ts rebuild handler is now consistent with all other error paths in the file — failure results use sendError() with a structured envelope rather than bare sendJson() with a non-standard shape."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-07-21T16:00:24Z",
+      "completed_at": "2026-07-21T16:01:41Z",
+      "duration_ms": 77000,
+      "summary": [
+        "Rework QA PASS — AC #7 fix verified. The server.ts rebuild failure path now uses sendError(res, 500, 'BUILD_FAILED', result.output, port), producing the standard { error: { code, message } } envelope. api-client.js reads errData.error.message correctly, and pmDoRebuild's catch block renders err.message into the <pre class=\"pm-build-error-pre\"> block. The handleRebuildPersonas function always returns output as a string (either stdout+stderr concatenation or a process error message), so no undefined/null edge case can reach sendError. All 11 ACs confirmed met. TypeScript compiles clean (tsc --noEmit). All 3523 regression tests pass."
+      ],
+      "metrics": {
+        "test_coverage": "n/a — frontend-only WP",
+        "tests_passed": 3523,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T16:01:41Z",
+          "note": "No new issues found. The AC #7 fix is minimal and correct — one-line change in server.ts aligning the rebuild failure path with the standard error envelope used throughout the rest of the file. No regressions introduced."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-07-21T16:01:57Z",
+      "completed_at": "2026-07-21T16:05:15Z",
+      "duration_ms": 198000,
+      "summary": [
+        "Code review PASS. Implementation is well-structured and consistent with the existing Model Registry tab pattern. One Fix-Forward applied: decoupled the Persona Models dirty-indicator dot from `.mr-dirty-dot` by adding a `.pm-dirty-dot` CSS alias and updating `pmDirtyDot()` to use it. Two documentation-forward items tagged for the Documentation agent."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/public/views/config.js",
+          "mcp-server/gui/public/styles.css",
+          "mcp-server/gui/server.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-07-21T16:05:15Z",
+          "note": "Fix-Forward: `pmDirtyDot()` in config.js (line 289) was using `.mr-dirty-dot` — the Model Registry's CSS class — for the Persona Models tab's dirty indicators. This is a cross-tab coupling: any future restyling of `.mr-dirty-dot` would silently affect the Persona Models tab. Applied fix: added `.pm-dirty-dot` as a selector alias to the `.mr-dirty-dot` ruleset in styles.css (both selectors share the same declaration block), then updated `pmDirtyDot()` to emit `.pm-dirty-dot`. The visual output is identical; QA validation is unaffected. The two tabs are now visually decoupled."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T16:05:15Z",
+          "note": "The `pmWireEvents` function signature carries `config, models, personas, assignments` parameters that are never directly consumed by the function body — they are passed through to `pmRefreshTab` which in turn passes them recursively into the next `pmWireEvents` call. The actual rendering reads from module-level state (`pmModels`, `pmPersonas`, `pmAssignments`). This closure pass-through is the Developer-documented debt. It creates a confusing interface but causes no bugs today. When extracting pm* into its own file, eliminating these parameters entirely (relying solely on module-level state) would be the correct simplification."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T16:05:15Z",
+          "note": "In `pmDoRebuild` (lines 780–783): on success, `pmRefreshTab(config, models, pmPersonas, assignments)` is called where `pmPersonas` has just been updated (correct) but `assignments` is the stale initial page-load value. This is safe because `pmRefreshTab` ignores the `assignments` parameter — it reads `pmAssignments` (module-level) directly via `pmBuildTabHtml()`. The parameter is a vestigial pass-through. The Developer's own implementation comment notes this; no behavioral issue exists, but future readers may be confused by seeing `assignments` (old value) passed next to `pmPersonas` (new value)."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-07-21T16:05:15Z",
+          "note": "[documentation-forward] `pmDirtyDot()` now emits `.pm-dirty-dot`; the `api-surface.md` or `ui-components.md` documentation should note that both `.mr-dirty-dot` and `.pm-dirty-dot` share the same CSS declaration block in styles.css — so a single restyling of that block affects both tabs. This prevents a future contributor from adding per-tab dirty-dot overrides in the wrong place."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-07-21T16:05:15Z",
+          "note": "[documentation-forward] The `pmWireEvents` function's parameter signature (`config, models, personas, assignments`) is architecturally misleading — these params are pass-throughs, not inputs. A brief doc comment on the function should explain that the function body reads from module-level pm* state and that the parameters exist solely for the pmRefreshTab recursive closure chain. This would prevent future contributors from incorrectly routing logic through these parameters instead of module-level state."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-07-21T16:05:42Z",
+      "completed_at": "2026-07-21T16:12:05Z",
+      "duration_ms": 383000,
+      "summary": [
+        "Expanded the views/config.js entry in api-surface.md to fully document the Persona Models tab: module-level state variables (pmModels, pmPersonas, pmAssignments, pmOriginal, pmIsBuilding, pmCollapsed, pmReplaceOpen), pmBuildTabHtml rendering states (empty registry, pre-build, stale, normal), pmWireEvents parameter-passthrough pattern, pmDoSave/pmDoRebuild API actions, all helper functions, and a CSS class reference table for all Persona Models tab classes.",
+        "Added a multi-line JSDoc comment to pmWireEvents() in config.js explicitly documenting that its four parameters are pass-through values for the recursive closure chain and must not be used to route new data — all reads go through module-level pm* state.",
+        "Updated the config.js entry in file-tree.md to describe the full three-tab system (General, Persona Models, Model Registry), dirty-tracking, module-level state variables, and all key functions.",
+        "Added a clarifying inline comment to the shared .mr-dirty-dot / .pm-dirty-dot CSS rule in styles.css to make the dual-selector shared-declaration architecture explicit.",
+        "Addressed both documentation-forward items flagged by the Reviewer: (1) the .pm-dirty-dot / .mr-dirty-dot shared CSS declaration is now documented in api-surface.md and annotated in styles.css; (2) the pmWireEvents parameter-passthrough pattern is now documented in both the JSDoc comment in config.js and the api-surface.md frontend section.",
+        "Triggered CTX context regeneration — all 38 documents written successfully; three outputs updated: mcp-server/manifest-api-surface.md, mcp-server/manifest-file-tree.md, mcp-server/source-gui-frontend.md."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/file-tree.md",
+          "mcp-server/gui/public/views/config.js",
+          "mcp-server/gui/public/styles.css",
+          ".context/mcp-server/manifest-api-surface.md",
+          ".context/mcp-server/manifest-file-tree.md",
+          ".context/mcp-server/source-gui-frontend.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T16:12:05Z",
+          "note": "The styles.css inline comment for the shared .mr-dirty-dot / .pm-dirty-dot rule lives in the raw source file but is not picked up by any CTX-generated output document — styles.css is not in any glob source path. The hand-maintained ui-components.md is the canonical reference for CSS classes. No gap in practice, but if inline CSS comments should be visible in generated context output, a *.css source path could be added to the UI Components document definition in module-context.yaml."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-21T16:12:05Z",
+          "note": "No changes were needed to README.md or mcp-server/README.md — the Persona Models tab is a GUI-internal feature that does not affect the server's external API surface or quick-start instructions."
+        }
+      ]
+    }
+  ],
+  "rework_counts": {
+    "implementation": 1,
+    "qa": 1
+  },
+  "status_changed_at": "2026-07-21T16:12:05Z",
+  "last_updated": "2026-07-21T16:12:05Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-07-21T15:52:50Z",
+      "notes": [
+        "All 11 AC criteria are implemented in mcp-server/gui/public/views/config.js (renderPersonaModelsTab and supporting functions pmBuildTabHtml, pmWireEvents, pmDoSave, pmDoRebuild) and mcp-server/gui/public/styles.css (Persona Models and .spinner CSS).",
+        "Frontend testing is manual per the plan's Testing Strategy — verify: tab navigation, collapsible suites, click-to-edit for default model and persona assignments, dirty indicators on changed values, Replace Model flow (form, confirmation dialog, same-model rejection), stale banner with rebuild spinner, success refresh, error pre-block display, pre-build state message, fixed rebuild button (always visible, disabled during build, dirty tooltip), empty-registry message with go-to-registry link, unsaved-changes guard on tab switch.",
+        "Key behaviors to confirm in browser: stale banner appears after Save (server returns stale:true); rebuild button becomes disabled during build and re-enables on success/failure; collapsible suite headers toggle correctly; Replace All confirmation dialog fires before API call."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Developer",
+      "timestamp": "2026-07-21T15:58:09Z",
+      "notes": [
+        "QA BOUNCE — One bug must be fixed before code-review. AC #7 FAIL: when the persona build script exits non-zero, the server sends HTTP 500 with body `{ success: false, output: '...', exitCode: N }`. The api-client reads `errData.error.message` (undefined) and falls back to 'HTTP 500'. The `<pre class=\"pm-build-error-pre\">` block displays 'HTTP 500' instead of the actual build script output. Fix: in `gui/server.ts`, change the rebuild failure response from `sendJson(res, 500, result, port)` to `sendError(res, 500, 'BUILD_FAILED', result.output, port)`. This aligns with the standard error envelope that api-client.js already parses. No other ACs are failing — 10/11 pass. All 3523 regression tests pass."
+      ]
+    },
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-07-21T16:00:07Z",
+      "notes": [
+        "Rework complete. AC #7 is now met: the rebuild failure response from server.ts uses `sendError(res, 500, 'BUILD_FAILED', result.output, port)`, placing actual script output in `error.message` so api-client.js parses it correctly and pmDoRebuild displays it in the `<pre class=\\\"pm-build-error-pre\\\">` block. All 11 ACs are now met. All 3523 regression tests pass, TypeScript builds clean. No other changes from the first implementation — please re-verify only AC #7 (rebuild failure path)."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-07-21T16:01:41Z",
+      "notes": [
+        "All 11 ACs are met. Implementation spans config.js (renderPersonaModelsTab, pmBuildTabHtml, pmWireEvents, pmDoSave, pmDoRebuild), styles.css (Persona Models CSS + .spinner), and server.ts (rebuild failure path). No outstanding issues. Proceed to code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-07-21T16:05:15Z",
+      "notes": [
+        "All 11 ACs confirmed met. One Fix-Forward applied: `.pm-dirty-dot` CSS alias added and `pmDirtyDot()` updated to use it (decouples Persona Models from Model Registry dirty-dot styling). Two documentation-forward items tagged: (1) `.pm-dirty-dot`/`.mr-dirty-dot` shared CSS declaration; (2) `pmWireEvents` parameter-passthrough pattern explanation. No blocking issues found. Proceed to documentation."
+      ]
+    }
+  ]
+}

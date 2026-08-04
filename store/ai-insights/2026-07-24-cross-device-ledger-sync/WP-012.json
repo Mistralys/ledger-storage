@@ -1,0 +1,231 @@
+{
+  "work_package_id": "WP-012",
+  "work_package_file": "work/WP-012.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-011"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "GET /api/stores returns the list of registered stores with accurate project and repository counts",
+      "met": true
+    },
+    {
+      "criterion": "GET /api/stores/conflicts returns an accurate list of repositories registered in multiple stores, identifying the winner and shadowed entries; returns empty array in single-store mode",
+      "met": true
+    },
+    {
+      "criterion": "In multi-store mode, the orchestrator preflight rejects repositories not registered in any store with a clear error before running other checks",
+      "met": true
+    },
+    {
+      "criterion": "In single-store mode, the orchestrator preflight does not check registration (registration is optional)",
+      "met": true
+    },
+    {
+      "criterion": "getRouteDescriptors() automatically picks up the new store routes",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-07-24T15:49:53Z",
+      "completed_at": "2026-07-24T16:05:17Z",
+      "duration_ms": 924000,
+      "summary": [
+        "Implemented GET /api/stores and GET /api/stores/conflicts endpoints in gui/api.ts, with handleGetStores() returning per-store project and repository counts (single-store legacy fallback + multi-store mode via StoreRouter), and handleGetStoreConflicts() delegating to MultiStoreManager.getRegistryConflicts().",
+        "Added buildStoreRoutes() to gui/server.ts and wired it into buildRoutes() return array; /api/stores/conflicts ordered before /api/stores to prevent shadowing.",
+        "Added multi-store registration preflight to handleOrchestratorStart(): in multi-store mode, resolveStoreForRepo() is called before startOrchestrator(); an unregistered repository returns {checks:[{name:'store-registration',pass:false,...}],started:false} without running venv/env/mcp-dist checks.",
+        "Created tests/gui/api-stores.test.ts (legacy + multi-store mode coverage with real temp dirs) and tests/gui/api-store-conflicts.test.ts (full delegation + empty-array guards).",
+        "Extended tests/gui/api-orchestrator.test.ts with WP-012 AC-3/AC-4 multi-store preflight tests (unregistered repo, registered repo, single-store passthrough, isMultiStoreMode=false passthrough); added vi.mock for store-context with default=false to preserve all prior tests.",
+        "All 3816 tests pass; TypeScript type-check clean."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/api.ts",
+          "mcp-server/gui/server.ts",
+          "mcp-server/tests/gui/api-stores.test.ts",
+          "mcp-server/tests/gui/api-store-conflicts.test.ts",
+          "mcp-server/tests/gui/api-orchestrator.test.ts"
+        ]
+      },
+      "metrics": {
+        "tests_passed": 3816,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T16:05:17Z",
+          "note": "gui/api.ts: handleGetStores() calls LedgerStore.listAllProjects() and loadRegistry() in parallel per store using Promise.all(), which is efficient. However, for very large numbers of stores, consider batching or streaming results to avoid holding all store data in memory simultaneously."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T16:05:17Z",
+          "note": "gui/api.ts: The StoreListItem interface is defined locally in api.ts. If this type is consumed by the GUI frontend in future, consider moving it to a shared schema file for single-source-of-truth typing."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T16:05:17Z",
+          "note": "gui/server.ts: buildStoreRoutes() is consistent with existing sub-builder naming and placement. The /api/stores/conflicts-before-/api/stores ordering matches the Section B invariant documented elsewhere in the file — no issues."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-07-24T16:05:17Z",
+          "note": "tests/gui/api-orchestrator.test.ts: The test file now mocks both orchestrator-manager.js and store-context.js at module level. The global beforeEach restores mockIsStoreCtxInit to false after each test, which keeps existing tests safe. This pattern (multiple vi.mock() + shared beforeEach for defaults) is consistent and maintainable."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-07-24T16:14:26Z",
+      "completed_at": "2026-07-24T16:17:32Z",
+      "duration_ms": 186000,
+      "summary": [
+        "All 5 acceptance criteria verified and passing. 3,838 tests pass (0 failures), TypeScript typecheck clean. AC-1: handleGetStores() returns correct StoreListItem shape in both legacy (single default entry) and multi-store mode (per-store counts loaded in parallel via Promise.all). AC-2: handleGetStoreConflicts() delegates to MultiStoreManager.getRegistryConflicts() and returns [] in single-store mode without calling the manager. AC-3: orchestrator preflight correctly rejects unregistered repos with {name:'store-registration',pass:false} and does not call startOrchestrator. AC-4: both isStoreContextInitialized()=false and isMultiStoreMode()=false paths skip the registration check and proceed to startOrchestrator. AC-5: buildStoreRoutes() is wired into buildRoutes(); /api/stores/conflicts ordered before /api/stores to prevent prefix shadowing; route table structural tests pass."
+      ],
+      "metrics": {
+        "test_coverage": "23 dedicated WP-012 tests across api-stores.test.ts, api-store-conflicts.test.ts, and api-orchestrator.test.ts",
+        "tests_passed": 3838,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "coverage-gap",
+          "priority": "low",
+          "timestamp": "2026-07-24T16:17:32Z",
+          "note": "gui/api.ts handleOrchestratorStart(): the edge case where inferProjectRootFromPlanPath(planPath) returns null (planPath without '/docs/agents/' segment) causes folderName=null and silently skips the registration check, proceeding to startOrchestrator. Correct behavior, but no test covers this path. Developer handoff notes mentioned it — recommend adding a test: multi-store mode + planPath without '/docs/agents/' → startOrchestrator is still called."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T16:17:32Z",
+          "note": "StoreListItem interface is defined locally in gui/api.ts. If this type is consumed by the GUI frontend in future, moving it to a shared schema file would give single-source-of-truth typing. Low priority — no current consumers outside the handler."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-07-24T16:19:03Z",
+      "completed_at": "2026-07-24T16:24:15Z",
+      "duration_ms": 312000,
+      "summary": [
+        "WP-012 code review PASS. Implementation is clean, well-structured, and correctly handles both multi-store and single-store/legacy modes. All 5 ACs verified.",
+        "One Fix-Forward applied: hoisted UUID_V4 regex from inside handleOrchestratorStart() to module scope, consistent with the module's pattern of placing validation constants (SAFE_RUN_STATUS_FILENAME, DIALOGUE_FILENAME_RE, etc.) at module scope before the handler that uses them. Non-behavioral — TypeScript typecheck still clean.",
+        "handleGetStores(), handleGetStoreConflicts(), and the orchestrator preflight addition in handleOrchestratorStart() are all correct and well-commented. Route ordering in buildStoreRoutes() is correct (/api/stores/conflicts before /api/stores to prevent prefix shadowing). Three documentation-forward observations recorded."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/api.ts",
+          "mcp-server/gui/server.ts",
+          "mcp-server/tests/gui/api-stores.test.ts",
+          "mcp-server/tests/gui/api-store-conflicts.test.ts",
+          "mcp-server/tests/gui/api-orchestrator.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-07-24T16:24:15Z",
+          "note": "api.ts handleOrchestratorStart(): hoisted UUID_V4 regex constant from inside the function body to module scope. The pattern `/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i` was re-created on every call, a cosmetic inconsistency with the established pattern of placing validation constants (SAFE_RUN_STATUS_FILENAME, DIALOGUE_FILENAME_RE, etc.) at module scope. Non-behavioral change — typecheck remains clean."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T16:24:15Z",
+          "note": "api.ts handleGetStores(): uses `if (isStoreContextInitialized())` without a secondary `getStoreRouter().isMultiStoreMode()` check, while handleListRepos, handleOrchestratorStart, and handleCreateRepo all use both guards. This is intentional — handleGetStores correctly shows all configured stores even when only one store is configured — but a brief inline comment explaining the deliberate guard difference would prevent future contributors from 'fixing' it to match the other handlers."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-07-24T16:24:15Z",
+          "note": "[documentation-forward] The StoreListItem interface is defined locally in gui/api.ts (not in a shared schema file). This is noted in the developer's own implementation comments. The API surface doc should document this interface and mark it as a candidate for migration to src/schema/ when frontend consumers emerge."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-07-24T16:24:15Z",
+          "note": "[documentation-forward] The edge case where inferProjectRootFromPlanPath(planPath) returns null in handleOrchestratorStart() (planPath without '/docs/agents/') causes folderName=null and silently skips the registration check, proceeding to startOrchestrator. Correct behavior, but it is undocumented in the function's JSDoc and has no test coverage. Recommend adding a sentence to the JSDoc: 'When inferProjectRootFromPlanPath returns null (planPath lacks the /docs/agents/ segment), the registration check is skipped.'"
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-07-24T16:25:31Z",
+      "completed_at": "2026-07-24T16:40:23Z",
+      "duration_ms": 892000,
+      "summary": [
+        "Updated mcp-server/gui/api.ts: added inline comment to handleGetStores() explaining the intentional single-guard design (only isStoreContextInitialized(), no isMultiStoreMode() check); updated handleOrchestratorStart() JSDoc to document the null folderName edge case (when inferProjectRootFromPlanPath returns null, the registration check is skipped and startOrchestrator proceeds normally).",
+        "Updated mcp-server/docs/agents/project-manifest/api-surface.md: added new '## GUI API — Store Endpoints' section documenting the StoreListItem interface (with migration-candidate note), handleGetStores() including its deliberate guard difference, and handleGetStoreConflicts() with mode-by-mode behaviour; added GET /api/stores and GET /api/stores/conflicts to the main active routes table in the gui/server.ts section; updated buildRoutes() description from six to seven non-exported domain sub-builders, adding buildStoreRoutes.",
+        "All three documentation-forward items from the code-review pipeline were addressed: (1) StoreListItem documented in API surface with migration note; (2) handleGetStores guard divergence explained via inline comment and API surface note; (3) handleOrchestratorStart null folderName edge case documented in JSDoc. TypeScript typecheck remains clean (0 errors)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/gui/api.ts",
+          "mcp-server/docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T16:40:23Z",
+          "note": "api-surface.md: The main active routes table in the gui/server.ts section was missing both /api/repos and /api/stores routes. Added the two /api/stores routes (WP-012 scope). The /api/repos omission is a pre-existing gap outside this WP's scope — recommend a follow-up documentation pass to add those rows."
+        },
+        {
+          "type": "convention",
+          "priority": "low",
+          "timestamp": "2026-07-24T16:40:23Z",
+          "note": "api.ts handleGetStores(): inline comment added to explain the deliberate guard difference vs. other handlers. The RegistryConflict cross-reference in the new API surface section points to the Multi-Store Manager section where it is already fully defined — no duplication."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-07-24T16:40:23Z",
+  "last_updated": "2026-07-24T16:40:23Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-07-24T16:05:17Z",
+      "notes": [
+        "WP-012 implementation complete. New endpoints: GET /api/stores (StoreListItem[] with project_count, repository_count per store) and GET /api/stores/conflicts (RegistryConflict[] from MultiStoreManager). handleOrchestratorStart() now runs a multi-store registration preflight that returns early with a store-registration fail check when the inferred repository folder is not registered in any store — startOrchestrator() is never called in that case.",
+        "QA focus areas: (1) Verify GET /api/stores response shape matches StoreListItem interface (id, label, path, project_count, repository_count). (2) Verify GET /api/stores/conflicts returns [] in single-store mode and correct RegistryConflict[] in multi-store mode. (3) Verify orchestrator preflight integration: unregistered repo → started:false with store-registration check, registered repo → proceeds normally. (4) Confirm /api/stores/conflicts route does not fall through to /api/stores route (ordering). (5) Edge case: planPath that does not contain /docs/agents/ yields null from inferProjectRootFromPlanPath; in that case the multi-store check is silently skipped — verify startOrchestrator is still called."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-07-24T16:17:32Z",
+      "notes": [
+        "WP-012 PASS. All 5 ACs met. 3,838 tests pass, typecheck clean. Minor coverage gap: planPath without '/docs/agents/' edge case in handleOrchestratorStart() is not tested — correct behavior confirmed by code inspection but recommend a follow-up test. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-07-24T16:24:15Z",
+      "notes": [
+        "WP-012 PASS. All 5 ACs met. Fix-Forward applied: UUID_V4 regex hoisted to module scope in api.ts (non-behavioral). Documentation gaps recorded: (1) StoreListItem not in API surface doc, (2) handleGetStores guard divergence needs a comment, (3) handleOrchestratorStart edge-case (null folderName) undocumented. Ready for documentation stage."
+      ]
+    }
+  ]
+}

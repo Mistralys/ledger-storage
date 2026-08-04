@@ -1,0 +1,277 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-002.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [
+    "WP-001"
+  ],
+  "acceptance_criteria": [
+    {
+      "criterion": "Plan folders with outdated date prefixes are renamed to today’s date before lock acquisition on fresh runs.",
+      "met": true
+    },
+    {
+      "criterion": "Plan folders with current date prefixes, no date prefix, or on --resume runs are not renamed.",
+      "met": true
+    },
+    {
+      "criterion": "If the target folder (today’s date + suffix) already exists, the rename is skipped and the original folder is used.",
+      "met": true
+    },
+    {
+      "criterion": "If Path.rename() raises OSError, a warning is logged and the original path is returned unchanged.",
+      "met": true
+    },
+    {
+      "criterion": "All downstream path state (plan_path, plan_dir, lock path) uses the post-rename path.",
+      "met": true
+    },
+    {
+      "criterion": "_plan_hash and _run_status_path are not recomputed after a folder rename; they retain the values derived from the pre-rename path, matching the filename TypeScript’s runStatusFilename() computed before spawning the orchestrator process.",
+      "met": true
+    },
+    {
+      "criterion": "Constraint §27 documents the pre-run rename behaviour including the _plan_hash stability rule.",
+      "met": true
+    },
+    {
+      "criterion": "_maybe_rename_plan_dir appears in api-surface.md.",
+      "met": true
+    },
+    {
+      "criterion": "All existing tests continue to pass; 8 new tests cover the rename function and _plan_hash stability.",
+      "met": true
+    },
+    {
+      "criterion": "orchestrator/changelog.md is updated with entries for all changes in this plan.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-07-09T07:10:20Z",
+      "completed_at": "2026-07-09T07:17:35Z",
+      "duration_ms": 435000,
+      "summary": [
+        "Added _SLUG_DATE_RE compiled regex and _maybe_rename_plan_dir(plan_dir: Path) -> Path function to orchestrator/src/cli.py, placed adjacent to _infer_project_root().",
+        "Added import re and date to datetime imports.",
+        "Wired _maybe_rename_plan_dir() into _run() between plan_dir assignment and lock acquisition, on fresh runs only (args.resume guard). plan_dir and plan_path are updated post-rename; _plan_hash and _run_status_path are intentionally not recomputed.",
+        "Added 7 unit tests in TestMaybeRenamePlanDir (outdated rename, current no-op, no prefix no-op, collision skip, non-ISO prefix, return value, OSError) and 1 integration test in TestRunFlow verifying _plan_hash stability via observable tombstone side-effect.",
+        "Added Constraint §27 to constraints.md documenting pre-run rename behaviour and _plan_hash stability rule.",
+        "Added _maybe_rename_plan_dir entry to api-surface.md CLI utility functions table.",
+        "Added note to data-flows.md Flow 5 describing pre-run rename and _plan_hash stability.",
+        "Updated orchestrator/changelog.md with v1.4.0 entry covering subagent middleware propagation (WP-001), pre-run rename, and version constraint."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/cli.py",
+          "orchestrator/tests/test_cli.py",
+          "orchestrator/docs/agents/project-manifest/constraints.md",
+          "orchestrator/docs/agents/project-manifest/api-surface.md",
+          "orchestrator/docs/agents/project-manifest/data-flows.md",
+          "orchestrator/changelog.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-09T07:17:35Z",
+          "note": "orchestrator/src/cli.py _maybe_rename_plan_dir: the OSError handler logs `plan_dir` (original path) in the warning message, which is helpful context. Consider also logging the OSError errno code in future for easier diagnosis on Windows where rename can fail with WinError 5 (access denied) or WinError 183 (target exists as race condition)."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-07-09T07:18:18Z",
+      "completed_at": "2026-07-09T07:20:30Z",
+      "duration_ms": 132000,
+      "summary": [
+        "All 8 new tests pass: 7 in TestMaybeRenamePlanDir (outdated rename, current no-op, no-prefix no-op, collision skip, non-ISO prefix, return value, OSError) and 1 in TestRunFlow (plan_hash stability after rename).",
+        "Full test_cli.py suite: 75/75 passed. Full orchestrator test suite: 1114 passed, 3 pre-existing failures unchanged (test_stream_retry::test_401_propagates_immediately, test_deep_agent_integration::test_developer_stage_live, test_deep_agent_integration::test_pm_stage_live).",
+        "Implementation verified: _plan_hash and _run_status_path are computed from plan_path before plan_dir is resolved and before _maybe_rename_plan_dir() is called — _plan_hash stability AC confirmed at source level.",
+        "Rename wiring guard (if not args.resume:) is correct; plan_dir and plan_path are updated post-rename but _plan_hash/_run_status_path are intentionally not recomputed.",
+        "Constraint §27 present in constraints.md; _maybe_rename_plan_dir entry present in api-surface.md; Flow 5 note present in data-flows.md; v1.4.0 entry present in orchestrator/changelog.md covering all three changes."
+      ],
+      "metrics": {
+        "tests_passed": 1122,
+        "tests_failed": 3
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-09T07:20:30Z",
+          "note": "orchestrator/src/cli.py: When args.plan is a directory path (not a file), _plan_hash is computed from the directory path string; when it's a file path, it's computed from the file path. This pre-existing asymmetry is unrelated to WP-002 but worth noting for future consistency review."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-09T07:20:30Z",
+          "note": "tests/test_cli.py TestRunFlow: The test uses a real lock_exclusive mock to force early exit — a clean, non-brittle approach that verifies the tombstone side-effect without accessing private locals. Pattern is reusable for future _run() integration tests."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-07-09T07:21:41Z",
+      "completed_at": "2026-07-09T07:24:42Z",
+      "duration_ms": 181000,
+      "summary": [
+        "Reviewed _maybe_rename_plan_dir() implementation in orchestrator/src/cli.py: correct regex gating (^(\\d{4}-\\d{2}-\\d{2})-(.+)$), all 4 skip conditions implemented and tested.",
+        "_plan_hash stability invariant verified at source: computed from plan_path at line ~688 before _maybe_rename_plan_dir() wiring at line ~756; explicit comment reinforces the constraint.",
+        "asyncio_mode = 'auto' in pyproject.toml covers the async test without a decorator; the tombstone-based observable-side-effect approach in TestRunFlow is clean and non-brittle.",
+        "Constraint §27 with correct/wrong code examples, api-surface.md entry, data-flows.md Flow 5 note with cross-reference, and changelog v1.4.0 are all present and accurate.",
+        "No blocking issues found. PASS."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/src/cli.py",
+          "orchestrator/tests/test_cli.py",
+          "orchestrator/docs/agents/project-manifest/constraints.md",
+          "orchestrator/docs/agents/project-manifest/api-surface.md",
+          "orchestrator/docs/agents/project-manifest/data-flows.md",
+          "orchestrator/changelog.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-09T07:24:42Z",
+          "note": "orchestrator/src/cli.py _maybe_rename_plan_dir: OSError warning logs the exc string but not exc.errno. On Windows, WinError 5 (access denied) or WinError 183 (target already exists as race condition) would be easier to diagnose if errno were included. Low priority: already surfaced in implementation pipeline; no action needed now."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-09T07:24:42Z",
+          "note": "The _call helper in TestMaybeRenamePlanDir imports _maybe_rename_plan_dir inside the method body on every call. This is consistent with test isolation conventions used elsewhere in the file and causes no issues; noted only for future contributors who may wonder about the pattern."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "low",
+          "timestamp": "2026-07-09T07:24:42Z",
+          "note": "[documentation-forward] orchestrator/docs/agents/project-manifest/api-surface.md: the _maybe_rename_plan_dir entry documents skip conditions but does not mention _SLUG_DATE_RE as the companion constant. Consider adding a brief note so readers know the regex is not inlined."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-07-09T07:25:29Z",
+      "completed_at": "2026-07-09T07:27:39Z",
+      "duration_ms": 130000,
+      "summary": [
+        "Addressed the one code-review documentation-forward item: added a dedicated `_SLUG_DATE_RE` row to the CLI private helpers table in `orchestrator/docs/agents/project-manifest/api-surface.md`. The existing `_maybe_rename_plan_dir` entry referenced `_SLUG_DATE_RE` inline but did not document it as a separately-defined module-level constant, leaving readers uncertain whether the regex was inlined. The new row includes the full regex pattern, its purpose (matching `YYYY-MM-DD-<suffix>` folder names with group capture), and an explicit note that it is not inlined in the function body. The `_maybe_rename_plan_dir` entry was also updated to reference `_SLUG_DATE_RE` as the 'companion constant'. All other documentation artifacts from the implementation pipeline (Constraint §27 in constraints.md, Flow 5 note in data-flows.md, v1.4.0 entry in orchestrator/changelog.md) were verified correct and required no changes."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "orchestrator/docs/agents/project-manifest/api-surface.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-09T07:27:39Z",
+          "note": "orchestrator/docs/agents/project-manifest/api-surface.md: The CLI private helpers table now has a consistent pattern — module-level constants (_SLUG_DATE_RE) are documented alongside functions in the same section. If future constants are added for other private helpers, they should follow the same convention: own row, re.Pattern[str] or similar type in the Signature column, explicit note about module-level placement."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-07-09T07:28:45Z",
+      "completed_at": "2026-07-09T07:28:55Z",
+      "duration_ms": 10000,
+      "summary": [
+        "Closing out 3 duplicate acceptance criteria entries (met: false on first-instance duplicates) that were not updated by the previous documentation pipeline pass due to exact-match update semantics. All criteria were functionally verified as met by QA and code-review pipelines; this pass marks the first-instance entries to unblock WP finalization."
+      ],
+      "artifacts": {
+        "files_modified": []
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-09T07:28:55Z",
+          "note": "No documentation changes required in this pass. Resolving 3 duplicate acceptance criteria entries whose first-instance met flags were still false due to exact-match update semantics on duplicate criterion text."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-07-09T07:31:38Z",
+      "completed_at": "2026-07-09T07:31:46Z",
+      "duration_ms": 8000,
+      "summary": [
+        "PM override: marking remaining unmet duplicate AC entries as met — all criteria were validated by prior pipeline stages."
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-07-09T07:32:32Z",
+      "completed_at": "2026-07-09T07:32:41Z",
+      "duration_ms": 9000,
+      "summary": [
+        "PM override: resolving 3 unmet AC entries caused by duplicate AC insertion during prior pipeline stages. All criteria were validated by QA and Reviewer — marking remaining entries as met."
+      ],
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-09T07:32:41Z",
+          "note": "Duplicate AC entries were created during pipeline stages, causing auto-finalization to fail. Resolved by PM removing duplicates and marking remaining entries as met."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-07-09T07:35:50Z",
+  "last_updated": "2026-07-09T07:35:50Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-07-09T07:17:35Z",
+      "notes": [
+        "WP-002 is complete. All 10 acceptance criteria are met.",
+        "_maybe_rename_plan_dir() is a pure Path-manipulation function (~55 lines) placed adjacent to _infer_project_root() in cli.py. It is called unconditionally on fresh runs between plan_dir assignment and lock acquisition.",
+        "_plan_hash stability is verified by TestRunFlow.test_plan_hash_stability_after_rename via the observable tombstone side-effect (pre-rename hash path exists, post-rename hash path does not).",
+        "3 pre-existing test failures remain (test_stream_retry::test_401_propagates_immediately, test_deep_agent_integration::test_developer_stage_live, test_deep_agent_integration::test_pm_stage_live) — all pre-date this work package and are unrelated to these changes.",
+        "Ruff lint passes clean on both modified files."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-07-09T07:20:30Z",
+      "notes": [
+        "WP-002 PASS. All 10 ACs met. 8/8 new tests pass; full suite 1114 pass with only 3 pre-existing failures unchanged.",
+        "Key invariant to review: _plan_hash is computed from plan_path BEFORE _maybe_rename_plan_dir() fires, ensuring GUI run-status polling uses the same hash TypeScript computed.",
+        "Modified files: orchestrator/src/cli.py, orchestrator/tests/test_cli.py, orchestrator/docs/agents/project-manifest/constraints.md, orchestrator/docs/agents/project-manifest/api-surface.md, orchestrator/docs/agents/project-manifest/data-flows.md, orchestrator/changelog.md."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-07-09T07:24:42Z",
+      "notes": [
+        "WP-002 code review PASS. Implementation is correct and well-structured. Key invariant (_plan_hash stability) verified at source level and in tests. Tombstone-based integration test is clean. All 10 ACs met. One documentation-forward tagged for api-surface.md: add note linking _maybe_rename_plan_dir entry to companion _SLUG_DATE_RE constant."
+      ]
+    }
+  ]
+}

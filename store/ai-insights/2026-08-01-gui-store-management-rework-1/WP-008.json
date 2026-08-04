@@ -1,0 +1,164 @@
+{
+  "work_package_id": "WP-008",
+  "work_package_file": "work/WP-006.md",
+  "status": "COMPLETE",
+  "assigned_to": "Reviewer",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "When two calls to reloadStoreContext() overlap, both resolve to the same value",
+      "met": true
+    },
+    {
+      "criterion": "setStoreContext() is called exactly once during coalesced concurrent calls",
+      "met": true
+    },
+    {
+      "criterion": "_pendingReload is cleared after completion (success or failure), so subsequent calls are not blocked",
+      "met": true
+    },
+    {
+      "criterion": "The return type and error semantics of reloadStoreContext() are unchanged",
+      "met": true
+    },
+    {
+      "criterion": "A test in store-context-reload.test.ts asserts the concurrency coalescing behavior",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-08-01T16:50:52Z",
+      "completed_at": "2026-08-01T16:54:00Z",
+      "duration_ms": 188000,
+      "summary": [
+        "Added module-level `_pendingReload: Promise<StoresConfig | null> | null = null` variable to store-context.ts.",
+        "Changed `reloadStoreContext` from `async function` to a plain function returning `Promise<StoresConfig | null>` directly. The guard checks `_pendingReload !== null` and returns the existing promise; otherwise creates an IIFE async promise, stores it, and returns it. The IIFE clears `_pendingReload` in `finally` on success or failure.",
+        "Added concurrency coalescing test to store-context-reload.test.ts: calls `reloadStoreContext` twice without await, asserts `p1 === p2` (same promise reference), then asserts both resolved values are the same object.",
+        "TypeScript compiles cleanly. 3947 tests pass (3946 pre-existing + 1 new) with zero regressions."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/storage/store-context.ts",
+          "mcp-server/tests/storage/store-context-reload.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-08-01T16:54:00Z",
+          "note": "Removed the `async` keyword from the outer `reloadStoreContext` function. With `async`, each invocation created a new Promise wrapper around `_pendingReload`, making `p1 !== p2` even when they shared the same inflight promise. Without `async`, the function returns `_pendingReload` directly, so `p1 === p2` is strict reference equality. The return type and error semantics are unchanged — the IIFE is still async and the returned promise rejects on error."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-08-01T17:01:17Z",
+      "completed_at": "2026-08-01T17:02:01Z",
+      "duration_ms": 44000,
+      "summary": [
+        "AC1+2: Test at store-context-reload.test.ts:112 calls reloadStoreContext twice without await; expect(p1).toBe(p2) proves same promise returned; expect(r1).toBe(r2) proves same resolved value. setStoreContext() runs exactly once.",
+        "AC3: _pendingReload = null in finally block (store-context.ts:112) — clears on success and failure.",
+        "AC4: Return type Promise<StoresConfig | null> unchanged. Non-async outer function returns promise directly; IIFE handles async semantics internally.",
+        "AC5: Test 'concurrent calls share one inflight promise and resolve to the same value' exists in store-context-reload.test.ts with both reference-equality assertions. 3947/3947 tests pass."
+      ],
+      "metrics": {
+        "tests_passed": 3947,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-08-01T17:02:01Z",
+          "note": "The non-async outer function is critical for correctness: an async wrapper would create a new Promise per call, making p1 !== p2 even if _pendingReload is shared internally. The implementation correctly uses a plain function returning the promise by reference. The test's expect(p1).toBe(p2) precisely catches any regression of this kind."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-08-01T17:08:21Z",
+      "completed_at": "2026-08-01T17:09:34Z",
+      "duration_ms": 73000,
+      "summary": [
+        "All five acceptance criteria verified. The coalescing pattern is architecturally correct: non-async outer function returns _pendingReload by reference; IIFE handles async semantics and clears _pendingReload in finally.",
+        "Fix-Forward applied: extended the JSDoc to document the coalescing invariant and the non-async constraint, including the reason (async wrapper creates a new Promise per call, breaking reference equality). This guards against a future refactor that might accidentally re-add the async keyword.",
+        "The finally block placement ensures _pendingReload is cleared on both success and failure paths, so subsequent calls after a failed reload are not permanently blocked.",
+        "Test design is exemplary: expect(p1).toBe(p2) proves the same Promise object (guard working); expect(r1).toBe(r2) proves same resolved value (no duplication). 3947/3947 tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/storage/store-context.ts",
+          "mcp-server/tests/storage/store-context-reload.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-08-01T17:09:34Z",
+          "note": "Added concurrency coalescing documentation to the reloadStoreContext() JSDoc. The non-async constraint is a subtle, non-obvious invariant that a future contributor could accidentally break (adding async is the most natural refactor when the function body looks async). The JSDoc now documents both the coalescing semantics and the prohibition on async — and references why (new Promise wrapper breaks reference equality). Non-behavioral change."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-01T17:09:34Z",
+          "note": "The non-async outer function pattern is architecturally correct for JavaScript single-threaded execution: the null check, IIFE creation, and _pendingReload assignment are all synchronous and atomic within the event loop turn. No race condition is possible. The IIFE is the standard idiom for 'I need await semantics inside a synchronous function that must return the same Promise to all concurrent callers'."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-01T17:09:34Z",
+          "note": "Subtle but acceptable: the coalescing guard ignores configPath differences — all concurrent calls get the result of the first call's configPath. This is correct in production (all calls use undefined) and acceptable in tests (concurrent test calls with different configPath values would indicate a test isolation bug, not a production concern). Worth monitoring if the function's test interface evolves."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-08-01T17:09:34Z",
+          "note": "The test's expect(p1).toBe(p2) + expect(r1).toBe(r2) combination is the right assertion set for coalescing behavior. The first assertion proves the same Promise object was returned (guard working); the second proves the same resolved value was shared (no duplication). This test would catch an accidental re-addition of the async keyword on the outer function."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-08-01T17:09:34Z",
+  "last_updated": "2026-08-01T17:09:34Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-08-01T16:54:00Z",
+      "notes": [
+        "All five acceptance criteria met. The implementation uses a module-level `_pendingReload: Promise<StoresConfig | null> | null` variable. The outer function is not async (to avoid wrapping the promise in a new outer Promise on each call) — it returns the IIFE promise directly. The IIFE clears `_pendingReload` in its `finally` block on both success and failure.",
+        "The concurrency test asserts `p1 === p2` (strict object identity), which proves the second call returned the existing inflight promise rather than creating a new one. By reference identity, setStoreContext() can only run once per coalesced batch.",
+        "TypeScript compiles with no errors (tsc --noEmit). 3947 tests pass with zero regressions."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-08-01T17:02:01Z",
+      "notes": [
+        "All 5 ACs verified by code inspection and test run (3947/3947). The non-async outer function returning _pendingReload directly is the key correctness property — the test's expect(p1).toBe(p2) would catch any accidental re-addition of the async keyword. finally block clears _pendingReload on success and failure. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Synthesis",
+      "timestamp": "2026-08-01T17:09:34Z",
+      "notes": [
+        "PASS with Fix-Forward. Added coalescing documentation and non-async constraint explanation to the JSDoc. All 5 ACs met. The test design (toBe on both Promise and resolved value) is exemplary. Documentation agent: no additional documentation-forward items beyond what the JSDoc update covers."
+      ]
+    }
+  ]
+}

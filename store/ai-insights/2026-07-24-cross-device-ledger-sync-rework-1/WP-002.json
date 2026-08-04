@@ -1,0 +1,213 @@
+{
+  "work_package_id": "WP-002",
+  "work_package_file": "work/WP-004.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "formatted_id includes store prefix in multi-store mode (e.g., work:KN-0003).",
+      "met": true
+    },
+    {
+      "criterion": "formatted_id remains unprefixed in legacy/single-store mode (e.g., KN-0003).",
+      "met": true
+    },
+    {
+      "criterion": "updateInsight and deleteInsight use the same error propagation pattern for \"not found\" exhaustion.",
+      "met": true
+    },
+    {
+      "criterion": "The lastError variable is removed from deleteInsight().",
+      "met": true
+    },
+    {
+      "criterion": "Tests verify both the store-scoped formatted_id format and the normalized error pattern.",
+      "met": true
+    },
+    {
+      "criterion": "All existing tests pass.",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-07-24T18:49:27Z",
+      "completed_at": "2026-07-24T18:58:05Z",
+      "duration_ms": 518000,
+      "summary": [
+        "Updated formatInsightId() to accept optional storeId parameter; produces {storeId}:KN-NNNN in multi-store mode and KN-NNNN in legacy mode.",
+        "Refactored addInsight() multi-store branch to use resolveStoreForRepo() instead of resolveStoreForWrite(), capturing both storePath and storeId atomically.",
+        "Replaced MultiStoreManager.searchKnowledge() call in searchInsights() with direct per-store iteration to capture owning storeId per insight.",
+        "Replaced MultiStoreManager.listKnowledge() call in listInsights() with direct per-store iteration to capture owning storeId per insight.",
+        "Removed unused getMultiStoreManager import from knowledge.ts.",
+        "Updated updateInsight() multi-store branch to capture insightStoreId on successful update.",
+        "Refactored deleteInsight(): removed lastError variable, replaced re-throw with throw new Error() matching updateInsight's pattern, added deletedStoreId capture.",
+        "Added tests to knowledge-multi-store.test.ts covering store-prefixed formatted_id for all 5 operations and the normalized deleteInsight error propagation.",
+        "All 3849 tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/tools/knowledge.ts",
+          "mcp-server/tests/tools/knowledge-multi-store.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T18:58:05Z",
+          "note": "searchInsights and listInsights now iterate stores directly (bypassing MultiStoreManager.searchKnowledge/listKnowledge) in multi-store mode. MultiStoreManager methods remain unchanged — this is an intentional deviation from that path to gain per-insight storeId access. If MultiStoreManager.searchKnowledge/listKnowledge are ever needed by other consumers requiring store-ID-tagged results, consider adding a tagged variant to MultiStoreManager instead."
+        },
+        {
+          "type": "debt",
+          "priority": "low",
+          "timestamp": "2026-07-24T18:58:05Z",
+          "note": "addInsight now uses resolveStoreForRepo() instead of resolveStoreForWrite() for repo-scoped writes, allowing capture of storeId. The error message for 'not registered' is manually crafted to match resolveStoreForWrite's expected text — these must stay in sync."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-07-24T19:30:54Z",
+      "completed_at": "2026-07-24T19:32:11Z",
+      "duration_ms": 77000,
+      "summary": [
+        "All 6 acceptance criteria verified. TypeScript clean. formatInsightId() correctly produces {storeId}:KN-NNNN in multi-store mode and KN-NNNN in legacy mode; storeId is always SLUG_REGEX-validated so malformed prefixes are impossible. deleteInsight() confirmed to have no lastError variable — uses throw new Error() matching updateInsight's pattern. Legacy single-store mode unaffected (44 knowledge.test.ts tests pass). Full regression: 3,868 tests across 135 files — all pass. New test suite (17 tests in knowledge-multi-store.test.ts) covers formatted_id prefix for all 5 operations and the normalized deleteInsight error pattern."
+      ],
+      "metrics": {
+        "tests_passed": 3868,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T19:32:11Z",
+          "note": "In multi-store mode, limit/offset parameters in listInsights() are applied per-store before merging, not globally across the merged result set. This could produce surprising result counts. Behavior is outside WP-002 scope but worth flagging for a future clean-up."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T19:32:11Z",
+          "note": "The seen-set deduplication in searchInsights/listInsights picks the first-encountered store's insight when the same numeric ID exists in multiple stores. This is deterministic (store order) but not documented. A comment noting the tiebreak policy would help future maintainers."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-07-24T19:51:07Z",
+      "completed_at": "2026-07-24T19:53:41Z",
+      "duration_ms": 154000,
+      "summary": [
+        "Code review PASS. All 6 acceptance criteria met. Core changes are well-designed and correctly scoped.",
+        "formatInsightId(id, storeId?) is a clean minimal extension — optional parameter, no state, idiomatic TypeScript. The KN-NNNN base format is preserved for legacy/single-store callers.",
+        "The storeIdByInsightId Map approach for searchInsights/listInsights is efficient: populated in O(n) during the store-iteration loop, consumed in a single .map() pass. No additional lookups.",
+        "updateInsight() and deleteInsight() now share identical error-propagation shape: iterate stores, break on success, throw new Error() after loop exhaustion. The deleteInsight() refactoring correctly uses a found: boolean sentinel (since there is no return value to use as the undefined sentinel that updateInsight() uses).",
+        "The test file (knowledge-multi-store.test.ts) is a high-quality integration test suite: real temp directories, setStoreContext/restoreLegacyContext lifecycle management, filler-insight technique to produce unique IDs across stores, and per-operation formatted_id prefix verification. The store-context cleanup in afterEach() prevents state leakage correctly.",
+        "Two Fix-Forward comments applied (tiebreak policy + per-store limit/offset semantics) — no behavioral changes. QA validation remains intact.",
+        "Medium-priority follow-up flagged: listInsights() does not apply a global post-merge limit slice (searchInsights does). This asymmetry and the per-store offset semantics should be addressed in a dedicated WP."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/tools/knowledge.ts",
+          "mcp-server/tests/tools/knowledge-multi-store.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-07-24T19:53:41Z",
+          "note": "Added a 'first-store-wins' tiebreak comment to the seen-set deduplication in searchInsights() multi-store loop (knowledge.ts ~L169). The policy was already correct but undocumented; QA and the Developer both flagged this as a clarity gap. No behavioral change."
+        },
+        {
+          "type": "reviewer-applied-fix",
+          "priority": "low",
+          "timestamp": "2026-07-24T19:53:41Z",
+          "note": "Added tiebreak comment plus a note about per-store limit/offset semantics to the listInsights() multi-store loop (knowledge.ts ~L278). The comment makes explicit that limit/offset are applied per-store (not globally after merge), so callers understand the combined result count may exceed the requested limit when stores overlap. No behavioral change."
+        },
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-07-24T19:53:41Z",
+          "note": "listInsights() in multi-store mode passes limit/offset per-store but applies no global post-merge slice — searchInsights() does apply a global slice. This asymmetry means listInsights() with limit=5 across 3 stores may return up to 15 results. Since limit/offset also carry pagination semantics (offset skips N items per-store, not globally), a correct fix would require a rework of the per-store dispatch for listInsights(). This is pre-existing debt post-WP-002 and out of scope here; flagged for a dedicated follow-up WP."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T19:53:41Z",
+          "note": "addInsight() repo-scope branch uses resolveStoreForRepo() and manually crafts an error message ('not registered in any store') that must stay in sync with resolveStoreForWrite()'s own message. If resolveStoreForWrite() changes its error text, this branch will silently diverge. Consider extracting the error message to a shared constant in store-router.ts as a follow-up."
+        },
+        {
+          "type": "documentation-forward",
+          "priority": "medium",
+          "timestamp": "2026-07-24T19:53:41Z",
+          "note": "[documentation-forward] The per-store limit/offset behavior in listInsights() multi-store mode and the first-store-wins tiebreak policy are not documented in the API surface doc or tool description. The tool's inputSchema description for 'limit' says 'Maximum number of results to return (for pagination)' — update the tool registration or add a note in api-surface.md clarifying the multi-store behavior so callers are not surprised."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-07-24T20:04:58Z",
+      "completed_at": "2026-07-24T20:07:54Z",
+      "duration_ms": 176000,
+      "summary": [
+        "Updated api-surface.md: ledger_add_insight response now documents the store-prefixed format in multi-store mode ({storeId}:KN-NNNN); ledger_search_insights multi-store note updated to reflect direct per-store iteration (not MultiStoreManager.searchKnowledge) and first-store-wins tiebreak; ledger_list_insights multi-store note updated to document that limit/offset are per-store with a caution that combined result count may exceed limit — the key caller-facing surprise from the code review.",
+        "Updated file-tree.md: tools/knowledge.ts entry updated to show the full formatInsightId(id, storeId?) signature with both output formats and the multi-store list/search behavior; ledger_delete_insight added to the tool list (was missing)."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/file-tree.md"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "medium",
+          "timestamp": "2026-07-24T20:07:54Z",
+          "note": "Reviewer's documentation-forward item addressed: api-surface.md ledger_list_insights multi-store note now explicitly documents that limit/offset are per-store (not global), the potential result count exceeding limit, and the first-store-wins tiebreak policy. This was the main caller-facing surprise surfaced by the code review."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-24T20:07:54Z",
+          "note": "formatInsightId() signature updated in file-tree.md to reflect the new storeId parameter and the two-format output. ledger_delete_insight was also missing from the tools/knowledge.ts file-tree entry — added."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-07-24T20:07:54Z",
+  "last_updated": "2026-07-24T20:07:54Z",
+  "handoff_notes": [
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-07-24T19:32:11Z",
+      "notes": [
+        "WP-002 fully verified. formatInsightId() correctly prefixes with store ID in multi-store mode and is absent in legacy mode. deleteInsight() lastError variable removed, error propagation normalized to match updateInsight(). All 17 new tests + 44 existing knowledge tests + full 3,868-test suite green. TypeScript clean. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-07-24T19:53:41Z",
+      "notes": [
+        "WP-002 PASS. formatInsightId() store-prefix is clean and minimal; deleteInsight() error normalization matches updateInsight() exactly. Test suite (17 new integration tests) is thorough and well-structured. Two reviewer-applied Fix-Forward comments added to document tiebreak policy and per-store limit/offset semantics — no behavioral change. Medium-priority follow-up noted: listInsights() per-store limit vs searchInsights() global limit asymmetry should be addressed in a future WP. Ready for documentation pipeline."
+      ]
+    }
+  ]
+}

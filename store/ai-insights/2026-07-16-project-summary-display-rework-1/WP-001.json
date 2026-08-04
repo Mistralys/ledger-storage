@@ -1,0 +1,208 @@
+{
+  "work_package_id": "WP-001",
+  "work_package_file": "work/WP-001.md",
+  "status": "COMPLETE",
+  "assigned_to": "Documentation",
+  "dependencies": [],
+  "acceptance_criteria": [
+    {
+      "criterion": "ImportStandaloneSchema accepts an optional project_summary string with min 1 char and rejects empty strings",
+      "met": true
+    },
+    {
+      "criterion": "importStandalone() persists project_summary in root index and .meta.json when provided",
+      "met": true
+    },
+    {
+      "criterion": "importStandalone() omits project_summary from root index when not provided (backward compatibility)",
+      "met": true
+    },
+    {
+      "criterion": "Help content for ledger_import_standalone lists the project_summary parameter",
+      "met": true
+    },
+    {
+      "criterion": "All new tests pass; all existing tests continue to pass",
+      "met": true
+    }
+  ],
+  "active_pipeline_stages": [
+    "implementation",
+    "qa",
+    "code-review",
+    "documentation"
+  ],
+  "revision": 0,
+  "pipelines": [
+    {
+      "type": "implementation",
+      "status": "PASS",
+      "started_at": "2026-07-16T10:40:15Z",
+      "completed_at": "2026-07-16T10:43:53Z",
+      "duration_ms": 218000,
+      "summary": [
+        "Added optional project_summary parameter to ImportStandaloneSchema (z.string().min(1).optional()) with a descriptive .describe() annotation.",
+        "Extended ImportStandaloneDetail interface with optional projectSummary field, following the existing outcomeSummary pattern.",
+        "Wired project_summary through importStandalone() handler via key-presence spread to store.importStandaloneProject().",
+        "Added key-presence spread for project_summary in the root index construction inside importStandaloneProject(), leveraging existing writeRootIndex() auto-sync to .meta.json.",
+        "Updated ledger_import_standalone help content with an ## Optional Parameters section documenting project_summary.",
+        "Added 4 new tests: persistence in root index, persistence in .meta.json, backward-compatibility when omitted, and schema rejection of empty strings. All 3436 tests pass."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/tools/standalone-import.ts",
+          "mcp-server/src/storage/ledger-store.ts",
+          "mcp-server/src/tools/help-content.ts",
+          "mcp-server/tests/tools/standalone-import.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-16T10:43:53Z",
+          "note": "standalone-import.ts: The ImportStandaloneSchema and UpdateSynthesisSchema share a repeated cwd_path/project_path field definition. A shared partial schema object could reduce duplication, but the current code is clear and any refactor would touch unrelated surface area."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-16T10:43:53Z",
+          "note": "ledger-store.ts: importStandaloneProject() constructs the root index inline rather than via a helper. This is intentional (documented single-lock bootstrapping path), but a separate builder function could improve readability if the root index structure grows further."
+        }
+      ]
+    },
+    {
+      "type": "qa",
+      "status": "PASS",
+      "started_at": "2026-07-16T10:57:17Z",
+      "completed_at": "2026-07-16T11:00:03Z",
+      "duration_ms": 166000,
+      "summary": [
+        "Build check: TypeScript compiles cleanly with zero errors (npx tsc --noEmit).",
+        "AC1: ImportStandaloneSchema has z.string().min(1).optional() — confirmed in source and by schema rejection test.",
+        "AC2: project_summary persists in root index via key-presence spread in importStandaloneProject() line 781, then auto-syncs to .meta.json through writeRootIndex() → writeProjectMeta() — confirmed by both test cases.",
+        "AC3: Backward compatibility confirmed — when project_summary is omitted, key-presence spread does not include it in root index; test asserts root.project_summary is undefined.",
+        "AC4: Help content confirmed in help-content.ts lines 1164-1165 with ## Optional Parameters section documenting project_summary.",
+        "AC5: 3436/3436 tests pass across 115 test files. All 4 new project_summary tests pass explicitly (root index persistence, .meta.json persistence, backward compatibility, empty-string rejection).",
+        "Regression check: No regressions in the broader test suite. Existing standalone-import tests (including ledger_update_synthesis) all pass."
+      ],
+      "metrics": {
+        "test_coverage": "115 test files",
+        "tests_passed": 3436,
+        "tests_failed": 0
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-16T11:00:03Z",
+          "note": "standalone-import.ts: project_summary uses min(1) constraint but no trimming — a whitespace-only string (e.g. '   ') passes validation. Not a practical concern for a curated agent-provided field, but worth noting."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-16T11:00:03Z",
+          "note": "No max-length constraint on project_summary. Consistent with how project_summary is handled in ledger_initialize_project. Fine for current usage."
+        }
+      ]
+    },
+    {
+      "type": "code-review",
+      "status": "PASS",
+      "started_at": "2026-07-16T11:04:50Z",
+      "completed_at": "2026-07-16T11:06:11Z",
+      "duration_ms": 81000,
+      "summary": [
+        "WP-001 passes code review. The project_summary field is wired correctly through all four layers: Zod schema (min(1) optional), ImportStandaloneDetail interface (projectSummary?: string), handler spread (undefined check → key-presence propagation), and storage construction (key-presence spread before writeRootIndex auto-sync). This is a textbook application of the dual-schema pattern (KN-0027). All 5 ACs are met. No blocking issues found."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/src/tools/standalone-import.ts",
+          "mcp-server/src/storage/ledger-store.ts",
+          "mcp-server/src/tools/help-content.ts",
+          "mcp-server/tests/tools/standalone-import.test.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-16T11:06:11Z",
+          "note": "The schema rejection test (AC1) constructs a local z.object({ project_summary: z.string().min(1).optional() }) rather than exercising the actual ImportStandaloneSchema. This works because ImportStandaloneSchema is not exported. Consider exporting a named type or sub-schema in the future if integration tests require accessing it directly, but the current approach is acceptable and avoids circular import concerns."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-16T11:06:11Z",
+          "note": "[documentation-forward] help-content.ts: The ## Optional Parameters section for project_summary could mention that whitespace-only strings (e.g. '   ') pass the min(1) constraint. Low urgency — this is a curated agent-provided field, but a brief note ('Must contain at least one non-whitespace character is recommended') would set clearer expectations for future callers reading the help text."
+        }
+      ]
+    },
+    {
+      "type": "documentation",
+      "status": "PASS",
+      "started_at": "2026-07-16T11:10:08Z",
+      "completed_at": "2026-07-16T11:13:37Z",
+      "duration_ms": 209000,
+      "summary": [
+        "Audited all documentation surfaces affected by the project_summary parameter addition to ledger_import_standalone.",
+        "Updated mcp-server/docs/agents/project-manifest/api-surface.md: (1) added project_summary?: string to the ledger_import_standalone tool signature, (2) updated the Produced project record section to document project_summary key-presence semantics in project-ledger.json, (3) added projectSummary?: string field to the ImportStandaloneDetail interface.",
+        "Updated mcp-server/docs/agents/project-manifest/file-tree.md: (1) extended standalone-import.ts Zod schema description to include project_summary, (2) updated standalone-import.test.ts test count from 14 to 18, listing the four new project_summary test cases.",
+        "Updated AGENTS.md and CLAUDE.md: extended the project_summary cross-system dependency row to include ledger_import_standalone → ImportStandaloneSchema.project_summary as a co-equal source of truth alongside ledger_initialize_project, and added mcp-server/src/tools/standalone-import.ts to the Must Stay In Sync With column.",
+        "Updated mcp-server/src/tools/help-content.ts: addressed documentation-forward item from code review — added note to project_summary help text clarifying that the min(1) constraint is length-only and whitespace-only strings technically pass, with guidance to supply a meaningful summary."
+      ],
+      "artifacts": {
+        "files_modified": [
+          "mcp-server/docs/agents/project-manifest/api-surface.md",
+          "mcp-server/docs/agents/project-manifest/file-tree.md",
+          "mcp-server/docs/agents/project-manifest/file-tree.md",
+          "AGENTS.md",
+          "CLAUDE.md",
+          "mcp-server/src/tools/help-content.ts"
+        ]
+      },
+      "comments": [
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-16T11:13:37Z",
+          "note": "The api-surface.md project_summary note for ledger_initialize_project (line ~97) already documents key-presence semantics; this pattern is now consistently applied to both initialize and import tool entries."
+        },
+        {
+          "type": "improvement",
+          "priority": "low",
+          "timestamp": "2026-07-16T11:13:37Z",
+          "note": "No changes required to the bootstrapper persona (personas/ledger-support/src/content/ledger-bootstrapper.md) — Step 2 already refers to ledger_initialize_project specifically and does not need to describe standalone import behaviour."
+        }
+      ]
+    }
+  ],
+  "status_changed_at": "2026-07-16T11:13:37Z",
+  "last_updated": "2026-07-16T11:13:37Z",
+  "handoff_notes": [
+    {
+      "from_agent": "Developer",
+      "to_agent": "QA",
+      "timestamp": "2026-07-16T10:43:53Z",
+      "notes": [
+        "WP-001 implementation is complete. All 5 acceptance criteria met. The project_summary field flows from the MCP tool schema through the handler into the store's root index construction, and is auto-synced to .meta.json by writeRootIndex(). Backward compatibility preserved — existing imports without project_summary produce no change in root index shape. QA should verify the new test cases and confirm no .meta.json regression across the broader test suite."
+      ]
+    },
+    {
+      "from_agent": "QA",
+      "to_agent": "Reviewer",
+      "timestamp": "2026-07-16T11:00:03Z",
+      "notes": [
+        "WP-001 QA passed with all 5 ACs verified. Implementation is clean: correct Zod schema (min 1, optional), complete data flow from tool schema through handler to root index and .meta.json via writeRootIndex() auto-sync, backward-compatible key-presence spread, and zero TypeScript errors. 3436 tests pass with no regressions. Ready for code review."
+      ]
+    },
+    {
+      "from_agent": "Reviewer",
+      "to_agent": "Documentation",
+      "timestamp": "2026-07-16T11:06:11Z",
+      "notes": [
+        "WP-001 passes code review with no blocking issues. Implementation follows the established dual-schema pattern (KN-0027): Zod schema with min(1) optional, key-presence spread at handler → store → root index, with writeRootIndex() auto-sync covering .meta.json. One low-priority documentation suggestion: the help text could clarify that whitespace-only strings pass min(1) validation."
+      ]
+    }
+  ]
+}
